@@ -3,6 +3,5 @@
 *.tmp
 *.blend1
 # Exports and pictures
-build/*
-!build/.gdignore
+# (the web build is kept: GitHub Pages serves it to the arcade)
 shots/
