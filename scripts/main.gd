@@ -1,0 +1,281 @@
+extends Control
+## Gulp (a placeholder name): you start as a small fish in a 3D sea, eat what is smaller than
+## you, keep clear of what is bigger, and grow, through bigger and bigger fish. Being eaten
+## ends the run, and you start again small.
+##
+## The sea is drawn in a SubViewport at half size and shown through Salmon Run 2's post shader
+## (its underwater picture: swaying, tinted, banded and dithered), as Salmon Run 2 and Moon
+## Jellies do it. Over it: the Hud and the TouchPad.
+##
+## Controls: the stick (or A/D and W/S, the arrow keys, a gamepad's left stick) turns the fish,
+## which always swims the way it points; the round button (or Space, Shift, a gamepad's A) is
+## a burst of speed. When a run is over, the round arrow (or Enter, Space, a gamepad's A)
+## starts another.
+##
+## Arguments (after --): --bot plays by itself and starts again when eaten; --seconds=<n> quits
+## after n seconds (with --bot, printing how it did); --check runs the smoke test's checks
+## (tests/checks.gd) and quits; --stage=<n> starts runs at a later stage (0..4); --calm:
+## nothing hunts; --over ends the run at once (for a picture of that screen); --shot=<seconds>
+## saves a picture at that time and quits (--out=<file>).
+
+const SAVE := "user://gulp.cfg"
+
+var sea: Sea
+var life: Life
+var player: Player
+var camera: Camera3D
+var hud: Hud
+var pad: TouchPad
+var bot: Bot
+
+## The run is over (the player was eaten).
+var over := false
+var deaths := 0
+var best_stage := 0
+var total_meals := 0
+
+var _viewport: SubViewport
+var _bubbles: CPUParticles3D
+var _clock := 0.0
+var _over_for := 0.0
+var _start_stage := 0
+var _quit_at := -1.0
+var _shot_at := -1.0
+var _shot_out := ""
+var _checking := false
+var _end_now := false
+var _saves := true
+var _accept_was := false
+
+
+func _ready() -> void:
+	var botted := false
+	var calm := false
+	for arg in OS.get_cmdline_user_args():
+		if arg == "--bot":
+			botted = true
+		elif arg == "--check":
+			_checking = true
+		elif arg == "--calm":
+			calm = true
+		elif arg == "--over":
+			_end_now = true
+		elif arg.begins_with("--seconds="):
+			_quit_at = float(arg.get_slice("=", 1))
+		elif arg.begins_with("--stage="):
+			_start_stage = int(arg.get_slice("=", 1))
+		elif arg.begins_with("--shot="):
+			_shot_at = float(arg.get_slice("=", 1))
+		elif arg.begins_with("--out="):
+			_shot_out = arg.get_slice("=", 1)
+	# (a test's runs are not kept as the player's best)
+	_saves = not (botted or _checking or _shot_at >= 0.0 or _quit_at >= 0.0)
+	var container := SubViewportContainer.new()
+	container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	container.stretch = true
+	container.stretch_shrink = 2
+	container.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var post := ShaderMaterial.new()
+	post.shader = preload("res://shaders/post.gdshader")
+	post.set_shader_parameter(&"underwater", 1.0)
+	post.set_shader_parameter(&"water_tint", Color(0.06, 0.2, 0.5))
+	post.set_shader_parameter(&"tint", 0.35)
+	post.set_shader_parameter(&"sway", 0.002)
+	post.set_shader_parameter(&"shafts", 0.12)
+	post.set_shader_parameter(&"levels", 28.0)
+	post.set_shader_parameter(&"dither", 0.5)
+	post.set_shader_parameter(&"vignette", 0.3)
+	container.material = post
+	add_child(container)
+	_viewport = SubViewport.new()
+	container.add_child(_viewport)
+	sea = Sea.new()
+	_viewport.add_child(sea)
+	player = Player.new()
+	_viewport.add_child(player)
+	life = Life.new()
+	life.player = player
+	life.hunting = not calm
+	_viewport.add_child(life)
+	camera = Camera3D.new()
+	camera.near = 0.05
+	camera.far = 150.0
+	_viewport.add_child(camera)
+	camera.current = true
+	sea.eye = camera
+	sea.sand.focus = camera
+	_make_bubbles()
+	hud = Hud.new()
+	hud.player = player
+	hud.restart.connect(restart)
+	add_child(hud)
+	pad = TouchPad.new()
+	add_child(pad)
+	player.ate.connect(_on_ate)
+	player.grew.connect(_on_grew)
+	player.died.connect(_on_died)
+	if botted:
+		bot = Bot.new()
+		bot.player = player
+		bot.life = life
+	if _saves:
+		var kept := ConfigFile.new()
+		if kept.load(SAVE) == OK:
+			hud.best = float(kept.get_value("best", "length", 0.0))
+	restart()
+	if _checking:
+		var checks: Node = (load("res://tests/checks.gd") as GDScript).new()
+		checks.set(&"main", self)
+		add_child(checks)
+
+
+## Starts a run.
+func restart() -> void:
+	var at := Sea.clear_of_rocks(Vector3(0.0, 8.0, 10.0), 0.5)
+	player.begin(at, _start_stage)
+	life.make_way(at)
+	over = false
+	_over_for = 0.0
+	hud.over = false
+	hud.reached = player.length
+	hud.danger = 0.0
+	pad.visible = true
+	pad.release()
+	camera.global_position = _camera_place()
+	_aim_camera()
+
+
+func _process(delta: float) -> void:
+	_clock += delta
+	delta = minf(delta, 0.05)
+	_steer()
+	player.step(delta)
+	life.step(delta)
+	if player.alive:
+		camera.global_position = camera.global_position.lerp(_camera_place(), 1.0 - exp(-5.0 * delta))
+		_aim_camera()
+		hud.reached = maxf(hud.reached, player.length)
+	# (wider in an upright window, where the picture is narrow)
+	camera.fov = 82.0 if size.y > size.x else 62.0
+	hud.danger = lerpf(hud.danger, 1.0 if life.hunters > 0 and player.alive else 0.0, 1.0 - exp(-6.0 * delta))
+	pad.stamina = player.stamina
+	if over:
+		_over_for += delta
+		if bot and _over_for > 1.0:
+			restart()
+	elif _end_now and _clock > 0.5:
+		_end_now = false
+		player.safe = 0.0
+		player.die("test")
+	if _shot_at >= 0.0 and _clock >= _shot_at:
+		_shot_at = -1.0
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(_shot_out)
+		print("GULP SHOT ", _shot_out)
+		get_tree().quit()
+	elif _quit_at >= 0.0 and _clock >= _quit_at:
+		_quit_at = -1.0
+		if bot:
+			best_stage = maxi(best_stage, player.stage)
+			print("GULP BOT best_stage=%d deaths=%d meals=%d longest=%.2f" % [best_stage, deaths, total_meals + player.meals, maxf(hud.best, hud.reached)])
+			print("GULP BOT PASSED" if best_stage >= 1 else "GULP BOT FAILED (never grew a stage)")
+		print("GULP RAN %.0f s" % _clock)
+		get_tree().quit()
+
+
+## Reads the controls into the player's stick and burst: the bot's if it is playing, or the
+## touch pad's, the keys' and a gamepad's together. (The smoke test's checks steer it themselves.)
+func _steer() -> void:
+	if _checking:
+		return
+	if bot:
+		if player.alive:
+			bot.drive()
+		return
+	var pushed := pad.stick
+	pushed.x += _key(KEY_D, KEY_RIGHT) - _key(KEY_A, KEY_LEFT)
+	pushed.y += _key(KEY_W, KEY_UP) - _key(KEY_S, KEY_DOWN)
+	var joy := Vector2(Input.get_joy_axis(0, JOY_AXIS_LEFT_X), -Input.get_joy_axis(0, JOY_AXIS_LEFT_Y))
+	if joy.length() > 0.25:
+		pushed += joy
+	var accept := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_joy_button_pressed(0, JOY_BUTTON_A)
+	player.stick = pushed.limit_length(1.0)
+	player.boost_held = pad.boost or accept or Input.is_physical_key_pressed(KEY_SHIFT)
+	# (when the run is over, the same keys start another: on a fresh press, a moment after)
+	accept = accept or Input.is_physical_key_pressed(KEY_ENTER)
+	if over and _over_for > 0.6 and accept and not _accept_was:
+		restart()
+	_accept_was = accept
+
+
+func _key(one: Key, other: Key) -> float:
+	return 1.0 if Input.is_physical_key_pressed(one) or Input.is_physical_key_pressed(other) else 0.0
+
+
+## Where the camera wants to be: behind the fish and a little above, further back the bigger
+## the fish is, and inside the sea.
+func _camera_place() -> Vector3:
+	var long := player.length
+	var behind := player.global_position - player.heading * (1.1 + long * 3.0) + Vector3.UP * (0.3 + long * 0.75)
+	return Sea.keep_in(behind, 0.3)
+
+
+func _aim_camera() -> void:
+	var at := player.global_position + player.heading * player.length
+	if at.distance_to(camera.global_position) > 0.05:
+		camera.look_at(at, Vector3.UP)
+
+
+func _on_ate(at: Vector3) -> void:
+	_bubbles.global_position = at
+	_bubbles.scale_amount_min = 0.3 * player.length
+	_bubbles.scale_amount_max = 0.7 * player.length
+	_bubbles.restart()
+
+
+func _on_grew(stage: int) -> void:
+	best_stage = maxi(best_stage, stage)
+	hud.grew()
+
+
+func _on_died(by: String) -> void:
+	if bot:
+		print("GULP BOT eaten by %s at %.0f s, stage %d, %.2f m, %d meals" % [by, _clock, player.stage, player.length, player.meals])
+	over = true
+	deaths += 1
+	total_meals += player.meals
+	best_stage = maxi(best_stage, player.stage)
+	hud.best = maxf(hud.best, hud.reached)
+	hud.over = true
+	pad.visible = false
+	pad.release()
+	if _saves:
+		var kept := ConfigFile.new()
+		kept.set_value("best", "length", hud.best)
+		kept.save(SAVE)
+
+
+## A few bubbles where something is eaten (Salmon Run 2's bubble: a ring with a glint).
+func _make_bubbles() -> void:
+	var look := ShaderMaterial.new()
+	look.shader = preload("res://shaders/bubble.gdshader")
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.25, 0.25)
+	quad.material = look
+	_bubbles = CPUParticles3D.new()
+	_bubbles.name = "Bubbles"
+	_bubbles.emitting = false
+	_bubbles.one_shot = true
+	_bubbles.amount = 6
+	_bubbles.lifetime = 0.9
+	_bubbles.explosiveness = 0.9
+	_bubbles.local_coords = false
+	_bubbles.direction = Vector3.UP
+	_bubbles.spread = 70.0
+	_bubbles.initial_velocity_min = 0.2
+	_bubbles.initial_velocity_max = 0.7
+	_bubbles.gravity = Vector3(0.0, 0.9, 0.0)
+	_bubbles.mesh = quad
+	_bubbles.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_viewport.add_child(_bubbles)

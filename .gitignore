@@ -1,0 +1,8 @@
+# Godot 4
+.godot/
+*.tmp
+*.blend1
+# Exports and pictures
+build/*
+!build/.gdignore
+shots/
