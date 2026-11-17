@@ -7,8 +7,7 @@ bigger, and grow: sardine, young salmon, salmon, tuna, shark. Being eaten ends t
 The top of the screen shows the row of fish you grow through, how far you have eaten towards the next, and how long
 you are; the longest you have ever been is kept.
 
-Godot 4.7, GL Compatibility, phone first (upright or on its side), also playable on a PC. Not on the arcade and not on
-GitHub: a local project only.
+Godot 4.7, GL Compatibility, phone first (upright or on its side), also playable on a PC. On the arcade as an early-access cart since 2026-11-17 (github.com/Sclondon/Gulp, served from `build/` by GitHub Pages; export with `godot --headless --path . --export-release "Web" build/index.html`, push, then bump `GULP_URL`'s `?v=` in the site's `games.tsx`).
 
 ## Playing
 
