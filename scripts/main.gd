@@ -14,9 +14,10 @@ extends Control
 ##
 ## Arguments (after --): --bot plays by itself and starts again when eaten; --seconds=<n> quits
 ## after n seconds (with --bot, printing how it did); --check runs the smoke test's checks
-## (tests/checks.gd) and quits; --stage=<n> starts runs at a later stage (0..4); --calm:
+## (tests/checks.gd) and quits, --check=touch its touch checks (in a window); --stage=<n> starts runs at a later stage (0..4); --calm:
 ## nothing hunts; --over ends the run at once (for a picture of that screen); --shot=<seconds>
-## saves a picture at that time and quits (--out=<file>).
+## saves a picture at that time and quits (--out=<file>); --near=<jelly|shark|salmon|sardines|krill>
+## starts the run beside one of those, with nothing hunting (to look at it).
 
 const SAVE := "user://gulp.cfg"
 
@@ -43,9 +44,11 @@ var _quit_at := -1.0
 var _shot_at := -1.0
 var _shot_out := ""
 var _checking := false
+var _touching := false
 var _end_now := false
 var _saves := true
 var _accept_was := false
+var _near := ""
 
 
 func _ready() -> void:
@@ -56,6 +59,8 @@ func _ready() -> void:
 			botted = true
 		elif arg == "--check":
 			_checking = true
+		elif arg == "--check=touch":
+			_touching = true
 		elif arg == "--calm":
 			calm = true
 		elif arg == "--over":
@@ -66,10 +71,13 @@ func _ready() -> void:
 			_start_stage = int(arg.get_slice("=", 1))
 		elif arg.begins_with("--shot="):
 			_shot_at = float(arg.get_slice("=", 1))
+		elif arg.begins_with("--near="):
+			_near = arg.get_slice("=", 1)
+			calm = true
 		elif arg.begins_with("--out="):
 			_shot_out = arg.get_slice("=", 1)
 	# (a test's runs are not kept as the player's best)
-	_saves = not (botted or _checking or _shot_at >= 0.0 or _quit_at >= 0.0)
+	_saves = not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0)
 	var container := SubViewportContainer.new()
 	container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	container.stretch = true
@@ -124,9 +132,10 @@ func _ready() -> void:
 		if kept.load(SAVE) == OK:
 			hud.best = float(kept.get_value("best", "length", 0.0))
 	restart()
-	if _checking:
+	if _checking or _touching:
 		var checks: Node = (load("res://tests/checks.gd") as GDScript).new()
 		checks.set(&"main", self)
+		checks.set(&"touch", _touching)
 		add_child(checks)
 
 
@@ -142,8 +151,34 @@ func restart() -> void:
 	hud.danger = 0.0
 	pad.visible = true
 	pad.release()
+	if _near != "":
+		_go_near()
 	camera.global_position = _camera_place()
 	_aim_camera()
+
+
+## Puts the player beside something, looking at it (--near).
+func _go_near() -> void:
+	var what := Vector3.ZERO
+	var big := 1.0
+	match _near:
+		"jelly":
+			what = life.jellies[life.jellies.size() - 1].global_position
+		"sardines":
+			what = (life.schools[Life.KRILL_CLOUDS].flock as Flock).global_position
+			big = 3.0
+		"krill":
+			what = (life.schools[0].flock as Flock).global_position
+		_:
+			for each in life.creatures:
+				if each.kind == _near:
+					what = each.global_position
+					big = each.length
+	var from := what + Vector3(0.0, 0.2, 1.0).normalized() * (1.2 + big * 1.2)
+	player.global_position = from
+	player.yaw = 0.0
+	player.pitch = -0.15
+	player.heading = (what - from).normalized()
 
 
 func _process(delta: float) -> void:
@@ -157,7 +192,7 @@ func _process(delta: float) -> void:
 		_aim_camera()
 		hud.reached = maxf(hud.reached, player.length)
 	# (wider in an upright window, where the picture is narrow)
-	camera.fov = 82.0 if size.y > size.x else 62.0
+	camera.fov = 72.0 if size.y > size.x else 60.0
 	hud.danger = lerpf(hud.danger, 1.0 if life.hunters > 0 and player.alive else 0.0, 1.0 - exp(-6.0 * delta))
 	pad.stamina = player.stamina
 	if over:
@@ -180,7 +215,10 @@ func _process(delta: float) -> void:
 			best_stage = maxi(best_stage, player.stage)
 			print("GULP BOT best_stage=%d deaths=%d meals=%d longest=%.2f" % [best_stage, deaths, total_meals + player.meals, maxf(hud.best, hud.reached)])
 			print("GULP BOT PASSED" if best_stage >= 1 else "GULP BOT FAILED (never grew a stage)")
-		print("GULP RAN %.0f s" % _clock)
+		var cost := life.cost_usec / maxf(life.steps, 1.0) / 1000.0
+		print("GULP COST a frame: schools %.2f ms, fish %.2f ms, jellies %.2f ms, flocks themselves %.2f ms" % [cost.x, cost.y, cost.z, life.flock_ms / maxf(life.steps, 1.0)])
+		var drawn := Engine.get_frames_drawn()
+		print("GULP RAN %.0f s" % _clock + (", %d frames drawn, %.1f ms a frame" % [drawn, 1000.0 * _clock / drawn] if drawn > 0 else ""))
 		get_tree().quit()
 
 
@@ -217,12 +255,13 @@ func _key(one: Key, other: Key) -> float:
 ## the fish is, and inside the sea.
 func _camera_place() -> Vector3:
 	var long := player.length
-	var behind := player.global_position - player.heading * (1.1 + long * 3.0) + Vector3.UP * (0.3 + long * 0.75)
+	# (above as well as behind: from straight behind a fish is only as big as it is thick)
+	var behind := player.global_position - player.heading * (0.25 + long * 1.9) + Vector3.UP * (0.2 + long * 1.1)
 	return Sea.keep_in(behind, 0.3)
 
 
 func _aim_camera() -> void:
-	var at := player.global_position + player.heading * player.length
+	var at := player.global_position + player.heading * player.length * 0.6
 	if at.distance_to(camera.global_position) > 0.05:
 		camera.look_at(at, Vector3.UP)
 

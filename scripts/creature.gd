@@ -54,7 +54,7 @@ func step(delta: float, player: Player, hunting: bool) -> void:
 	mode = Mode.WANDER
 	_tired = maxf(_tired - delta, 0.0)
 	if player.alive:
-		if Life.can_eat(player.length, length) and far < 2.5 + player.length * 3.0:
+		if Life.is_food(player.length, length) and far < 2.5 + player.length * 3.0:
 			mode = Mode.FLEE
 		elif hunting and _tired <= 0.0 and player.safe <= 0.0 and Life.can_eat(length, player.length) \
 				and player.length >= length * Life.TOO_SMALL and far < SIGHT + length * SIGHT_PER_LENGTH:

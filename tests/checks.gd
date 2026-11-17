@@ -6,6 +6,9 @@ extends Node
 ## each and GULP SMOKE PASSED or FAILED, then quits.
 
 var main: Node
+## The touch checks instead (`-- --check=touch`, in a window: tests/touch.sh): touches sent as
+## a finger would send them work the stick, the burst button and the start-again button.
+var touch := false
 
 var _bad := 0
 
@@ -15,6 +18,9 @@ func _ready() -> void:
 
 
 func _run() -> void:
+	if touch:
+		await _touches()
+		return
 	var life: Life = main.life
 	var player: Player = main.player
 	life.hunting = false
@@ -35,7 +41,7 @@ func _run() -> void:
 		if player.meals > meals:
 			break
 	_check("eats a krill", player.meals > meals and player.progress > progress, "meals %d, progress %.3f" % [player.meals, player.progress])
-	_check("cannot eat a sardine yet", not Life.can_eat(player.length, Life.SARDINE_LENGTH))
+	_check("cannot eat a sardine yet", not Life.is_food(player.length, Life.SARDINE_LENGTH))
 	# Fed, it becomes the next fish, bigger.
 	var was := player.length
 	for n in 40:
@@ -43,10 +49,11 @@ func _run() -> void:
 			break
 		player.feed(player.length)
 	_check("grows into the next fish", player.stage == 1 and player.kind == "smolt" and player.length > was, "%s %.2f m" % [player.kind, player.length])
-	_check("can eat a sardine now", Life.can_eat(player.length, Life.SARDINE_LENGTH))
+	_check("can eat a sardine now", Life.is_food(player.length, Life.SARDINE_LENGTH))
+	_check("a shark does not graze on krill", not Life.is_food(3.0, Life.KRILL_LENGTH) and Life.is_food(3.0, 1.0))
 	# A smaller fish near it flees.
 	player.progress = 0.9
-	player.feed(0.01)
+	player.feed(0.05)
 	var small: Creature = life.creatures[0]
 	small.length = 0.3
 	small.place(player.global_position + player.global_basis.x * 2.0)
@@ -102,3 +109,62 @@ func _check(what: String, good: bool, note := "") -> void:
 	if not good:
 		_bad += 1
 	print("CHECK %s: %s%s" % [what, "ok" if good else "BAD", ("  (" + note + ")") if note != "" else ""])
+
+
+func _touches() -> void:
+	# (deaf to the real mouse, keys and gamepad as far as can be: the window never has focus)
+	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
+	var life: Life = main.life
+	var player: Player = main.player
+	var pad: TouchPad = main.pad
+	life.hunting = false
+	await _frames(30)
+	var u := pad.unit()
+	# The stick, pushed right: the fish turns right.
+	var yaw := player.yaw
+	_touch(0, pad.stick_home() + Vector2(70.0 * u, 0.0), true)
+	await _frames(30)
+	_check("the stick pushed right turns the fish right", pad.stick.x > 0.4 and player.yaw < yaw - 0.2, "stick %.2f, yaw %.2f to %.2f" % [pad.stick.x, yaw, player.yaw])
+	# Dragged up: nose up.
+	var pitch := player.pitch
+	_drag(0, pad.stick_home() + Vector2(0.0, -90.0 * u))
+	await _frames(30)
+	_check("the stick pushed up lifts its nose", pad.stick.y > 0.5 and player.pitch > pitch + 0.2, "stick %.2f, pitch %.2f to %.2f" % [pad.stick.y, pitch, player.pitch])
+	# The burst button, with another finger.
+	_touch(1, pad.boost_home(), true)
+	await _frames(30)
+	_check("the round button is a burst", pad.boost and player.boosting and player.stamina < 0.95, "stamina %.2f" % player.stamina)
+	_touch(0, pad.stick_home(), false)
+	_touch(1, pad.boost_home(), false)
+	await _frames(5)
+	_check("letting go lets go", pad.stick == Vector2.ZERO and not pad.boost and not player.boosting)
+	# The run over: the round arrow starts another.
+	player.safe = 0.0
+	player.die("test")
+	await _frames(50)
+	var again: Control = main.hud.get_child(0)
+	_check("the start-again button shows", main.over and again.visible)
+	var middle := again.global_position + again.size * 0.5
+	_touch(0, middle, true)
+	await _frames(3)
+	_touch(0, middle, false)
+	await _frames(10)
+	_check("a tap on it starts another run", not main.over and player.alive and pad.visible)
+	print("GULP TOUCH PASSED" if _bad == 0 else "GULP TOUCH FAILED (%d)" % _bad)
+	get_tree().quit()
+
+
+# A finger down or up at a place on the screen (given in the game's own units, sent in window pixels).
+func _touch(finger: int, at: Vector2, down: bool) -> void:
+	var event := InputEventScreenTouch.new()
+	event.index = finger
+	event.position = get_viewport().get_final_transform() * at
+	event.pressed = down
+	Input.parse_input_event(event)
+
+
+func _drag(finger: int, to: Vector2) -> void:
+	var event := InputEventScreenDrag.new()
+	event.index = finger
+	event.position = get_viewport().get_final_transform() * to
+	Input.parse_input_event(event)

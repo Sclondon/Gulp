@@ -7,7 +7,8 @@ extends Node3D
 ## - Moon jellies (MoonJelly, from Moon Jellies), drifting about and glowing.
 ##
 ## The one rule (`can_eat`): a mouth eats what is no more than `BITE` of its own length. So the
-## player eats whatever is small enough when its mouth reaches it, and is eaten by whatever is
+## player eats whatever is small enough (and not too small to bother with: `WORTH`) when its
+## mouth reaches it, and is eaten by whatever is
 ## big enough that hunts it down; a moon jelly wider than the player can eat stings it instead
 ## (the run ends the same). The other fish do not eat each other. What is eaten comes back a
 ## little later somewhere far from the player, so the sea stays stocked.
@@ -16,6 +17,9 @@ extends Node3D
 const BITE := 0.8
 ## A hunter takes no notice of a player smaller than this share of its own length.
 const TOO_SMALL := 0.3
+## The player takes no notice of food smaller than this share of its own length (a shark does not
+## graze on krill).
+const WORTH := 0.08
 ## How much food a jelly is for its size (it is mostly water), and krill and fish.
 const JELLY_RICH := 0.35
 
@@ -34,6 +38,10 @@ const SARDINE_SCHOOLS := 4
 const SARDINES_EACH := 36
 const SARDINE_LENGTH := 0.2
 const JELLIES := 9
+## How far off a school of sardines, a cloud of krill and a jelly are still moved and drawn (m).
+const SARDINES_SEEN := 32.0
+const KRILL_SEEN := 18.0
+const JELLY_SEEN := 32.0
 
 var player: Player
 ## Off: nothing hunts (for trying things out: `-- --calm`).
@@ -41,9 +49,15 @@ var hunting := true
 ## How many fish are after the player just now.
 var hunters := 0
 
+## What it has cost so far, to be divided by `steps`: microseconds in the schools' eating and
+## roaming, the fish, and the jellies; and milliseconds the flocks spent on themselves.
+var cost_usec := Vector3.ZERO
+var flock_ms := 0.0
+var steps := 0
+
 var creatures: Array[Creature] = []
 var jellies: Array[MoonJelly] = []
-## Each: {flock, length, rich, goal, radius, low, high}.
+## Each: {flock, length, rich, goal, radius, low, high, seen}.
 var schools: Array[Dictionary] = []
 
 var _rng := RandomNumberGenerator.new()
@@ -54,6 +68,12 @@ var _jelly_time: Array[float] = []
 ## Whether something `eater` metres long can eat something `prey` metres long.
 static func can_eat(eater: float, prey: float) -> bool:
 	return prey <= eater * BITE
+
+
+## Whether something `prey` metres long is food for a player `eater` metres long: small enough
+## to eat, and big enough to be worth it.
+static func is_food(eater: float, prey: float) -> bool:
+	return prey <= eater * BITE and prey >= eater * WORTH
 
 
 func _ready() -> void:
@@ -76,6 +96,8 @@ func _ready() -> void:
 		# (its bell's radius: the smallest are food for the youngest fish)
 		jelly.size = lerpf(0.07, 0.45, pow(float(i) / (JELLIES - 1), 1.6))
 		jelly.beat_seconds = _rng.randf_range(2.0, 2.9) * (0.8 + jelly.size)
+		# (brighter than in Moon Jellies: this water is lighter)
+		jelly.glow = 1.7
 		add_child(jelly)
 		jellies.append(jelly)
 		_jelly_away.append(0.0)
@@ -91,9 +113,17 @@ func make_way(at: Vector3) -> void:
 
 
 func step(delta: float) -> void:
+	var t0 := Time.get_ticks_usec()
 	_step_schools(delta)
+	var t1 := Time.get_ticks_usec()
 	_step_creatures(delta)
+	var t2 := Time.get_ticks_usec()
 	_step_jellies(delta)
+	cost_usec += Vector3(t1 - t0, t2 - t1, Time.get_ticks_usec() - t2)
+	for school in schools:
+		if (school.flock as Flock).visible:
+			flock_ms += (school.flock as Flock).sim_ms
+	steps += 1
 
 
 ## The nearest thing the player could eat just now (world), or Vector3.INF. For the bot.
@@ -102,7 +132,7 @@ func nearest_food() -> Vector3:
 	var near := INF
 	var at := player.global_position
 	for school in schools:
-		if not can_eat(player.length, school.length):
+		if not is_food(player.length, school.length):
 			continue
 		var flock: Flock = school.flock
 		if flock.global_position.distance_to(at) - float(school.radius) > near:
@@ -114,14 +144,14 @@ func nearest_food() -> Vector3:
 				near = far
 				best = flock.boid_position(i)
 	for each in creatures:
-		if each.away <= 0.0 and can_eat(player.length, each.length):
+		if each.away <= 0.0 and is_food(player.length, each.length):
 			# (a fish that will run is worth less than one the same distance off that will not)
 			var far := each.global_position.distance_to(at) * 1.5
 			if far < near:
 				near = far
 				best = each.global_position
 	for i in jellies.size():
-		if _jelly_away[i] <= 0.0 and can_eat(player.length, jellies[i].size * 2.0):
+		if _jelly_away[i] <= 0.0 and is_food(player.length, jellies[i].size * 2.0):
 			var far := jellies[i].global_position.distance_to(at)
 			if far < near:
 				near = far
@@ -146,6 +176,13 @@ func _step_schools(delta: float) -> void:
 	var mouth := player.mouth()
 	for school in schools:
 		var flock: Flock = school.flock
+		# Too far off to be seen through the water, it is left as it is: not moved, not drawn.
+		var seen := flock.global_position.distance_to(at) < float(school.seen)
+		if seen != flock.visible:
+			flock.visible = seen
+			flock.set_process(seen)
+		if not seen:
+			continue
 		# The school roams: its bounds drift after a place that changes now and then.
 		var goal: Vector3 = school.goal
 		if flock.global_position.distance_to(goal) < 2.0:
@@ -156,7 +193,7 @@ func _step_schools(delta: float) -> void:
 		if not player.alive:
 			flock.predators = PackedVector3Array()
 			continue
-		var edible := can_eat(player.length, school.length)
+		var edible := is_food(player.length, school.length)
 		flock.predators = PackedVector3Array([at]) if edible else PackedVector3Array()
 		if not edible or flock.global_position.distance_to(at) > float(school.radius) + 3.0:
 			continue
@@ -165,9 +202,9 @@ func _step_schools(delta: float) -> void:
 		for i in all.size():
 			if all[i].distance_squared_to(mouth) < reach * reach:
 				player.feed(school.length, school.rich)
-				# (another turns up on the far side of the school)
+				# (another comes in from beyond the far side of the school, out of reach)
 				var behind := (flock.global_position - at).normalized()
-				flock.move_boid(i, flock.global_position + behind * float(school.radius) * 0.8)
+				flock.move_boid(i, flock.global_position + behind * (float(school.radius) + reach + 2.0))
 
 
 func _step_creatures(delta: float) -> void:
@@ -184,7 +221,7 @@ func _step_creatures(delta: float) -> void:
 			continue
 		if each.mode == Creature.Mode.HUNT:
 			hunters += 1
-		if can_eat(player.length, each.length):
+		if is_food(player.length, each.length):
 			if each.global_position.distance_to(mouth) < player.length * 0.3 + each.length * 0.35:
 				player.feed(each.length)
 				each.visible = false
@@ -202,6 +239,9 @@ func _step_jellies(delta: float) -> void:
 			if _jelly_away[i] <= 0.0:
 				_place_jelly(i, Sea.open_water(_rng, 1.0, player.global_position, 24.0))
 			continue
+		# (too far off to be seen beating, it hangs where it is)
+		if jelly.global_position.distance_to(player.global_position) > JELLY_SEEN:
+			continue
 		_jelly_time[i] -= delta
 		if _jelly_time[i] <= 0.0 or jelly.global_position.distance_to(jelly.goal) < 1.0:
 			jelly.goal = Sea.open_water(_rng, 1.0 + jelly.size)
@@ -211,12 +251,12 @@ func _step_jellies(delta: float) -> void:
 		if not player.alive:
 			continue
 		var wide := jelly.size * 2.0
-		if can_eat(player.length, wide):
+		if is_food(player.length, wide):
 			if jelly.global_position.distance_to(player.mouth()) < player.length * 0.3 + jelly.size * 0.8:
 				player.feed(wide, JELLY_RICH)
 				jelly.visible = false
 				_jelly_away[i] = _rng.randf_range(8.0, 16.0)
-		elif hunting and jelly.global_position.distance_to(player.global_position) < jelly.size * 0.85 + player.length * 0.25:
+		elif hunting and not can_eat(player.length, wide) and jelly.global_position.distance_to(player.global_position) < jelly.size * 0.85 + player.length * 0.25:
 			player.die("jelly")
 
 
@@ -243,7 +283,8 @@ func _school(rules: FlockRules, mesh: Mesh, length: float, low: float, high: flo
 	at.y = clampf(at.y, low, high)
 	flock.position = at
 	add_child(flock)
-	schools.append({"flock": flock, "length": length, "rich": 1.0, "goal": at, "radius": rules.bounds_size.x, "low": low, "high": high})
+	schools.append({"flock": flock, "length": length, "rich": 1.0, "goal": at, "radius": rules.bounds_size.x, "low": low, "high": high,
+			"seen": KRILL_SEEN if length < 0.1 else SARDINES_SEEN})
 
 
 ## Krill: a loose cloud of tiny pink shrimps that takes no notice of anything (after Salmon

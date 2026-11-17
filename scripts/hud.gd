@@ -63,9 +63,11 @@ func _draw() -> void:
 	if danger > 0.01 and not over:
 		var pulse := danger * (0.35 + 0.15 * sin(_clock * 9.0))
 		var deep := 90.0 * u
-		for k in 6:
-			var inset := deep * k / 6.0
-			draw_rect(Rect2(Vector2(inset, inset), size - Vector2(inset, inset) * 2.0), Color(1.0, 0.15, 0.1, pulse * 0.3), false, deep / 6.0)
+		# (rings one inside the next, fainter towards the middle)
+		for k in 12:
+			var inset := deep * (k + 0.5) / 12.0
+			var faint := pow(1.0 - k / 12.0, 2.0)
+			draw_rect(Rect2(Vector2(inset, inset), size - Vector2(inset, inset) * 2.0), Color(1.0, 0.15, 0.1, pulse * faint), false, deep / 12.0 + 1.0)
 	# The row of fish, each bigger than the last.
 	var top := 46.0 * u
 	var wide := minf(size.x - 60.0 * u, 620.0 * u)

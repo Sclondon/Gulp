@@ -72,7 +72,7 @@ func is_biggest() -> bool:
 ## It has eaten something `prey_length` metres long (`rich`: how much food it is for its size).
 func feed(prey_length: float, rich := 1.0) -> void:
 	meals += 1
-	progress += maxf(MEAL * rich * pow(prey_length / length, 1.5), 0.012)
+	progress += MEAL * rich * pow(prey_length / length, 1.5)
 	ate.emit(mouth())
 	if progress >= 1.0 and stage < STAGES.size() - 1:
 		stage += 1
