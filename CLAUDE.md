@@ -750,3 +750,7 @@ Claude's.
   `concept_boy_head.jpg`, `concept_boy_hands.jpg`. Gemini: a new picture shows only after the NEXT prompt is sent or
   about two minutes and a reload; type into the box found by `find` (its place moves). Still owed: the younger boy's
   outfits, the brother's outfits redrawn on the tall body, the captain's side view with the arm.
+- The older brother's build (the user, 2026-11-18, with a photograph of a real man as a build reference, described in
+  words only, never uploaded or kept in the repo): "He shouldn't be too ripped- needs a stocky build". Thick and padded:
+  barrel chest, heavy round shoulders and arms without sharp definition, no abs, a solid soft middle, very hairy chest
+  and belly. Sheet: `tools/art_src/concept_brother_tpose6.jpg` (replaces tpose5 for the body; tpose5's face stands).
