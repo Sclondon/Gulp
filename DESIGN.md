@@ -47,7 +47,8 @@ ruins, and finds the pieces of the treasure. Between times there is a rod over t
    bubbles, a hose trailing up to the boat that sets how far he can go; air is not a timer, the hose is the limit).
    He can open chests, pick up what is on the floor, and is in danger from what hunts there (he can hide, and tug the
    line to be hauled up). What he brings up is sold or kept.
-6. **Fishing.** GameCommon's `fishing` (cast, nibble, hook, reel) from the boat's rail, with the sea's real kinds by
+6. **Fishing.** Played as the older brother (the user: "the older brother is the one who does the regular fishing").
+   GameCommon's `fishing` (cast, nibble, hook, reel) from the boat's rail, with the sea's real kinds by
    where the boat is anchored. What is landed is sold the same way. A calm way to earn; less than a good run.
 
 ## The treasure

@@ -456,3 +456,7 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   across, `wake` 0..1 set by the game; to stand in the canyon basin by Atlantis with `Sea.add_rock` spheres) and
   `creatures/reef_back` (ReefBack: 35 m, walks on a skeleton with baked clips, `step(velocity)`; to walk a slow loop on
   the deep floor). Their builder's placing notes are in each component's README in GameCommon. Each has its own shader.
+- "the older brother is the one who does the regular fishing so he needs outfits for that" (the user, 2026-11-18):
+  the fishing mode is played as the older brother (rod from the boat), so his outfit sheet includes fishing rigs
+  (oilskin bib and braces, waders, a gansey, a hot-day rig) beside his diver's dress; he tends the boy's air pump on
+  the title as now.
