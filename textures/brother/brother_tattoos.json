@@ -6,40 +6,40 @@
   {
    "picture": "brother_anchor",
    "part": "arm_r",
-   "x": 0.4428,
-   "y": 0.1932,
+   "x": 0.442,
+   "y": 0.192,
    "size": 0.1047,
-   "turn": -9.1,
+   "turn": -9.6,
    "mirror": false,
    "strength": 1.0
   },
   {
    "picture": "brother_banner_anchor",
    "part": "arm_l",
-   "x": 0.603,
-   "y": 0.6896,
+   "x": 0.6035,
+   "y": 0.6945,
    "size": 0.1164,
-   "turn": 34.0,
+   "turn": 35.5,
    "mirror": true,
    "strength": 1.0
   },
   {
    "picture": "brother_swallow",
    "part": "arm_l",
-   "x": 0.7045,
-   "y": 0.3652,
+   "x": 0.7112,
+   "y": 0.3665,
    "size": 0.1222,
-   "turn": 37.9,
+   "turn": 37.2,
    "mirror": true,
    "strength": 1.0
   },
   {
    "picture": "brother_rope_knot",
    "part": "arm_l",
-   "x": 0.6474,
+   "x": 0.6552,
    "y": 0.1945,
    "size": 0.1135,
-   "turn": 27.1,
+   "turn": 25.5,
    "mirror": true,
    "strength": 1.0
   }

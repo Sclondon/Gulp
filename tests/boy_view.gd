@@ -9,6 +9,9 @@ extends SceneTree
 
 const MODEL := "res://models/boy.glb"
 const SHEET_S := 1.5 / (1462.0 - 135.0)      # metres a sheet pixel (build_boy.py's S)
+## The head sheet (concept_boy_head.jpg): metres a pixel, and the height of its row 1010 (build_boy.py's HS, hz)
+const HEAD_S := 0.000635
+const HEAD_MID_Y := (1462.0 - 380.0) * SHEET_S + (1165.0 - 1010.0) * HEAD_S
 
 var _out := ""
 var _cam: Camera3D
@@ -18,6 +21,9 @@ var _model: Node3D
 var _skel: Skeleton3D
 var _shots: Array = []
 var _grey: StandardMaterial3D
+## The head sheet's five views: the eye's azimuth round him (0 his front, 90 his right); the 3/4 views' are found
+## by the build and passed in (--hq=, --hqb=)
+var _azimuth := {"hfront": 0.0, "hq": 40.0, "hside": 90.0, "hqb": 232.0, "hback": 180.0}
 var _frame := 0
 
 
@@ -25,6 +31,10 @@ func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			_out = a.get_slice("=", 1)
+		elif a.begins_with("--hq="):
+			_azimuth["hq"] = float(a.get_slice("=", 1))
+		elif a.begins_with("--hqb="):
+			_azimuth["hqb"] = float(a.get_slice("=", 1))
 	var world := Node3D.new()
 	root.add_child(world)
 	_env = Environment.new()
@@ -69,6 +79,12 @@ func _initialize() -> void:
 	for grey in [false, true]:
 		for h in hand:
 			_shots.append([("grey_" if grey else "") + h[0], (h[1] as Vector3).normalized(), hand_at, 0.2, true, "", 0.16, grey])
+	# His bald head at the head sheet's scale and framing (its rows 700 to 1320), from each of its five views' angles,
+	# in plain grey and painted, to lay beside the sheet.
+	for grey in [false, true]:
+		for v in ["hfront", "hq", "hside", "hqb", "hback"]:
+			var a := deg_to_rad(float(_azimuth[v]))
+			_shots.append([("bald_grey_" if grey else "bald_") + v, Vector3(-sin(a), 0, cos(a)), Vector3(0, HEAD_MID_Y, 0), 620.0 * HEAD_S, true, "", 5.0, grey])
 	for p in [["pose_front", Vector3(0, 0, 1)], ["pose_side", Vector3(1, 0, 0)], ["pose_three_quarter", Vector3(0.7, 0.25, 0.7)]]:
 		_shots.append([p[0], (p[1] as Vector3).normalized(), body_at, body_size, true, "bend", 5.0, false])
 	_grey = StandardMaterial3D.new()

@@ -73,7 +73,7 @@ func _initialize() -> void:
 			# sheet's next view the two caps read as one doubled cap)
 			# (the three-quarter view centred on his head as the sheet's is, nose and peak included: looked at from his
 			# middle the face ran off the picture's right edge)
-			var at: Variant = Vector3(0.03, 1.47, 0.025) if h[0] == "head_three_quarter" else 1.47
+			var at: Variant = Vector3(0.03, 1.45, 0.07) if h[0] == "head_three_quarter" else Vector3(0, 1.45, 0.06)
 			_shots.append([h[0] + ("_lit" if lit else "_unlit"), h[1], at, 0.52, lit])
 	# His left hand close, lit: its back, its palm (from between him and it), the thumb's side (from in front) and
 	# fingertips-on (from below). (Blender's (0.57, -0.06, 0.66) is the game's (0.57, 0.66, 0.06).)
@@ -81,9 +81,9 @@ func _initialize() -> void:
 	for h in [["hand_back", Vector3(1, 0, 0.35)], ["hand_palm", Vector3(-1, 0, -0.1)], ["hand_thumb", Vector3(0.1, 0, 1)], ["hand_tips", Vector3(0.15, -1, 0.1)]]:
 		_shots.append([h[0], (h[1] as Vector3).normalized(), hand_at, 0.24, true, 0.12])
 	# (seventh round) His bare head, the cap hidden: front, three-quarter, his left side, the back and from above.
-	for h in [["bare_front", Vector3(0, 0, 1)], ["bare_three_quarter", Vector3(-0.62, 0, 0.78)], ["bare_side", Vector3(1, 0, 0)], ["bare_back", Vector3(0, 0, -1)], ["bare_above", Vector3(0, 1, 0.12)]]:
-		_shots.append([h[0], (h[1] as Vector3).normalized(), Vector3(0, 1.45, 0.02), 0.5, true, 5.0, true])
-	_shots.append(["bare_below", Vector3(0, -0.7, 0.7).normalized(), Vector3(0, 1.43, 0.02), 0.5, true, 5.0, true])
+	for h in [["bare_front", Vector3(0, 0, 1)], ["bare_three_quarter", Vector3(-0.62, 0, 0.78)], ["bare_side", Vector3(1, 0, 0)], ["bare_back", Vector3(0, 0, -1)], ["bare_qback", Vector3(0.75, 0, -0.66)], ["bare_above", Vector3(0, 1, 0.12)]]:
+		_shots.append([h[0], (h[1] as Vector3).normalized(), Vector3(0, 1.44, 0.06), 0.5, true, 5.0, true])
+	_shots.append(["bare_below", Vector3(0, -0.7, 0.7).normalized(), Vector3(0, 1.42, 0.06), 0.5, true, 5.0, true])
 	# (eighth round) The boxers close: front, three-quarter, side.
 	for h in [["box_front", Vector3(0, 0, 1)], ["box_three_quarter", Vector3(-0.62, 0, 0.78)], ["box_side", Vector3(-1, 0, 0)]]:
 		_shots.append([h[0], (h[1] as Vector3).normalized(), Vector3(0, 0.68, 0.0), 0.55, true, 5.0])
@@ -160,11 +160,12 @@ func _set_lit(lit: bool) -> void:
 func _process(_delta: float) -> bool:
 	var f := _frame
 	_frame += 1
-	var i := f / 3
+	# (five frames a shot: with three, a picture sometimes held the shot before it)
+	var i := f / 5
 	if i >= _shots.size():
 		return true
 	var shot: Array = _shots[i]
-	if f % 3 == 0:
+	if f % 5 == 0:
 		_set_lit(shot[4])
 		for mesh: MeshInstance3D in _model.find_children("captain_cap*", "MeshInstance3D", true, false):
 			mesh.visible = not (shot.size() > 6 and shot[6])
@@ -175,6 +176,6 @@ func _process(_delta: float) -> bool:
 		_cam.near = 0.01
 		_cam.position = at + dir * dist
 		_cam.look_at(at, Vector3.UP if absf(dir.y) < 0.9 else Vector3.FORWARD)
-	elif f % 3 == 2 and _out != "":
+	elif f % 5 == 4 and _out != "":
 		root.get_texture().get_image().save_png("%s/%s.png" % [_out, shot[0]])
 	return false

@@ -65,6 +65,7 @@ def arg(name, default):
 
 OUT = arg("--out", "")
 FIT_ROUNDS = int(arg("--rounds", "6"))
+HEAD_FIT_ROUNDS = int(arg("--head-rounds", "10"))
 
 # ------------------------------------------------------------------------------------------------------------------
 # The sheets
@@ -93,6 +94,41 @@ FACE_K = 2.2
 FACE_AT = (2277.5, 1162.0)
 FACE_REF_ROW = 256.0
 
+# The head sheet (second pass, the user: "The heads and hands need a lot of work on all three- make sure you are
+# matching pose silhouettes aggressively"): tools/art_src/concept_boy_head.jpg, 3168 by 1344, two rows of five views
+# (front, 3/4, side, 3/4 back, back); the BOTTOM row, shaved bald, is the base model's head. All five share one scale
+# and one row for each height (the guide lines run across them). Measured off its outlines (its rows): the crown 718,
+# the brows 905, the eyes 948, the nose's tip 1012, its base 1046, the mouth 1082, the chin's bottom 1165.
+# To the body: the chin at the body sheet's row 380, one head pixel HS metres (the mean of brow-to-chin, 148 body
+# pixels against 260, and the brows' width, 174 body pixels against 314: 0.643 and 0.626 mm).
+HEAD_SHEET = os.path.join(ART, "concept_boy_head.jpg")
+HS = 0.000635
+H_CHIN = 1165.0
+Z_CHIN = float((SOLE - 380.0) * S)
+H_CROWN = 718.0
+H_BALD = (700, 1344)          # the bald row's rows
+# Each view: the eye's azimuth round him (degrees: 0 his front, 90 his right, 180 his back) and the picture column of
+# the head's middle line. The side's column is set so that the neck's middle at row 1190 (1569) is the body sheet's
+# neck middle (y -0.001); the 3/4 views' angles and columns are found by matching their outlines (Sheets._fit_angled).
+HVIEW = {"hfront": [0.0, 344.0], "hside": [90.0, 1569.0 - 0.001 / HS], "hback": [180.0, 2829.0],
+         "hq": [45.0, 980.0], "hqb": [225.0, 2228.0]}
+HSPAN = {"hfront": (60, 640), "hq": (700, 1250), "hside": (1330, 1950), "hqb": (1980, 2480), "hback": (2520, 3140)}
+H_EARS = (920, 1048)          # the ears' rows: in the front and back views the head's outline there is the ears'
+H_NECK = 1190                 # below this the sheet's neck spreads into its cut-off shoulders: not compared
+
+
+def hrow(z):
+    return H_CHIN + (Z_CHIN - np.asarray(z, dtype=float)) / HS
+
+
+def hz(row):
+    return Z_CHIN + (H_CHIN - np.asarray(row, dtype=float)) * HS
+
+
+def hcam(view):
+    a = math.radians(HVIEW[view][0])
+    return np.array((-math.sin(a), -math.cos(a), 0.0)), np.array((math.cos(a), -math.sin(a), 0.0))
+
 
 def body_z(row):
     return (SOLE - np.asarray(row, dtype=float)) * S
@@ -110,10 +146,12 @@ def load_picture(path):
     return pix
 
 
-def unline(pix):
+def unline(pix, ground_cols=(95, 135), line_cols=(95, 135)):
     """The sheet's guide lines painted out (rows where the margin left of the figures is unlike the ground)."""
-    ground = np.median(pix[:, 95:135].reshape(-1, 3), axis=0)
-    rows = set(np.where(np.abs(pix[:, 95:135] - ground).max(-1).mean(axis=1) > 0.04)[0].tolist())
+    g0, g1 = ground_cols
+    l0, l1 = line_cols
+    ground = np.median(pix[:, g0:g1].reshape(-1, 3), axis=0)
+    rows = set(np.where(np.abs(pix[:, l0:l1] - ground).max(-1).mean(axis=1) > 0.04)[0].tolist())
     out = pix.copy()
     for r in sorted(rows):
         a = r - 1
@@ -197,9 +235,72 @@ class Sheets:
     def __init__(self):
         self.body_pix = load_picture(SHEET)
         self.body_mask = colour_mask(unline(self.body_pix))
-        self.face_pix = load_picture(FACE_SHEET)
-        self.face_mask = colour_mask(self.face_pix)
+        self.head_pix = load_picture(HEAD_SHEET)
+        self.head_mask = colour_mask(unline(self.head_pix, (20, 45), (60, 90)))
+        self.head_mask[:H_BALD[0]] = False
+        self.head_target = self._head_target()
+        self.hand_pix = load_picture(HAND_SHEET)
+        self.hand_mask = colour_mask(unline(self.hand_pix, (15, 60), (90, 130)))
         self.body_target = self._body_target()
+        self._fit_angled()
+
+    def _head_target(self):
+        """The bald head's outline without the ears in the front and back views (their outline there is the ears'):
+        across the ears' rows the head's half width runs smoothly between the rows above and below them, with the
+        cheekbones' slight fullness."""
+        t = self.head_mask.copy()
+        a_, b_ = H_EARS[0] - 4, H_EARS[1] + 6
+        for view in ("hfront", "hback"):
+            c0, c1 = HSPAN[view]
+            mid = HVIEW[view][1]
+            ra = run_near(t, a_, mid, c0, c1)
+            rb = run_near(t, b_, mid, c0, c1)
+            ha, hb = (ra[1] - ra[0]) / 2.0, (rb[1] - rb[0]) / 2.0
+            for r in range(a_ + 1, b_):
+                u = (r - a_) / (b_ - a_)
+                half = ha + (hb - ha) * u + 4.0 * math.sin(math.pi * u)
+                t[r, c0:c1] = False
+                t[r, int(round(mid - half)):int(round(mid + half)) + 1] = True
+        return t
+
+    def _fit_angled(self):
+        """The 3/4 views' angle and middle column: those of a rough head (an egg of the front, side and back views'
+        measures) whose outline best covers each view's (found once; the model is then checked against them)."""
+        rows = np.arange(730, H_NECK, 6)
+        egg = []
+        for r in rows:
+            fr = run_near(self.head_target, r, HVIEW["hfront"][1], *HSPAN["hfront"])
+            sr = run_near(self.head_mask, r, HVIEW["hside"][1], *HSPAN["hside"])
+            if not fr or not sr:
+                continue
+            hw = (fr[1] - fr[0]) / 2.0 * HS
+            yf, yb = (HVIEW["hside"][1] - sr[1]) * HS, (HVIEW["hside"][1] - sr[0]) * HS
+            for k in range(32):
+                th = math.tau * k / 32
+                egg.append((hw * math.sin(th), (yf + yb) / 2 - (yb - yf) / 2 * math.cos(th), float(hz(r))))
+        E = np.array(egg)
+        for view, guesses in (("hq", np.arange(25.0, 70.0, 2.5)), ("hqb", np.arange(200.0, 250.0, 2.5))):
+            c0, c1 = HSPAN[view]
+            best = None
+            for a in guesses:
+                HVIEW[view][0] = float(a)
+                d, r = hcam(view)
+                u = E @ r / HS
+                # (per row: the egg's extent against the sheet's)
+                err = 0.0
+                shift = []
+                for rr in rows[::2]:
+                    sel = np.abs(E[:, 2] - float(hz(rr))) < 1e-6
+                    run = run_near(self.head_mask, rr, (c0 + c1) / 2, c0, c1)
+                    if not sel.any() or not run:
+                        continue
+                    lo, hi = u[sel].min(), u[sel].max()
+                    shift.append(((run[0] - lo) + (run[1] - hi)) / 2.0)
+                    err += abs((run[1] - run[0]) - (hi - lo))
+                if best is None or err < best[0]:
+                    best = (err, float(a), float(np.median(shift)))
+            HVIEW[view][0], HVIEW[view][1] = best[1], best[2]
+            print("BOY head sheet %s: azimuth %.1f degrees, middle column %.1f (width error %.0f px)" % (view, best[1], best[2], best[0]))
 
     def _body_target(self):
         """The base body's outline as the fitting's target: the shorts drawn in by BOXER_EASE, and from the crotch
@@ -241,6 +342,9 @@ def project(view, P):
     P = np.asarray(P, dtype=float)
     x, y, z = P[:, 0], P[:, 1], P[:, 2]
     row = body_row(z) + 0.5
+    if view in HVIEW:
+        d, r = hcam(view)
+        return np.stack([HVIEW[view][1] + (P @ r) / HS + 0.5, hrow(z) + 0.5], 1), -(P @ d)
     if view == "face":
         return np.stack([FACE_AT[0] + x / S * FACE_K + 0.5, FACE_AT[1] + (body_row(z) - FACE_REF_ROW) * FACE_K + 0.5], 1), y
     if view == "front":
@@ -253,6 +357,9 @@ def project(view, P):
 def screen_dir(view, N):
     """Directions in the picture (column, row) of model directions, and how much they face the painter."""
     N = np.asarray(N, dtype=float)
+    if view in HVIEW:
+        d, r = hcam(view)
+        return np.stack([N @ r, -N[:, 2]], 1), N @ d
     if view in ("front", "face"):
         return np.stack([N[:, 0], -N[:, 2]], 1), -N[:, 1]
     if view == "back":
@@ -263,6 +370,9 @@ def screen_dir(view, N):
 def world_dir(view, d2):
     """A direction in the picture as a model direction (in the picture's plane)."""
     z = np.zeros(len(d2))
+    if view in HVIEW:
+        d, r = hcam(view)
+        return r[None, :] * d2[:, :1] + np.stack([z, z, -d2[:, 1]], 1)
     if view in ("front", "face"):
         return np.stack([d2[:, 0], z, -d2[:, 1]], 1)
     if view == "back":
@@ -601,21 +711,32 @@ def arm(M, sh, T, side, J, E, W, joints):
     hand(M, prev, side, W, Df, joints)
 
 
-# The hand (a boy's big hand, as the sheet draws it: about 0.18 m wrist to fingertip): name, root quad, length,
-# half-width, spread (degrees toward the little finger).
-# (second round: thicker, shorter and more curled, as the sheet's chunky hanging hands; the first round's were long
-# thin straight sticks)
-FINGERS_SPEC = (("index", 0, 0.06, 0.0102, -1.5), ("middle", 1, 0.067, 0.0107, 0.0),
-                ("ring", 2, 0.063, 0.0102, 1.5), ("little", 3, 0.05, 0.0092, 3.0))
-FINGER_CURL = (0.26, 0.38, 0.3)
+# The hand (second pass), measured off tools/art_src/concept_boy_hands.jpg (his left hand: the back view, fingers to
+# the right, 670 pixels wrist to the middle fingertip; the palm view agrees within about 10%) at the body sheet's
+# size (about 0.175 m): a thin wrist, a slim wedge palm 0.082 m to the knuckles and 0.078 across them, long fingers
+# of different lengths (the middle 0.09, index and ring 0.082, little 0.06) in three segments (0.44, 0.31, 0.25),
+# a thumb of 0.07 from the side of the palm. Twilight Princess's way of building it (the captain's eighth round):
+# four-sided finger sections with loops only at the joints, a blunt box end; about 240 triangles a hand.
+# name, root quad, length, half-width, spread in the open hand of the back view (degrees toward the little finger)
+FINGERS_SPEC = (("index", 0, 0.078, 0.0084, -10.0), ("middle", 1, 0.088, 0.009, -2.0),
+                ("ring", 2, 0.079, 0.0082, 4.0), ("little", 3, 0.056, 0.0073, 15.0))
 FINGER_SEGS = (0.44, 0.31, 0.25)
+# His rest pose: the body sheet's hanging hands, relaxed: fingers gently curled and closer together, the thumb in.
+# The open pose ("open") is the hands sheet's back and palm views, for checking the outline.
+HAND_POSES = {"rest": {"curl": (0.3, 0.42, 0.32), "spread": 0.45, "thumb_curl": 0.12, "thumb_open": 0.0},
+              "open": {"curl": (0.04, 0.06, 0.04), "spread": 1.0, "thumb_curl": 0.08, "thumb_open": 1.0}}
+HAND_POSE = dict(HAND_POSES["rest"])
+# (second pass, after the first outline check: the sheet's palm is broader, its knuckles 0.092 across with the
+# fingers spaced apart, the thumb longer and set lower)
+PALM = {"wrist": (0.012, 0.032, 0.019), "heel": (0.032, 0.043, 0.017), "knuckles": (0.08, 0.046, 0.0135)}
+THUMB = {"length": 0.088, "base": (0.0135, 0.0112), "radii": (0.0118, 0.0108, 0.0098), "end": (0.0085, 0.0072)}
 
 
 def hand(M, wrist_ring, side, W, L, joints):
-    """A hand from the wrist ring (the captain's welded hand, the usual low-poly way, in a boy's size): a wrist ring,
-    a wedge palm thick at the heel with pads at the thumb's and little finger's side, a knuckle ridge; each finger
-    grown out of one of the palm's end quads in four-sided sections, different lengths, a little fanned and curled,
-    blunt; the thumb grown out of the palm's side face. The back faces out and a little forward."""
+    """A hand from the wrist ring: a boxy wedge palm of three rings (wrist, heel, knuckles with a ridge), four
+    fingers grown out of the palm's end quads in four-sided sections, a thumb out of the palm's side face. Posed by
+    HAND_POSE. The back faces out and a little forward (38 degrees round from straight out)."""
+    first = len(M.P)
     sfx = "_l" if side > 0 else "_r"
     part = "hand" + sfx
     X = Vector((1, 0, 0))
@@ -632,25 +753,28 @@ def hand(M, wrist_ring, side, W, L, joints):
         pts = [None] * LIMB_N
         for j, w, lb in zip(back, across, back_lift):
             edge = abs(w) == 1.0
-            pts[j] = at + Wd * (w * hw * (0.9 if edge else 1.0)) + Tb * (ht * (0.72 if edge else 1.0) + lb)
+            pts[j] = at + Wd * (w * hw * (0.9 if edge else 1.0)) + Tb * (ht * (0.7 if edge else 1.0) + lb)
         for j, w, pd in zip(palm, across, palm_drop):
             edge = abs(w) == 1.0
-            pts[j] = at + Wd * (w * hw * (0.9 if edge else 1.0)) - Tb * (ht * (0.72 if edge else 1.0) + pd)
+            pts[j] = at + Wd * (w * hw * (0.9 if edge else 1.0)) - Tb * (ht * (0.7 if edge else 1.0) + pd)
         return [M.add(mirror_x(q, side), part) for q in pts]
 
     def bridge(a, b, pt=part):
         M.bridge(a, b, pt) if side > 0 else M.bridge(b, a, pt)
-    # (sixth round: the captain's eighth-round hand, borrowed: Twilight Princess's hands, measured on Telma and Shad,
-    # are about 130 to 150 triangles: a boxy palm of three rings, four separate fingers of four-sided sections with
-    # loops only at the joints, a blunt box end, a separate thumb, the rest painted. In the boy's sizes.)
-    r0 = ring_at(W + L * 0.012, 0.03, 0.019)
-    r1 = ring_at(W + L * 0.04, 0.038, 0.022, palm_drop=(0.005, 0.002, 0.0, 0.002, 0.004))
-    knuck = W + L * 0.09
-    r3 = ring_at(knuck, 0.042, 0.015, back_lift=(0.001, 0.0028, 0.0028, 0.0028, 0.001))
+    s0, s1, s2 = PALM["wrist"], PALM["heel"], PALM["knuckles"]
+    # (the heel and wrist shifted toward the thumb: the sheet's palm is broad on the thumb's side, the ball of the
+    # thumb swelling from near the wrist)
+    r0 = ring_at(W + L * s0[0] + Wd * 0.003, s0[1], s0[2])
+    r1 = ring_at(W + L * s1[0] + Wd * 0.008, s1[1], s1[2], palm_drop=(0.004, 0.0015, 0.0, 0.0015, 0.0035))
+    knuck = W + L * s2[0]
+    r3 = ring_at(knuck, s2[1], s2[2], back_lift=(0.001, 0.0025, 0.0025, 0.0025, 0.001))
     bridge(wrist_ring, r0)
     bridge(r0, r1)
     bridge(r1, r3)
-    thumb_root = [r1[3], r3[3], r3[4], r1[4]]
+    # (fourth check: the thumb grows from the side of the palm between the wrist and the heel, where its long first
+    # bone starts in a real hand and where the hands sheet draws it; from mid palm it stood too far out toward the
+    # fingers)
+    thumb_root = [r0[3], r1[3], r1[4], r0[4]]
     target = sorted(thumb_root)
     for fi in range(len(M.faces) - 1, -1, -1):
         if sorted(M.faces[fi]) == target:
@@ -660,7 +784,6 @@ def hand(M, wrist_ring, side, W, L, joints):
     M.tag["hand_rings" + sfx] = [wrist_ring, r0, r1, r3]
 
     def grow(name, root, frames, tip_at, pname):
-        """A finger out of a root quad through rings of four (point j over the root's corner j), closed by a point."""
         a0, step = frames[0]
         rings = [list(root)]
         for at, ac, bk, hw, ht in frames[1:]:
@@ -679,51 +802,80 @@ def hand(M, wrist_ring, side, W, L, joints):
         M.tag["finger_rings%s_%s" % (sfx, name)] = rings
         M.tag["finger_ends%s_%s" % (sfx, name)] = [tip, -1]
 
+    curl = HAND_POSE["curl"]
     for name, i, length, hw, spread in FINGERS_SPEC:
         root = [r3[back[i]], r3[back[i + 1]], r3[palm[i + 1]], r3[palm[i]]]
-        k0 = knuck + Wd * (across[i] + across[i + 1]) / 2.0 * 0.042
-        way = Matrix.Rotation(math.radians(spread), 3, Tb) @ L.copy()
+        k0 = knuck + Wd * (across[i] + across[i + 1]) / 2.0 * s2[1]
+        way = Matrix.Rotation(math.radians(spread * HAND_POSE["spread"]), 3, Tb) @ L.copy()
         ac, bk = Wd.copy(), Tb.copy()
+        ac = Matrix.Rotation(math.radians(spread * HAND_POSE["spread"]), 3, Tb) @ ac
         frames = [(45.0, 90.0)]
-        at = k0 + way * 0.007
-        frames.append((at.copy(), ac.copy(), bk.copy(), hw * 1.02, hw * 0.92))          # the knuckle
+        at = k0 + way * 0.006
+        frames.append((at.copy(), ac.copy(), bk.copy(), hw * 1.04, hw * 0.95))          # the knuckle
         bones = [k0.copy()]
         for si, fr in enumerate(FINGER_SEGS):
-            rot = Matrix.Rotation(-FINGER_CURL[si], 3, ac)
+            rot = Matrix.Rotation(-curl[si], 3, ac)
             way = rot @ way
             bk = rot @ bk
             at = at + way * (length * fr)
             bones.append(at.copy())
             if si < 2:
-                frames.append((at.copy(), ac.copy(), bk.copy(), hw * (0.97, 0.92)[si], hw * (0.86, 0.8)[si]))
-        frames.append((at - way * 0.0035, ac.copy(), bk.copy(), hw * 0.84, hw * 0.7))
-        grow(name, root, frames, at + way * 0.0045 - bk * 0.0018, part + "_" + name)
+                # (a loop at each joint, a little fuller than the segment: the knuckles read)
+                frames.append((at.copy(), ac.copy(), bk.copy(), hw * (0.98, 0.92)[si], hw * (0.9, 0.84)[si]))
+        frames.append((at - way * 0.003, ac.copy(), bk.copy(), hw * 0.9, hw * 0.78))
+        grow(name, root, frames, at + way * 0.0025 - bk * 0.0012, part + "_" + name)
         joints["%s%s" % (name, sfx)] = [Vector(mirror_x(b, side)) for b in bones]
     rootc = sum((Vector(mirror_x(M.P[v], side)) for v in thumb_root), Vector()) / 4.0
-    way = (Wd * 0.8 + L * 0.48 - Tb * 0.36).normalized()
+    # the thumb: in the open hand out at about 30 degrees from the hand's line, nearly in the palm's plane (the back
+    # view); at rest in front of the palm, toward the fingers
+    open_ = HAND_POSE["thumb_open"]
+    # (third check: at rest the thumb hangs along the fingers under the palm, as the sheet's relaxed side view and
+    # the body sheet draw it; open, it stands out lower and wider)
+    w_rest = (L * 0.7 + Wd * 0.3 - Tb * 0.65).normalized()
+    w_open = (L * 0.74 + Wd * 0.66 - Tb * 0.1).normalized()
+    way = (w_rest * (1 - open_) + w_open * open_).normalized()
     U = (L - way * L.dot(way)).normalized()
     V = way.cross(U).normalized()
     if V.dot(Tb) < 0:
         V = -V
     frames = [(135.0, -90.0)]
-    at = rootc + way * 0.014
-    frames.append((at.copy(), U.copy(), V.copy(), 0.017, 0.0145))                   # the fat base
+    at = rootc + way * 0.012
+    frames.append((at.copy(), U.copy(), V.copy(), THUMB["base"][0], THUMB["base"][1]))
     bones = [rootc.copy()]
-    for si, (fr, rad) in enumerate(((0.42, 0.0148), (0.32, 0.0135), (0.26, 0.0122))):
-        rot = Matrix.Rotation(-0.22, 3, U.cross(way).normalized())
+    for si, (fr, rad) in enumerate(zip((0.42, 0.32, 0.26), THUMB["radii"])):
+        rot = Matrix.Rotation(-HAND_POSE["thumb_curl"], 3, U.cross(way).normalized())
         way = rot @ way
         U = rot @ U
         V = rot @ V
-        at = at + way * (0.062 * fr)
+        at = at + way * (THUMB["length"] * fr)
         bones.append(at.copy())
         if si < 2:
             frames.append((at.copy(), U.copy(), V.copy(), rad, rad * 0.86))
-    frames.append((at - way * 0.0035, U.copy(), V.copy(), 0.0106, 0.0088))
+    frames.append((at - way * 0.0035, U.copy(), V.copy(), THUMB["end"][0], THUMB["end"][1]))
     grow("thumb", thumb_root, frames, at + way * 0.0045, part + "_thumb")
     joints["thumb%s" % sfx] = [Vector(mirror_x(b, side)) for b in bones]
     joints["thumb_back%s" % sfx] = np.array(mirror_x(V, side))
     joints["hand_frame%s" % sfx] = tuple(np.array(mirror_x(v, side)) for v in (Tb, Wd, L))
     joints["knuckles%s" % sfx] = Vector(mirror_x(knuck, side))
+    M.tag["hand_points" + sfx] = (first, len(M.P))
+
+
+def hand_alone(pose):
+    """A left hand alone in a given pose, built by hand() on a wrist ring of its own at the origin, pointing down:
+    the same points in the same order as the body's left hand (for its outline against the hands sheet, and to paint
+    the body's hand from the sheet's open views). Gives (Mesh, joints, the index its hand points start at)."""
+    global HAND_POSE
+    keep = HAND_POSE
+    HAND_POSE = dict(HAND_POSES[pose])
+    Mt = Mesh()
+    L = Vector((0.0, 0.0, -1.0))
+    A, F = Vector((1, 0, 0)), Vector((0, -1, 0))
+    ring = [Mt.add(A * (0.031 * math.cos(math.tau * j / LIMB_N)) + F * (0.022 * math.sin(math.tau * j / LIMB_N)), "arm_l")
+            for j in range(LIMB_N)]
+    jt = {}
+    hand(Mt, ring, 1, Vector((0.0, 0.0, 0.0)), L, jt)
+    HAND_POSE = keep
+    return Mt, jt
 
 
 def leg(M, sh, T, rings, crotch, side, joints):
@@ -784,79 +936,105 @@ def leg(M, sh, T, rings, crotch, side, joints):
 
 
 # ------------------------------------------------------------------------------------------------------------------
-# The head, measured off crops of the same sheet (front: middle column 674.5; side: the face's front and the skull's
-# back, columns; the hair hides the skull, so its back and top are rounded inside the hair's outline)
+# The head, measured off the head sheet's bald row (second pass): the half width of each ring from the front view
+# (its outline with the ears taken out), its front and back from the side view; the nose lofted down the side
+# view's profile; ears from the side view's ear and the front view's reach. Then refined, given its forms, and FITTED
+# to the front, side and back views' outlines (fit_head), and checked against all five (head_silhouettes).
 # ------------------------------------------------------------------------------------------------------------------
 
-# (row, half width in px (front view, cheeks and jaw without the ears), the face's front column in the side view,
-# the skull's or neck's back column, how much the ring narrows toward its front (the jaw to the chin))
-HEAD_TABLE = (
-    # (second round: the back column measured where the hair ends at his nape (rows 350 to 370: the neck at 1381 to
-    # 1385), and kept inside the hair's thin bottom edge above it (1361 at row 310, 1365 at 330))
-    (398, 61, 1506, 1377, 0.0),     # the neck
-    (390, 57, 1532, 1381, 0.55),    # under the chin, into the throat (sixth round: the chin 3 rows lower; smoothed it sat high)
-    (381, 54, 1557, 1383, 0.5),     # the chin's bottom
-    (366, 56, 1570, 1382, 0.48),    # the chin
-    (349, 63, 1568, 1376, 0.38),    # the groove under the lower lip (fifth round: the jaw narrowed more to the chin, as the sheet's V)
-    (337, 69, 1574, 1369, 0.26),    # the lips
-    (324, 75, 1575, 1363, 0.15),    # the upper lip
-    (311, 80, 1571, 1357, 0.05),    # under the nose
-    (293, 86, 1567, 1350, 0.0),     # the cheeks (the nose is its own shell)
-    (275, 88, 1565, 1346, 0.0),
-    (258, 88, 1568, 1345, 0.0),     # the eyes
-    (241, 87, 1573, 1347, 0.0),     # the brow
-    (221, 84, 1570, 1352, 0.0),     # the forehead
-    (201, 80, 1562, 1360, 0.0),
-)
-SKULL_ROWS = [186, 170, 156, 144]
-# The nose (row, the side view's tip column, full width px in the front view) and the flare of its wings by row.
-# (second round: a narrow bridge, then the ball of the tip and the round wings, as the trial paints it: the first
-# round's widths grew evenly into a wedge)
-NOSE_PROFILE = ((262, 1569, 15), (270, 1576, 17), (280, 1584, 20), (288, 1590, 27), (295, 1594, 35),
-                (300, 1593, 40), (305, 1588, 47), (309, 1577, 42))
-NOSE_WINGS = ((295, 0.0), (300, 0.12), (305, 0.28), (309, 0.24))
-EAR_ROWS = (257, 316)         # the ear's top and bottom
-EAR_COLS = (1460, 1414)       # its front and back in the side view
-EAR_OUT = 0.022
+# The head's rings, from the neck up to just under the crown at H_CROWN: (the row of the ring's front, the row of its
+# back). (Third round, the coordinator, from the captain: "The mandible is a SLANTED edge: from the jaw angle just
+# below the ear lobe, down and forward to the chin ... an under-jaw surface turning back to the throat; the neck is a
+# separate thin column emerging under and behind the jaw".) Level rings made the jaw a level shelf; the lower rings
+# are tilted instead, the usual loops of a modelled head: their fronts run down the chin and under it to the throat
+# while their backs stay up at the jaw's angles and the nape, so each ring's sides pass along the jaw's slanted edge
+# and the under-jaw surface lies between them. Above the mouth they come level.
+HEAD_RINGS = [(1200, 1176), (1186, 1136), (1172, 1100), (1152, 1084), (1130, 1072), (1108, 1062), (1094, 1056),
+              (1082, 1050), (1070, 1044), (1040, 1040), (1022, 1022), (1004, 1004), (986, 986), (968, 968),
+              (950, 950), (932, 932), (912, 912), (890, 890), (864, 864), (836, 836), (806, 806), (778, 778),
+              (754, 754), (736, 736), (726, 726)]
+HEAD_ROWS = [f for f, _ in HEAD_RINGS]
+# How much each ring narrows toward its front, by its front's row: the V of his jaw into a pointed chin.
+JAW_TAPER = ((1040, 0.0), (1070, 0.06), (1094, 0.14), (1130, 0.3), (1152, 0.42), (1172, 0.5), (1186, 0.0), (1200, 0.0))
+# The ring's shape (superellipse power), by its front's row: rounder at the mouth, a narrower V to the chin.
+RING_P = ((900, 1.0), (1040, 1.0), (1100, 1.06), (1172, 1.1), (1186, 0.95), (1200, 0.92))
+# How far round toward its back a tilted ring rises to its back's height (0 front, 1 back): its sides are at the
+# jaw's angle.
+TILT_EASE = 0.45
+JAW_EDGE = (0.0826, -0.024, 1773)   # the jaw's angle (out from his middle, its depth), the chin's side-view column
+# Rows where the side view's front is the nose: the face's front there is the plane behind it.
+FACE_PLANE = (950, 1046)
+FACE_PLANE_IN = 0.007
+# The nose: rows, and its full width in the front view (head pixels); its profile is the side view's outline.
+NOSE_ROWS = ((950, 28), (966, 36), (982, 44), (998, 56), (1012, 70), (1026, 76), (1038, 70), (1046, 56))
+NOSE_WINGS = ((1012, 0.0), (1026, 0.12), (1038, 0.24), (1046, 0.2))
+NOSE_IN = 0.008               # its back, inside the face
+EAR_ROWS = (922, 1040)        # the ear's top and bottom (the lobe's bottom: the front view's 1040 to 1045)
+EAR_COLS = (1597, 1513)       # its front and back in the side view
+EAR_OUT = 0.036               # how far its rim stands out (the front view: its tip 0.123 m from his middle)
 
 
-def head_rings_measured():
+def side_run(sh, r):
+    return run_near(sh.head_mask, r, HVIEW["hside"][1], *HSPAN["hside"])
+
+
+def side_y(col):
+    return (HVIEW["hside"][1] - col) * HS
+
+
+def head_rings_measured(sh):
+    """Each ring: (z of its front, half width, front y, back y, taper, z of its back, shape power). The front from the
+    side view's outline at the front's row (the nose's rows: the face's plane behind it), the back from the side view
+    at the back's row, the half width from the front view (ears out) at the row of its sides."""
     out = []
-    for r, hw, fc, bc, taper in HEAD_TABLE:
-        yf = (MID["side"] - fc) * S
-        yb = (MID["side"] - bc) * S
-        out.append((float(body_z(r)), hw * S, yf, yb, taper))
-    return out
-
-
-def skull_measure(band):
-    """The skull's rings above the forehead's ring: an egg rounding up to the crown, its middle a little back as it
-    rises (a boy's round cranium)."""
-    z0, hw0, yf0, yb0, _ = band
-    cy0, d0 = (yf0 + yb0) / 2.0, (yb0 - yf0) / 2.0
-    zt = float(body_z(CROWN))
-    out = []
-    for r in SKULL_ROWS:
-        z = float(body_z(r))
-        t = (z - z0) / (zt - z0)
-        k = (1.0 - t ** 2.1) ** (1.0 / 2.1)
-        cy = cy0 + 0.014 * t ** 1.4
-        out.append((z, hw0 * k, cy - d0 * k * (1.0 - 0.05 * t), cy + d0 * k, 0.0))
-    return out
+    pa, pb = side_run(sh, FACE_PLANE[0]), side_run(sh, FACE_PLANE[1] + 4)
+    for rf, rb in HEAD_RINGS:
+        rs = int(round(rf + (rb - rf) * 0.7))
+        fr = run_near(sh.head_target, rs, HVIEW["hfront"][1], *HSPAN["hfront"])
+        hw = (fr[1] + 1 - fr[0]) / 2.0 * HS
+        yf = side_y(side_run(sh, rf)[1] + 1)
+        yb = side_y(side_run(sh, rb)[0])
+        if FACE_PLANE[0] <= rf <= FACE_PLANE[1]:
+            t = (rf - FACE_PLANE[0]) / (FACE_PLANE[1] - FACE_PLANE[0])
+            yf = side_y(pa[1] + 1) * (1 - t) + side_y(pb[1] + 1) * t + FACE_PLANE_IN * math.sin(math.pi * t) + 0.002
+        taper = float(np.interp(rf, [a for a, _ in JAW_TAPER], [b for _, b in JAW_TAPER]))
+        p = float(np.interp(rf, [a for a, _ in RING_P], [b for _, b in RING_P]))
+        out.append([float(hz(rf)), hw, yf, yb, taper, float(hz(rb)), p])
+    # The profile's small forms (the lips, the groove under them, the brow) are the face's middle only: put into the
+    # whole ring they ran across his cheeks as ridges. The rings' fronts are the profile smoothed, the lips' rows
+    # straight between above and below them; the forms go in by sculpt_head.
+    yf = np.array([o[2] for o in out])
+    hwv = np.array([o[1] for o in out])
+    ybv = np.array([o[3] for o in out])
+    sm, smw, smb = yf.copy(), hwv.copy(), ybv.copy()
+    for _ in range(2):
+        a_, b_, c_ = sm.copy(), smw.copy(), smb.copy()
+        for i in range(1, len(out) - 1):
+            if 880 < HEAD_ROWS[i] < 1120:
+                sm[i] = 0.25 * a_[i - 1] + 0.5 * a_[i] + 0.25 * a_[i + 1]
+            smw[i] = 0.25 * b_[i - 1] + 0.5 * b_[i] + 0.25 * b_[i + 1]
+            smb[i] = 0.25 * c_[i - 1] + 0.5 * c_[i] + 0.25 * c_[i + 1]
+    j0, j1 = HEAD_ROWS.index(1040), HEAD_ROWS.index(1130)
+    for i in range(j1 + 1, j0):
+        t = (HEAD_ROWS[j0] - HEAD_ROWS[i]) / float(HEAD_ROWS[j0] - HEAD_ROWS[j1])
+        sm[i] = yf[j0] * (1 - t) + yf[j1] * t
+    for o, w_, f_, b_ in zip(out, smw, sm, smb):
+        o[1], o[2], o[3] = float(w_), float(f_), float(b_)
+    return [tuple(o) for o in out]
 
 
 def build_head(M, sh, top_ring):
-    rings = head_rings_measured()
-    skull = skull_measure(rings[-1])
+    rings = head_rings_measured(sh)
     prev = top_ring
     H = []
-    allr = rings + skull
-    for i, (z, hw, yf, yb, taper) in enumerate(allr):
+    for i, (zf, hw, yf, yb, taper, zb, p) in enumerate(rings):
         cy, d = (yf + yb) / 2.0, (yb - yf) / 2.0
-        p = 0.82 if i < len(rings) else 0.86
-        pts = ring_points(0.0, cy, z, hw, d, d, TORSO_N, p)
+        pts = ring_points(0.0, cy, zf, hw, d, d, TORSO_N, p)
         if taper:
             pts = [(x * (1.0 - taper * max(0.0, (cy - y) / d)), y, zz) for x, y, zz in pts]
+        if abs(zb - zf) > 1e-6:
+            # (tilted: each point rises from the front's height toward the back's as it goes round)
+            pts = [(x, y, zf + (zb - zf) * min(max((y - yf) / (yb - yf), 0.0), 1.0) ** TILT_EASE) for x, y, _ in pts]
         ring = [M.add(q, "head") for q in pts]
         for k in range(TORSO_N):
             j = (k + 1) % TORSO_N
@@ -864,13 +1042,13 @@ def build_head(M, sh, top_ring):
             M.cell[len(M.faces) - 1] = ("head", i - 1, k)
         prev = ring
         H.append(ring)
-    top = M.add((0.0, allr[-1][2] * 0.5 + allr[-1][3] * 0.5, float(body_z(CROWN))), "head")
+    top = M.add((0.0, rings[-1][2] * 0.5 + rings[-1][3] * 0.5, float(hz(H_CROWN))), "head")
     for k in range(TORSO_N):
         j = (k + 1) % TORSO_N
         M.face([prev[k], prev[j], top], "head")
-        M.cell[len(M.faces) - 1] = ("head", len(allr) - 1, k)
+        M.cell[len(M.faces) - 1] = ("head", len(rings) - 1, k)
     M.tag["head_rings"] = H
-    nose(M, rings)
+    nose(M, sh, rings)
     for side in (1, -1):
         ear(M, rings, side)
     return rings
@@ -882,15 +1060,15 @@ def face_front_at(rings, z):
     return float(np.interp(z, zs, ys))
 
 
-def nose(M, rings):
-    """The nose lofted down the side view's profile, as wide as the front view paints it at each row."""
+def nose(M, sh, rings):
+    """The nose lofted down the side view's profile (its outline there), as wide as the front view paints it."""
     loops = []
     n = 10
-    for r, tipc, width in NOSE_PROFILE:
-        tip = (MID["side"] - tipc) * S
-        z = float(body_z(r))
-        base = face_front_at(rings, z) + 0.01
-        half = width / 2.0 * S
+    for r, width in NOSE_ROWS:
+        tip = side_y(side_run(sh, r)[1] + 1)
+        z = float(hz(r))
+        base = face_front_at(rings, z) + NOSE_IN
+        half = width / 2.0 * HS
         wings = float(np.interp(r, [a for a, _ in NOSE_WINGS], [w for _, w in NOSE_WINGS]))
         cy, d = (tip + base) / 2.0, max((base - tip) / 2.0, 0.003)
         pts = ring_points(0.0, cy, z, half, d, d, n, 1.0)
@@ -908,25 +1086,24 @@ def nose(M, rings):
         M.face([first[(j + 1) % n], first[j], c], "nose")
 
 
-# (second round: the front of the rim stands out too, so the ear reads as a whole shell from the side, as the sheet
-# draws it; the first round's lay flat at the front and read as a thin C)
-EAR_RIM = ((0.25, 1.0, 0.75), (0.62, 0.92, 1.0), (0.9, 0.66, 1.0), (0.86, 0.38, 0.9), (0.62, 0.12, 0.75),
-           (0.38, -0.02, 0.6), (0.12, 0.05, 0.45), (0.0, 0.3, 0.35), (0.02, 0.62, 0.4), (0.08, 0.88, 0.55))
+# An ear's outline (b: back from its front edge, v: up), and how far each point stands out (0..1): the helix round
+# the top and back, the lobe at the bottom (a boy's ears, a bit big for his head, as the sheet draws them).
+# (the coordinator: "attached along their front edge, lying back against the head": the front of the rim, by the
+# face, sits nearly on the head; only the back of the helix stands out)
+EAR_RIM = ((0.22, 1.0, 0.42), (0.55, 0.97, 0.85), (0.86, 0.8, 1.0), (0.98, 0.52, 0.95), (0.86, 0.24, 0.8),
+           (0.6, 0.04, 0.6), (0.36, -0.03, 0.42), (0.14, 0.08, 0.18), (0.02, 0.34, 0.05), (0.04, 0.66, 0.1))
 
 
 def ear(M, rings, side):
-    """An ear: a rim standing out from the head, a hollow bowl inside it, a back wall to the skull."""
+    """An ear: a rim standing out from the head, rolled over (the helix), a hollow bowl inside it, a back wall."""
     part = "ear_l" if side > 0 else "ear_r"
-    zt, zb = float(body_z(EAR_ROWS[0])), float(body_z(EAR_ROWS[1]))
-    y0 = (MID["side"] - EAR_COLS[0]) * S
-    y1 = (MID["side"] - EAR_COLS[1]) * S
+    zt, zb = float(hz(EAR_ROWS[0])), float(hz(EAR_ROWS[1]))
+    y0, y1 = side_y(EAR_COLS[0]), side_y(EAR_COLS[1])
     zs = [r[0] for r in rings]
     zc = (zt + zb) / 2.0
-    hw = float(np.interp(zc, zs, [r[1] for r in rings]))
-    # (the ring's side is narrower behind its middle: the ear sits there)
-    hw *= 0.94
+    hw = float(np.interp(zc, zs, [r[1] for r in rings])) * 0.95
     hgt, wid = zt - zb, y1 - y0
-    tilt = math.radians(14.0)
+    tilt = math.radians(12.0)
     rim, bowl, wall = [], [], []
     for b, v, out in EAR_RIM:
         yy = y0 + b * wid + (v - 0.5) * hgt * math.sin(tilt)
@@ -936,9 +1113,9 @@ def ear(M, rings, side):
         bc = (0.42, 0.5)
         yb_ = y0 + (bc[0] + (b - bc[0]) * 0.55) * wid + (v - 0.5) * hgt * math.sin(tilt) * 0.55
         zb_ = zb + (bc[1] + (v - bc[1]) * 0.55) * hgt
-        bowl.append(M.add(mirror_x((hw - 0.004 + EAR_OUT * out * 0.45, yb_, zb_), side), part))
+        bowl.append(M.add(mirror_x((hw - 0.004 + EAR_OUT * out * 0.4, yb_, zb_), side), part))
         wall.append(M.add(mirror_x((hw - 0.012, y0 + b * wid * 0.85, zz), side), part))
-    centre = M.add(mirror_x((hw - 0.001, y0 + 0.4 * wid, zb + 0.45 * hgt), side), part)
+    centre = M.add(mirror_x((hw - 0.002, y0 + 0.4 * wid, zb + 0.45 * hgt), side), part)
     n = len(EAR_RIM)
     out = np.array((side, 0.0, 0.0))
     mid_ = np.array(M.P[centre])
@@ -947,12 +1124,10 @@ def ear(M, rings, side):
         d = np.array(c) - mid_
         d[0] = 0.0
         return d + np.array((side * 0.15, 0.0, 0.0)) * np.linalg.norm(d)
-    # (second round) the rim rolled over: a ring a little in from the rim and standing proud of it (the helix), so
-    # the ear's edge has thickness
     roll = []
     for r_, b_ in zip(rim, bowl):
-        q = np.array(M.P[r_]) * 0.72 + np.array(M.P[b_]) * 0.28
-        q[0] += side * 0.003
+        q = np.array(M.P[r_]) * 0.74 + np.array(M.P[b_]) * 0.26
+        q[0] += side * 0.004
         roll.append(M.add(q, part))
     for j in range(n):
         k = (j + 1) % n
@@ -1051,7 +1226,10 @@ def winding_check(M, label):
     tris = np.array(M.tris())
     fam = np.array(M.tri_fams())
     vol = float(np.einsum("ij,ij->i", P[tris[:, 0]], np.cross(P[tris[:, 1]], P[tris[:, 2]])).sum() / 6.0)
-    print("BOY winding %s: signed volume %.4f m3 (must be > 0)" % (label, vol))
+    Nv = normals_of(P, tris)
+    fn = np.cross(P[tris[:, 1]] - P[tris[:, 0]], P[tris[:, 2]] - P[tris[:, 0]])
+    folded = int(((fn * Nv[tris].mean(1)).sum(1) < 0).sum())
+    print("BOY winding %s: signed volume %.4f m3 (must be > 0); %d triangles folded against their neighbours" % (label, vol, folded))
     return vol
 
 
@@ -1187,6 +1365,158 @@ def symmetrize(M, mir):
 
 
 # ------------------------------------------------------------------------------------------------------------------
+# The hands sheet (second pass): tools/art_src/concept_boy_hands.jpg, his left hand in six views. The back view
+# (fingers to the right, the thumb below) and the palm view (fingers up; drawn as a right hand, so the model is seen
+# mirrored) are the open hand; the thumb-side view (fingers to the left, the back up; also mirrored) is relaxed.
+# Each: the box it lies in (rows, columns), metres a pixel (the back view: 670 pixels wrist to middle fingertip, the
+# palm view 628, for a 0.175 m hand), and the part compared (the forearm the sheet draws beyond the wrist is not).
+# ------------------------------------------------------------------------------------------------------------------
+
+HAND_SHEET = os.path.join(ART, "concept_boy_hands.jpg")
+HANDV = {"back": {"box": (100, 740, 150, 1080), "k": 0.000261, "keep": ("col", 375, 1), "pose": "open", "wrist": 362},
+         "palm": {"box": (70, 900, 1190, 1790), "k": 0.000279, "keep": ("row", 715, -1), "pose": "open", "wrist": 722},
+         "side": {"box": (230, 640, 1830, 2700), "k": 0.000262, "keep": ("col", 2470, -1), "pose": "rest", "wrist": 2478}}
+
+
+def hand_uv(view, P, frame):
+    """Hand-frame picture coordinates (pixels from the wrist, before placing) and depth, for points of a left hand
+    whose frame (back, across toward the thumb, along) is given and whose wrist is at the origin."""
+    Tb, Wd, L = (np.asarray(v, float) for v in frame)
+    k = HANDV[view]["k"]
+    P = np.asarray(P, float)
+    if view == "back":
+        return np.stack([P @ L / k, P @ Wd / k], 1), -(P @ Tb)
+    if view == "palm":
+        return np.stack([P @ Wd / k, -(P @ L) / k], 1), P @ Tb
+    return np.stack([-(P @ L) / k, -(P @ Tb) / k], 1), -(P @ Wd)
+
+
+def hand_keep(view, shape):
+    r0, r1, c0, c1 = HANDV[view]["box"]
+    m = np.zeros(shape, bool)
+    m[r0:r1, c0:c1] = True
+    kind, at, sgn = HANDV[view]["keep"]
+    if kind == "col":
+        cols = np.arange(shape[1])
+        m &= ((cols - at) * sgn >= 0)[None, :]
+    else:
+        rows = np.arange(shape[0])
+        m &= ((rows - at) * sgn >= 0)[:, None]
+    return m
+
+
+def place_hand(view, uv, depth, tris, sh):
+    """The hand's filled outline placed on the sheet: its wrist held where the sheet draws the wrist, along the hand
+    (slid along freely, a hand of the wrong length hid half its error under the forearm's cut), its middle across the
+    hand on the sheet's, then a search of small shifts. Drawn where it is placed (drawn first and moved after, its
+    fingers were cut off at the picture's edge). Gives (model mask, target, (column, row) of the wrist, gap)."""
+    shape = sh.hand_mask.shape
+    keep = hand_keep(view, shape)
+    tgt = sh.hand_mask & keep
+    r0, r1, c0, c1 = HANDV[view]["box"]
+    ty, tx = np.where(tgt)
+    ax = 0 if HANDV[view]["keep"][0] == "col" else 1
+    at = np.array((tx.mean(), ty.mean())) - uv.mean(0)
+    at[ax] = HANDV[view]["wrist"]
+    best = None
+    for d in range(-40, 41, 4):
+        for e in (-4, 0, 4):
+            off = at + ((e, d) if ax == 0 else (d, e))
+            zb, _ = raster(uv + off, depth, tris, shape)
+            m = np.isfinite(zb) & keep
+            err = int((m ^ tgt).sum())
+            if best is None or err < best[0]:
+                best = (err, off, m)
+    _, off, model = best
+    p99, worst = silhouette_gap(model, tgt, (r0, r1))
+    return model, tgt, off, (round(p99 * HANDV[view]["k"] * 100, 2), round(worst * HANDV[view]["k"] * 100, 2))
+
+
+def hand_silhouettes(sh, tag):
+    """His left hand against the hands sheet's back, palm and thumb-side views as filled outlines: the gap per view
+    (cm: 99%, worst) and red/cyan difference pictures. Gives each view's wrist placement, for painting."""
+    out, places = {}, {}
+    for view in ("back", "palm", "side"):
+        Mt, jt = hand_alone(HANDV[view]["pose"])
+        tris = [t for t, f in zip(Mt.tris(), Mt.tri_fams()) if f == "hand"]
+        uv, depth = hand_uv(view, np.array(Mt.P), jt["hand_frame_l"])
+        model, tgt, at, gap = place_hand(view, uv, depth, tris, sh)
+        out[view] = gap
+        places[view] = at
+        if OUT:
+            r0, r1, c0, c1 = HANDV[view]["box"]
+            diff_picture(model, tgt, sh.hand_pix, (r0, r1, c0, c1), os.path.join(OUT, "handdiff_%s_%s.png" % (tag, view)))
+    print("BOY hand outline gaps %s (cm: 99%%, worst) %s" % (tag, json.dumps(out)))
+    return places
+
+
+def paint_hands_from_sheet(M, face_uv, rgb, sh, places, joints):
+    """The hands painted from the hands sheet's open views (second pass): each texel of a hand is found on the open
+    hand of the same points (hand_alone), and from there in the back view (where it faces the back of the hand) or
+    the palm view (where it faces the palm); the sides between are filled from round them. The sheet's colours are
+    toned to his forearm's (the median of each against the other), and faded into it over the wrist."""
+    Mt, jt = hand_alone("open")
+    Pt = np.array(Mt.P)
+    P = np.array(M.P)
+    Pf = P.copy()
+    for sfx, s in (("_l", 1.0), ("_r", -1.0)):
+        a, b = M.tag["hand_points" + sfx]
+        q = Pt[LIMB_N:LIMB_N + (b - a)].copy()
+        q[:, 0] *= s
+        Pf[a:b] = q
+        ring = M.tag["arm_rings" + sfx][-1]
+        q = Pt[:LIMB_N].copy()
+        q[:, 0] *= s
+        Pf[ring] = q
+    tris = M.tris()
+    Nf = normals_of(Pf, tris)
+    N = normals_of(P, tris)
+    pos, nrm, hit, fid = texel_geometry(M, face_uv, "skin", P, N)
+    fpos, fnrm, _, _ = texel_geometry(M, face_uv, "skin", Pf, Nf)
+    size = ATLAS["skin"]
+    fam = np.array([p.split("_")[0] for p in M.fpart] + ["none"])[fid]
+    hands = hit & (fam == "hand")
+    side_of = np.sign(pos[..., 0])
+    Q = fpos.copy()
+    Nn = fnrm.copy()
+    Q[..., 0] *= side_of
+    Nn[..., 0] *= side_of
+    Tb = np.asarray(jt["hand_frame_l"][0], float)
+    got = np.zeros((size, size, 3))
+    seen = np.zeros((size, size), bool)
+    mask = erode(sh.hand_mask, 3)
+    h, w = mask.shape
+    for view, face_sel in (("back", (Nn @ Tb) > 0.3), ("palm", (Nn @ Tb) < -0.3)):
+        sel = hands & face_sel
+        uv, _ = hand_uv(view, Q[sel], jt["hand_frame_l"])
+        at = places[view]
+        c = np.clip((uv[:, 0] + at[0]).astype(int), 0, w - 1)
+        r = np.clip((uv[:, 1] + at[1]).astype(int), 0, h - 1)
+        ok = mask[r, c]
+        idx = np.argwhere(sel)[ok]
+        got[idx[:, 0], idx[:, 1]] = sh.hand_pix[r[ok], c[ok]]
+        seen[idx[:, 0], idx[:, 1]] = True
+    arm = hit & (fam == "arm")
+    near = arm & (np.abs(pos[..., 2] - float(np.median(pos[hands][:, 2]))) < 0.12)
+    gain = np.median(rgb[near], axis=0) / np.maximum(np.median(got[seen], axis=0), 1e-3)
+    gain = np.clip(gain, 0.6, 1.4)
+    print("BOY hands painted from the sheet: %d texels, toned by %s" % (int(seen.sum()), np.round(gain, 3)))
+    out = rgb.copy()
+    out[seen] = got[seen] * gain
+    good = (hit & ~hands) | seen
+    filled = fill_out(out, good, 100)
+    out[hands & ~seen] = filled[hands & ~seen]
+    # (faded into the forearm's own paint over the wrist, so there is no step)
+    for sfx, s in (("_l", 1.0), ("_r", -1.0)):
+        L_ = np.array(joints["hand_frame" + sfx][2], float)
+        Wr = np.array(joints["wrist_l"], float) * np.array((s, 1.0, 1.0))
+        t = smooth01(0.0, 0.03, ((pos - Wr) * L_).sum(-1))
+        k = hands & (side_of == s) & (t < 1.0)
+        out[k] = out[k] * t[k][:, None] + rgb[k] * (1.0 - t[k][:, None])
+    return out
+
+
+# ------------------------------------------------------------------------------------------------------------------
 # Overlays
 # ------------------------------------------------------------------------------------------------------------------
 
@@ -1281,26 +1611,306 @@ def overlay(objs_tris, sh, round_name, report=True):
     return result
 
 
-def head_overlay(objs_tris, sh):
-    """The head over the sheet's front, side and back (twice the size) and over the painted-face trial's close-up."""
-    if not OUT:
-        return
-    for view in ("front", "side", "back", "face"):
-        skip = ("arm", "hand", "sidecap", "leg", "foot")
-        pix = sh.face_pix if view == "face" else sh.body_pix
-        model, shade = model_picture(objs_tris, view, pix.shape[:2], skip)
-        if view == "face":
-            r0, r1, c0, c1 = 940, 1536, 1960, 2600
-        else:
-            mid = MID[view] if view != "side" else 1460
-            r0, r1, c0, c1 = 80, 440, int(mid - 170), int(mid + 170)
-        pic = pix[r0:r1, c0:c1].copy()
-        mm = model[r0:r1, c0:c1]
-        half = np.where(mm[..., None], pic * 0.55 + np.array((0.2, 0.25, 0.45)) * 0.45, pic)
-        half[outline_of(model)[r0:r1, c0:c1]] = (0.95, 0.1, 0.1)
-        if view != "face":
-            half = np.repeat(np.repeat(half, 2, 0), 2, 1)
-        save_rgb(os.path.join(OUT, "overlay_head_%s.png" % view), half)
+def silhouette_gap(model, target, rows):
+    """How far the model's filled outline and the sheet's are apart, within rows (r0, r1): the distance from each
+    outline pixel of one to the nearest of the other, both ways. Gives (99th percentile, worst) in pixels."""
+    keep = np.zeros(model.shape[0], bool)
+    keep[rows[0]:rows[1]] = True
+    mo = outline_of(model) & keep[:, None]
+    to = outline_of(target) & keep[:, None]
+    out = []
+    for a, b in ((mo, to), (to, mo)):
+        by, bx = np.where(b)
+        ay, ax = np.where(a)
+        if not len(by) or not len(ay):
+            return (99.0, 99.0)
+        kd = kdtree.KDTree(len(by))
+        for i in range(len(by)):
+            kd.insert((float(bx[i]), float(by[i]), 0.0), i)
+        kd.balance()
+        out.append(np.array([kd.find((float(ax[i]), float(ay[i]), 0.0))[2] for i in range(len(ay))]))
+    d = np.concatenate(out)
+    return float(np.percentile(d, 99)), float(d.max())
+
+
+def diff_picture(model, target, pic, box, path, scale=1):
+    """The two filled outlines over the sheet, dimmed: red where only the model is, cyan where only the sheet is,
+    grey where both."""
+    r0, r1, c0, c1 = box
+    m, t = model[r0:r1, c0:c1], target[r0:r1, c0:c1]
+    img = pic[r0:r1, c0:c1] * 0.35 + 0.6
+    img[m & t] = img[m & t] * 0.55 + np.array((0.45, 0.45, 0.47)) * 0.45
+    img[m & ~t] = (0.92, 0.12, 0.12)
+    img[t & ~m] = (0.1, 0.8, 0.85)
+    if scale > 1:
+        img = np.repeat(np.repeat(img, scale, 0), scale, 1)
+    save_rgb(path, img)
+
+
+HEAD_SKIP = ("arm", "hand", "sidecap", "leg", "foot", "boxers")
+
+
+def head_silhouettes(objs_tris, sh, tag, pictures=True):
+    """The head against the bald row's five views, as filled outlines (the ears in both): the gap per view in cm
+    (above the neck's cut-off, row H_NECK), and a difference picture of each."""
+    out = {}
+    for view in ("hfront", "hq", "hside", "hqb", "hback"):
+        model, _ = model_picture(objs_tris, view, sh.head_mask.shape, HEAD_SKIP)
+        c0, c1 = HSPAN[view]
+        target = np.zeros_like(sh.head_mask)
+        target[:, c0:c1] = sh.head_mask[:, c0:c1]
+        model[:, :c0] = False
+        model[:, c1:] = False
+        p99, worst = silhouette_gap(model, target, (H_BALD[0], H_NECK))
+        out[view] = (round(p99 * HS * 100, 2), round(worst * HS * 100, 2))
+        if pictures and OUT:
+            c0, c1 = HSPAN[view]
+            diff_picture(model, target, sh.head_pix, (H_BALD[0], 1320, c0, c1),
+                         os.path.join(OUT, "headdiff_%s_%s.png" % (tag, view)))
+    print("BOY head outline gaps %s (cm: 99%%, worst) %s" % (tag, json.dumps(out)))
+    return out
+
+
+def body_silhouettes(objs_tris, sh, tag):
+    """The body against the base sheet's front, side and back as filled outlines, below the hair (row 400): the gap
+    per view in cm, the shorts' rows apart (their cloth stands off him there by design), and difference pictures."""
+    out = {}
+    for view in ("front", "side", "back"):
+        skip = ("arm", "hand") if view == "side" else ("sidecap",)
+        model, _ = model_picture(objs_tris, view, sh.body_mask.shape, skip)
+        c0, c1 = SPAN[view]
+        target = np.zeros_like(sh.body_mask)
+        target[:, c0:c1] = sh.body_mask[:, c0:c1]
+        model[:, :c0] = False
+        model[:, c1:] = False
+        res = {}
+        for name, rows in (("above_shorts", (400, BOXERS[0])), ("shorts", BOXERS), ("legs", (BOXERS[1] + 4, 1470))):
+            p99, worst = silhouette_gap(model, target, rows)
+            res[name] = (round(p99 * S * 100, 2), round(worst * S * 100, 2))
+        out[view] = res
+        if OUT:
+            c0, c1 = SPAN[view]
+            diff_picture(model, target, sh.body_pix, (60, 1500, c0, c1), os.path.join(OUT, "bodydiff_%s_%s.png" % (tag, view)))
+    print("BOY body outline gaps %s (cm: 99%%, worst) %s" % (tag, json.dumps(out)))
+    return out
+
+
+def fit_angled_model(objs_tris, sh):
+    """The 3/4 views' azimuth and middle column found again with the model itself (after the head is fitted to the
+    front, side and back): the angle whose filled outline, slid to its best column, differs least from the sheet's."""
+    for view, guesses in (("hq", np.arange(24.0, 61.0, 2.0)), ("hqb", np.arange(204.0, 247.0, 2.0))):
+        c0, c1 = HSPAN[view]
+        tgt = np.zeros_like(sh.head_mask)
+        tgt[H_BALD[0]:H_NECK, c0:c1] = sh.head_mask[H_BALD[0]:H_NECK, c0:c1]
+        tc = np.where(tgt)[1].mean()
+        best = None
+        for a in guesses:
+            HVIEW[view][0] = float(a)
+            HVIEW[view][1] = 2000.0
+            model, _ = model_picture(objs_tris, view, (sh.head_mask.shape[0], 4000), HEAD_SKIP)
+            model[:H_BALD[0]] = False
+            model[H_NECK:] = False
+            ys, xs = np.where(model)
+            if not len(xs):
+                continue
+            for dc in np.arange(-6, 7, 2):
+                shift = int(round(tc - xs.mean())) + int(dc)
+                m2 = np.zeros_like(tgt)
+                cc = xs + shift
+                ok = (cc >= 0) & (cc < tgt.shape[1])
+                m2[ys[ok], cc[ok]] = True
+                err = int((m2 ^ tgt).sum())
+                if best is None or err < best[0]:
+                    best = (err, float(a), shift + 2000)
+        HVIEW[view][0], HVIEW[view][1] = best[1], float(best[2])
+        print("BOY head sheet %s (by the model): azimuth %.1f degrees, middle column %.1f, %d pixels differ" % (view, best[1], best[2], best[0]))
+
+
+# Landmarks on the bald row (picture column, row), read off each view at twice size: the brow's middle, the nose's
+# tip, the mouth's corners, the chin's bottom, the jaw's angles, the ear lobes' bottoms ("_r" his right).
+LANDMARKS = {
+    "hfront": {"brow": (344, 912), "nose": (344, 1022), "chin": (344, 1165), "mouth_r": (282, 1076), "mouth_l": (412, 1070),
+               "jaw_r": (215, 1090), "jaw_l": (475, 1090), "lobe_r": (187, 1045), "lobe_l": (497, 1040)},
+    "hside": {"brow": (1795, 910), "nose": (1852, 1012), "mouth_r": (1750, 1080), "chin": (1772, 1172),
+              "jaw_r": (1605, 1070), "lobe_r": (1590, 1045)},
+    "hq": {"brow": (1085, 910), "nose": (1110, 1015), "mouth_r": (1015, 1072), "mouth_l": (1125, 1070),
+           "chin": (1085, 1167), "jaw_r": (905, 1100), "lobe_r": (870, 1042)},
+    "hqb": {"nose": (2035, 1010), "chin": (2085, 1162), "lobe_l": (2148, 1050)},
+    "hback": {"lobe_r": (2970, 1047), "lobe_l": (2687, 1047), "jaw_r": (2930, 1120), "jaw_l": (2732, 1120)},
+}
+MOUTH_CORNER = (1074.0, 64.0)     # head-sheet row and columns out from his middle (the front view)
+JAW_ANGLE = (1090.0, 130.0, 1605.0)   # row, columns out (front), side view column
+
+
+def model_landmarks(M):
+    P = np.array(M.P)
+    N = normals_of(P, M.tris())
+    fam = np.array([part_family(p) for p in M.part])
+    head = fam == "head"
+    rows = hrow(P[:, 2])
+    cy = np.array([head_centre(M, z)[1] for z in P[:, 2]])
+    front = head & (P[:, 1] < cy - 0.04)
+    mid = front & (np.abs(P[:, 0]) < 0.005)
+    out = {}
+    i = np.where(mid)[0]
+    out["brow"] = P[i[np.argmin(np.abs(rows[i] - 910))]]
+    j = np.where(fam == "nose")[0]
+    out["nose"] = P[j[np.argmin(P[j, 1])]]
+    k = np.where(mid & (N[:, 1] < -0.3) & (rows < 1180))[0]
+    out["chin"] = P[k[np.argmax(rows[k])]]
+    for s, sfx in ((1, "_l"), (-1, "_r")):
+        c = np.where(front & (np.sign(P[:, 0]) == s))[0]
+        tgt = np.array((s * MOUTH_CORNER[1] * HS, float(hz(MOUTH_CORNER[0]))))
+        out["mouth" + sfx] = P[c[np.argmin(np.linalg.norm(P[c][:, [0, 2]] - tgt, axis=1))]]
+        # (the jaw's angle: the head's point nearest where the sheet puts it, seen from the front and the side)
+        ang = np.array((s * JAW_ANGLE[1] * HS, side_y(JAW_ANGLE[2]), float(hz(JAW_ANGLE[0]))))
+        b = np.where(head)[0]
+        out["jaw" + sfx] = P[b[np.argmin(np.linalg.norm(P[b] - ang, axis=1))]]
+        e = np.where(fam == "ear")[0]
+        e = e[np.sign(P[e, 0]) == s]
+        out["lobe" + sfx] = P[e[np.argmin(P[e, 2])]]
+    return out
+
+
+def landmark_report(M, tag):
+    L = model_landmarks(M)
+    res = {}
+    for view, marks in LANDMARKS.items():
+        res[view] = {}
+        for name, (c, r) in marks.items():
+            q, _ = project(view, np.array([L[name]]))
+            res[view][name] = round(float(np.hypot(q[0, 0] - c, q[0, 1] - r)) * HS * 100, 2)
+    print("BOY head landmarks %s (cm from the sheet's): %s" % (tag, json.dumps(res)))
+    return res, L
+
+
+def sculpt_jaw(M, amount_edge=0.0012, amount_under=0.003, reach=0.02):
+    """(second pass; the coordinator, from the captain: "why is his jaw just straight flat across?") The mandible as a
+    slanted edge: a curve from each jaw angle (below the ear lobe) down and forward to the chin's bottom. Points of the
+    head beside it on the face's side are lifted a little (the edge), points under and behind it are drawn in toward
+    the neck's axis (the under-jaw surface turning back to the throat), so the jaw reads as a curve in the front view
+    and as a line from the lobe to the chin in the side view, never a level shelf."""
+    P = np.array(M.P)
+    N = normals_of(P, M.tris())
+    fam = np.array([part_family(p) for p in M.part])
+    chin_y = side_y(LANDMARKS["hside"]["chin"][0])
+    chin = np.array((0.0, chin_y + 0.004, float(hz(1170))))
+    moved = 0
+    for s in (1.0, -1.0):
+        ang = np.array((s * JAW_ANGLE[1] * HS * 0.92, side_y(JAW_ANGLE[2]), float(hz(JAW_ANGLE[0]))))
+        # the curve: from the angle, bowing out a little, to the chin
+        ts = np.linspace(0.0, 1.0, 24)
+        mid = (ang + chin) / 2.0 + np.array((s * 0.012, -0.006, -0.004))
+        C = np.array([(1 - t) ** 2 * ang + 2 * t * (1 - t) * mid + t * t * chin for t in ts])
+        sel = np.where((fam == "head") & (np.sign(P[:, 0]) * s >= -1e-6))[0]
+        for v in sel:
+            d = C - P[v]
+            dist = np.linalg.norm(d, axis=1)
+            i = int(np.argmin(dist))
+            if dist[i] > reach:
+                continue
+            off = P[v] - C[i]
+            k = (1.0 - dist[i] / reach) ** 2
+            if off[2] < -0.002:
+                # under the jaw: in toward the neck's middle (x to 0, y toward the throat)
+                axis = np.array((0.0, -0.01, P[v][2]))
+                inward = axis - P[v]
+                inward[2] = 0.0
+                inward /= max(np.linalg.norm(inward), 1e-9)
+                P[v] += inward * amount_under * k
+            else:
+                P[v] += N[v] * amount_edge * k
+            moved += 1
+    M.P = [p for p in P]
+    print("BOY jaw sculpted: %d points" % moved)
+
+
+def fit_head(M, sh, frozen, rounds=8, reach=24, damp=0.8):
+    """The head pulled onto the bald row's front, side and back outlines (the ears out of the front and back
+    targets, and out of the drawing, so the head's own outline is what is fitted): as fit_round does for the body,
+    every point on the model's outline in each view moved along its outward direction to the sheet's, the move spread
+    to its neighbours, left and right kept alike. The nose is fitted to the side view's profile."""
+    allowed = {"hfront": ("head",), "hside": ("head", "nose"), "hback": ("head",)}
+    mir = mirror_map(M.P)
+    for rnd in range(rounds):
+        P = np.array(M.P)
+        tris = M.tris()
+        tf = M.tri_fams()
+        N = normals_of(P, tris)
+        fams = np.array([part_family(p) for p in M.part])
+        keep_tris = [t for t, f in zip(tris, tf) if f not in HEAD_SKIP and f != "ear" and f != "torso"]
+        move = np.zeros_like(P)
+        count = np.zeros(len(P))
+        tgt = sh.head_target
+        h, w = tgt.shape
+        rows_p = hrow(P[:, 2])
+        for view, fam_ok in allowed.items():
+            P2, dep = project(view, P)
+            zb, _ = raster(P2, dep, keep_tris, tgt.shape)
+            R = np.isfinite(zb)
+            d2, facing = screen_dir(view, N)
+            L = np.linalg.norm(d2, axis=1)
+            ok = np.isin(fams, fam_ok) & (np.abs(facing) < 0.55) & (L > 0.4) & ~frozen & (rows_p < H_NECK - 4)
+            if view == "hside":
+                # (the face's middle is not pulled onto the profile: its lips and brow are put in by sculpt_head;
+                # pulled, single points of them stood out of the face as spikes and ridges)
+                cyv = np.array([head_centre(M, z)[1] for z in P[:, 2]])
+                ok &= ~((rows_p > 890) & (rows_p < 1166) & (P[:, 1] < cyv))
+            for v in np.where(ok)[0]:
+                p = P2[v]
+                dirn = d2[v] / L[v]
+                q = p + dirn * 3.0
+                qi = (int(q[1]), int(q[0]))
+                if not (0 <= qi[0] < h and 0 <= qi[1] < w) or R[qi]:
+                    continue
+                pi = (int(p[1]), int(p[0]))
+                if not (0 <= pi[0] < h and 0 <= pi[1] < w):
+                    continue
+                dist = None
+                if tgt[pi]:
+                    for k in range(1, reach + 1):
+                        qq = p + dirn * k
+                        if not tgt[min(max(int(qq[1]), 0), h - 1), min(max(int(qq[0]), 0), w - 1)]:
+                            dist = k - 0.5
+                            break
+                else:
+                    for k in range(1, reach + 1):
+                        qq = p - dirn * k
+                        if tgt[min(max(int(qq[1]), 0), h - 1), min(max(int(qq[0]), 0), w - 1)]:
+                            dist = -(k - 0.5)
+                            break
+                if dist is None:
+                    continue
+                move[v] += world_dir(view, dirn[None, :])[0] * dist * HS
+                count[v] += 1
+        has = count > 0
+        move[has] /= count[has, None]
+        # (at most 4 mm a round: the surface follows in steps and stays smooth)
+        ln = np.linalg.norm(move, axis=1, keepdims=True)
+        move *= np.minimum(1.0, 0.004 / np.maximum(ln, 1e-9))
+        E = edges_of([f for f, p in zip(M.faces, M.fpart) if part_family(p) in ("head", "neck", "nose")])
+        D = move.copy()
+        W = has.astype(float) * 4.0
+        deg = np.bincount(E.ravel(), minlength=len(P)).astype(float)
+        for _ in range(8):
+            acc = np.zeros_like(D)
+            np.add.at(acc, E[:, 0], D[E[:, 1]])
+            np.add.at(acc, E[:, 1], D[E[:, 0]])
+            D = (W[:, None] * move + acc) / np.maximum(W + deg, 1e-9)[:, None]
+        D[frozen] = 0.0
+        D[fams == "ear"] = 0.0
+        P += D * damp
+        # (left and right kept alike, the head's points only: symmetrize() sets every point with no mirror image onto
+        # the middle line, and after the head's refinement that took his legs with it)
+        Q = P[mir].copy()
+        Q[:, 0] *= -1
+        hp = ~frozen & (fams != "ear")
+        paired = hp & (mir != np.arange(len(P)))
+        P[paired] = (P[paired] + Q[paired]) / 2.0
+        mid = hp & (mir == np.arange(len(P))) & (np.abs(P[:, 0]) < 0.004)
+        P[mid, 0] = 0.0
+        M.P = [p for p in P]
+        print("BOY head fit round %d: %d points on the outline moved, most %.1f mm" % (rnd + 1, int(has.sum()), 1000 * float(np.abs(move[has]).max() if has.any() else 0)))
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -1394,7 +2004,7 @@ def weights_of(M, T, bones, joints):
     P = np.array(M.P)
     out = []
     zt = [float(body_z(845)), float(body_z(680)), NECK_Z - 0.008]
-    zn0, zn1 = float(body_z(400)), float(body_z(374))
+    zn0, zn1 = float(hz(1198)), float(hz(1180))
     for vi, part in enumerate(M.part):
         p = P[vi]
         fam = part.split("_")[0]
@@ -1944,10 +2554,11 @@ def paint_skin(M, face_uv, sh, tris_all, Pc, no_arms_c, joints):
 
 
 def paint_head(M, face_uv, sh):
-    """His head's picture. The face (front-facing texels above the chin) from the painted-face trial, toned to the body
-    sheet's skin; his sides from the body sheet's side view (his right; mirrored for his left), the brow and blank eye
-    of its profile left out; the neck's front and the back from the body sheet. His hair is not taken: it is painted
-    out to skin (hair goes on top later); the scalp is skin, a touch lighter on top."""
+    """His head's picture from the head sheet's bald row (second pass; the face trial made him a round-cheeked man):
+    the front view wherever the surface faces within about 50 degrees of forward, the back view likewise behind, the
+    side view (his right; mirrored for his left) between, each texel from one view but for a narrow hand-over, so no
+    feature is laid down twice. The side view's eye and brow in profile are not taken (on his temple they would be a
+    second eye); the nose's underside is filled from the nose round it, with two small nostrils."""
     P = np.array(M.P)
     tris = M.tris()
     tf = M.tri_fams()
@@ -1955,22 +2566,17 @@ def paint_head(M, face_uv, sh):
     N = normals_of(P, tris)
     pos, nrm, hit, fid = texel_geometry(M, face_uv, "face", P, N)
     size = ATLAS["face"]
-    rows_t = body_row(pos[..., 2])
     Nall = nrm.reshape(-1, 3)
     ff = np.clip(-Nall[:, 1], 0, 1)
     fb = np.clip(Nall[:, 1], 0, 1)
-    wf = smooth01(0.3, 0.55, ff)
-    wb = smooth01(0.3, 0.55, fb) * (1 - wf)
-    low = rows_t.ravel() > 378
-    share = {"face": wf * ~low, "front": wf * low, "back": wb, "side": (1 - wf) * (1 - wb), "front_ref": wf}
-    accs = {k: np.zeros((size * size, 3)) for k in ("face", "body", "front_ref")}
-    wsums = {k: np.zeros(size * size) for k in accs}
+    wf = smooth01(0.58, 0.72, ff)
+    wb = smooth01(0.58, 0.72, fb) * (1 - wf)
+    share = {"hfront": wf, "hback": wb, "hside": (1 - wf) * (1 - wb)}
+    acc = np.zeros((size * size, 3))
+    wsum = np.zeros(size * size)
     side_hole = np.zeros(size * size, bool)
-    xs_t = pos[..., 0].ravel()
-    for view, mirrored in (("face", False), ("front", False), ("back", False), ("side", False), ("side", True), ("front_ref", False)):
-        pview = "front" if view == "front_ref" else view
-        pix = sh.face_pix if view == "face" else sh.body_pix
-        mask = erode(sh.face_mask if view == "face" else sh.body_mask, 2)
+    mask = erode(sh.head_mask, 2)
+    for view, mirrored in (("hfront", False), ("hback", False), ("hside", False), ("hside", True)):
         Q = pos.reshape(-1, 3).copy()
         Nn = nrm.reshape(-1, 3).copy()
         Pm = P.copy()
@@ -1978,72 +2584,36 @@ def paint_head(M, face_uv, sh):
             Q[:, 0] *= -1
             Nn[:, 0] *= -1
             Pm[:, 0] *= -1
-        P2, dep = project(pview, Pm)
+        P2, dep = project(view, Pm)
         zb, _ = raster(P2, dep, head_tris, mask.shape)
-        q2, qd = project(pview, Q)
-        _, facing = screen_dir(pview, Nn)
+        q2, qd = project(view, Q)
+        _, facing = screen_dir(view, Nn)
         cols = np.clip(q2[:, 0].astype(int), 0, mask.shape[1] - 1)
         rows = np.clip(q2[:, 1].astype(int), 0, mask.shape[0] - 1)
-        tol = 0.008 * (1.0 if view != "face" else 1.0)
-        seen = (qd <= zb[rows, cols] + tol) & mask[rows, cols] & (facing > 0.05) & hit.ravel()
-        colour = pix[rows, cols]
-        hair = is_hair(colour)
-        if view == "face":
-            # (his brows are golden too: kept; above them, and out at the sides, golden is hair)
-            hair &= (rows_t.ravel() < 222) | (np.abs(xs_t) > 0.072)
-        seen &= ~hair
-        if view == "side":
-            # (the profile's blank eye and its brow: on his temple they would make a second eye)
-            cut = (cols > 1522) & (rows > 236) & (rows < 272)
+        seen = (qd <= zb[rows, cols] + 0.006) & mask[rows, cols] & (facing > 0.05) & hit.ravel()
+        if view == "hside":
+            cut = (cols > 1765) & (rows > 922) & (rows < 978)
             side_hole |= seen & cut
             seen &= ~cut
+        colour = sh.head_pix[rows, cols]
         w = np.where(seen, share[view] * np.clip(facing, 0, 1) + 1e-4 * np.clip(facing, 0, 1), 0.0)
-        key = "face" if view == "face" else "front_ref" if view == "front_ref" else "body"
-        accs[key] += colour * w[:, None]
-        wsums[key] += w
-    # The trial paints him lighter and pinker than the body sheet: its colours are toned to the body sheet's, measured
-    # on the cheeks (where both see him squarely), so the face meets the sides with no line.
-    cheeks = (wsums["face"] > 0.3) & (wsums["front_ref"] > 0.3) & (rows_t.ravel() > 268) & (rows_t.ravel() < 300) & \
-             (np.abs(xs_t) > 0.025) & (np.abs(xs_t) < 0.075)
-    fa = accs["face"][cheeks] / wsums["face"][cheeks, None]
-    fr = accs["front_ref"][cheeks] / wsums["front_ref"][cheeks, None]
-    gain = np.median(fr, axis=0) / np.maximum(np.median(fa, axis=0), 1e-3)
-    gain = 1.0 + (gain - 1.0) * 0.85
-    print("BOY paint face: the trial's colours times %s (%d cheek texels)" % (np.round(gain, 3), int(cheeks.sum())))
-    acc = accs["face"] * gain + accs["body"]
-    wsum = wsums["face"] + wsums["body"]
+        acc += colour * w[:, None]
+        wsum += w
     good = (wsum > 0.01).reshape(size, size)
     good &= ~(side_hole.reshape(size, size) & (wf.reshape(size, size) < 0.6))
     rgb = (acc / np.maximum(wsum, 1e-6)[:, None]).reshape(size, size, 3)
     fam_t = np.array([part_family(p) for p in M.fpart] + ["none"])[fid]
-    headish = hit & np.isin(fam_t, ("head", "neck"))
-    skin_ref = np.median(rgb[good & headish & (rows_t > 268) & (rows_t < 300) & (np.abs(pos[..., 0]) > 0.03)], axis=0)
-    # (second round) Where the sheets paint hair, his skin is not taken at all, whatever its colour: the hair's shaded
-    # locks and dark edges are no more golden than skin and were left on his scalp as brown streaks. The hairline, by
-    # angle round his head from the front (degrees) and sheet row: the bangs' line at the forehead, the temples, the
-    # sideburn in front of the ear, over the ear, behind it down to the nape.
-    hl_phi = (0.0, 35.0, 55.0, 72.0, 82.0, 95.0, 115.0, 140.0, 180.0)
-    hl_row = (221.0, 222.0, 236.0, 262.0, 298.0, 254.0, 300.0, 345.0, 357.0)
-    cy = np.interp(pos[..., 2], [M.P[r[0]][2] for r in M.tag["head_rings"]],
-                   [float(np.mean([M.P[i][1] for i in r])) for r in M.tag["head_rings"]])
-    phi = np.degrees(np.arctan2(np.abs(pos[..., 0]), -(pos[..., 1] - cy)))
-    hairline = np.interp(phi, hl_phi, hl_row)
-    under_hair = headish & (rows_t < hairline + 3)
-    good &= ~under_hair
-    # The nose's underside: the trial paints its nostrils seen from the front, and laid on the underside they
-    # stretched into a dark band. It is filled from the nose round it, with two small dark nostrils.
     nz = nrm[..., 2]
     nose_under = hit & (fam_t == "nose") & (nz < -0.4)
     good &= ~nose_under
-    print("BOY paint face: %d texels under the hair painted as skin; skin %s" % (int(under_hair.sum()), np.round(skin_ref, 3)))
     rgb = fill_out(rgb, good, 200)
-    scalp_col = skin_ref[None, :] * (0.98 + 0.05 * np.clip(nz, 0, 1)).reshape(-1)[:, None]
-    t = smooth01(hairline - 10.0, hairline + 2.0, rows_t)
-    k = (headish & (t < 1.0))
-    rgb[k] = rgb[k] * t[k][:, None] + scalp_col.reshape(size, size, 3)[k] * (1.0 - t[k][:, None])
-    rgb[nose_under] *= 0.97
-    nostril = nose_under & (np.abs(np.abs(pos[..., 0]) - 0.0095) < 0.0045) & (pos[..., 1] > -0.162) & (pos[..., 1] < -0.151)
-    rgb[nostril] *= 0.72
+    rgb[nose_under] *= 0.96
+    xa = np.abs(pos[..., 0])
+    ys = pos[..., 1]
+    if nose_under.any():
+        y0, y1 = float(ys[nose_under].min()), float(ys[nose_under].max())
+        nostril = nose_under & (np.abs(xa - 0.008) < 0.004) & (ys > y0 + 0.25 * (y1 - y0)) & (ys < y0 + 0.8 * (y1 - y0))
+        rgb[nostril] *= 0.7
     rgb = np.where(good[..., None], rgb, blur(rgb, 2))
     print("BOY paint face: %.0f%% of its texels seen by a view" % (100.0 * (good & hit).sum() / max(hit.sum(), 1)))
     return pad_edges(rgb, hit), pos, hit
@@ -2071,7 +2641,7 @@ BODY_FORMS = {
     750: {0: (-0.006, 0.0), 3: (0.0, -0.004), 4: (0.0, -0.006), 5: (0.0, -0.004), 8: (0.005, 0.0)},
 }
 KNEE_FORM = {1: 0.014, 0: 0.007, 2: 0.007}
-ELBOW_FORM = {7: 0.008, 8: 0.008}
+ELBOW_FORM = {7: 0.012, 8: 0.012, 6: 0.005, 9: 0.005}
 
 
 def sculpt_body(M):
@@ -2081,8 +2651,9 @@ def sculpt_body(M):
     for row, moves in BODY_FORMS.items():
         ring = T[TORSO_ROWS.index(row)]
         for k, mv in moves.items():
-            fwd, out = mv[0], mv[1]
-            up = mv[2] if len(mv) > 2 else 0.0
+            # (second pass: a third stronger again, soft; the coordinator: "stronger (but soft) torso forms in grey")
+            fwd, out = mv[0] * 1.35, mv[1] * 1.35
+            up = (mv[2] if len(mv) > 2 else 0.0) * 1.35
             for kk in {k % TORSO_N, (-k) % TORSO_N}:
                 v = ring[kk]
                 if v in holes:
@@ -2347,36 +2918,43 @@ def bump(row, col, r0, c0, sr, sc):
     return np.exp(-(((row - r0) / sr) ** 2 + ((np.abs(col) - c0) / sc) ** 2))
 
 
-# The face's forms (body-sheet rows, and columns out from the middle, both sides alike; pixels of 1.13 mm): brows
-# at row 232, eyes at 256 (42 out), cheeks' apples at 283, the nose's base 309, mouth 330 (a keen closed grin, its
-# corners up at 327), chin 362. (row, column, row spread, column spread, metres out along the surface).
+# The face's forms (head-sheet rows, and columns out from his middle, both sides alike; head pixels of 0.635 mm),
+# measured off the bald front view: brows at row 905, the eyes at 948 (74 out), the cheeks' apples at 1000 (92 out),
+# the nose's base 1046, the mouth 1082 (a keen closed smile, its corners up at 1076, 50 out), the chin's ball 1145.
+# A thirteen-year-old's: a soft brow, big eyes in shallow sockets, soft cheeks, modelled lips, a pointed chin.
+# (row, column, row spread, column spread, metres out along the surface; negative in)
 FACE_FORMS = (
-    # (second round: deeper and firmer, the grey render read as a smooth blob)
-    # the brow ridge, soft (a boy's), and the forehead's roundness above it
-    (234, 22, 5, 12, 0.006), (232, 46, 5, 14, 0.008), (234, 66, 5, 10, 0.004),
-    # the eye sockets under the brow, the eyeball's swell in them, the upper lid's crease and the lower lid
-    (256, 43, 9, 19, -0.014), (257, 43, 4.5, 12, 0.0065), (250, 43, 1.6, 13, -0.002), (262, 43, 2.0, 12, 0.0018),
+    # the brow, soft, and the forehead rounding above it
+    (905, 38, 9, 20, 0.003), (902, 78, 9, 24, 0.004), (906, 112, 9, 16, 0.002),
+    # the eye sockets, shallow; the big eyeball's swell in them; the upper lid's crease and edge; the lower lid
+    (948, 74, 16, 26, -0.007), (950, 74, 10, 19, 0.0045), (934, 74, 4.0, 22, -0.0012), (964, 74, 4.0, 20, 0.001),
     # the bridge of the nose between the eyes stays up
-    (256, 0, 8, 7, 0.004),
-    # the cheeks' apples, high and round (the grin lifts them), and the hollow under the cheekbone
-    (283, 52, 11, 18, 0.009), (312, 66, 9, 10, -0.004),
-    # the nose's wings into the cheeks: the fold to the mouth's corners
-    (312, 30, 8, 5, -0.003), (322, 33, 6, 4, -0.0025),
-    # the upper lip, the mouth's line (curving up at its corners), the lower lip, the corners' dimples
-    (320, 0, 5, 20, 0.005), (331, 0, 1.6, 22, -0.006), (329, 18, 1.6, 7, -0.003), (338, 0, 4, 16, 0.006),
-    (327, 27, 3, 4, -0.0035),
-    # the groove under the lower lip, the chin's round ball
-    (347, 0, 3, 14, -0.004), (362, 0, 7, 16, 0.006),
-    # the temples, a little hollow; the jaw's line
-    (238, 80, 10, 9, -0.003), (352, 58, 8, 10, 0.002),
+    (948, 0, 16, 13, 0.003),
+    # the cheeks' apples, soft and round (the smile lifts them), the hollow under the cheekbone
+    (1002, 92, 22, 34, 0.006), (1062, 118, 18, 18, -0.003),
+    # the folds from the nose's wings toward the mouth's corners
+    (1054, 50, 14, 8, -0.002), (1068, 56, 10, 6, -0.0015),
+    # the upper lip and its groove, the mouth's line curving up at its corners, the lower lip, the corners' dimples
+    (1064, 0, 7, 36, 0.004), (1058, 0, 7, 6, -0.0012), (1078, 0, 2.4, 50, -0.005), (1075, 44, 2.6, 16, -0.003),
+    (1090, 0, 6, 30, 0.0048), (1073, 64, 5, 6, -0.003),
+    # the groove under the lower lip, the chin's ball (pointed: narrow)
+    (1114, 0, 5, 22, -0.003), (1146, 0, 12, 18, 0.004),
+    # the temples, a little hollow; the jaw's edge
+    (912, 138, 18, 16, -0.002), (1128, 84, 10, 18, 0.0015),
 )
 
 
 def sculpt_head(M):
     P = np.array(M.P)
     N = normals_of(P, M.tris())
-    row = body_row(P[:, 2])
-    col = P[:, 0] / S
+    row = hrow(P[:, 2])
+    col = P[:, 0] / HS
+    # (third round: moved along the direction out from the head's middle at each height, not along the points'
+    # own normals: those are uneven where the refined face meets the coarser head, and the forms came out as
+    # horizontal streaks)
+    cy = np.array([head_centre(M, z)[1] for z in P[:, 2]])
+    R = np.stack([P[:, 0], P[:, 1] - cy, np.zeros(len(P))], 1)
+    N = R / np.maximum(np.linalg.norm(R, axis=1, keepdims=True), 1e-9)
     facing = -N[:, 1]
     fam = np.array([part_family(p) for p in M.part])
     on = (fam == "head")
@@ -2390,6 +2968,8 @@ def sculpt_head(M):
 
 
 def refine_head(M, face_uv, weights, under):
+    """The face's front (brow to under the chin) split once, the jaw's edge with it; the eyes' and mouth's bands
+    once more (triangles spent on the eyes, nose, lips and jaw, as the coordinator asked)."""
     fam = [part_family(p) for p in M.fpart]
     Pm = np.array(M.P)
     front = set()
@@ -2397,11 +2977,8 @@ def refine_head(M, face_uv, weights, under):
         if fam[fi] not in ("head", "neck"):
             continue
         c = Pm[f].mean(0)
-        r = float(body_row(c[2]))
-        if 190 <= r <= 400 and c[1] < head_centre(M, c[2])[1] + 0.01:
-            front.add(fi)
-        # (second round: the skull's top all round too: at 16 points round it came to a peak)
-        elif r < 212 and fam[fi] == "head":
+        r = float(hrow(c[2]))
+        if 880 <= r <= 1192 and c[1] < head_centre(M, c[2])[1] + 0.012:
             front.add(fi)
     M1, uv1, W1, ch1 = refine(M, front, face_uv, weights)
     P = np.array(M1.P)
@@ -2411,10 +2988,10 @@ def refine_head(M, face_uv, weights, under):
         if fam1[fi] != "head" or len(f) != 4:
             continue
         c = P[f].mean(0)
-        r = float(body_row(c[2]))
-        # (third round: only the eyes' and the mouth's bands are split a second time; the brow, cheeks and chin are broad
-        # forms and the whole figure must stay within about 5,500 triangles)
-        band = (238 <= r <= 272 and abs(c[0]) < 0.07) or (314 <= r <= 346 and abs(c[0]) < 0.05)
+        r = float(hrow(c[2]))
+        # (third round: no second split: it cut the eyes' band into slivers a couple of millimetres tall and a
+        # centimetre long, which shaded as streaks and folded over in the fitting)
+        band = False
         if band and c[1] < head_centre(M1, c[2])[1] - 0.04:
             face.add(fi)
     M2, uv2, W2, ch2 = refine(M1, face, uv1, W1)
@@ -2692,8 +3269,24 @@ def finish(M, T, joints, sh):
     # (second round: the refined head smoothed before its forms go in: the rings of the lower face stood as bands)
     hsel = np.array([part_family(p) == "head" for p in M.part])
     hsel[M.tag["head_rings"][0]] = False
-    taubin(M, hsel, rounds=3)
-    sculpt_head(M)
+    taubin(M, hsel, rounds=7)
+    # (second pass) the head fitted to the bald row's outlines, then checked against all five of its views
+    fam_p = np.array([part_family(p) for p in M.part])
+    hfrozen = ~np.isin(fam_p, ("head", "nose"))
+    hfrozen[M.tag["head_rings"][0]] = True
+    hobjs = lambda: [(np.array(M.P), M.tris(), M.tri_fams())]
+    head_silhouettes(hobjs(), sh, "before", pictures=True)
+    fit_head(M, sh, hfrozen, rounds=HEAD_FIT_ROUNDS)
+    # (the forms go in after the fitting: fitted after them, the outline pulled single points of the lips and the
+    # mouth's groove out into spikes)
+    taubin(M, hsel, rounds=12)
+    if "--no-forms" not in ARGS:
+        sculpt_head(M)
+        sculpt_jaw(M)
+    # (third round: a light pass after the forms, so no single ring of them stands as a streak)
+    taubin(M, hsel, rounds=2)
+    fit_angled_model(hobjs(), sh)
+    landmark_report(M, "final")
     os.makedirs(TEX, exist_ok=True)
     for picture in ATLAS:
         write_layout(face_uv, placed, picture, os.path.join(TEX, "boy_%s_layout.png" % picture))
@@ -2703,6 +3296,8 @@ def finish(M, T, joints, sh):
     no_arms = [t for t, f in zip(tris_all, tf) if f not in ("arm", "hand")]
     Pc, no_arms_c = with_caps(M, P, no_arms)
     skin, spos, shit = paint_skin(M, face_uv, sh, tris_all, Pc, no_arms_c, joints)
+    places = hand_silhouettes(sh, "final")
+    skin = pad_edges(paint_hands_from_sheet(M, face_uv, skin, sh, places, joints), shit)
     face, fpos, fhit = paint_head(M, face_uv, sh)
     zt = float(np.mean([M.P[i][2] for i in M.tag["head_rings"][0]]))
     near_b = shit & (np.abs(spos[..., 2] - (zt - 0.008)) < 0.008)
@@ -2752,7 +3347,8 @@ def finish(M, T, joints, sh):
     objs.append((np.array(Bx.P), Bx.tris(), ["boxers"] * len(Bx.tris())))
     stats = overlay(objs, sh, "final")
     print("BOY overlay final %s" % json.dumps(stats))
-    head_overlay(objs[:1], sh)
+    head_silhouettes(objs[:1], sh, "final")
+    body_silhouettes(objs, sh, "final")
     winding_check(M, "body")
     winding_check(Bx, "shorts (open: not a volume)")
     export(armature, GLB)
