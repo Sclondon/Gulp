@@ -236,3 +236,29 @@ four sea turtles, pufferfish, three seahorses, cleaner/mantis/pistol shrimps, th
 star and sea lily. `Species` gained `slow` (pace beside a fish of its length; 0 stays put). Installed but NOT yet in
 the sea (they need placing like scenery or the nettles, not as swimmers): `anemone` (three kinds), `lions_mane_jelly`,
 `box_jelly`, `fried_egg_jelly`, `man_o_war` (floats on the waterline). Places, numbers and sizes are Claude's picks.
+
+### Later the same day (2026-11-18): the panel low-poly, the title built, more planted
+
+- The user: "Still not enough pipes / wires shaping the ui outline"; "the dials need labels"; "Pipes and wires need
+  proper connections, nails need proper models / textures, and make it low poly twilight princess style"; "The gaps
+  between the wires and side pipes and details should be smaller- rhey should hug the panel tighter".
+- So `tools/build_panel.py` now builds a LOW-POLY model (about 17,000 triangles) and BAKES its paint with Cycles into
+  one picture, `textures/panel/panel_atlas.png` (about 2.5 minutes a build; `-- --no-bake` skips it). Procedural
+  Blender materials give the rust and brass; the bake adds light from the upper left and contact shadow. The housings
+  are baked with the moving parts hidden, then the moving parts. `shaders/panel.gdshader` draws the picture unlit with a
+  shine by material name (`PanelModel.PAINTS`). Every pipe and wire goes through `run(...)`, which ends it in a flange
+  (`"Y"` a face, `"X"`/`"-X"` a side, `"Z"` a top). Dial labels are symbols (`sign`): fish = evolution, chevrons = speed,
+  wave and arrow = depth, bolt = burst left. The atlas packs loosely (much of it is empty): worth repacking if the
+  picture needs to be sharper or smaller.
+- `tools/build_helmet.py` runs the top of build_panel.py for its helpers and bakes `textures/panel/helmet_atlas.png`
+  for the helmet, cable and bench.
+- The title is built: `models/shrimp_boat.glb` (`tools/SHRIMP_BOAT.md`), the three figures (`scripts/title_figures.gd`,
+  `tools/TITLE_FIGURES.md`: on the boy's skeleton with their own small idle, because GameCommon's character-controller
+  cannot be installed here while Gulp has its own `Player` and `Dust` classes), the computer, the helmet on the boy's
+  head mount with two cables. `--title` shows it for a picture, `--dive` starts the dive by itself. The boy's hair and
+  skin are plain materials, not Warren's ink-figure look (that needs `godot/ink-figure`).
+- Planted by `scripts/scenery.gd`: GameCommon `seaweed` (six kinds; sargassum afloat over the open ocean) and living
+  `anemone`s. Also in the sea: cameroceras, anomalocaris, three trilobites, dumbo octopus, firefly squid, comb jelly,
+  pyrosome. Installed but not yet used: `sea_sparkle` (needs `stir` from Life), the four new jellyfish (need Life's
+  jelly handling), `sea_slug`/`clam`/`oyster` when their builder finishes.
+- About 9 ms a frame on the desktop in the kelp now (it was about 6).

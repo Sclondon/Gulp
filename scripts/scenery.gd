@@ -15,6 +15,8 @@ const PROPS := "res://scenery/sea_floor_props/sea_floor_props.gd"
 const EELS := "res://creatures/garden_eel/garden_eel_colony.gd"
 const ANEMONE := "res://creatures/clownfish/clownfish_anemone.gd"
 const MANGROVE := "res://plants/mangrove/mangrove_stand.gd"
+const SEAWEED := "res://plants/seaweed/seaweed_bed.gd"
+const LIVE_ANEMONE := "res://creatures/anemone/anemone.gd"
 ## How many kelp plants, tufts of grass and garden eels.
 const KELPS := 150
 const TUFTS := 2600
@@ -56,6 +58,10 @@ func _ready() -> void:
 		_plant_anemones()
 	if ResourceLoader.exists(MANGROVE):
 		_plant_mangroves()
+	if ResourceLoader.exists(SEAWEED):
+		_plant_seaweed()
+	if ResourceLoader.exists(LIVE_ANEMONE):
+		_plant_live_anemones()
 
 
 func _process(delta: float) -> void:
@@ -237,6 +243,48 @@ func _plant_grass() -> void:
 	_grass.set(&"push_radius", 0.7)
 	add_child(_grass)
 	_grass.call(&"plant", places, heights)
+
+
+# Seaweed (the user, 2026-11-18: "sea weed"; which kind grows where and how much is Claude's
+# pick): sea lettuce in the sea grass and the river mouth, rockweed, feather boa kelp and sea
+# palms among the kelp's rocks, red algae on the reef, and mats of sargassum afloat over the
+# open ocean. Each row: the kind (SeaweedBed.Kind), the zone, how many, how tall (from, to).
+func _plant_seaweed() -> void:
+	var places := PackedVector3Array()
+	var sizes := PackedFloat32Array()
+	var kinds := PackedInt32Array()
+	for row: Array in [[0, "grass", 140, 0.25, 0.5], [0, "river", 60, 0.25, 0.45], [1, "kelp", 160, 0.25, 0.45], [2, "reef", 160, 0.16, 0.32],
+			[3, "kelp", 40, 1.8, 3.0], [4, "kelp", 40, 0.4, 0.7], [5, "open", 70, 0.8, 1.8]]:
+		var zone: Dictionary = Sea.ZONES[row[1]]
+		for i in int(row[2]):
+			var at := _in_zone(zone, 0.95)
+			var low := Sea.ground(at.x, at.y)
+			if Sea.SURFACE - low < 1.0:
+				continue
+			places.append(Vector3(at.x, low - 0.02, at.y))
+			sizes.append(_rng.randf_range(row[3], row[4]))
+			kinds.append(int(row[0]))
+	var bed: Node3D = (load(SEAWEED) as GDScript).new()
+	bed.set(&"far", SEEN)
+	bed.set(&"cell", 8.0)
+	bed.set(&"current", Vector2(0.3, 0.1))
+	add_child(bed)
+	bed.call(&"plant", places, sizes, kinds, Sea.SURFACE)
+
+
+# Living anemones (the user's list: "anemones"; where and how many is Claude's pick): giant green
+# ones on the kelp's rocks and the reef, tube anemones in the sand, plumose ones in the kelp.
+func _plant_live_anemones() -> void:
+	for row: Array in [[0, "kelp", 6], [0, "reef", 6], [1, "sand", 10], [2, "kelp", 8]]:
+		for i in int(row[2]):
+			var at := _in_zone(Sea.ZONES[row[1]], 0.85)
+			var one: Node3D = (load(LIVE_ANEMONE) as GDScript).new()
+			one.set(&"kind", int(row[0]))
+			one.set(&"game", true)
+			add_child(one)
+			one.global_position = Vector3(at.x, Sea.ground(at.x, at.y) - 0.01, at.y)
+			one.rotation.y = _rng.randf() * TAU
+			one.scale = Vector3.ONE * _rng.randf_range(1.0, 1.8)
 
 
 # The clownfish's homes: a few host anemones on the reef.
