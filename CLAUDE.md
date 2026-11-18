@@ -486,9 +486,10 @@ choices below are Claude's.
   table, `data/ruins_layout.json`, says where every building, ledge and stair is; the model's build
   (`tools/build_atlantis_canyon.py` -> `models/atlantis_canyon.glb`, about 15 minutes with its bake),
   `Bay.ruins_ledges()` (small ledges under each, never a flat disc; `Bay.RUINS_TERRACE` is gone) and `Ruins` (routes,
-  `covers` for the plants) all read it. A ledge `cut`s (only lowers the floor: behind a rock-cut front, so the wall
-  does not fill its chamber) or fills `both` ways (terraces, stairs, the tread before each front): filled, the floor
-  itself carries each terrace and stair as a tread of the wall (masonry footings hung from them looked like curtains).
+  `covers` for the plants) all read it. A ledge `cut`s (only lowers the floor: round a rock-cut front's chamber),
+  `fill`s (only raises it: behind each rock-cut front, burying its box of rock in a cliff) or levels `both` ways
+  (terraces, stairs, the tread before each front): the floor itself carries each terrace and stair as a tread of the
+  wall (masonry footings hung from them looked like curtains, the fronts' boxes like slabs).
   Fills are kept square to the world's axes: a diagonal one came out saw-toothed on the floor's grid. After a floor
   rebake or a table change: `tools/ruins_ground.gd`, the build, `--import`, `tests/setpiece_hits.gd -- --fit-ruins
   --no-ruins-extra`, then `tests/ruins_view.gd -- --check`. Every building stands on one of the trench's treads: the
@@ -918,3 +919,17 @@ Claude's.
   shorts, paint, shoulders), then get the same fixes and the independent critic. NOT in the game. Before any web
   build: leave `models/npc`, `textures/npc`, `models/captain*`, `models/brother*`, `models/boy*` and their textures out of
   the export (about 50 MB unused), in `tools/web_excludes.sh`.
+- Figures, evening of 2026-11-18, what was learned and decided:
+  - Why skin looked dark and muddy though the texture matched the sheet: Blender's default AgX view transform darkens
+    comparison renders (set `view_transform = "Standard"`; `tools/critic_pack.py` does), and a sheet's painted light and
+    shade is lit a second time in the game (`delight()` in `tools/build_brother.py` takes the broad shading out and
+    keeps local colour).
+  - Eyes are modelled open (an opening cut to the sheet's lids, lids with thickness, separate eyeballs on the head
+    bone with a painted iris); the captain's stay wrinkly slits, modelled as a squint.
+  - Feet come from the bundle's `Foot - Stylized`, fitted as the hands are; shorts are real garments (waistband, crotch,
+    two legs, a hem with thickness), not a tube.
+  - The younger boy is rebuilt to NEW sheets, `concept_boy_tpose2.jpg` and `concept_boy_head2.jpg` (slight, wiry,
+    clearly thirteen). CLAUDE'S PICK, recommended to the user and not yet confirmed by them: his first sheet draws a
+    squat muscular little man and the model matched it. The old sheets are kept, retired.
+  - Lit perspective "beauty" pictures (`tests/<figure>_view.gd --persp`/`--beauty`, `tests/captain_beauty.gd`) are what
+    the user is shown; the tiled sheet comparisons are for checking.
