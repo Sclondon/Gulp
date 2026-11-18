@@ -59,7 +59,6 @@ const HARBOURS := [
 const WRECK_SHELF := [Vector2(-37.0, 100.0), 7.0, 14.0, 26.0, Vector2(0.0, 0.0), Vector2(0.0, 1.0), true]
 const WRECK_SEAT_SOUTH := [Vector2(-37.0, 152.0), 6.0, 12.0, 26.0, Vector2(0.0, 0.0), Vector2(0.0, 1.0), true]
 const PIRATE_HOLLOW := [Vector2(-65.0, -42.0), 20.0, 38.0, 21.0, Vector2(0.0, 0.0)]
-
 ## Atlantis is built into the Monterey Canyon's walls (tools/RUINS.md): small ledges are cut into them
 ## under each of its buildings and stairs, read from the one table that the model's build and Ruins
 ## read too (so they cannot disagree). No big flat: "The Atlantis ruines area shouldnt just be a big
@@ -166,12 +165,15 @@ static func shore_distance(p: Vector2) -> float:
 
 
 static func _shore_at(p: Vector2) -> float:
+	# (loaded first: `_sample` loads too, but `_shore` is handed to it before that, still empty)
+	_load()
 	# (the slough is water cut through the land)
 	return maxf(_sample(_shore, p.x, p.y), SLOUGH_HALF - _line_distance(p, SLOUGH))
 
 
 ## How deep the water is at a point (m; less than 0 on land).
 static func depth(p: Vector2) -> float:
+	_load()
 	var deep := _sample(_depth, p.x, p.y)
 	var d := _shore_at(p)
 	# The slough's channel: shallow banks, a deeper channel down its middle (the user, 2026-11-18: "The river
@@ -293,6 +295,7 @@ static func _line_distance(p: Vector2, line: Array) -> float:
 	for i in line.size() - 1:
 		best = minf(best, p.distance_to(Geometry2D.get_closest_point_to_segment(p, line[i], line[i + 1])))
 	return best
+
 
 ## The dune sea (BiomeRegions DUNES, the user's yellow): rolling sand waves in the floor's own shape,
 ## lying across the current (Biomes.CURRENT, from the west), on the shelf only: they fade out up the
