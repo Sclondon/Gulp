@@ -34,6 +34,11 @@ Keep it that way.
   "horseshoe craps"
 - "there should also bea trench area", "with trench fish, angler fish, and other types"
 - "and it should be an online arena like the other \",.io\" style games on the arcade", "with a high schore"
+- 2026-11-18: "the eyes for most of them should be more cartoony and personalized"; "the contols UI should be old timey
+  submarine themed, and there needs to be a lever to control speed around the boost button instead of just swimming
+  same speed all the time"; then the list of more animals quoted at the top of `tools/NEXT_BUILDERS.md` (marine
+  reptiles, Paleozoic animals, turtles, walrus, narwhal, pufferfish, seahorses, echinoderms, slugs, shells, anemones,
+  shrimps, more jellyfish, glowing things, seaweed).
 
 ### What is done of it (2026-11-17)
 
