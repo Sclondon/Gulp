@@ -48,8 +48,13 @@ Keep it that way.
   open ocean, a trench. **Only the floor's shape and who lives where exist: no kelp, grass, rocks, coral, mangroves
   or garden eels are placed yet** (the old rock outcrops are retired: `models/sea_floor.glb` is unused).
 - Branching growth (`Player.GROWTH`, the cards in `Hud.ChoiceCard`), the leap (`Player.in_air`), mouths (`Fish.bite`).
-- Not started: the online arena and high score (read the `online-rooms` skill and how Liquid Metal's arena and the
-  other .io carts keep scores), trench fish (GameCommon has an `anglerfish`, a monster made for Warren: look before
+- The online arena (`scripts/arena.gd`, `arena_net.gd`; after Liquid Metal's): players share a room on the site's
+  server and eat each other by the one rule; each game keeps its own sea life (Claude's simplification); the high
+  scores are the longest fish by name, kept in the server's memory only (lost on a deploy: not the site's
+  leaderboard yet). The server part is the branch `gulp-arena` in the worktree `C:Projectsscareathonwt-gulp-arena`
+  (one commit, NOT pushed or merged: the live server has no /gulp/ws yet, so a web build plays alone until it is).
+  `sh tests/arena.sh /c/Projects/scareathon/wt-gulp-arena/server` passes (a tuna eats a sardine, two copies).
+- Not started: trench fish (GameCommon has an `anglerfish`, a monster made for Warren: look before
   using), sound, the plants and rocks in the zones, anything above the water (shore, mangrove trees, sky).
 
 ### Model builders (agents) and what is still to start
