@@ -10,9 +10,10 @@ const MODEL := "res://models/captain.glb"
 const HAIR_SHADER := "res://shaders/ink/hair_ink.gdshader"
 ## Hair colours by mesh name: albedo, pale, ink, flicks, and the beard's look (see _hair).
 const HAIR := {
-	"captain_beard": [Color(0.5, 0.48, 0.45), Color(0.62, 0.6, 0.57), Color(0.24, 0.23, 0.22), Color(0.85, 0.84, 0.8)],
-	"captain_headhair": [Color(0.46, 0.46, 0.45), Color(0.58, 0.58, 0.57), Color(0.22, 0.22, 0.22), Color(0.8, 0.8, 0.78)],
-	"captain_chesthair": [Color(0.4, 0.38, 0.36), Color(0.5, 0.48, 0.46), Color(0.2, 0.19, 0.18), Color(0.75, 0.74, 0.72)],
+	# (white-grey as the head sheet paints it; the ink a soft grey shadow between the clumps, not black)
+	"captain_beard": [Color(0.64, 0.62, 0.57), Color(0.72, 0.7, 0.65), Color(0.36, 0.34, 0.31), Color(0.82, 0.8, 0.75)],
+	"captain_headhair": [Color(0.5, 0.5, 0.49), Color(0.6, 0.6, 0.59), Color(0.28, 0.28, 0.28), Color(0.74, 0.74, 0.72)],
+	"captain_chesthair": [Color(0.56, 0.54, 0.5), Color(0.64, 0.62, 0.58), Color(0.38, 0.36, 0.33), Color(0.78, 0.77, 0.74)],
 }
 
 var _out := ""
@@ -46,6 +47,9 @@ func _initialize() -> void:
 	world.add_child(_model)
 	for mesh: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
 		mesh.lod_bias = 64.0
+		# (the skin under the boxers is never drawn: whatever he wears covers it)
+		if String(mesh.name).begins_with("captain_body_under"):
+			mesh.visible = false
 		for key: String in HAIR:
 			if String(mesh.name).begins_with(key):
 				mesh.material_override = _hair(key)
@@ -54,7 +58,7 @@ func _initialize() -> void:
 	world.add_child(_cam)
 	# (name, eye direction from him, look-at height, ortho size)
 	var body := [["front", Vector3(0, 0, 1)], ["side", Vector3(-1, 0, 0)], ["back", Vector3(0, 0, -1)], ["three_quarter", Vector3(0.7, 0, 0.7)]]
-	var head := [["head_front", Vector3(0, 0, 1)], ["head_three_quarter", Vector3(0.62, 0, 0.78)], ["head_side", Vector3(1, 0, 0)]]
+	var head := [["head_front", Vector3(0, 0, 1)], ["head_three_quarter", Vector3(0.62, 0, 0.78)], ["head_side", Vector3(1, 0, 0)], ["head_below", Vector3(0, -0.72, 0.69).normalized()], ["head_back", Vector3(0, 0, -1)]]
 	for lit in [true, false]:
 		for b in body:
 			_shots.append([b[0] + ("_lit" if lit else "_unlit"), b[1], 0.84, 1.78, lit])
@@ -71,19 +75,22 @@ func _hair(key: String) -> ShaderMaterial:
 	m.set_shader_parameter(&"ink", c[2])
 	m.set_shader_parameter(&"flicks", c[3])
 	m.set_shader_parameter(&"metres", 1.0)
-	m.set_shader_parameter(&"strand_gap", 0.0038)
-	m.set_shader_parameter(&"lit_lines", 0.035)
-	m.set_shader_parameter(&"shadow_lines", 0.2)
-	m.set_shader_parameter(&"wrap", 0.5)
-	m.set_shader_parameter(&"shadow_fill", 0.5)
-	m.set_shader_parameter(&"root_ink", 0.08)
-	m.set_shader_parameter(&"gap_ink", 0.04)
-	m.set_shader_parameter(&"flick_gain", 0.14)
+	# (big soft clumps: few broad strand lines, faint; soft grey between the clumps; no ragged tips)
+	m.set_shader_parameter(&"strand_gap", 0.009)
+	m.set_shader_parameter(&"lit_lines", 0.012)
+	m.set_shader_parameter(&"shadow_lines", 0.08)
+	m.set_shader_parameter(&"wrap", 0.35)
+	m.set_shader_parameter(&"shadow_fill", 0.55)
+	m.set_shader_parameter(&"root_ink", 0.12)
+	m.set_shader_parameter(&"gap_ink", 0.3)
+	m.set_shader_parameter(&"flick_gain", 0.1)
+	m.set_shader_parameter(&"flick_gloss", 14.0)
 	m.set_shader_parameter(&"lighten", 0.0)
-	m.set_shader_parameter(&"tip_ragged", 0.22)
-	m.set_shader_parameter(&"strand_cover", 0.92)
+	m.set_shader_parameter(&"print_grain", 0.03)
+	m.set_shader_parameter(&"tip_ragged", 0.0)
 	m.set_shader_parameter(&"layer_shade", 1.0)
-	m.set_shader_parameter(&"root_dark", 0.35)
+	m.set_shader_parameter(&"root_dark", 0.25)
+	m.set_shader_parameter(&"soft", 1.0)
 	return m
 
 

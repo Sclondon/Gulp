@@ -425,6 +425,7 @@ LEG_ROWS = [1040, 1065, 1100, 1140, 1180, 1215, 1250, 1290, 1322, 1350]
 HIP_ROW, KNEE_ROW, ANKLE_ROW = 978, 1215, 1352
 HIP_X = 0.118
 FOOT_YAW = math.radians(24.0)     # toes out
+TOE_REACH = 1.06                  # the toes' end a little further forward than stage one's
 # The foot's rings below the ankle: height, how far it reaches forward of the ankle, back, and to each side.
 FOOT_RINGS = ((0.100, 0.060, 0.058, 0.050), (0.068, 0.125, 0.072, 0.056), (0.036, 0.25, 0.08, 0.068),
               (0.013, 0.246, 0.076, 0.064), (0.0, 0.232, 0.064, 0.054))
@@ -793,8 +794,14 @@ def leg(M, sh, T, rings, crotch, side, joints):
             # each point at its own angle round the egg, turned with the foot, so the toes get the front points
             al = th - FOOT_YAW
             cu, cv = math.cos(al), math.sin(al)
-            u = cu * (front if cu > 0 else backr)
-            v = cv * half * (1.0 if cu > -0.2 else 0.88)
+            # (the toes' end squarer and wider than an egg, and reaching further, as the sheet's long splayed toes;
+            # stage one's egg front made them blunt)
+            if cu > 0:
+                u = sgnpow(cu, 0.55) * front * TOE_REACH
+                v = sgnpow(cv, 0.8) * half * (1.0 + 0.18 * cu)
+            else:
+                u = cu * backr
+                v = cv * half * (1.0 if cu > -0.2 else 0.88)
             q = Vector((ax, ay, z)) + fwd * u + lat * v
             ring.append(M.add(mirror_x(q, side), foot_part))
         M.bridge(prev, ring, foot_part) if side > 0 else M.bridge(ring, prev, foot_part)
@@ -1547,10 +1554,10 @@ ISLANDS = {
     "torso_front": ("skin", 1.25), "torso_back": ("skin", 1.0), "arm_l": ("skin", 1.0), "arm_r": ("skin", 1.0),
     "hand_l_back": ("skin", 1.6), "hand_l_palm": ("skin", 1.1), "hand_r_back": ("skin", 1.6), "hand_r_palm": ("skin", 1.1),
     "leg_l": ("skin", 0.8), "leg_r": ("skin", 0.8), "sole_l": ("skin", 0.5), "sole_r": ("skin", 0.5),
-    "head_front": ("face", 2.2), "head_back": ("face", 1.0), "nose": ("face", 2.2), "ear_l": ("face", 1.3),
-    "ear_r": ("face", 1.3), "peak": ("face", 0.8),
+    "head_front": ("face", 4.0), "head_back": ("face", 0.8), "nose": ("face", 2.2), "ear_l": ("face", 0.8),
+    "ear_r": ("face", 0.8), "peak": ("face", 0.35),
 }
-ATLAS = {"skin": 1024, "face": 512}
+ATLAS = {"skin": 1024, "face": 1024}
 
 
 def grid_uvs(M, rings, faces, seam, up=False):
@@ -1614,6 +1621,24 @@ def planar_uvs(M, faces, ax_u, ax_v, origin=(0, 0, 0)):
     return out
 
 
+def cylinder_uvs(M, T, faces, back):
+    P = np.array(M.P)
+    zs = np.array([P[r][:, 2].mean() for r in T])
+    cys = np.array([P[r][:, 1].mean() for r in T])
+    Rs = np.array([np.hypot(P[r][:, 0], P[r][:, 1] - P[r][:, 1].mean()).mean() for r in T])
+    out = {}
+    for fi in faces:
+        uv = []
+        for v in M.faces[fi]:
+            x, y, z = P[v]
+            cy = float(np.interp(z, zs, cys))
+            R = float(np.interp(z, zs, Rs))
+            th = math.atan2(-x, y - cy) if back else math.atan2(x, -(y - cy))
+            uv.append((th * R, float(z)))
+        out[fi] = uv
+    return out
+
+
 def plan_uvs(M, T, H, joints):
     """Gives {island: {face index: [uv per corner, metres]}}."""
     fam = [p.split("_")[0] for p in M.fpart]
@@ -1621,9 +1646,10 @@ def plan_uvs(M, T, H, joints):
     # torso: front (columns 12..3, seam at column 4 and 12) and back
     tf = [fi for fi, c in M.cell.items() if c[0] == "torso" and (c[2] >= 12 or c[2] < 4)]
     tb = [fi for fi, c in M.cell.items() if c[0] == "torso" and 4 <= c[2] < 12]
-    islands["torso_front"] = grid_uvs(M, T, tf, 12, up=True)
-    back = grid_uvs(M, T, tb, 4, up=True)
-    islands["torso_back"] = {fi: [(-u, v) for u, v in uv] for fi, uv in back.items()}
+    # (the torso's front and back by angle round his middle at each height times that height's mean radius, so the
+    # arm holes, whose points stand round the shoulder, do not shear the islands as distance round a ring did)
+    islands["torso_front"] = cylinder_uvs(M, T, tf, back=False)
+    islands["torso_back"] = cylinder_uvs(M, T, tb, back=True)
     # the head and neck (the torso's top ring, the head's rings): front and back
     HR = [T[-1]] + H
     hf = [fi for fi, c in M.cell.items() if c[0] == "head" and (c[2] >= 12 or c[2] < 4) and c[1] < len(H) - 1]
@@ -1709,7 +1735,7 @@ def pack(islands, pad_px=6):
                 raise ValueError("island %s has a bad size %s" % (n, boxes[n][3]))
         order = sorted(names, key=lambda n: -boxes[n][3][1])
         total = sum(b[3][0] * b[3][1] for b in boxes.values())
-        width = math.sqrt(total) * 0.95
+        width = max(math.sqrt(total) * 0.95, max(b[3][0] for b in boxes.values()) * 1.02) if boxes else 1.0
         while True:
             pad = width * pad_px / size
             x = y = shelf = 0.0
@@ -1954,8 +1980,11 @@ class Locks:
         self.P, self.F, self.UV, self.UV2, self.C = [], [], [], [], []
         self.count = 0
 
-    def lock(self, path, outs, widths, thick=0.35, shade=1.0, under=0.6):
-        """A lock along `path` (points), lying with its face toward `outs` (directions), `widths` half-widths."""
+    def lock(self, path, outs, widths, thick=0.35, shade=1.0, under=0.6, sides=4):
+        """A lock along `path` (points), lying with its face toward `outs` (directions), `widths` half-widths.
+        sides 4: a flat diamond; 6 or more: a lens-shaped clump (round on top, flatter underneath), soft in light."""
+        if sides != 4:
+            return self.clump(path, outs, widths, thick, shade, under, sides)
         path = [np.asarray(p, float) for p in path]
         n = len(path)
         seg = [np.linalg.norm(path[i + 1] - path[i]) for i in range(n - 1)]
@@ -1983,6 +2012,48 @@ class Locks:
         for a, b in zip(rings, rings[1:]):
             for k in range(4):
                 self.F.append([a + k, b + k, b + k + 1, a + k + 1])
+        self.count += 1
+
+    def clump(self, path, outs, widths, thick, shade, under, sides):
+        """A closed tapered clump: rings of `sides` points round a lens (half-width w across, w * thick out on top,
+        w * thick * under below), the first point repeated so UV round it runs 0..1. UV.x along it (root 0, tip 1)."""
+        path = [np.asarray(p, float) for p in path]
+        n = len(path)
+        seg = [np.linalg.norm(path[i + 1] - path[i]) for i in range(n - 1)]
+        total = max(sum(seg), 1e-6)
+        dist = np.concatenate([[0.0], np.cumsum(seg)])
+        rings = []
+        for i in range(n):
+            t = path[min(i + 1, n - 1)] - path[max(i - 1, 0)]
+            t /= max(np.linalg.norm(t), 1e-9)
+            o = np.asarray(outs[i], float)
+            o = o - t * np.dot(o, t)
+            o /= max(np.linalg.norm(o), 1e-9)
+            s = np.cross(t, o)
+            w = widths[i]
+            base = len(self.P)
+            for k in range(sides + 1):
+                a = math.tau * k / sides
+                ca, sa = math.cos(a), math.sin(a)
+                h = w * thick * (1.0 if sa >= 0 else under)
+                q = path[i] - s * (w * ca) + o * (h * sa)
+                self.P.append(q)
+                self.UV.append((dist[i] / total, k / float(sides)))
+                self.UV2.append((dist[i], w * math.tau * k / sides))
+                self.C.append(shade)
+            rings.append(base)
+        for a, b in zip(rings, rings[1:]):
+            for k in range(sides):
+                # (wound outward: round the ring, then along it)
+                self.F.append([a + k, a + k + 1, b + k + 1, b + k])
+        # the root closed by a fan, so each clump is a closed shape
+        c = len(self.P)
+        self.P.append(path[0])
+        self.UV.append((0.0, 0.5))
+        self.UV2.append((0.0, 0.0))
+        self.C.append(shade)
+        for k in range(sides):
+            self.F.append([c, rings[0] + k + 1, rings[0] + k])
         self.count += 1
 
     def tris(self):
@@ -2149,120 +2220,148 @@ def build_hair(M, sh, rng):
             p[1] += (1 - f) * 0.02 * hang
         return p, d
 
-    def beard_lock(phi0, f, shade, wscale, extra=0.0):
-        r0 = root_row(phi0) + rng.uniform(-8, 8)
-        end = float(np.interp(abs(math.degrees(phi0)), [0, 35, 65, 95], [bottom, 828, 770, 700]))
-        rows = list(np.linspace(r0, end + extra, 8))
+    # The beard as CLUMPS (stage one's thousand thin locks read as scratches): a few dozen big, soft, tapered locks,
+    # each a closed lens-shaped tube (`Locks.clump`), laid in three layers from the skin out, the outer layer making the
+    # silhouette the head sheet draws, the under layers darker; their tips converge to the beard's rounded bottom and
+    # the front ones curl a little forward (the wedge in profile). As stylised game beards are built: big clump shapes
+    # varied in width, length and flow, overlapped, the shader giving them their strand sheen.
+    def beard_clump(phi0, f, shade, w0, length=1.0, curl=0.0):
+        r0 = root_row(phi0) + rng.uniform(-6, 6)
+        a = abs(math.degrees(phi0))
+        end = float(np.interp(a, [0, 25, 50, 75, 100], [bottom, 838, 805, 745, 640]))
+        end = r0 + (end - r0) * length
+        n = 7
         path, outs = [], []
-        for i, row in enumerate(rows):
-            t = i / (len(rows) - 1)
-            phi = phi0 * (1.0 - 0.22 * t * t)
-            ff = f if i else max(f * 0.15, 0.02)       # the root lies on the skin, the lock rises to its layer
-            ff = ff if i != 1 else f * 0.7
+        for i in range(n):
+            t = i / (n - 1)
+            row = r0 + (end - r0) * t
+            # the tips converge toward the middle of the beard's bottom
+            phi = phi0 * (1.0 - 0.5 * t ** 1.6)
+            ff = f * (0.35 + 0.65 * min(1.0, t * 2.2))
             q, d = beard_point(row, phi, ff)
             if q is None:
                 break
-            # out of the drawn beard (front or side view): the lock ends a little past it
-            pc = HEAD_MID["front"] + q[0] / HEAD_SX
-            sc = HEAD_MID["side"] + q[1] / HEAD_SX
-            rr = int(row)
-            if i > 1 and not outline[rr, int(np.clip(pc, 0, outline.shape[1] - 1))]:
-                path.append(q + np.array((0, 0, -0.008)))
-                outs.append(d)
-                break
+            if i == n - 1:
+                q = q + np.array((0.0, -curl, 0.004))
             path.append(q)
-            outs.append(d)
-        if len(path) < 3:
+            outs.append(d * 0.85 + np.array((0.0, 0.0, -0.15)) * t)
+        if len(path) < 4:
             return
-        n = len(path)
-        sm = [path[0]] + [(path[i - 1] + path[i] * 2 + path[i + 1]) / 4.0 for i in range(1, n - 1)] + [path[-1]]
-        path = sm
-        w0 = 0.016 * wscale * rng.uniform(0.85, 1.2)
-        widths = [w0 * (0.75 + 0.45 * math.sin(math.pi * min(i / (n - 1) * 1.3, 1.0))) * (1.0 - 0.8 * (i / (n - 1)) ** 2.2) for i in range(n)]
-        widths[-1] = 0.0015
-        B.lock(path, outs, widths, thick=0.42, shade=shade)
+        m = len(path)
+        widths = [w0 * (0.72 + 0.45 * math.sin(math.pi * min(i / (m - 1) * 1.5, 1.0))) * (1.0 - 0.88 * (i / (m - 1)) ** 2.4)
+                  for i in range(m)]
+        widths[-1] = 0.0018
+        B.lock(path, outs, widths, thick=0.5, shade=shade, under=0.45, sides=6)
 
     # three layers, outermost last (lightest); angles jittered so no two layers line up
-    for f, shade, count, wscale in ((0.5, 0.55, 20, 1.15), (0.78, 0.76, 24, 1.05), (1.0, 1.0, 28, 1.0)):
+    for f, shade, count, w0 in ((0.45, 0.5, 10, 0.03), (0.72, 0.74, 15, 0.026), (0.92, 1.0, 21, 0.022)):
         for i in range(count):
-            phi = math.radians(-100 + 200 * (i + 0.5) / count + rng.uniform(-3, 3))
-            beard_lock(phi, f, shade, wscale, extra=rng.uniform(-10, 14))
-    # The moustache: two sweeps from under the nose, out over the mouth's corners, drooping into the beard.
+            phi = math.radians(-98 + 196 * (i + 0.5) / count + rng.uniform(-4, 4))
+            front = math.cos(phi) ** 2
+            B_w = w0 * rng.uniform(0.85, 1.25)
+            beard_clump(phi, f, shade * rng.uniform(0.93, 1.0), B_w, length=rng.uniform(0.9, 1.04),
+                        curl=0.012 * front * f)
+    # The moustache: two big drooping clumps from under the nose, out over the mouth's corners and down into the
+    # beard, with a smaller one above each; lighter than the beard.
     nose_row, mouth_row = 598.0, 640.0
     for s in (1, -1):
-        for j in range(6):
-            spread = j / 5.0
+        for j, (w0, reach, drop, lift) in enumerate(((0.019, 1.0, 1.0, 0.0), (0.013, 0.75, 0.7, 0.004))):
             pts, outs = [], []
             for i, t in enumerate(np.linspace(0, 1, 6)):
-                row = nose_row + 2 + (mouth_row + 42 + 22 * spread - nose_row - 2) * (t ** 1.25)
-                phi = s * math.radians(3 + 3 * spread + (26 + 10 * spread) * t)
+                row = nose_row + 4 + (mouth_row + 55 * drop - nose_row - 4) * (t ** 1.35)
+                phi = s * math.radians(4 + 40 * reach * t ** 0.8)
                 q, d = beard_point(row, phi, 1.0)
                 if q is None:
                     break
-                pts.append(q + d * (0.006 + 0.006 * math.sin(math.pi * t)))
-                outs.append(d * 0.8 + np.array((0, 0, 0.6)))
+                pts.append(q + d * (0.008 + lift + 0.006 * math.sin(math.pi * t)))
+                outs.append(d * 0.7 + np.array((0, 0, 0.7)))
             if len(pts) >= 4:
-                n = len(pts)
-                widths = [0.013 * (1.0 + 0.3 * math.sin(math.pi * i / (n - 1))) * (1.0 - 0.85 * (i / (n - 1)) ** 2) for i in range(n)]
-                widths[-1] = 0.0015
-                B.lock(pts, outs, widths, thick=0.75, shade=0.9 + 0.1 * spread)
+                m = len(pts)
+                widths = [w0 * (0.85 + 0.35 * math.sin(math.pi * min(i / (m - 1) * 1.6, 1.0))) * (1.0 - 0.88 * (i / (m - 1)) ** 2.2)
+                          for i in range(m)]
+                widths[-1] = 0.0018
+                B.lock(pts, outs, widths, thick=0.6, shade=1.0 if j == 0 else 0.92, under=0.5, sides=6)
     out["captain_beard"] = B
-    print("CAPTAIN hair: beard and moustache %d locks, %d triangles" % (B.count, B.tris()))
+    print("CAPTAIN hair: beard and moustache %d clumps, %d triangles" % (B.count, B.tris()))
 
-    # The grey hair under his cap, back and sides: two layers from under the band down to the nape.
+    # The grey hair under his cap: short clumps close to the skull from under the band, longest at the back (to the
+    # nape's top, not a curtain), short over the ears with a tuft hanging over each ear's top.
     Hh = Locks()
     band_row = 420.0
 
     def end_row(phi):
         a = abs(math.degrees(phi))
-        return float(np.interp(a, [78, 100, 125, 150, 180], [452, 466, 565, 680, 715]))
+        return float(np.interp(a, [78, 95, 110, 130, 155, 180], [462, 468, 500, 540, 578, 590]))
 
-    for f, shade, count in ((0.45, 0.62, 22), (1.0, 0.95, 28)):
+    for f, shade, count in ((0.4, 0.7, 11), (1.0, 0.98, 14)):
         for i in range(count):
-            phi = math.radians(80 + 200 * (i + 0.5) / count + rng.uniform(-3, 3))
+            phi = math.radians(80 + 200 * (i + 0.5) / count + rng.uniform(-4, 4))
             if phi > math.pi:
                 phi -= 2 * math.pi
-            r1 = end_row(phi) + rng.uniform(-10, 10)
-            rows = np.linspace(band_row - 4, r1, 6)
+            r1 = end_row(phi) + rng.uniform(-8, 8)
+            rows = np.linspace(band_row - 6, r1, 5)
             path, outs = [], []
             for k, row in enumerate(rows):
                 z = float(head_z(row))
-                # the head's middle at that height (from its rings), a ray out to its skin
                 c = head_centre(M, z)
                 d = np.array((math.sin(phi), -math.cos(phi), 0.0))
                 hit = skin_hit(c, d, 0.3)
                 if hit is None:
                     break
-                lift = (0.002 + 0.005 * f) * (0.4 if k == 0 else 1.0) * (1.0 + 0.5 * math.sin(math.pi * k / 5))
+                t = k / 4.0
+                lift = 0.002 + 0.003 * f * math.sin(math.pi * min(t * 1.3, 1.0))
                 path.append(hit + d * lift)
                 outs.append(d)
             if len(path) >= 3:
                 n = len(path)
-                w0 = 0.021 * rng.uniform(0.85, 1.2)
-                widths = [w0 * (1.0 - 0.8 * (k / (n - 1)) ** 2) for k in range(n)]
-                widths[-1] = 0.0015
-                Hh.lock(path, outs, widths, thick=0.35, shade=shade)
+                w0 = 0.03 * rng.uniform(0.9, 1.2)
+                widths = [w0 * (1.0 - 0.85 * (k / (n - 1)) ** 2) for k in range(n)]
+                widths[-1] = 0.002
+                Hh.lock(path, outs, widths, thick=0.4, shade=shade, under=0.4, sides=6)
+    # tufts over the ears: from above and behind each ear, curling down over its top
+    for s in (1, -1):
+        for j in range(3):
+            phi = s * math.radians(92 + 9 * j)
+            path, outs = [], []
+            for k, row in enumerate(np.linspace(band_row + 2, 478 + 10 * j, 4)):
+                z = float(head_z(row))
+                c = head_centre(M, z)
+                d = np.array((math.sin(phi), -math.cos(phi), 0.0))
+                hit = skin_hit(c, d, 0.3)
+                if hit is None:
+                    break
+                path.append(hit + d * (0.006 + 0.012 * k / 3.0) + np.array((0, -0.004 * k, 0)))
+                outs.append(d)
+            if len(path) >= 3:
+                widths = [0.016, 0.017, 0.011, 0.002][:len(path)]
+                Hh.lock(path, outs, widths, thick=0.45, shade=0.95, under=0.4, sides=6)
     out["captain_headhair"] = Hh
-    print("CAPTAIN hair: under the cap %d locks, %d triangles" % (Hh.count, Hh.tris()))
+    print("CAPTAIN hair: under the cap %d clumps, %d triangles" % (Hh.count, Hh.tris()))
 
-    # Chest hair: short tufts in the middle of his chest, spreading over the upper chest, a trail down the belly.
+    # Chest hair (Claude's pick): the sheet's painted bush stays on the skin (it is the broad soft grey mat the sheet
+    # draws), and a few dozen broad, flat, soft clumps lie over the thickest of it, the middle of the chest and the
+    # trail down the belly, so it has relief; grey as painted, never black.
     C = Locks()
-    for i in range(70):
-        z = rng.uniform(0.82, 1.24)
-        reach = 0.035 if z < 0.98 else 0.06 + 0.11 * (z - 0.98) / 0.26
-        x = rng.uniform(-reach, reach) * (0.6 + 0.4 * rng.random())
+    for i in range(46):
+        if i < 34:
+            z = rng.uniform(1.0, 1.2)
+            reach = 0.07 + 0.09 * (z - 1.0) / 0.2
+        else:
+            z = rng.uniform(0.84, 1.0)
+            reach = 0.02
+        x = rng.uniform(-reach, reach)
         h = bvh_trunk.ray_cast(Vector((x, -0.6, z)), Vector((0.0, 1.0, 0.0)), 1.0)
         if h[0] is None:
             continue
         hit = np.array(h[0])
         n_ = face_normal_at(bvh_trunk, hit)
-        flow = np.array((0.45 * np.sign(x) * (1 if z > 1.05 else -0.3), 0.0, -1.0 if z < 1.12 else 0.4))
+        flow = np.array((0.5 * np.sign(x) * (1 if z > 1.08 else -0.4), 0.0, -1.0 if z < 1.14 else 0.3))
         flow = flow - n_ * np.dot(flow, n_)
         flow /= max(np.linalg.norm(flow), 1e-9)
-        L = rng.uniform(0.03, 0.05)
-        pts = [hit - n_ * 0.002, hit + flow * L * 0.45 + n_ * 0.006, hit + flow * L + n_ * 0.004]
-        w = rng.uniform(0.008, 0.012)
-        C.lock(pts, [n_] * 3, [w, w * 0.8, 0.0012], thick=0.4, shade=rng.uniform(0.7, 1.0))
+        L = rng.uniform(0.035, 0.055)
+        pts = [hit - n_ * 0.001, hit + flow * L * 0.5 + n_ * 0.004, hit + flow * L + n_ * 0.002]
+        w = rng.uniform(0.011, 0.016)
+        C.lock(pts, [n_] * 3, [w, w * 0.85, 0.0015], thick=0.3, shade=rng.uniform(0.75, 1.0), under=0.3, sides=6)
     out["captain_chesthair"] = C
     print("CAPTAIN hair: chest %d tufts, %d triangles" % (C.count, C.tris()))
     return out
@@ -2369,7 +2468,52 @@ def main():
         relax(M, frozen, 0.2, 1)
         stats = overlay(snapshot(), sh, "r%d" % rnd, report=True)
         print("CAPTAIN fit round %d: %d points on the outline moved, most %.1f cm; %s" % (rnd, moved, most * 100, json.dumps(stats)))
+    smooth_armpits(M)
     finish(M, T, joints, sh)
+
+
+def smooth_armpits(M, reach=0.1, rounds=12):
+    """Stage one left a flap at each armpit: the torso's points under the arm's hole stood out past the hole's bottom
+    (the front view hides that part of him, so the fitting never drew them in). The torso's points near each hole's
+    bottom are smoothed (plain Laplacian, the hole's own points held), which folds the flap back into the side."""
+    P = np.array(M.P)
+    E = edges_of(M.faces)
+    fams = np.array([part_family(p) for p in M.part])
+    moved = 0
+    for sfx in ("_l", "_r"):
+        hole = M.tag["hole" + sfx]
+        low = P[hole][np.argmin(P[hole][:, 2])]
+        sel = (fams == "torso") & (np.linalg.norm(P - low, axis=1) < reach)
+        sel[hole] = False
+        sel &= np.bincount(E.ravel(), minlength=len(P)) > 0     # (the hole's inner points are in no face)
+        w = np.clip(1.0 - np.linalg.norm(P - low, axis=1) / reach, 0, 1)[:, None] * 0.6
+        before = P[sel].copy()
+        for _ in range(rounds):
+            acc = np.zeros_like(P)
+            np.add.at(acc, E[:, 0], P[E[:, 1]])
+            np.add.at(acc, E[:, 1], P[E[:, 0]])
+            deg = np.bincount(E.ravel(), minlength=len(P))[:, None]
+            avg = acc / np.maximum(deg, 1)
+            P[sel] += (avg[sel] - P[sel]) * w[sel]
+        moved = max(moved, float(np.linalg.norm(P[sel] - before, axis=1).max()))
+    # A spike: a torso point standing out sideways past both its neighbours up and down the same column by more than
+    # 1.5 cm (the sheet's front view, where the arm meets his side, measured him too wide on one ring) is put back
+    # between them.
+    T = M.tag["torso_rings"]
+    spikes = 0
+    deg0 = np.bincount(E.ravel(), minlength=len(P)) == 0
+    holes = set(M.tag["hole_l"]) | set(M.tag["hole_r"]) | set(np.where(deg0)[0].tolist())
+    for i in range(1, len(T) - 1):
+        for k in range(TORSO_N):
+            a, b, c = T[i - 1][k], T[i][k], T[i + 1][k]
+            if {a, b, c} & holes:
+                continue
+            ref = (abs(P[a][0]) + abs(P[c][0])) / 2.0
+            if abs(P[b][0]) > max(abs(P[a][0]), abs(P[c][0])) + 0.015:
+                P[b][0] = math.copysign(ref, P[b][0])
+                spikes += 1
+    M.P = [p for p in P]
+    print("CAPTAIN armpits smoothed: the most a point moved %.1f cm; %d spikes put back" % (moved * 100, spikes))
 
 
 def textured_material(name, path):
@@ -2431,6 +2575,7 @@ def finish(M, T, joints, sh):
     weights = weights_of(M, T, bones, joints)
     islands = plan_uvs(M, T, H, joints)
     placed, face_uv = pack(islands)
+    print("CAPTAIN island shares: %s" % ", ".join("%s %.0f%%" % (n, 100 * w * h * sc * sc) for n, (pic, u0, v0, sc, (w, h)) in sorted(placed.items())))
     os.makedirs(TEX, exist_ok=True)
     for picture in ATLAS:
         write_layout(face_uv, placed, picture, os.path.join(TEX, "captain_%s_layout.png" % picture))
@@ -2467,16 +2612,27 @@ def finish(M, T, joints, sh):
     save_rgb(os.path.join(TEX, "captain_face.png"), face[::-1])
     # --- Blender objects ---
     armature = make_armature(bones)
-    body = mesh_object("captain_body", P, M.faces, armature, weights)
-    me = body.data
-    me.materials.append(textured_material("captain_skin", os.path.join(TEX, "captain_skin.png")))
-    me.materials.append(textured_material("captain_face", os.path.join(TEX, "captain_face.png")))
-    uvl = me.uv_layers.new(name="UVMap")
-    for poly in me.polygons:
-        pic, uv = face_uv.get(poly.index, ("skin", [(0.0, 0.0)] * poly.loop_total))
-        poly.material_index = 0 if pic == "skin" else 1
-        for li, q in zip(poly.loop_indices, uv):
-            uvl.data[li].uv = q
+    under = boxer_faces(M, T)
+    mat_skin = textured_material("captain_skin", os.path.join(TEX, "captain_skin.png"))
+    mat_face = textured_material("captain_face", os.path.join(TEX, "captain_face.png"))
+
+    def skin_object(name, ids):
+        ob = mesh_object(name, P, [M.faces[i] for i in ids], armature, weights)
+        me = ob.data
+        me.materials.append(mat_skin)
+        me.materials.append(mat_face)
+        uvl = me.uv_layers.new(name="UVMap")
+        for poly, fi in zip(me.polygons, ids):
+            pic, uv = face_uv.get(fi, ("skin", [(0.0, 0.0)] * poly.loop_total))
+            poly.material_index = 0 if pic == "skin" else 1
+            for li, q in zip(poly.loop_indices, uv):
+                uvl.data[li].uv = q
+        return ob
+    # His body, and the skin under the boxers as its own piece (plain paint, never seen: whatever he wears covers it;
+    # hidden, not deleted, as every look's covered skin is to be).
+    skin_object("captain_body", [i for i in range(len(M.faces)) if i not in under])
+    skin_object("captain_body_under", sorted(under))
+    build_boxers(M, T, sh, weights, under, armature)
     # the earring in his left ear's lobe
     lobe = np.array(M.P[M.tag["earlobe_l"][0]])
     ring_pts, ring_faces = torus(lobe + np.array((0.004, 0.0, -0.008)), 0.009, 0.0022, 12, 5)
@@ -2508,11 +2664,95 @@ def finish(M, T, joints, sh):
     for name, L in hair.items():
         tr = []
         for f in L.F:
-            tr += [(f[0], f[1], f[2]), (f[0], f[2], f[3])]
+            tr += [(f[0], f[i], f[i + 1]) for i in range(1, len(f) - 1)]
         objs.append((np.array(L.P), tr, ["hair"] * len(tr)))
     stats = overlay(objs, sh, "final")
     print("CAPTAIN overlay final (with hair) %s" % json.dumps(stats))
     export(armature)
+
+
+# The boxers (the user: "he should have hear shaped boxers pose so you can add clothes on top"): a garment over the
+# body, not paint on it. The body's faces from the waist ring (BOXER_TOP_RING) down, and the legs' to their second
+# ring (row 1065, the sheet's hem at 1060), copied and stood off by BOXER_STAND (less at the waistband and the hems,
+# so they hug), painted from the sheet's own boxers (white, red hearts), drawn two-sided so the inside of a hem shows
+# cloth.
+BOXER_TOP_RING = 6            # TORSO_ROWS[6] = row 795 (the sheet's waistband top is at 815)
+BOXER_LEG_RINGS = 2           # the leg rings down to LEG_ROWS[1] = row 1065
+BOXER_STAND = (0.013, 0.005, 0.009)   # metres: the cloth, the waistband, the hems
+
+
+def boxer_faces(M, T):
+    """The body's faces the boxers cover (indices into M.faces)."""
+    out = {fi for fi, c in M.cell.items() if c[0] == "torso" and c[1] < BOXER_TOP_RING}
+    for sfx in ("_l", "_r"):
+        rings = M.tag["leg_rings" + sfx][:BOXER_LEG_RINGS + 1]
+        pts = set(v for r in rings for v in r)
+        out |= {fi for fi, (f, p) in enumerate(zip(M.faces, M.fpart)) if p == "leg" + sfx and all(v in pts for v in f)}
+    return out
+
+
+def build_boxers(M, T, sh, weights, under, armature):
+    P = np.array(M.P)
+    N = normals_of(P, M.tris())
+    ids = sorted(under)
+    used = sorted({v for fi in ids for v in M.faces[fi]})
+    waist = set(T[BOXER_TOP_RING])
+    hems = {v for sfx in ("_l", "_r") for v in M.tag["leg_rings" + sfx][BOXER_LEG_RINGS]}
+    new_of = {}
+    Bx = Mesh()
+    Bx.P = [p.copy() for p in P]          # (his body's points first: the depth test sees his arms and hands)
+    Bx.part = list(M.part)
+    for v in used:
+        stand = BOXER_STAND[1] if v in waist else BOXER_STAND[2] if v in hems else BOXER_STAND[0]
+        new_of[v] = Bx.add(P[v] + N[v] * stand, "boxers")
+    for fi in ids:
+        Bx.face([new_of[v] for v in M.faces[fi]], "boxers_" + M.fpart[fi])
+    # UVs: front and back of the trunk by angle round his middle; each leg by angle round its own middle, its seam on
+    # the inside of the thigh.
+    torso_new = [i for i, fi in enumerate(ids) if M.cell.get(fi, ("",))[0] == "torso"]
+    BxT = [[new_of.get(v, v) for v in r] for r in T]
+    front = [i for i in torso_new if (M.cell[ids[i]][2] >= 12 or M.cell[ids[i]][2] < 4)]
+    back = [i for i in torso_new if 4 <= M.cell[ids[i]][2] < 12]
+    islands = {"boxers_front": cylinder_uvs(Bx, BxT, front, back=False), "boxers_back": cylinder_uvs(Bx, BxT, back, back=True)}
+    Q = np.array(Bx.P)
+    for sfx, s in (("_l", 1.0), ("_r", -1.0)):
+        legf = [i for i, fi in enumerate(ids) if M.fpart[fi] == "leg" + sfx]
+        ring = M.tag["leg_rings" + sfx][1]
+        cx, cy = P[ring][:, 0].mean(), P[ring][:, 1].mean()
+        R = float(np.hypot(P[ring][:, 0] - cx, P[ring][:, 1] - cy).mean())
+        isl = {}
+        for i in legf:
+            th = [math.atan2(-(Q[v][1] - cy), s * (Q[v][0] - cx)) for v in Bx.faces[i]]
+            if max(th) - min(th) > math.pi:
+                th = [t + math.tau if t < 0 else t for t in th]
+            isl[i] = [(s * t * R, float(Q[v][2])) for t, v in zip(th, Bx.faces[i])]
+        islands["boxers_leg" + sfx] = isl
+    for n in islands:
+        ISLANDS[n] = ("boxers", 1.0)
+    ATLAS["boxers"] = 512
+    placed, face_uv = pack(islands)
+    write_layout(face_uv, placed, "boxers", os.path.join(TEX, "captain_boxers_layout.png"))
+    red = lambda c: (c[..., 0] > 0.55) & (c[..., 0] - c[..., 1] > 0.22)  # noqa: E731
+    # (not his skin, where the sheet's outline of the boxers lets some through: filled from the cloth round it)
+    # (and above the sheet's waistband, where the garment reaches higher than the drawn boxers, so its top edge does
+    # not carry a strip of belly)
+    reject = lambda view, c, rows, cols: ((c[..., 0] - c[..., 2] > 0.08) & ~red(c)) | (rows < BOXERS[0] + 3)  # noqa: E731
+    depth = [tuple(t) for t in Bx.tris()] + [t for t, f in zip(M.tris(), M.tri_fams()) if f in ("arm", "hand")]
+    views = [("front", sh.body_pix, sh.body_mask, False), ("back", sh.body_pix, sh.body_mask, False),
+             ("side", sh.body_pix, sh.body_mask, False), ("side", sh.body_pix, sh.body_mask, True)]
+    rgb, hit = paint(Bx, face_uv, "boxers", sh, views, depth, extra_reject=reject)
+    path = os.path.join(TEX, "captain_boxers.png")
+    save_rgb(path, rgb[::-1])
+    w = [weights[v] for v in range(len(P))] + [weights[v] for v in used]
+    ob = mesh_object("captain_boxers", Bx.P, Bx.faces, armature, w)
+    mat = textured_material("captain_boxers", path)
+    mat.use_backface_culling = False
+    ob.data.materials.append(mat)
+    uvl = ob.data.uv_layers.new(name="UVMap")
+    for poly in ob.data.polygons:
+        for li, q in zip(poly.loop_indices, face_uv[poly.index][1]):
+            uvl.data[li].uv = q
+    print("CAPTAIN boxers: %d triangles, %d islands" % (len(Bx.tris()), len(islands)))
 
 
 def torus(centre, R, r, n, m):
@@ -2528,7 +2768,7 @@ def torus(centre, R, r, n, m):
         for j in range(m):
             a, b = i * m + j, i * m + (j + 1) % m
             c, d = ((i + 1) % n) * m + (j + 1) % m, ((i + 1) % n) * m + j
-            faces.append([a, b, c, d])
+            faces.append([d, c, b, a])      # (outward: the other way round was inside out)
     return pts, faces
 
 
@@ -2571,12 +2811,23 @@ def paint_skin(M, face_uv, sh, tris_all, Pc, no_arms_c, reject):
     rgb = acc / np.maximum(wsum, 1e-6)[..., None]
     # (under the boxers: by where the texel is on him, from their waistband to their hem, the trunk and thighs)
     z = pos[..., 2]
-    box = hit & np.isin(tex_fam, ("torso", "leg")) & (z < body_z(BOXERS[0] - 6)) & (z > body_z(BOXERS[1] + 4))
+    # (the band filled plain lies inside the boxers garment, which reaches row BOXER_TOP_ROW to BOXER_HEM_ROW, so
+    # its edge is never seen)
+    box = hit & np.isin(tex_fam, ("torso", "leg")) & (z < body_z(BOXERS[0] + 10)) & (z > body_z(BOXERS[1] - 14))
     box |= good & is_boxers(rgb)
-    ink = good & is_ink(rgb, None)
+    # (the beard hangs over his upper chest in the body sheet: its grey is not skin)
+    mx, mn = rgb.max(-1), rgb.min(-1)
+    beard = good & (z > body_z(452)) & (mx - mn < 0.1) & (mx > 0.4)
+    # Tattoo ink, judged against the skin round it (stage one judged by colour alone and took a fifth of his skin,
+    # the shaded chest and belly with it): bluer than the skin near it by a margin (measured on the sheet: ink about (0.53, 0.55, 0.55), no darker
+    # than the skin round it, red minus blue under 0.04; skin 0.08 to 0.14; the grey chest hair about 0.07).
+    skinlike = (rgb[..., 0] - rgb[..., 2]) > 0.06      # (the skin round a tattoo, not the tattoo)
+    local = blur(fill_out(rgb, good & ~box & ~beard & skinlike, 16), 10)
+    rb, lrb = rgb[..., 0] - rgb[..., 2], local[..., 0] - local[..., 2]
+    ink = good & (rb < lrb - 0.06) & (rb < 0.05)
     for _ in range(2):
         ink = ink | np.roll(ink, 1, 0) | np.roll(ink, -1, 0) | np.roll(ink, 1, 1) | np.roll(ink, -1, 1)
-    good &= ~ink & ~box
+    good &= ~ink & ~box & ~beard
     print("CAPTAIN paint skin: %d texels of tattoo ink painted out, %d of boxers" % (int(ink.sum()), int(box.sum())))
     rgb = fill_out(rgb, good, 300)
     soft = blur(rgb, 4)

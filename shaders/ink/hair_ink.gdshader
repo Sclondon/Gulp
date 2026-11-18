@@ -50,6 +50,10 @@ uniform float tip_ragged = 0.0;
 uniform float strand_cover = 0.8;
 uniform float layer_shade = 0.0;
 uniform float root_dark = 0.0;
+// - soft (added 2026-11-18 for the captain's clump beard; 0 keeps the inked look exactly): 0..1 from the inked
+//   print's hard cuts to soft painted shading: the light and shadow, the ink between clumps and the flicks ramp
+//   smoothly instead of stepping, so a big clump reads lighter on top and shaded underneath, as a painted beard does.
+uniform float soft = 0.0;
 
 varying float strand_phase;
 varying float strand;
@@ -80,7 +84,8 @@ void fragment() {
 	float root = 1.0 - smoothstep(0.0, root_ink * (0.4 + strand), UV.x);
 	colour = mix(colour, ink, root * 0.85);
 	float facing = clamp(dot(NORMAL, VIEW), 0.0, 1.0);
-	colour = mix(colour, ink, (1.0 - cut(facing, gap_ink)) * 0.9);
+	float edge = mix(1.0 - cut(facing, gap_ink), 1.0 - smoothstep(0.0, gap_ink * 3.0 + 0.001, facing), soft);
+	colour = mix(colour, ink, edge * 0.9);
 	ALBEDO = colour * grain(vec3(UV * 0.05, strand), print_grain);
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
@@ -91,7 +96,7 @@ void light() {
 	float reach = clamp(ATTENUATION, 0.0, 1.0);
 	float facing = (dot(NORMAL, LIGHT) + wrap) / (1.0 + wrap);
 	float amount = facing * smoothstep(0.15, 0.6, reach);
-	float lit = cut(amount, 0.04);
+	float lit = mix(cut(amount, 0.04), smoothstep(-0.15, 0.85, amount), soft);
 	float strength = mix(reach, 1.0, flatness);
 	// In the shadow the strand lines close up.
 	float deep = clamp(-amount * 1.5 + 0.35, 0.0, 1.0);
@@ -104,6 +109,6 @@ void light() {
 	float band = pow(sqrt(max(1.0 - across * across, 0.0)), flick_gloss);
 	// (and broken along its length too: flicks, not a stripe)
 	float broken = ink_noise(vec2(strand_phase * 1.7, along * 9.0 + strand * 3.0));
-	float flick = cut(band * (0.55 + 0.9 * broken), 0.55) * lit;
+	float flick = mix(cut(band * (0.55 + 0.9 * broken), 0.55), smoothstep(0.3, 0.9, band * (0.7 + 0.6 * broken)), soft) * lit;
 	SPECULAR_LIGHT += flick * flick_gain * flicks * strength * LIGHT_COLOR / PI;
 }
