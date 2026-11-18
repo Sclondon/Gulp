@@ -635,3 +635,15 @@ Claude's.
   materials): too long; the warm-up needs to move off the path to the title. Not tried on a phone. The pack is 39.6 MB.
   The new captain (`models/captain.glb`) ships in the pack though the game does not use it yet: leave it out of the
   web export until it is wired in.
+- The older brother's sheets, redone (2026-11-18, morning): `tools/art_src/concept_brother_tpose2.jpg` (base body, three
+  views), `concept_brother_head.jpg` (five-view head), `concept_brother_fishing.jpg` (four fishing rigs),
+  `concept_brother_diving.jpg` (canvas, hard-hat, armoured, deep suit). These replace `concept_brother_tpose.jpg` and
+  `_outfits.jpg` (kept, retired). The user, of the first try: "olde bro face looks a little too mature, still needs to be
+  rugged but still boyish": the kept sheets are the boyish second try (rounder cheeks, a thin first moustache, light
+  stubble). He is drawn squat like the captain: the user has not said whether he should be taller. Still owed (Gemini
+  dropped the request four times in a row that morning; a prompt sent right after clicking a download is lost, and a
+  new picture can take 90 s before a reload shows it): the captain's side view with the arm, his beard from below, his
+  hands; the younger boy's outfit sheet.
+- The captain (the user, 2026-11-18, of the sheet-against-model comparison): "Looks like his face and waist need work"
+  (circled: the boxers' tall flat waistband, the head from the side); "his hands / fingers also seemed scuffed"; "let me
+  see the model without the textures" (in plain grey he has almost no face or body forms: the paint was carrying it).
