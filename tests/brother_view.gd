@@ -90,7 +90,15 @@ func _initialize() -> void:
 			_shots.append({"name": "p_eyes", "dir": Vector3(-0.25, 0, 1), "at": Vector3(0, 1.81, 0.12), "dist": 0.42, "eye": 1.82, "pose": "", "grey": false})
 			_shots.append({"name": "p_eyes_grey", "dir": Vector3(-0.25, 0, 1), "at": Vector3(0, 1.81, 0.12), "dist": 0.42, "eye": 1.82, "pose": "", "grey": true})
 			_shots.append({"name": "p_feet", "dir": Vector3(-0.6, 0, 0.8), "at": Vector3(0.0, 0.1, 0.0), "dist": 1.25, "eye": 0.75, "pose": "", "grey": true})
-			_shots.append({"name": "p_hand", "dir": Vector3(-0.2, 0, 1), "at": _hand_at() + Vector3(0, 0.02, 0), "dist": 0.6, "eye": _hand_at().y + 0.15, "pose": "", "grey": false})
+			# (fifth round: close-ups of his left foot, painted and in grey from a low three-quarter and above, and of the
+			# shorts from the front and the back)
+			_shots.append({"name": "p_foot", "dir": Vector3(0.55, 0, 0.85), "at": Vector3(0.14, 0.06, 0.06), "dist": 0.75, "eye": 0.3, "pose": "", "grey": false})
+			_shots.append({"name": "p_foot_grey", "dir": Vector3(0.55, 0, 0.85), "at": Vector3(0.14, 0.06, 0.06), "dist": 0.75, "eye": 0.3, "pose": "", "grey": true})
+			_shots.append({"name": "p_foot_in_grey", "dir": Vector3(-0.35, 0, 1), "at": Vector3(0.12, 0.06, 0.06), "dist": 0.75, "eye": 0.2, "pose": "", "grey": true})
+			_shots.append({"name": "p_foot_top_grey", "dir": Vector3(0.1, 0, 0.3), "at": Vector3(0.14, 0.03, 0.08), "dist": 0.25, "eye": 0.75, "pose": "", "grey": true})
+			_shots.append({"name": "p_shorts", "dir": Vector3(-0.35, 0, 1), "at": Vector3(0, 0.98, 0), "dist": 1.5, "eye": 1.1, "pose": "", "grey": false})
+			_shots.append({"name": "p_shorts_back", "dir": Vector3(0.35, 0, -1), "at": Vector3(0, 0.98, 0), "dist": 1.5, "eye": 1.1, "pose": "", "grey": false})
+			_shots.append({"name": "p_hand","dir": Vector3(-0.2, 0, 1), "at": _hand_at() + Vector3(0, 0.02, 0), "dist": 0.6, "eye": _hand_at().y + 0.15, "pose": "", "grey": false})
 		if _posed:
 			for v in [["lift", Vector3(-0.64, 0, 0.77), false], ["lift", Vector3(-1, 0, 0), true], ["lift", Vector3(-0.64, 0, 0.77), true],
 					["walk", Vector3(-1, 0, 0), true], ["walk", Vector3(-0.64, 0, 0.77), true], ["sit", Vector3(-1, 0, 0), true], ["sit", Vector3(-0.64, 0, 0.77), true],
@@ -227,7 +235,7 @@ func _process(_delta: float) -> bool:
 			_set_lit(true)
 			_sun.light_energy = 0.7
 			_env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
-			_env.ambient_light_energy = 0.3
+			_env.ambient_light_energy = 0.45
 			_set_pose(d["pose"])
 			for mesh: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
 				if not String(mesh.name).begins_with("brother_body_under"):
