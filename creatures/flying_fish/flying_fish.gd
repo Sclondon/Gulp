@@ -81,6 +81,32 @@ const SPAN := 0.283
 	set(value):
 		low = value
 		_show()
+## The game model (about 1,780 triangles, spent on the outline, the eye, the mouth and
+## the wings' edges; the wings still see-through and still folded by `wings`) in place
+## of the full one; `low` still shows the low model. Each model is loaded only when it
+## is first shown, so with `game` on the full model is never loaded and a game's web
+## export can leave its .glb out.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye (0 the eye as it was, 1 the cartoon eye: a wide startled stare, a
+## huge pupil in a pale sky-blue iris, a highlight, no lid). Gulp sets it to 1.
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = value
+		_send(&"cartoon_eyes", value)
+## Where the cartoon eye's pupil looks: x forward (towards the snout), y up, -1..1.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		_send(&"eye_look", value)
+## 0 open, 1 shut: the eye squashes and a lid closes over it (a fish has no lids:
+## this is for a game that wants one).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = value
+		_send(&"blink", value)
 ## How far through a beat it is, 0 to 1. `step` moves it on; or set it yourself.
 var phase := 0.0:
 	set(value):
@@ -91,7 +117,9 @@ var _material: ShaderMaterial
 var _fin_material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
 var _effort := 0.4
+static var _meshes := {}
 
 
 func _init() -> void:
@@ -103,8 +131,6 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _mesh_of("")
-	_low = _mesh_of("_lo")
 	_show()
 	for setting: StringName in [&"tail_beats", &"breaths"]:
 		_send(setting, float(get(setting)))
@@ -153,17 +179,57 @@ func _send(setting: StringName, value: Variant) -> void:
 
 
 func _show() -> void:
+	if not is_inside_tree():
+		return
+	# (each model is made only when it is first shown)
+	if low:
+		if _low == null:
+			_low = _mesh_of("_lo")
+	elif game:
+		if _game == null:
+			_game = _mesh_of("_game")
+	elif _full == null:
+		_full = _mesh_of("")
 	if _full:
-		_full.visible = not low
+		_full.visible = not low and not game
+	if _low:
 		_low.visible = low
+	if _game:
+		_game.visible = game and not low
+
+
+## The game model's mesh, for a game that draws meshes itself: two surfaces, the body
+## (draw it with `material()`'s shader) and the see-through fins (`fin_material()`'s),
+## told apart by their materials' names (the fins' ends in "_fins"). Loaded once and
+## kept, without the importer's thinned LOD meshes.
+static func game_mesh() -> Mesh:
+	return _load_mesh("_game")
+
+
+static func _load_mesh(suffix: String) -> Mesh:
+	var path := MODEL % suffix
+	if not _meshes.has(path):
+		var made := (load(path) as PackedScene).instantiate()
+		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+		_meshes[path] = without_lods(found.mesh) if suffix == "_game" else found.mesh
+		made.free()
+	return _meshes[path]
+
+
+## The mesh without the thinned LOD meshes Godot's importer makes (the shaders bend the
+## fish, and a thinned mesh far off would bend in straight pieces); each surface keeps
+## its material, by which the body and the fins are told apart.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+		plain.surface_set_material(surface, mesh.surface_get_material(surface))
+	return plain
 
 
 func _mesh_of(suffix: String) -> MeshInstance3D:
-	var scene := load(MODEL % suffix) as PackedScene
-	var made := scene.instantiate()
-	var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = found.mesh
+	mesh.mesh = _load_mesh(suffix)
 	# (two surfaces: the body, and the see-through fins, told apart by the names the
 	# build gave their materials)
 	for surface in mesh.mesh.get_surface_count():
@@ -173,6 +239,5 @@ func _mesh_of(suffix: String) -> MeshInstance3D:
 	# (its tail swings out past the still model's box, and a turn carries it further)
 	mesh.extra_cull_margin = LENGTH * 0.3
 	mesh.name = "FlyingFish" + suffix
-	made.free()
 	add_child(mesh)
 	return mesh

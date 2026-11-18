@@ -1,4 +1,7 @@
 """Builds the clown loach (creatures/clown_loach) and exports it for Godot.
+(Added 2026-11-18: it also writes the GAME model, models/..._game.glb, a third model of the same curves with
+far fewer, better placed points, into the same .blend; the full and low models come out exactly as before. See
+GAME, `spread` and `make`, and the component's README.)
 
 Run from the game's root:
     blender --background --python creatures/clown_loach/tools/build_clown_loach.py
@@ -63,6 +66,13 @@ LENGTH = 0.2
 HALF = 0.1
 BODY, DORSAL, ANAL, TAIL, PECTORAL, PELVIC, EYE, BARBEL, JAW, CHEEK = range(10)
 TAU = math.tau
+# The GAME model's counts while it is built (`make`), or None: the same curves and parts as the full model with
+# far fewer points, put where the outline bends (see `spread`). The full and low models never see it. rings:
+# along the body; around: points round it (a multiple of 4: the back, the belly and the widest place of each
+# side are points, so the outline from the side and from above is whole); cheek: rows; eye: spokes, steps out;
+# fin: the share of the full model's rows; barbel: sides, pieces.
+GAME_COUNTS = {"rings": 23, "around": 16, "cheek": 2, "eye": (24, 2), "fin": 0.22, "barbel": (3, 3)}
+GAME = None
 
 # The body's outline, in shares of its length: how far behind the snout, half its depth above its middle
 # line, half its depth below, half its width.
@@ -365,7 +375,45 @@ class Mesh:
         self.count[name] = self.count.get(name, 0) + 1
 
 
+def spread(first, last, count, ring_at, floor=0.6):
+    """For the game model: count + 1 places from `first` to `last` along the fish, close together where the skin
+    bends most along its length (the snout, the forehead, the wrist of the tail) and further apart along the
+    flanks. `ring_at(xm)` gives points round the skin at xm. A straight line between places misses a curve by
+    about its bend times the gap squared, so the places are spaced by the square root of the bend, plus `floor`
+    of the mean so that no stretch is left bare (the swimming bend needs rings all the way)."""
+    n = 360
+    h = (last - first) / n
+    ss = [first + h * i for i in range(n + 1)]
+    made = [ring_at(s) for s in ss]
+    dens = []
+    for i in range(n + 1):
+        a, b, c = made[max(i - 1, 0)], made[i], made[min(i + 1, n)]
+        bend = max((a[k] - b[k] * 2.0 + c[k]).length for k in range(len(b))) / (h * h)
+        dens.append(math.sqrt(bend))
+    dens[0], dens[-1] = dens[1], dens[-2]
+    mean = sum(dens) / len(dens)
+    dens = [d + floor * mean for d in dens]
+    acc = [0.0]
+    for i in range(n):
+        acc.append(acc[-1] + 0.5 * (dens[i] + dens[i + 1]))
+    places = []
+    for k in range(count + 1):
+        want = acc[-1] * k / count
+        i = next((j for j in range(n) if acc[j + 1] >= want), n - 1)
+        t = (want - acc[i]) / max(acc[i + 1] - acc[i], 1e-12)
+        places.append(ss[i] + (ss[i + 1] - ss[i]) * t)
+    places[0], places[-1] = first, last
+    return places
+
+
 def rings(low):
+    if GAME:
+        xs = spread(BODY_FROM, BODY_TO, GAME["rings"], lambda xm: [body_point(xm, c / 16 * TAU) for c in range(16)])
+        # (the mouth: rings where the jaw starts (two close, as the full model has), at the corners of the mouth
+        # and where the jaw's back reaches the belly; none of the spread ones crowding them)
+        fixed = [JAW_FROM - 0.00025, JAW_FROM, MOUTH_TO, JAW_BACK]
+        xs = [x for x in xs if min(abs(x - f) for f in fixed) > 0.0012] + fixed
+        return sorted(xs)
     xs = []
     x = BODY_FROM
     for until, step in ((0.03, 0.0008), (0.07, 0.0013), (0.138, 0.002), (BODY_TO, 0.0011)):
@@ -430,7 +478,7 @@ def stitch(m, grid, around, judge, roof_first):
 
 
 def body(m, low):
-    around = 24 if low else 72
+    around = GAME["around"] if GAME else (24 if low else 72)
     grid = []
     for xm in rings(low):
         row = []
@@ -473,7 +521,7 @@ def body(m, low):
 def jaw(m, low):
     """The lower jaw: the skin the head had below the cut, on the same rings and angles as the body, closed over
     by the floor of the mouth; a cap at its tip (its back end comes to nothing at the belly)."""
-    around = 24 if low else 72
+    around = GAME["around"] if GAME else (24 if low else 72)
     xs = [xm for xm in rings(low) if cut_through(xm)]
     grid = []
     for xm in xs:
@@ -513,7 +561,7 @@ def cheeks(m, low):
     gapes. Built here as they hang with the mouth wide open, so that their faces have a size and a facing;
     each point says how far down from the upper lip to the lower it is (UV2.x, 0 to 1), and the shader folds
     them up to nothing along the line of the mouth, inside the head, as the mouth shuts."""
-    rows = 3 if low else CHEEK_ROWS
+    rows = GAME["cheek"] if GAME else (3 if low else CHEEK_ROWS)
     xs = [xm for xm in rings(low) if cut_through(xm) and xm <= MOUTH_TO]
     for sx in (1.0, -1.0):
         for facing in (1.0, -1.0):
@@ -534,6 +582,9 @@ def eye(m, sx, low):
     """A low dome lying on the skin of the head (above the middle line)."""
     spokes = 12 if low else 32
     steps = 3 if low else 10
+    if GAME:
+        # (round enough for the cartoon eye drawn on it)
+        spokes, steps = GAME["eye"]
     xe, ye = EYE_AT
 
     def on_skin(xm, y):
@@ -546,6 +597,9 @@ def eye(m, sx, low):
     out.normalize()
     if out.x * sx < 0.0:
         out = -out
+    if sx > 0.0:
+        # (for the shader's cartoon eye: the middle of the eye on the skin, and the way it faces, Godot metres)
+        print("EYE at (%.5f, %.5f, %.5f) out (%.4f, %.4f, %.4f)" % (*here, *out))
     middle = m.add(here + out * 0.0013, (0.0, 0.0), EYE)
     last = None
     for k in range(1, steps + 1):
@@ -635,21 +689,26 @@ def pectoral_frame():
 
 def fins(m, low):
     d = 3 if low else 1
+
+    def k(full):
+        """How many rows a fin has: the full model's, a third of them for the low model, GAME["fin"] of them
+        (and at least 2) for the game model."""
+        return max(2, int(round(full * GAME["fin"]))) if GAME else full // d
     # The dorsal: at mid-body, its first rays the longest, leaning well back, its margin falling to a short
     # last ray.
     blade(m, DORSAL, "dorsal",
           rayed(0.091, 0.125, top, 1.0, lambda u: 0.025 * (0.25 + 0.75 * smooth(0.0, 0.2, u)) * (1.0 - 0.56 * u ** 1.3), math.radians(36.0)),
-          upright, SIDE, 0.0016, 18 // d, 30 // d)
+          upright, SIDE, 0.0016, k(18), k(30))
     # The anal fin: small, behind the dorsal, leaning back.
     blade(m, ANAL, "anal",
           rayed(0.121, 0.137, bottom, -1.0, lambda u: 0.019 * (0.3 + 0.7 * smooth(0.0, 0.25, u)) * (1.0 - 0.55 * u ** 1.2), math.radians(40.0)),
-          upright, SIDE, 0.0014, 14 // d, 18 // d)
+          upright, SIDE, 0.0014, k(14), k(18))
     # The tail: deeply forked, two pointed lobes that meet along the middle line.
     for way in (1.0, -1.0):
         tip = (0.2, 0.031 * way)
         blade(m, TAIL, "tail", swept(((0.146, 0.0), (0.165, 0.031 * way), tip),
                                       ((0.167, 0.0), (0.177, 0.008 * way), tip)),
-              upright, SIDE, 0.0024, 36 // d, 14 // d)
+              upright, SIDE, 0.0024, k(36), k(14))
     for sx in (1.0, -1.0):
         # The pectoral fins: rounded paddles low behind the gill covers, held out and back.
         root, span, chord = pectoral_frame()
@@ -663,7 +722,7 @@ def fins(m, low):
 
         blade(m, PECTORAL, "pectorals", pectoral_point,
               lambda p, root=root, span=span, chord=chord: mirrored(root + span * p[0] + chord * p[1]),
-              mirrored(span.cross(chord).normalized()), 0.0014, 22 // d, 14 // d)
+              mirrored(span.cross(chord).normalized()), 0.0014, k(22), k(14))
         # The pelvic fins: under the front of the dorsal, pointing back, down and a little out.
         root, span, chord = paired_fin(0.092, math.radians(152.0), 0.0012, (0.32, -0.5, 0.8), (-0.6, 0.1, 0.8))
 
@@ -673,7 +732,7 @@ def fins(m, low):
 
         blade(m, PELVIC, "pelvics", pelvic_point,
               lambda p, root=root, span=span, chord=chord: mirrored(root + span * p[0] + chord * p[1]),
-              mirrored(span.cross(chord).normalized()), 0.0013, 18 // d, 12 // d)
+              mirrored(span.cross(chord).normalized()), 0.0013, k(18), k(12))
 
 
 # The barbels: where on the skin each is rooted (metres behind the snout, the angle round the body in
@@ -689,6 +748,8 @@ BARBELS = [
 def barbels(m, low):
     sides = 4 if low else 8
     segs = 3 if low else 10
+    if GAME:
+        sides, segs = GAME["barbel"]
     ident = 0
     for xm, angle, way, length in BARBELS:
         for sx in (1.0, -1.0):
@@ -728,7 +789,10 @@ def barbels(m, low):
             ident += 1
 
 
-def make(name, low):
+def make(name, low, game=False):
+    """`game`: the game model (built on the low model's simpler parts, `low` True, with GAME_COUNTS' counts)."""
+    global GAME
+    GAME = GAME_COUNTS if game else None
     m = Mesh()
     body(m, low)
     jaw(m, low)
@@ -769,6 +833,7 @@ def make(name, low):
     tris = sum(len(p.vertices) - 2 for p in mesh.polygons)
     print("BUILT %s verts=%d tris=%d" % (name, len(mesh.vertices), tris))
     winding(name, mesh, m)
+    GAME = None
     return obj
 
 
@@ -836,15 +901,20 @@ def main():
     bpy.context.preferences.filepaths.save_version = 0
     full = make("clown_loach", False)
     low = make("clown_loach_lo", True)
+    game = make("clown_loach_game", True, True)
     print("SHADER HINGE vec2(%.5f, %.5f)" % HINGE)
     root, span, chord = pectoral_frame()
     print("SHADER PECTORAL_ROOT vec3(%.5f, %.5f, %.5f) PECTORAL_AXIS vec3(%.4f, %.4f, %.4f)" % (root.x, root.y, root.z, chord.x, chord.y, chord.z))
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, "clown_loach.glb"))
     export_one(low, os.path.join(OUT, "clown_loach_lo.glb"))
+    export_one(game, os.path.join(OUT, "clown_loach_game.glb"))
     low.location.x = 0.2
+    game.location.x = 0.4
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "clown_loach.blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
+    game.hide_render = True
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
         render(PREVIEW, [full, low])

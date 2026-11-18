@@ -123,6 +123,31 @@ const ROOT_BEND := 0.55
 	set(value):
 		low = value
 		_show()
+## The game model (about 2,960 triangles, spent on the outline, the eye, the mouth and the
+## fins' edges; its barbels the same ropes) in place of the full one; `low` still shows the
+## low model. Each model is loaded only when it is first shown, so with `game` on the full
+## model is never loaded and a game's web export can leave its .glb out.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye (0 the eye as it was, 1 the cartoon eye: bigger, a white, a pale gold
+## iris, a level bar of a pupil, a highlight, a heavy sleepy lid). Gulp sets it to 1.
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = value
+		_send(&"cartoon_eyes", value)
+## Where the cartoon eye's pupil looks: x forward (towards the snout), y up, -1..1.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		_send(&"eye_look", value)
+## 0 open, 1 shut: the eye squashes and a lid closes over it (a fish has no lids:
+## this is for a game that wants one).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = value
+		_send(&"blink", value)
 ## How much the barbels stir of themselves as they trail, for 1 as a catfish feeling its way.
 ## The stirring comes round with each beat.
 @export var wander := 1.0
@@ -148,6 +173,8 @@ var phase := 0.0:
 var _material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
+static var _meshes := {}
 # The ropes: every barbel's points one after another (world), where each was a step ago, and
 # the picture that carries them to the shader (a row of points a barbel, then a row a barbel
 # of which way is "side" at each point).
@@ -166,8 +193,6 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _mesh_of("")
-	_low = _mesh_of("_lo")
 	_show()
 	_send_phase()
 	_send(&"sway", sway)
@@ -294,22 +319,58 @@ func _send_phase() -> void:
 
 
 func _show() -> void:
+	if not is_inside_tree():
+		return
+	# (each model is made only when it is first shown)
+	if low:
+		if _low == null:
+			_low = _mesh_of("_lo")
+	elif game:
+		if _game == null:
+			_game = _mesh_of("_game")
+	elif _full == null:
+		_full = _mesh_of("")
 	if _full:
-		_full.visible = not low
+		_full.visible = not low and not game
+	if _low:
 		_low.visible = low
+	if _game:
+		_game.visible = game and not low
+
+
+## The game model's mesh, for a game that draws meshes itself (with `material()`'s shader,
+## which lays the barbels along the ropes this node works out). Loaded once and kept,
+## without the importer's thinned LOD meshes.
+static func game_mesh() -> Mesh:
+	return _load_mesh("_game")
+
+
+static func _load_mesh(suffix: String) -> Mesh:
+	var path := MODEL % suffix
+	if not _meshes.has(path):
+		var made := (load(path) as PackedScene).instantiate()
+		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+		_meshes[path] = without_lods(found.mesh) if suffix == "_game" else found.mesh
+		made.free()
+	return _meshes[path]
+
+
+## The mesh without the thinned LOD meshes Godot's importer makes: the shader bends the
+## fish, and a thinned mesh far off would bend in straight pieces.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return plain
 
 
 func _mesh_of(suffix: String) -> MeshInstance3D:
-	var scene := load(MODEL % suffix) as PackedScene
-	var made := scene.instantiate()
-	var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = found.mesh
+	mesh.mesh = _load_mesh(suffix)
 	mesh.material_override = _material
 	# (its tail and its barbels swing out past the still model's box)
 	mesh.extra_cull_margin = LENGTH * 0.4
 	mesh.name = "Catfish" + suffix
-	made.free()
 	add_child(mesh)
 	return mesh
 

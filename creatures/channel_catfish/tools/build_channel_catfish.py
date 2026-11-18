@@ -1,4 +1,7 @@
 """Builds the channel catfish (creatures/channel_catfish) and exports it for Godot.
+(Added 2026-11-18: it also writes the GAME model, models/..._game.glb, a third model of the same curves with
+far fewer, better placed points, into the same .blend; the full and low models come out exactly as before. See
+GAME, `spread` and `make`, and the component's README.)
 
 Run from the game's root:
     blender --background --python creatures/channel_catfish/tools/build_channel_catfish.py
@@ -71,6 +74,13 @@ LENGTH = 0.6
 HALF = 0.3
 BODY, DORSAL, ADIPOSE, ANAL, TAIL, PECTORAL, PELVIC, EYE, BARBEL, JAW, CHEEK = range(11)
 TAU = math.tau
+# The GAME model's counts while it is built (`make`), or None: the same curves and parts as the full model with
+# far fewer points, put where the outline bends (see `spread`). The full and low models never see it. rings:
+# along the body; around: points round it (a multiple of 4: the back, the belly and each side's middle are
+# points); cheek: rows; eye: spokes, steps out; fin: the share of the full model's rows; barbel: points round,
+# rings along a long one, along a short one.
+GAME_COUNTS = {"rings": 30, "around": 20, "cheek": 2, "eye": (24, 3), "fin": 0.25, "barbel": (4, 6, 4)}
+GAME = None
 
 # The body's outline: metres behind the snout, the height of its back, of its belly, half its width, and the
 # height at which it is widest (heights from the line through the middle of the tail wrist).
@@ -432,7 +442,44 @@ class Mesh:
         self.count[name] = self.count.get(name, 0) + 1
 
 
+def spread(first, last, count, ring_at, floor=0.6):
+    """For the game model: count + 1 places from `first` to `last` along the fish, close together where the skin
+    bends most along its length (the snout, the head's wedge, the wrist of the tail) and further apart along the
+    flanks. `ring_at(xm)` gives points round the skin at xm. A straight line between places misses a curve by
+    about its bend times the gap squared, so the places are spaced by the square root of the bend, plus `floor`
+    of the mean so that no stretch is left bare (the swimming bend needs rings all the way)."""
+    n = 360
+    h = (last - first) / n
+    ss = [first + h * i for i in range(n + 1)]
+    made = [ring_at(s) for s in ss]
+    dens = []
+    for i in range(n + 1):
+        a, b, c = made[max(i - 1, 0)], made[i], made[min(i + 1, n)]
+        bend = max((a[k] - b[k] * 2.0 + c[k]).length for k in range(len(b))) / (h * h)
+        dens.append(math.sqrt(bend))
+    dens[0], dens[-1] = dens[1], dens[-2]
+    mean = sum(dens) / len(dens)
+    dens = [d + floor * mean for d in dens]
+    acc = [0.0]
+    for i in range(n):
+        acc.append(acc[-1] + 0.5 * (dens[i] + dens[i + 1]))
+    places = []
+    for k in range(count + 1):
+        want = acc[-1] * k / count
+        i = next((j for j in range(n) if acc[j + 1] >= want), n - 1)
+        t = (want - acc[i]) / max(acc[i + 1] - acc[i], 1e-12)
+        places.append(ss[i] + (ss[i + 1] - ss[i]) * t)
+    places[0], places[-1] = first, last
+    return places
+
+
 def rings(low):
+    if GAME:
+        xs = spread(BODY_FROM, BODY_TO, GAME["rings"], lambda xm: [body_point(xm, c / 16 * TAU) for c in range(16)])
+        # (rings at the corners of the mouth and where the jaw's back reaches the belly; none crowding them)
+        fixed = [MOUTH_TO, JAW_BACK]
+        xs = [x for x in xs if min(abs(x - f) for f in fixed) > 0.004] + fixed
+        return sorted(xs)
     xs = []
     x = BODY_FROM
     for until, step in ((0.012, 0.0009), (0.06, 0.0016), (0.16, 0.0024), (0.47, 0.0042), (BODY_TO, 0.0028)):
@@ -493,7 +540,7 @@ def stitch(m, grid, around, judge, roof_first):
 
 
 def body(m, low):
-    around = 24 if low else 88
+    around = GAME["around"] if GAME else (24 if low else 88)
     grid = []
     for xm in rings(low):
         up, down, _, _ = outline(xm)
@@ -538,7 +585,7 @@ def body(m, low):
 def jaw(m, low):
     """The lower jaw: the skin the head had below the cut, on the same rings and angles as the body, closed over
     by the floor of the mouth; a cap at its tip (its back end comes to nothing at the belly)."""
-    around = 24 if low else 88
+    around = GAME["around"] if GAME else (24 if low else 88)
     xs = [xm for xm in rings(low) if cut_through(xm)]
     grid = []
     for xm in xs:
@@ -578,7 +625,7 @@ def cheeks(m, low):
     gapes. Built here as they hang with the mouth wide open, so that their faces have a size and a facing;
     each point says how far down from the upper lip to the lower it is (UV2.x, 0 to 1), and the shader folds
     them up to nothing along the line of the mouth, inside the head, as the mouth shuts."""
-    rows = 3 if low else CHEEK_ROWS
+    rows = GAME["cheek"] if GAME else (3 if low else CHEEK_ROWS)
     xs = [xm for xm in rings(low) if cut_through(xm) and xm <= MOUTH_TO]
     for sx in (1.0, -1.0):
         for facing in (1.0, -1.0):
@@ -599,6 +646,9 @@ def eye(m, sx, low):
     """A low dome lying on the skin of the head."""
     spokes = 10 if low else 32
     steps = 3 if low else 10
+    if GAME:
+        # (round enough for the cartoon eye drawn on it)
+        spokes, steps = GAME["eye"]
     xe, ye = EYE_AT
 
     def on_skin(xm, y):
@@ -609,6 +659,9 @@ def eye(m, sx, low):
     out.normalize()
     if out.x * sx < 0.0:
         out = -out
+    if sx > 0.0:
+        # (for the shader's cartoon eye: the middle of the eye on the skin, and the way it faces, Godot metres)
+        print("EYE at (%.5f, %.5f, %.5f) out (%.4f, %.4f, %.4f)" % (*here, *out))
     middle = m.add(here + out * 0.0024, (0.0, 0.0), EYE)
     last = None
     for k in range(1, steps + 1):
@@ -678,6 +731,11 @@ SIDE = Vector((1.0, 0.0, 0.0))
 def fins(m, low):
     d = 3 if low else 1
 
+    def k(full):
+        """How many rows a fin has: the full model's, a third of them for the low model, GAME["fin"] of them
+        (and at least 2) for the game model."""
+        return max(2, int(round(full * GAME["fin"]))) if GAME else full // d
+
     # The dorsal: short at the root, tall, its leading edge a stiff spine leaning back, its top edge falling
     # away to a short rear edge that overhangs the root.
     def dorsal_point(t, u):
@@ -686,12 +744,12 @@ def fins(m, low):
         high = 0.066 * (1.0 - 0.6 * u ** 1.3) * (0.86 + 0.14 * smooth(0.0, 0.1, u))
         return (xm + (0.34 + 0.3 * u) * high * t, top(xm) - 0.004 + (high + 0.004) * t)
 
-    blade(m, DORSAL, "dorsal", dorsal_point, upright, SIDE, 0.006, 22 // d, 24 // d)
+    blade(m, DORSAL, "dorsal", dorsal_point, upright, SIDE, 0.006, k(22), k(24))
 
     # The adipose fin: a small fleshy lobe on the back before the tail, free at its rear.
     blade(m, ADIPOSE, "adipose", swept(((0.396, top(0.396) - 0.004), (0.426, top(0.41) + 0.023), (0.464, top(0.44) + 0.019)),
                                          ((0.433, top(0.433) - 0.004), (0.446, top(0.44) + 0.002), (0.464, top(0.44) + 0.008)), 1.0, 0.72),
-          upright, SIDE, 0.009, 14 // d, 10 // d)
+          upright, SIDE, 0.009, k(14), k(10))
 
     # The anal fin: long, its edge rounded, deepest a third of the way along it.
     def anal_point(t, u):
@@ -699,13 +757,13 @@ def fins(m, low):
         deep = 0.049 * (0.3 + 0.7 * smooth(0.0, 0.36, u)) * (1.0 - 0.62 * u ** 2.4)
         return (xm + 0.4 * deep * t, bottom(xm) + 0.005 - (deep + 0.005) * t)
 
-    blade(m, ANAL, "anal", anal_point, upright, SIDE, 0.006, 18 // d, 48 // d)
+    blade(m, ANAL, "anal", anal_point, upright, SIDE, 0.006, k(18), k(48))
 
     # The tail: deeply forked, two lobes that meet along the middle line.
     for way in (1.0, -1.0):
         blade(m, TAIL, "tail", swept(((0.488, 0.0), (0.522, 0.066 * way), (0.6, 0.078 * way)),
                                       ((0.553, 0.0), (0.562, 0.022 * way), (0.6, 0.052 * way)), 1.0, 0.8),
-              upright, SIDE, 0.016, 36 // d, 16 // d)
+              upright, SIDE, 0.016, k(36), k(16))
 
     for sx in (1.0, -1.0):
         # The pectoral fins: low on the sides behind the gill cover, held out and back, a little down; a
@@ -725,7 +783,7 @@ def fins(m, low):
 
         blade(m, PECTORAL, "pectorals", pectoral_point,
               lambda p, root=root, span=span, chord=chord: root + span * p[0] + chord * p[1],
-              facing, 0.006, 20 // d, 16 // d)
+              facing, 0.006, k(20), k(16))
         # The pelvic fins: on the belly, half way along, fanned back and out.
         root = skin_out(0.270, 0.016, sx, False)
         root.y += 0.004
@@ -742,7 +800,7 @@ def fins(m, low):
 
         blade(m, PELVIC, "pelvics", pelvic_point,
               lambda p, root=root, span=span, chord=chord: root + span * p[0] + chord * p[1],
-              facing, 0.005, 14 // d, 12 // d)
+              facing, 0.005, k(14), k(12))
 
 
 def barbel_radius(thick, s):
@@ -782,6 +840,9 @@ def barbel(m, which, root, way, way_on, long, thick, low):
     lays it again along the rope, from what its points say: how far along, how far round, how thick."""
     around = 5 if low else 9
     along = (8 if low else 30) if long > 0.08 else (5 if low else 16)
+    if GAME:
+        around = GAME["barbel"][0]
+        along = GAME["barbel"][1] if long > 0.08 else GAME["barbel"][2]
     fine = 96
     # the rest line, and a frame carried along it with the least turning
     line = [root.copy()]
@@ -819,7 +880,24 @@ def barbel(m, which, root, way, way_on, long, thick, low):
         last = row
 
 
-def make(name, low):
+def root_gaps(name, m):
+    """How far each barbel's root is from the skin of this model's head (mm; more than 0 outside it, where the
+    rope's root would hang in the water): the roots are the same on every model (`barbels`), the skin round them
+    is not (the game model's is coarser)."""
+    from mathutils.bvhtree import BVHTree
+    skin = [face for face, (_, named) in zip(m.faces, m.out) if named in ("body", "lower jaw")]
+    tree = BVHTree.FromPolygons(m.verts, skin)
+    gaps = []
+    for _, root, _, _, _, _ in barbels():
+        at, normal, _, _ = tree.find_nearest(root)
+        gaps.append((root - at).dot(normal) * 1000.0)
+    print("ROOTS %s: barbel roots from the skin, mm: %s" % (name, ", ".join("%.2f" % g for g in gaps)))
+
+
+def make(name, low, game=False):
+    """`game`: the game model (built on the low model's simpler parts, `low` True, with GAME_COUNTS' counts)."""
+    global GAME
+    GAME = GAME_COUNTS if game else None
     m = Mesh()
     body(m, low)
     jaw(m, low)
@@ -861,6 +939,8 @@ def make(name, low):
     tris = sum(len(p.vertices) - 2 for p in mesh.polygons)
     print("BUILT %s verts=%d tris=%d" % (name, len(mesh.vertices), tris))
     winding(name, mesh, m)
+    root_gaps(name, m)
+    GAME = None
     return obj
 
 
@@ -936,12 +1016,17 @@ def main():
     print("SHADER HINGE vec2(%.5f, %.5f)" % HINGE)
     full = make("channel_catfish", False)
     low = make("channel_catfish_lo", True)
+    game = make("channel_catfish_game", True, True)
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, "channel_catfish.glb"))
     export_one(low, os.path.join(OUT, "channel_catfish_lo.glb"))
+    export_one(game, os.path.join(OUT, "channel_catfish_game.glb"))
     low.location.x = 0.6
+    game.location.x = 1.2
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "channel_catfish.blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
+    game.hide_render = True
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
         render(PREVIEW, [full, low])

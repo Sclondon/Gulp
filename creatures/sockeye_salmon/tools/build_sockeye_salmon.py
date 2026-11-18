@@ -1,4 +1,7 @@
 """Builds the sockeye salmon (creatures/sockeye_salmon) and exports it for Godot.
+(Added 2026-11-18: it also writes the GAME model, models/..._game.glb, a third model of the same curves with
+far fewer, better placed points, into the same .blend; the full and low models come out exactly as before. See
+GAME, `spread` and `make`, and the component's README.)
 
 Run from the game's root:
     blender --background --python creatures/sockeye_salmon/tools/build_sockeye_salmon.py
@@ -71,6 +74,50 @@ WANTED = [name for name in ARGS[1:] if name in STAGES] or STAGES
 LENGTH = 0.6
 TAU = math.tau
 BODY, JAW, EYE, MAXILLA, DORSAL, ADIPOSE, TAIL, ANAL, PELVIC, PECTORAL = 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+# The GAME model's counts while it is built (`make`), or None: the same curves and parts as the full model with far
+# fewer points, put where the outline bends (see `spread`). The full and low models never see it. Its budget goes
+# by how long the fish really is (SockeyeSalmon.SIZE): the young, 3 to 10 cm, 400 to 900 triangles; the grown fish,
+# 56 to 60 cm, 1,800 to 3,000. body: rings along it, half: points down each side; jaw: rings, half; eye: rows,
+# points round (24: round enough for the cartoon eye); maxilla: stations, points round; fin: points along its edge
+# for each ray, fewest, rows out along the rays (and for fins of 13 rays or more).
+GAME_COUNTS = {
+    "young": {"body": 16, "half": 5, "jaw": 5, "jaw_half": 3, "eye": (2, 24), "maxilla": (4, 3),
+              "fin": (0.34, 3, 1, 2)},
+    "grown": {"body": 34, "half": 8, "jaw": 9, "jaw_half": 4, "eye": (3, 24), "maxilla": (5, 4),
+              "fin": (0.5, 4, 2, 3)},
+}
+GAME = None
+
+
+def spread(first, last, count, ring_at, floor=0.6):
+    """For the game model: count + 1 places from `first` to `last` along the fish, close together where the skin
+    bends most along its length (the snout, the gill cover's step, the hump, the wrist of the tail) and further
+    apart along the flanks. `ring_at(s)` gives points round the skin at s. A straight line between places misses a
+    curve by about its bend times the gap squared, so the places are spaced by the square root of the bend, plus
+    `floor` of the mean so that no stretch is left bare (the swimming bend needs rings all the way)."""
+    n = 360
+    h = (last - first) / n
+    ss = [first + h * i for i in range(n + 1)]
+    rings = [ring_at(s) for s in ss]
+    dens = []
+    for i in range(n + 1):
+        a, b, c = rings[max(i - 1, 0)], rings[i], rings[min(i + 1, n)]
+        bend = max((a[k] - b[k] * 2.0 + c[k]).length for k in range(len(b))) / (h * h)
+        dens.append(math.sqrt(bend))
+    dens[0], dens[-1] = dens[1], dens[-2]
+    mean = sum(dens) / len(dens)
+    dens = [d + floor * mean for d in dens]
+    acc = [0.0]
+    for i in range(n):
+        acc.append(acc[-1] + 0.5 * (dens[i] + dens[i + 1]))
+    places = []
+    for k in range(count + 1):
+        want = acc[-1] * k / count
+        i = min(bisect.bisect_right(acc, want) - 1, n - 1)
+        t = (want - acc[i]) / max(acc[i + 1] - acc[i], 1e-12)
+        places.append(lerp(ss[i], ss[i + 1], t))
+    places[0], places[-1] = first, last
+    return places
 
 
 def to_b(p):
@@ -167,6 +214,18 @@ class Section:
         out = []
         for j in range(half + 1):
             want = whole * j / half
+            if GAME:
+                # (a point on the widest place of every ring, so that the outline seen from above is whole;
+                # closer together towards the back line and the belly line, where a narrow fish's skin
+                # turns most, and further apart across the flat of its side)
+                widest = acc[max(range(steps + 1), key=lambda k: dense[k][0])]
+                jw = int(half * 0.45 + 0.5)
+                if j <= jw:
+                    u = j / jw
+                    want = widest * (u - 0.3 * math.sin(math.pi * u) / math.pi)
+                else:
+                    u = (j - jw) / (half - jw)
+                    want = widest + (whole - widest) * (u + 0.3 * math.sin(math.pi * u) / math.pi)
             i = min(bisect.bisect_right(acc, want) - 1, steps - 1)
             span = acc[i + 1] - acc[i]
             t = (want - acc[i]) / span if span > 1e-12 else 0.0
@@ -548,7 +607,16 @@ def skin(part, section, places, half, kind):
     part.loft(rings)
 
 
+def body_ring(s, half=10):
+    """Points round the body's skin at s, the gill cover's plate and all (for `spread`)."""
+    side, whole = BODY_SKIN.outline(s, half)
+    top, bot = BODY_SKIN.top(s), BODY_SKIN.bot(s)
+    return [Vector((x + gill_plate(s, (y - bot) / max(top - bot, 1e-9))[0], y, s)) for x, y, arc in side]
+
+
 def body_places(low):
+    if GAME:
+        return spread(0.0, BODY_SKIN.last, GAME["body"], body_ring)
     head = 20 if low else 80
     rest = 26 if low else 92
     behind = GILL_S + 0.014
@@ -562,6 +630,8 @@ def maxilla(low):
     part = Part("maxilla")
     stations = 8 if low else 26
     around = 6 if low else 12
+    if GAME:
+        stations, around = GAME["maxilla"]
     rings = []
     for i in range(stations + 1):
         u = i / stations
@@ -598,6 +668,11 @@ def eye(low):
     centre = at - out * (ball - stands)
     rows = 4 if low else 10
     around = 10 if low else 32
+    if GAME:
+        rows, around = GAME["eye"]
+    # (for the shader's cartoon eye: the middle of the eye's face on the skin, the way it faces, Godot metres)
+    print("EYE %s at (%.5f, %.5f, %.5f) out (%.4f, %.4f, %.4f) rim %.5f" % (
+        P["stage"], *(at * LENGTH), *out, ball * math.sin(reach) * LENGTH))
     rings = []
     for i in range(rows + 1):
         a = reach * i / rows
@@ -625,10 +700,17 @@ def fin(name, kind, rays, base, direction, length, normal, thick, low, fleshy=Fa
     per_ray = 1 if low else 4
     rows = 3 if low else 12
     cols = max(rays * per_ray, 6)
+    if GAME:
+        per_ray, fewest, rows, rows_big = GAME["fin"]
+        cols = max(int(round(rays * per_ray)), fewest)
+        rows = rows_big if rays >= 13 else rows
     normal = normal.normalized()
     left, right = [], []
     for i in range(cols + 1):
         t = i / cols
+        if GAME:
+            # (closer together at its leading edge and its trailing tip, where its outline turns)
+            t = t - 0.55 * math.sin(TAU * t) / TAU
         b, d, long = base(t), direction(t).normalized(), length(t)
         ridge = 0.5 + 0.5 * math.cos(TAU * (t * rays - 0.5)) if (rays > 1 and not low) else 0.0
         edge = min(1.0, t / 0.06) ** 0.5 * min(1.0, (1.0 - t) / 0.1) ** 0.5
@@ -762,15 +844,18 @@ def fins(low):
     return made
 
 
-def make(name, low):
+def make(name, low, game=False):
+    """`game`: the game model (built on the low model's simpler parts, `low` True, with GAME_COUNTS' counts)."""
+    global GAME
+    GAME = GAME_COUNTS["young" if P["stage"] in ("fry", "parr", "smolt") else "grown"] if game else None
     parts = []
     body = Part("body")
-    skin(body, BODY_SKIN, body_places(low), 9 if low else 30, BODY)
+    skin(body, BODY_SKIN, body_places(low), GAME["half"] if game else (9 if low else 30), BODY)
     parts.append(body)
     jaw = Part("jaw")
-    jaw_rings = 14 if low else 44
+    jaw_rings = GAME["jaw"] if game else (14 if low else 44)
     skin(jaw, JAW_SKIN, [lerp(JAW_SKIN.first, JAW_SKIN.last, (i / jaw_rings) ** 1.25) for i in range(jaw_rings + 1)],
-         5 if low else 14, JAW)
+         GAME["jaw_half"] if game else (5 if low else 14), JAW)
     parts.append(jaw)
     plate = maxilla(low)
     parts += [plate, plate.mirrored("maxilla_left", flip_body)]
@@ -830,6 +915,7 @@ def make(name, low):
     tris = sum(len(p.vertices) - 2 for p in mesh.polygons)
     print("BUILT %s verts=%d tris=%d" % (name, len(mesh.vertices), tris))
     print("WINDING %s: %s: %s" % (name, "ok" if wrong_all == 0 else "INSIDE OUT", ", ".join(told)))
+    GAME = None
     return obj
 
 
@@ -888,11 +974,16 @@ def main():
         name = "sockeye_" + stage
         full = make(name, False)
         low = make(name + "_lo", True)
+        game = make(name + "_game", True, True)
         export_one(full, os.path.join(OUT, name + ".glb"))
         export_one(low, os.path.join(OUT, name + "_lo.glb"))
+        export_one(game, os.path.join(OUT, name + "_game.glb"))
         low.location.x = 0.5
+        game.location.x = 1.0
         bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, name + ".blend"))
         low.location.x = 0.0
+        game.location.x = 0.0
+        game.hide_render = True
         if PREVIEW:
             folder = os.path.join(PREVIEW, stage)
             os.makedirs(folder, exist_ok=True)

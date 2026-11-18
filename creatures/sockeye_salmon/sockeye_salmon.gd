@@ -155,6 +155,34 @@ const STAGES := {
 		"fin_dusk": 1.0, "sheen": 0.25,
 	},
 }
+## Each stage's cartoon eye (`cartoon_eyes`): where its eye is on its model (the build
+## script prints it), how far out its rim is drawn, how much bigger it grows, and its
+## character: a fry's wide baby stare, a smolt's bright alert eye, the sleek ocean fish's
+## level look, the migrating fish's set frown, the spawning male's heavy fierce brow and
+## red eye, the female's steady watchful one. Its lid is the stage's `head` colour.
+const EYES := {
+	Stage.FRY: {"eye_at": Vector3(0.02395, 0.0138, -0.24816), "eye_out": Vector3(0.9586, 0.2141, -0.1876),
+		"eye_rim": 0.758, "eye_grow": 1.2, "iris": Color(0.82, 0.72, 0.36),
+		"iris_size": 0.6, "pupil_size": 0.62, "lid": 1.0, "lid_slant": 0.0},
+	Stage.PARR: {"eye_at": Vector3(0.02392, 0.0132, -0.25118), "eye_out": Vector3(0.9534, 0.2273, -0.1984),
+		"eye_rim": 0.859, "eye_grow": 1.3, "iris": Color(0.8, 0.7, 0.34),
+		"iris_size": 0.6, "pupil_size": 0.6, "lid": 1.0, "lid_slant": 0.0},
+	Stage.SMOLT: {"eye_at": Vector3(0.02236, 0.0144, -0.25507), "eye_out": Vector3(0.9363, 0.2821, -0.2092),
+		"eye_rim": 0.92, "eye_grow": 1.4, "iris": Color(0.72, 0.78, 0.8),
+		"iris_size": 0.6, "pupil_size": 0.58, "lid": 0.86, "lid_slant": 0.0},
+	Stage.OCEAN: {"eye_at": Vector3(0.0233, 0.0144, -0.2568), "eye_out": Vector3(0.9296, 0.2918, -0.2251),
+		"eye_rim": 1.0, "eye_grow": 2.0, "iris": Color(0.66, 0.76, 0.84),
+		"iris_size": 0.62, "pupil_size": 0.54, "lid": 0.7, "lid_slant": 0.05},
+	Stage.MIGRATING: {"eye_at": Vector3(0.02381, 0.01224, -0.246), "eye_out": Vector3(0.9513, 0.2361, -0.1979),
+		"eye_rim": 1.0, "eye_grow": 2.0, "iris": Color(0.95, 0.62, 0.16),
+		"iris_size": 0.64, "pupil_size": 0.5, "lid": 0.58, "lid_slant": 0.18},
+	Stage.SPAWNER: {"eye_at": Vector3(0.02394, 0.0096, -0.2328), "eye_out": Vector3(0.9657, 0.1779, -0.1889),
+		"eye_rim": 1.0, "eye_grow": 2.0, "iris": Color(0.92, 0.32, 0.08),
+		"iris_size": 0.66, "pupil_size": 0.46, "lid": 0.38, "lid_slant": 0.38},
+	Stage.SPAWNER_FEMALE: {"eye_at": Vector3(0.02345, 0.01392, -0.2544), "eye_out": Vector3(0.9349, 0.2787, -0.2197),
+		"eye_rim": 1.0, "eye_grow": 2.0, "iris": Color(0.95, 0.58, 0.14),
+		"iris_size": 0.64, "pupil_size": 0.5, "lid": 0.55, "lid_slant": 0.2},
+}
 ## What a material for fish in a pack leaves out (see `new_material`).
 const PLAIN := {"mottle": 0.0, "scales": 0.0, "spot_amount": 0.0, "tail_streaks": 0.0}
 
@@ -196,6 +224,31 @@ static var _meshes := {}
 	set(value):
 		low = value
 		_show()
+## The game model (the young about 880 triangles, the grown fish about 2,250, spent on
+## the outline, the eye, the mouth and the fins' edges) in place of the full one; `low`
+## still shows the low model. Each model is loaded only when it is first shown, so with
+## `game` on the full models are never loaded and a game's web export can leave them out.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye (0 the eye as it was, 1 the cartoon eye: bigger, a white, an iris, a
+## big pupil, a highlight, and each stage's own lid and look: EYES). Gulp sets it to 1.
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = value
+		_send(&"cartoon_eyes", value)
+## Where the cartoon eye's pupil looks: x forward (towards the snout), y up, -1..1.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		_send(&"eye_look", value)
+## 0 open, 1 shut: the eye squashes and a lid closes over it (a fish has no lids:
+## this is for a game that wants one).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = value
+		_send(&"blink", value)
 ## How far through a beat it is, 0 to 1. `step` moves it on; or set it yourself.
 var phase := 0.0:
 	set(value):
@@ -205,19 +258,38 @@ var phase := 0.0:
 var _material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
 var _effort := 0.5
 
 
 ## A stage's mesh (the low one for fish far off, in packs, on phones), for a game that
 ## keeps its own MeshInstance3Ds. Each is loaded once and kept.
 static func mesh_of(stage_wanted: Stage, low_wanted := false) -> Mesh:
-	var path := MODEL % [NAMES[stage_wanted], "_lo" if low_wanted else ""]
+	return _mesh_at(MODEL % [NAMES[stage_wanted], "_lo" if low_wanted else ""], false)
+
+
+## A stage's game model's mesh (see `game`), for a game that keeps its own
+## MeshInstance3Ds. Loaded once and kept, without the importer's thinned LOD meshes.
+static func game_mesh(stage_wanted: Stage) -> Mesh:
+	return _mesh_at(MODEL % [NAMES[stage_wanted], "_game"], true)
+
+
+static func _mesh_at(path: String, plain: bool) -> Mesh:
 	if not _meshes.has(path):
 		var made := (load(path) as PackedScene).instantiate()
 		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
-		_meshes[path] = found.mesh
+		_meshes[path] = without_lods(found.mesh) if plain else found.mesh
 		made.free()
 	return _meshes[path]
+
+
+## The mesh without the thinned LOD meshes Godot's importer makes: the shader bends the
+## fish, and a thinned mesh far off would bend in straight pieces.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return plain
 
 
 ## A new material for a stage's mesh, dressed in that stage's colours and markings. Its
@@ -245,7 +317,7 @@ func _init() -> void:
 func _ready() -> void:
 	_full = _instance_of("Salmon")
 	_low = _instance_of("Salmon_lo")
-	_fit()
+	_game = _instance_of("Salmon_game")
 	_show()
 	for setting: StringName in [&"tail_beats", &"breaths", &"sculls"]:
 		_send(setting, float(get(setting)))
@@ -290,6 +362,10 @@ static func _wear(on: ShaderMaterial, stage_wanted: Stage) -> void:
 	var wears: Dictionary = STAGES[stage_wanted]
 	for setting: String in wears:
 		on.set_shader_parameter(setting, wears[setting])
+	var eyes: Dictionary = EYES[stage_wanted]
+	for setting: String in eyes:
+		on.set_shader_parameter(setting, eyes[setting])
+	on.set_shader_parameter(&"lid_colour", wears["head"])
 
 
 func _dress() -> void:
@@ -298,15 +374,20 @@ func _dress() -> void:
 
 
 func _fit() -> void:
-	if _full:
-		_full.mesh = mesh_of(stage, false)
-		_low.mesh = mesh_of(stage, true)
+	if _full == null:
+		return
+	# (only the model shown is loaded; the others are given theirs when they are first shown)
+	_full.mesh = mesh_of(stage, false) if _full.visible else null
+	_low.mesh = mesh_of(stage, true) if _low.visible else null
+	_game.mesh = game_mesh(stage) if _game.visible else null
 
 
 func _show() -> void:
 	if _full:
-		_full.visible = not low
+		_full.visible = not low and not game
 		_low.visible = low
+		_game.visible = game and not low
+		_fit()
 
 
 func _instance_of(called: String) -> MeshInstance3D:

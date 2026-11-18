@@ -1,4 +1,7 @@
 """Builds the cutthroat trout (creatures/cutthroat_trout) and exports it for Godot.
+(Added 2026-11-18: it also writes the GAME model, models/..._game.glb, a third model of the same curves with
+far fewer, better placed points, into the same .blend; the full and low models come out exactly as before. See
+GAME, `spread` and `make`, and the component's README.)
 
 Run from the game's root:
     blender --background --python creatures/cutthroat_trout/tools/build_cutthroat_trout.py
@@ -59,6 +62,40 @@ PREVIEW = ARGS[0] if ARGS else ""
 LENGTH = 0.4
 TAU = math.tau
 BODY, JAW, EYE, MAXILLA, DORSAL, ADIPOSE, TAIL, ANAL, PELVIC, PECTORAL = 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+# True while the GAME model is built (`make`): the same curves and parts as the full model with far fewer points,
+# put where the outline bends (see `spread`). The full and low models never see it.
+GAME = False
+
+
+def spread(first, last, count, ring_at, floor=0.6):
+    """For the game model: count + 1 places from `first` to `last` along the fish, close together where the skin
+    bends most along its length (the snout, the gill cover's step, the wrist of the tail) and further apart along
+    the flanks. `ring_at(s)` gives points round the skin at s. A straight line between places misses a curve by
+    about its bend times the gap squared, so the places are spaced by the square root of the bend, plus `floor`
+    of the mean so that no stretch is left bare (the swimming bend needs rings all the way)."""
+    n = 360
+    h = (last - first) / n
+    ss = [first + h * i for i in range(n + 1)]
+    rings = [ring_at(s) for s in ss]
+    dens = []
+    for i in range(n + 1):
+        a, b, c = rings[max(i - 1, 0)], rings[i], rings[min(i + 1, n)]
+        bend = max((a[k] - b[k] * 2.0 + c[k]).length for k in range(len(b))) / (h * h)
+        dens.append(math.sqrt(bend))
+    dens[0], dens[-1] = dens[1], dens[-2]
+    mean = sum(dens) / len(dens)
+    dens = [d + floor * mean for d in dens]
+    acc = [0.0]
+    for i in range(n):
+        acc.append(acc[-1] + 0.5 * (dens[i] + dens[i + 1]))
+    places = []
+    for k in range(count + 1):
+        want = acc[-1] * k / count
+        i = min(bisect.bisect_right(acc, want) - 1, n - 1)
+        t = (want - acc[i]) / max(acc[i + 1] - acc[i], 1e-12)
+        places.append(lerp(ss[i], ss[i + 1], t))
+    places[0], places[-1] = first, last
+    return places
 
 
 def to_b(p):
@@ -155,6 +192,18 @@ class Section:
         out = []
         for j in range(half + 1):
             want = whole * j / half
+            if GAME:
+                # (a point on the widest place of every ring, so that the outline seen from above is whole;
+                # closer together towards the back line and the belly line, where a narrow fish's skin
+                # turns most, and further apart across the flat of its side)
+                widest = acc[max(range(steps + 1), key=lambda k: dense[k][0])]
+                jw = int(half * 0.45 + 0.5)
+                if j <= jw:
+                    u = j / jw
+                    want = widest * (u - 0.3 * math.sin(math.pi * u) / math.pi)
+                else:
+                    u = (j - jw) / (half - jw)
+                    want = widest + (whole - widest) * (u + 0.3 * math.sin(math.pi * u) / math.pi)
             i = min(bisect.bisect_right(acc, want) - 1, steps - 1)
             span = acc[i + 1] - acc[i]
             t = (want - acc[i]) / span if span > 1e-12 else 0.0
@@ -374,7 +423,16 @@ def skin(part, section, places, half, kind):
     part.loft(rings)
 
 
+def body_ring(s, half=10):
+    """Points round the body's skin at s, the gill cover's plate and all (for `spread`)."""
+    side, whole = BODY_SKIN.outline(s, half)
+    top, bot = BODY_SKIN.top(s), BODY_SKIN.bot(s)
+    return [Vector((x + gill_plate(s, (y - bot) / max(top - bot, 1e-9))[0], y, s)) for x, y, arc in side]
+
+
 def body_places(low):
+    if GAME:
+        return spread(0.0, BODY_SKIN.last, GAME_BODY_RINGS, body_ring)
     head = 20 if low else 80
     rest = 26 if low else 92
     places = [0.23 * (i / head) ** 1.35 for i in range(head)]
@@ -387,6 +445,8 @@ def maxilla(low):
     part = Part("maxilla")
     stations = 8 if low else 26
     around = 6 if low else 12
+    if GAME:
+        stations, around = 5, 4
     rings = []
     for i in range(stations + 1):
         u = i / stations
@@ -420,8 +480,13 @@ def eye(low):
     ball = 0.028
     reach = math.radians(58.0)
     centre = at - out * (ball - 0.0045)
+    # (for the shader's cartoon eye: the middle of the eye's face on the skin, and the way it faces, Godot metres)
+    print("EYE at (%.5f, %.5f, %.5f) out (%.4f, %.4f, %.4f)" % (*(at * LENGTH), *out))
     rows = 4 if low else 10
     around = 10 if low else 32
+    if GAME:
+        # (round enough for the cartoon eye drawn on it: 24 a side)
+        rows, around = 3, 24
     rings = []
     for i in range(rows + 1):
         a = reach * i / rows
@@ -449,10 +514,17 @@ def fin(name, kind, rays, base, direction, length, normal, thick, low, fleshy=Fa
     per_ray = 1 if low else 4
     rows = 3 if low else 12
     cols = max(rays * per_ray, 6)
+    if GAME:
+        # (a point every second ray along the edge; two rows out along the rays, three on the big fins that bend)
+        cols = max((rays + 1) // 2, 4)
+        rows = 3 if rays >= 13 else 2
     normal = normal.normalized()
     left, right = [], []
     for i in range(cols + 1):
         t = i / cols
+        if GAME:
+            # (closer together at its leading edge and its trailing tip, where its outline turns)
+            t = t - 0.55 * math.sin(TAU * t) / TAU
         b, d, long = base(t), direction(t).normalized(), length(t)
         ridge = 0.5 + 0.5 * math.cos(TAU * (t * rays - 0.5)) if (rays > 1 and not low) else 0.0
         edge = min(1.0, t / 0.06) ** 0.5 * min(1.0, (1.0 - t) / 0.1) ** 0.5
@@ -573,15 +645,22 @@ def fins(low):
     return made
 
 
-def make(name, low):
+GAME_BODY_RINGS = 26
+GAME_HALF = 7
+
+
+def make(name, low, game=False):
+    """`game`: the game model (built on the low model's simpler parts, `low` True, with the counts GAME sets)."""
+    global GAME
+    GAME = game
     parts = []
     body = Part("body")
-    skin(body, BODY_SKIN, body_places(low), 9 if low else 30, BODY)
+    skin(body, BODY_SKIN, body_places(low), GAME_HALF if game else (9 if low else 30), BODY)
     parts.append(body)
     jaw = Part("jaw")
-    jaw_rings = 14 if low else 44
+    jaw_rings = 8 if game else (14 if low else 44)
     skin(jaw, JAW_SKIN, [lerp(JAW_SKIN.first, JAW_SKIN.last, (i / jaw_rings) ** 1.25) for i in range(jaw_rings + 1)],
-         5 if low else 14, JAW)
+         4 if game else (5 if low else 14), JAW)
     parts.append(jaw)
     plate = maxilla(low)
     parts += [plate, plate.mirrored("maxilla_left", flip_body)]
@@ -641,6 +720,7 @@ def make(name, low):
     tris = sum(len(p.vertices) - 2 for p in mesh.polygons)
     print("BUILT %s verts=%d tris=%d" % (name, len(mesh.vertices), tris))
     print("WINDING %s: %s: %s" % (name, "ok" if wrong_all == 0 else "INSIDE OUT", ", ".join(told)))
+    GAME = False
     return obj
 
 
@@ -693,12 +773,17 @@ def main():
     bpy.context.preferences.filepaths.save_version = 0
     full = make("cutthroat_trout", False)
     low = make("cutthroat_trout_lo", True)
+    game = make("cutthroat_trout_game", True, True)
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, "cutthroat_trout.glb"))
     export_one(low, os.path.join(OUT, "cutthroat_trout_lo.glb"))
+    export_one(game, os.path.join(OUT, "cutthroat_trout_game.glb"))
     low.location.x = 0.4
+    game.location.x = 0.8
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "cutthroat_trout.blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
+    game.hide_render = True
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
         render(PREVIEW, [full, low])

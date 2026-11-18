@@ -75,6 +75,38 @@ uniform float spot_size = 1.0;
 uniform float spot_fore = 0.4;
 uniform float spot_low = 0.5;
 
+// Cartoon eyes (added 2026-11-18; the user: "the eyes for most of them should be more cartoony and
+// personalized"). 0, the default, is the eye drawn below, as it always was; 1 is the cartoon eye:
+// grown about the middle of its face, a pale white, a coloured iris, a big dark pupil, a highlight
+// that stays put (up and forward, towards the light) and a dark rim, under an upper lid.
+uniform float cartoon_eyes = 0.0;
+// Where the pupil looks, in the eye's own plane: x forward (towards the snout; -1 back towards the
+// tail), y up; -1..1. Only the cartoon eye's pupil moves.
+uniform vec2 eye_look = vec2(0.0);
+// 0 open, 1 shut: the eye squashes flat from above and below and a lid of `lid_colour` closes over it.
+uniform float blink = 0.0;
+// The right eye's middle on the skin and the way it faces (metres, as the model is built: the build
+// script prints them; the left eye is its mirror).
+uniform vec3 eye_at = vec3(0.01514, 0.012, -0.172);
+uniform vec3 eye_out = vec3(0.9063, 0.3634, -0.2157);
+// The trout's own cartoon eye (the README says what character it has): how much bigger it is
+// drawn, its white, its iris (how wide, of the eye's face to its rim), its pupil (how wide, of the
+// iris; 0 round, 1 an upright slit, 2 a level bar, 3 a keyhole), where the upper lid's edge rests
+// (1 the top of the eye, no lid; 0 its middle) and how much lower it comes at the front (a frown).
+uniform float eye_grow = 1.6;
+// (how fast the head's skin falls away round the eye: 1 / (2 x its radius there), per metre)
+// (eye_sink: 0, not sunk, looked cleanest on all of them: sunk, the rim dipped under the skin and came
+// out again below the eye as a dark crescent)
+uniform float eye_sink = 0.0;
+uniform vec3 eye_white : source_color = vec3(0.97, 0.95, 0.86);
+uniform vec3 iris : source_color = vec3(0.98, 0.72, 0.2);
+uniform float iris_size = 0.62;
+uniform float pupil_size = 0.56;
+uniform int pupil_shape = 0;
+uniform float lid = 0.6;
+uniform float lid_slant = 0.14;
+uniform vec3 lid_colour : source_color = vec3(0.26, 0.32, 0.13);
+
 varying vec3 rest;
 varying float part;
 varying vec2 extra;
@@ -145,6 +177,57 @@ float spots(vec2 p, float cell, float share, float grown, bool on_body, float gi
 }
 
 
+// The cartoon eye's dome grown about the middle of its face, and squashed from above and below as
+// it blinks (nothing moves while cartoon_eyes and blink are 0).
+void eye_shape(inout vec3 v, float side_is) {
+	if (cartoon_eyes <= 0.0 && blink <= 0.0) {
+		return;
+	}
+	vec3 at = vec3(eye_at.x * side_is, eye_at.yz);
+	vec3 o = normalize(vec3(eye_out.x * side_is, eye_out.yz));
+	vec3 up = normalize(vec3(0.0, 1.0, 0.0) - o * o.y);
+	vec3 d = v - at;
+	float grow = mix(1.0, eye_grow, cartoon_eyes);
+	float before = dot(d - o * dot(d, o), d - o * dot(d, o));
+	// (grown across, and outward; what lies behind its face, deep in the head, is not pushed further in,
+	// or it would come out through the other side of a narrow head)
+	float deep = min(dot(d, o), 0.0);
+	d = (d - o * deep) * grow + o * deep;
+	// (sunk as the head's skin falls away round it, so that the grown rim stays in the skin)
+	d -= o * eye_sink * before * (grow * grow - 1.0);
+	d -= up * dot(d, up) * 0.8 * blink;
+	v = at + d;
+}
+
+
+// The cartoon eye's colour at a place on its face: `e` x up, y forward, 1 at its rim.
+vec3 cartoon_eye(vec2 e) {
+	float r = length(e);
+	vec2 q = e - vec2(eye_look.y, eye_look.x) * (0.9 - iris_size);
+	float ri = length(q) / iris_size;
+	float aa = fwidth(ri) + 0.01;
+	vec3 c = eye_white * mix(1.0, 0.82, smoothstep(0.4, 1.0, r));
+	vec3 ring = mix(iris * 1.2, iris * 0.6, smoothstep(0.25, 0.95, ri));
+	ring = mix(ring, iris * 0.25, smoothstep(0.82, 1.0, ri));
+	c = mix(c, ring, 1.0 - smoothstep(1.0 - aa, 1.0 + aa, ri));
+	vec2 p = q / (iris_size * pupil_size);
+	float pd = length(p);
+	if (pupil_shape == 1) {
+		pd = length(vec2(p.x * 0.6, p.y * 2.4));
+	} else if (pupil_shape == 2) {
+		pd = length(vec2(p.x * 2.4, p.y * 0.6));
+	} else if (pupil_shape == 3) {
+		pd = min(length(p - vec2(0.22, 0.0)) * 1.15, length(vec2((p.x + 0.35) * 0.75, p.y * 2.8)));
+	}
+	float pa = fwidth(pd) + 0.02;
+	c = mix(c, vec3(0.015), 1.0 - smoothstep(1.0 - pa, 1.0 + pa, pd));
+	float shine = 1.0 - smoothstep(0.17, 0.21, length(e - vec2(0.36, 0.3)));
+	shine = max(shine, 0.85 * (1.0 - smoothstep(0.07, 0.1, length(e - vec2(-0.22, -0.3)))));
+	c = mix(c, vec3(1.0), shine);
+	return mix(c, vec3(0.02), smoothstep(0.83, 0.9, r));
+}
+
+
 // The body behind the head laid round an arc (see `curl`).
 void curl_bend(inout vec3 v, inout vec3 n) {
 	float from = -0.2 * LENGTH;
@@ -172,6 +255,9 @@ void vertex() {
 	float breath = phase * TAU * breaths;
 	float tail = phase * TAU * tail_beats;
 	float wave = tail - TAU * clamp(s, 0.0, 1.05) / WAVE;
+	if (part == 2.0) {
+		eye_shape(v, side_is);
+	}
 	if (part == 1.0) {
 		// The lower jaw swings about its hinge under the eye; the throat behind it stays.
 		float a = (gape + gape_breath * (0.5 - 0.5 * cos(breath))) * smoothstep(0.137, 0.09, s);
@@ -310,6 +396,15 @@ void fragment() {
 		c = mix(c, vec3(0.04, 0.035, 0.03), smoothstep(0.6, 0.7, r));
 		c = mix(c, vec3(1.0, 0.92, 0.62), 0.45 * (1.0 - smoothstep(0.38, 0.48, r)));
 		c = mix(c, vec3(0.01), 1.0 - smoothstep(0.32, 0.36, r));
+		if (cartoon_eyes > 0.0) {
+			c = mix(c, cartoon_eye(on_eye), cartoon_eyes);
+		}
+		// (past its rim, where the grown dome runs back into the head and a sliver may show below it: the skin's colour, not the dark rim)
+		c = mix(c, lid_colour, cartoon_eyes * smoothstep(0.95, 1.0, length(on_eye)));
+		// (the upper lid: none on the eye as it was, until it blinks)
+		float lid_edge = mix(mix(1.3, lid, cartoon_eyes) - lid_slant * cartoon_eyes * on_eye.y, -1.3, blink);
+		c = mix(c, vec3(0.02), smoothstep(lid_edge - 0.16, lid_edge - 0.06, on_eye.x) * step(on_eye.x, 1.0) * step(lid_edge, 1.2));
+		c = mix(c, lid_colour, smoothstep(lid_edge - 0.05, lid_edge, on_eye.x));
 		rough = 0.06;
 		glint = 0.0;
 	} else if (part < 3.5) {

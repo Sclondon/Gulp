@@ -72,6 +72,43 @@ uniform vec3 mouth_inside : source_color = vec3(0.16, 0.04, 0.04);
 // How much of each band shows (1 all of it; a loach "greys out" when it squabbles).
 uniform float bands_show = 1.0;
 
+// Cartoon eyes (added 2026-11-18; the user: "the eyes for most of them should be more cartoony and
+// personalized"). 0, the default, is the eye drawn below, as it always was; 1 is the cartoon eye:
+// grown about its middle, a pale white, a coloured iris, a big dark pupil, a highlight that stays
+// put (up and forward, towards the light) and a dark rim, under an upper lid. The clown loach's: a
+// cheeky, mischievous look, a bright orange iris, a keyhole pupil, its lid (the black of the band it
+// sits in) slanting up towards the snout as if it had one brow raised.
+uniform float cartoon_eyes = 0.0;
+// Where the pupil looks, in the eye's own plane: x forward (towards the snout; -1 back towards the
+// tail), y up; -1..1. Only the cartoon eye's pupil moves.
+uniform vec2 eye_look = vec2(0.0);
+// 0 open, 1 shut: the eye squashes flat from above and below and a lid of `lid_colour` closes over it.
+uniform float blink = 0.0;
+// How much bigger the cartoon eye is drawn, and how fast the head's skin falls away round it (1 / (2 x
+// its radius there), per metre); its white, its iris (how wide, of the eye's face to its rim), its
+// pupil (how wide, of the iris; 0 round, 1 an upright slit, 2 a level bar, 3 a keyhole), where the
+// upper lid's edge rests (1 the top of the eye, no lid; 0 its middle) and how much lower it comes at
+// the front (a frown; less than 0 raises it there).
+uniform float eye_grow = 1.9;
+// (eye_sink: 0, not sunk, looked cleanest on all of them: sunk, the rim dipped under the skin and came
+// out again below the eye as a dark crescent)
+uniform float eye_sink = 0.0;
+uniform vec3 eye_white : source_color = vec3(0.98, 0.95, 0.88);
+uniform vec3 iris : source_color = vec3(1.0, 0.5, 0.08);
+uniform float iris_size = 0.62;
+uniform float pupil_size = 0.6;
+uniform int pupil_shape = 3;
+uniform float lid = 0.55;
+uniform float lid_slant = -0.3;
+uniform vec3 lid_colour : source_color = vec3(0.03, 0.03, 0.045);
+// As the model has it (the build script prints it): the right eye's middle on the skin and the way
+// it faces (metres), and its radius over the skin (`EYE_AT`, `EYE_RADIUS`: metres behind the snout,
+// metres up).
+const vec3 EYE_MIDDLE = vec3(0.00909, 0.0092, -0.071);
+const vec3 EYE_OUT = vec3(0.9676, 0.1536, -0.2004);
+const vec2 EYE_AT = vec2(0.029, 0.0092);
+const float EYE_RADIUS = 0.0038;
+
 varying vec3 rest;
 varying float part;
 
@@ -110,6 +147,58 @@ void swing(inout vec3 v, inout vec3 n, float a) {
 	n.yz = vec2(n.y * cos(a) + n.z * sin(a), n.z * cos(a) - n.y * sin(a));
 }
 
+// The cartoon eye grown about its middle, and squashed from above and below as it blinks (nothing
+// moves while cartoon_eyes and blink are 0).
+void eye_shape(inout vec3 v) {
+	if (cartoon_eyes <= 0.0 && blink <= 0.0) {
+		return;
+	}
+	float side_is = v.x >= 0.0 ? 1.0 : -1.0;
+	vec3 at = vec3(EYE_MIDDLE.x * side_is, EYE_MIDDLE.yz);
+	vec3 o = normalize(vec3(EYE_OUT.x * side_is, EYE_OUT.yz));
+	vec3 up = normalize(vec3(0.0, 1.0, 0.0) - o * o.y);
+	vec3 d = v - at;
+	float grow = mix(1.0, eye_grow, cartoon_eyes);
+	float before = dot(d - o * dot(d, o), d - o * dot(d, o));
+	// (grown across, and outward; what lies behind its face, deep in the head, is not pushed further in,
+	// or it would come out through the other side of a narrow head)
+	float deep = min(dot(d, o), 0.0);
+	d = (d - o * deep) * grow + o * deep;
+	// (sunk as the head's skin falls away round it, so that the grown rim stays in the skin)
+	d -= o * eye_sink * before * (grow * grow - 1.0);
+	d -= up * dot(d, up) * 0.8 * blink;
+	v = at + d;
+}
+
+
+// The cartoon eye's colour at a place on its face: `e` x up, y forward, 1 at its rim.
+vec3 cartoon_eye(vec2 e) {
+	float r = length(e);
+	vec2 q = e - vec2(eye_look.y, eye_look.x) * (0.9 - iris_size);
+	float ri = length(q) / iris_size;
+	float aa = fwidth(ri) + 0.01;
+	vec3 c = eye_white * mix(1.0, 0.82, smoothstep(0.4, 1.0, r));
+	vec3 ring = mix(iris * 1.2, iris * 0.6, smoothstep(0.25, 0.95, ri));
+	ring = mix(ring, iris * 0.25, smoothstep(0.82, 1.0, ri));
+	c = mix(c, ring, 1.0 - smoothstep(1.0 - aa, 1.0 + aa, ri));
+	vec2 p = q / (iris_size * pupil_size);
+	float pd = length(p);
+	if (pupil_shape == 1) {
+		pd = length(vec2(p.x * 0.6, p.y * 2.4));
+	} else if (pupil_shape == 2) {
+		pd = length(vec2(p.x * 2.4, p.y * 0.6));
+	} else if (pupil_shape == 3) {
+		pd = min(length(p - vec2(0.22, 0.0)) * 1.15, length(vec2((p.x + 0.35) * 0.75, p.y * 2.8)));
+	}
+	float pa = fwidth(pd) + 0.02;
+	c = mix(c, vec3(0.015), 1.0 - smoothstep(1.0 - pa, 1.0 + pa, pd));
+	float shine = 1.0 - smoothstep(0.17, 0.21, length(e - vec2(0.36, 0.3)));
+	shine = max(shine, 0.85 * (1.0 - smoothstep(0.07, 0.1, length(e - vec2(-0.22, -0.3)))));
+	c = mix(c, vec3(1.0), shine);
+	return mix(c, vec3(0.02), smoothstep(0.83, 0.9, r));
+}
+
+
 // The body behind the head laid round an arc (see `curl`).
 void curl_bend(inout vec3 v, inout vec3 n) {
 	float from = -0.2 * LENGTH;
@@ -131,6 +220,9 @@ void vertex() {
 	rest = VERTEX;
 	vec3 v = VERTEX;
 	vec3 n = NORMAL;
+	if (part > 5.5 && part < 6.5) {
+		eye_shape(v);
+	}
 	if (part > 3.5 && part < 4.5) {
 		// A pectoral fin fans about the line of its root, the fanning running out along it.
 		float side = v.x < 0.0 ? -1.0 : 1.0;
@@ -283,6 +375,15 @@ void fragment() {
 		float r = UV.x;
 		c = mix(vec3(0.004, 0.004, 0.006), vec3(0.42, 0.26, 0.08), smoothstep(0.6, 0.68, r));
 		c = mix(c, band, smoothstep(0.82, 0.98, r));
+		// (where it is on the eye's face: x up, y forward, 1 at its rim, as the model lays it on the skin)
+		vec2 e = vec2(rest.y - EYE_AT.y, EYE_AT.x - (rest.z + HALF)) / EYE_RADIUS;
+		if (cartoon_eyes > 0.0) {
+			c = mix(c, cartoon_eye(e), cartoon_eyes);
+		}
+		// (the upper lid: none on the eye as it was, until it blinks)
+		float lid_edge = mix(mix(1.3, lid, cartoon_eyes) - lid_slant * cartoon_eyes * e.y, -1.3, blink);
+		c = mix(c, vec3(0.02), smoothstep(lid_edge - 0.16, lid_edge - 0.06, e.x) * step(lid_edge, 1.2));
+		c = mix(c, lid_colour, smoothstep(lid_edge - 0.05, lid_edge, e.x));
 		rough = 0.12;
 		spec = 0.65;
 	} else if (p == 9) {
