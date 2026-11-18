@@ -36,8 +36,12 @@ const ZONES := {
 	"trench": {"at": Vector2(140.0, 55.0), "radius": 24.0},
 }
 
-## The rocks, each as a sphere: x, y, z, radius.
+## The rocks, each as a sphere: x, y, z, radius (Scenery adds them: `add_rock`). They are kept
+## by the square of floor they stand on (`CELL` metres), so that a swimmer is only tried against
+## the few near it.
 static var rocks: Array[Vector4] = []
+const CELL := 8.0
+static var _cells := {}
 
 var sand: SandGround
 ## Whatever the snow should hang round (the camera).
@@ -116,8 +120,26 @@ static func keep_in(p: Vector3, room: float) -> Vector3:
 
 
 ## A point pushed out of any rock it is in, `room` metres clear.
+## Adds a rock: a sphere nothing may swim into.
+static func add_rock(rock: Vector4) -> void:
+	var at := rocks.size()
+	rocks.append(rock)
+	# (into every square it could be felt from: its own radius and 3 m of room)
+	var reach := rock.w + 3.0
+	for cx in range(floori((rock.x - reach) / CELL), floori((rock.x + reach) / CELL) + 1):
+		for cz in range(floori((rock.z - reach) / CELL), floori((rock.z + reach) / CELL) + 1):
+			var key := Vector2i(cx, cz)
+			var list: PackedInt32Array = _cells.get(key, PackedInt32Array())
+			list.append(at)
+			_cells[key] = list
+
+
 static func clear_of_rocks(p: Vector3, room: float) -> Vector3:
-	for rock in rocks:
+	var near: Variant = _cells.get(Vector2i(floori(p.x / CELL), floori(p.z / CELL)))
+	if near == null:
+		return p
+	for at: int in near:
+		var rock := rocks[at]
 		var from := p - Vector3(rock.x, rock.y, rock.z)
 		var far := from.length()
 		if far < rock.w + room:

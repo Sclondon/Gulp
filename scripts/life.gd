@@ -86,6 +86,15 @@ func _ready() -> void:
 		_school(_krill_rules(), _krill_mesh(), KRILL_LENGTH, "", 0.55, 0.92, i)
 	for i in SARDINE_SCHOOLS:
 		_school(_sardine_rules(), Fish.school_mesh(), SARDINE_LENGTH, "open" if i % 2 == 0 else "kelp", 0.4, 0.85, 100 + i)
+	if Species.has("mackerel"):
+		for i in 2:
+			var rules := _sardine_rules()
+			rules.size = 0.4 / 0.4
+			rules.count = 24
+			rules.max_speed = 3.0
+			rules.cruise_speed = 1.7
+			rules.bounds_size = Vector3(6.0, 5.0, 6.0)
+			_school(rules, Fish.school_mesh("pacific_mackerel"), 0.4, "open", 0.5, 0.9, 200 + i)
 	# Every kind Species has, where its creature is installed.
 	for kind: String in Species.ALL:
 		var entry := Species.of(kind)

@@ -260,7 +260,10 @@ func _process(delta: float) -> void:
 			player.near_food = food != Vector3.INF and food.distance_to(player.mouth()) < 0.4 + player.length * 1.2
 	elif bot:
 		var ways := player.options()
-		_on_picked(ways[randi() % ways.size()])
+		if ways.is_empty():
+			player.choosing = false
+		else:
+			_on_picked(ways[randi() % ways.size()])
 	# Above the surface the air is clear; under it the water is blue and thick.
 	sea.set_above(camera.global_position.y > Sea.SURFACE)
 	_post.set_shader_parameter(&"underwater", 0.0 if sea.above else 1.0)

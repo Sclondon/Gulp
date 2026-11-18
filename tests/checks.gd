@@ -25,7 +25,7 @@ func _run() -> void:
 	var player: Player = main.player
 	life.hunting = false
 	await _frames(30)
-	_check("the sea is stocked", life.creatures.size() >= 30 and life.schools.size() == 10 and life.jellies.size() == 9,
+	_check("the sea is stocked", life.creatures.size() >= 30 and life.schools.size() >= 10 and life.jellies.size() == 9,
 			"%d fish, %d schools, %d jellies, %d nettles" % [life.creatures.size(), life.schools.size(), life.jellies.size(), life.nettles.size()])
 	_check("starts as the smallest fish", player.alive and player.stage == 0 and player.kind == "sardine", "%s %.2f m" % [player.kind, player.length])
 	# A krill in its mouth is eaten.

@@ -1,0 +1,824 @@
+"""Builds the angelfish (creatures/angelfish), one model for each type, and exports them for Godot.
+
+Run from the game's root:
+    blender --background --python creatures/angelfish/tools/build_angelfish.py
+    blender --background --python creatures/angelfish/tools/build_angelfish.py -- <preview folder>   # with pictures
+    blender --background --python creatures/angelfish/tools/build_angelfish.py -- <preview folder> queen   # only these
+
+One shape for each type (TYPES: emperor, queen, french). The same builder as GameCommon's butterflyfish
+(creatures/butterflyfish/tools/build_butterflyfish.py), with the angelfishes' shapes. For each it writes
+creatures/angelfish/models/angelfish_<type>.glb (the full model) and angelfish_<type>_lo.glb (far off,
+phones, many at once), and the editable creatures/angelfish/tools/angelfish_<type>.blend (this folder has
+a .gdignore). Each model is one still mesh with one surface: the shader (angelfish.gdshader) rows its pectoral
+fins, bends it, works its jaw and draws every marking. It prints a WINDING line for each model (the check that
+nothing is inside out), and a SHAPE line: the numbers Angelfish.TYPES gives the shader for that type (copy
+them across by hand when a shape changes).
+
+Every type is built to the same length, 0.35 m from snout to tail tip, nose towards -Z, belly down, its origin at
+the middle of its length. A marine angelfish is a deep flat-sided oval:
+
+- THE BODY: one skin from the tip of the snout to the root of the tail; a blunt head with a small mouth set low
+  (the French angelfish's body deeper than the others').
+- THE MOUTH: the upper snout is the front of the body's skin, flat underneath (the roof of the mouth); the LOWER
+  JAW is a part of its own, which fits up inside the upper lip and runs back into the throat (the shader swings
+  it about its hinge).
+- THE CHEEK SPINES: one each side, lying back along the lower corner of the gill cover: the angelfishes' mark.
+- THE FINS: thin closed solids: one continuous DORSAL fin, low spines in front and soft rays behind, and the ANAL
+  fin, both drawn out behind in long trailing tips in the queen and the French angelfish; a fan TAIL; a pair
+  each of pointed PELVIC fins and of PECTORAL fins, the ones it rows with.
+
+What a point is, for the shader: vertex colour red the part, as a tenth (0 body, 0.1 lower jaw, 0.2 eye,
+0.3 cheek spine, 0.4 dorsal, 0.6 tail, 0.7 anal, 0.8 pelvic, 0.9 pectoral). On the body and jaw: UV.x how far
+along the fish (0 snout to 1 tail tip), UV.y how high on it (0 belly line to 1 back line; on the jaw 0 keel to 1
+lip); blue how much it is inside the mouth. On an eye: UV where a point is on its round face seen straight on (its
+middle at 0.5, 0.5). On a fin: UV.x along its rays (0 root to 1 edge), UV.y across it counted in rays (0 its
+leading edge); UV2 and blue the way its flat side faces (x, y, and z as z / 2 + 0.5), which is the way the shader
+waves it. (The glTF writer flips V: what is written here is 1 - v, so that Godot reads v.) The markings are drawn
+from where a point is in the fish's side view (its still place: z and y), so they run across body and fins alike.
+
+Everything here is worked out in body lengths in Godot space (Y up, nose towards -Z) and written out in metres.
+"""
+
+import bisect
+import math
+import os
+import sys
+
+import bmesh
+import bpy
+from mathutils import Vector
+from mathutils.bvhtree import BVHTree
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+OUT = os.path.join(HERE, "..", "models")
+ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+PREVIEW = ARGS[0] if ARGS else ""
+
+# Kept in step with angelfish.gd and angelfish.gdshader.
+FAMILY = "angelfish"
+LENGTH = 0.35
+TAU = math.tau
+BODY, JAW, EYE, SPINE, DORSAL, FILAMENT, TAIL, ANAL, PELVIC, PECTORAL = 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+
+# The wrist of the tail and the root of the tail fin, the same in every type: (s, y) of the top line and the
+# bottom line, and (s, half width).
+END_TOP = [(0.80, 0.066), (0.83, 0.057), (0.86, 0.058), (0.885, 0.052), (0.895, 0.032)]
+END_BOT = [(0.80, -0.064), (0.83, -0.057), (0.86, -0.058), (0.885, -0.052), (0.895, -0.032)]
+END_HW = [(0.75, 0.024), (0.82, 0.014), (0.86, 0.0065), (0.885, 0.002), (0.895, 0.0)]
+# Half the height of the root of the tail fin.
+PED = 0.055
+
+# The outline the three share (the emperor's): a deep oval with a blunt head and a small mouth set low.
+BASE_TOP = [(0.0, -0.024), (0.015, -0.004), (0.04, 0.032), (0.07, 0.078), (0.11, 0.128), (0.16, 0.176),
+            (0.23, 0.222), (0.32, 0.25), (0.42, 0.256), (0.52, 0.244), (0.62, 0.208), (0.70, 0.152), (0.76, 0.098)]
+BASE_BOT = [(0.0, -0.034), (0.015, -0.052), (0.04, -0.076), (0.07, -0.102), (0.11, -0.138), (0.17, -0.18),
+            (0.25, -0.215), (0.34, -0.234), (0.44, -0.236), (0.54, -0.218), (0.63, -0.172), (0.71, -0.112),
+            (0.77, -0.07)]
+BASE_HW = [(0.0, 0.0), (0.008, 0.014), (0.02, 0.022), (0.045, 0.034), (0.08, 0.048), (0.13, 0.062), (0.2, 0.074),
+           (0.3, 0.078), (0.42, 0.072), (0.55, 0.056), (0.66, 0.038)]
+
+
+def deeper(points, by):
+    """An outline made deeper through its middle (its snout and the wrist of its tail as they were)."""
+    out = []
+    for s, y in points:
+        t = max(0.0, min(1.0, (s - 0.03) / 0.17))
+        u = max(0.0, min(1.0, (0.78 - s) / 0.16))
+        out.append((s, y * (1.0 + (by - 1.0) * t * t * (3.0 - 2.0 * t) * u * u * (3.0 - 2.0 * u))))
+    return out
+
+
+# Each type. `top`, `bot`: the fish's outline seen from the side, (s, y) from the snout's tip to where the wrist
+# of the tail begins; `hw`: its half width; `sharp`: how sharp its back and belly are (2 an ellipse). `mouth`: how
+# high the line of the mouth is at the snout's tip; `hinge`: where the lower jaw hinges (s, y); `gill`: how far
+# along the gill cover's rear edge reaches; `eye`: where (s, y), then the eyeball's radius, how far it stands out
+# of the head, and how much of the dome's width shows; `spine`: the cheek spine (s, y of its root, length).
+# `dorsal` and `anal`: from s0 to s1 along the back (the belly), so many rays of which the first `spines` are
+# spines with the skin dipping `notch` between their points; `len` (t, length) and `ang` (t, degrees up from
+# straight back) across the fin, t 0 its leading edge to 1 its trailing edge: the long trailing tips are in these.
+# `tail`: (root s, spread in degrees, how rounded). `pelvic`: (s, length). `pectoral`: (y of its root's top,
+# length). `filament`: None (the butterflyfishes' build has one).
+TYPES = {
+    "emperor": {
+        "top": BASE_TOP, "bot": BASE_BOT, "hw": BASE_HW, "sharp": 2.0,
+        "mouth": -0.03, "hinge": (0.036, -0.033), "gill": 0.25, "eye": (0.115, 0.058, 0.038, 0.007, 0.7),
+        "spine": (0.19, -0.088, 0.06),
+        "dorsal": {"s0": 0.24, "s1": 0.82, "rays": 26, "spines": 13, "notch": 0.07,
+                   "len": [(0.0, 0.018), (0.2, 0.05), (0.55, 0.078), (0.8, 0.15), (0.9, 0.13), (1.0, 0.07)],
+                   "ang": [(0.0, 70.0), (0.5, 56.0), (0.8, 34.0), (1.0, 5.0)]},
+        "anal": {"s0": 0.52, "s1": 0.82, "rays": 18, "spines": 3, "notch": 0.08,
+                 "len": [(0.0, 0.05), (0.2, 0.09), (0.6, 0.125), (1.0, 0.07)],
+                 "ang": [(0.0, 68.0), (0.5, 48.0), (1.0, 6.0)]},
+        "tail": (0.85, 14.0, 0.1), "pelvic": (0.3, 0.16), "pectoral": (-0.045, 0.17),
+        "filament": None,
+    },
+    "queen": {
+        "top": deeper(BASE_TOP, 0.98), "bot": deeper(BASE_BOT, 0.98), "hw": BASE_HW, "sharp": 2.0,
+        "mouth": -0.03, "hinge": (0.034, -0.033), "gill": 0.25, "eye": (0.115, 0.056, 0.038, 0.007, 0.7),
+        "spine": (0.19, -0.086, 0.065),
+        "dorsal": {"s0": 0.24, "s1": 0.82, "rays": 26, "spines": 14, "notch": 0.07,
+                   "len": [(0.0, 0.018), (0.2, 0.05), (0.5, 0.075), (0.74, 0.35), (0.88, 0.14), (1.0, 0.07)],
+                   "ang": [(0.0, 70.0), (0.5, 55.0), (0.74, 15.0), (1.0, 5.0)]},
+        "anal": {"s0": 0.52, "s1": 0.82, "rays": 18, "spines": 3, "notch": 0.08,
+                 "len": [(0.0, 0.05), (0.2, 0.09), (0.5, 0.12), (0.72, 0.31), (0.88, 0.13), (1.0, 0.07)],
+                 "ang": [(0.0, 68.0), (0.5, 48.0), (0.72, 15.0), (1.0, 6.0)]},
+        "tail": (0.85, 14.0, 0.03), "pelvic": (0.3, 0.18), "pectoral": (-0.045, 0.17),
+        "filament": None,
+    },
+    "french": {
+        "top": deeper(BASE_TOP, 1.13), "bot": deeper(BASE_BOT, 1.13), "hw": BASE_HW, "sharp": 2.0,
+        "mouth": -0.03, "hinge": (0.036, -0.033), "gill": 0.25, "eye": (0.115, 0.064, 0.038, 0.007, 0.7),
+        "spine": (0.19, -0.098, 0.06),
+        "dorsal": {"s0": 0.25, "s1": 0.82, "rays": 26, "spines": 10, "notch": 0.06,
+                   "len": [(0.0, 0.018), (0.2, 0.05), (0.5, 0.08), (0.72, 0.31), (0.88, 0.15), (1.0, 0.075)],
+                   "ang": [(0.0, 70.0), (0.5, 56.0), (0.72, 33.0), (1.0, 5.0)]},
+        "anal": {"s0": 0.52, "s1": 0.82, "rays": 18, "spines": 3, "notch": 0.08,
+                 "len": [(0.0, 0.05), (0.2, 0.1), (0.5, 0.13), (0.72, 0.25), (0.88, 0.14), (1.0, 0.075)],
+                 "ang": [(0.0, 68.0), (0.5, 50.0), (0.72, 30.0), (1.0, 6.0)]},
+        "tail": (0.85, 15.0, 0.12), "pelvic": (0.3, 0.17), "pectoral": (-0.045, 0.17),
+        "filament": None,
+    },
+}
+NAMES = list(TYPES)
+WANTED = [name for name in ARGS[1:] if name in NAMES] or NAMES
+
+
+def to_b(p):
+    return Vector((p.x, -p.z, p.y))
+
+
+def smooth(a, b, x):
+    t = max(0.0, min(1.0, (x - a) / (b - a)))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def lerp(a, b, t):
+    return a + (b - a) * t
+
+
+def curve(points):
+    """A smooth line through (x, y) points that never overshoots them."""
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    n = len(xs)
+    h = [xs[i + 1] - xs[i] for i in range(n - 1)]
+    d = [(ys[i + 1] - ys[i]) / h[i] for i in range(n - 1)]
+    m = [0.0] * n
+    m[0], m[-1] = d[0], d[-1]
+    for i in range(1, n - 1):
+        if d[i - 1] * d[i] > 0.0:
+            w1 = 2.0 * h[i] + h[i - 1]
+            w2 = h[i] + 2.0 * h[i - 1]
+            m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i])
+
+    def f(x):
+        if x <= xs[0]:
+            return ys[0]
+        if x >= xs[-1]:
+            return ys[-1]
+        i = bisect.bisect_right(xs, x) - 1
+        t = (x - xs[i]) / h[i]
+        t2, t3 = t * t, t * t * t
+        return ((2 * t3 - 3 * t2 + 1) * ys[i] + (t3 - 2 * t2 + t) * h[i] * m[i]
+                + (-2 * t3 + 3 * t2) * ys[i + 1] + (t3 - t2) * h[i] * m[i + 1])
+    return f
+
+
+class Section:
+    """A lofted skin: at each place along the fish (s, 0 snout to 1 tail tip) its top line, bottom line, half
+    width, how far up from the bottom it is widest (0..1), and how boxy its upper and lower halves are (2 an
+    ellipse, more is squarer, less is sharper). All in body lengths; each a function of s."""
+
+    def __init__(self, first, last, top, bot, hw, ycf, nt, nb):
+        self.first = first
+        self.last = last
+        self.f = [top, bot, hw, ycf, nt, nb]
+
+    def at(self, s):
+        return [f(s) for f in self.f]
+
+    def top(self, s):
+        return self.f[0](s)
+
+    def bot(self, s):
+        return self.f[1](s)
+
+    def x_at(self, s, y):
+        """How far out the skin is at height y."""
+        top, bot, hw, ycf, nt, nb = self.at(s)
+        yc = bot + ycf * (top - bot)
+        if y >= yc:
+            u, n = (y - yc) / max(top - yc, 1e-9), nt
+        else:
+            u, n = (yc - y) / max(yc - bot, 1e-9), nb
+        u = max(0.0, min(1.0, u))
+        return hw * (1.0 - u ** n) ** (1.0 / n)
+
+    def outline(self, s, half):
+        """half + 1 points down its right side from the top line to the bottom line, evenly spaced along the
+        skin: (x, y, how far round from the top)."""
+        top, bot, hw, ycf, nt, nb = self.at(s)
+        yc = bot + ycf * (top - bot)
+        dense = []
+        steps = 200
+        for i in range(steps + 1):
+            phi = math.pi * i / steps
+            c, sn = math.cos(phi), max(math.sin(phi), 0.0)
+            if c >= 0.0:
+                dense.append((hw * sn ** (2.0 / nt), yc + (top - yc) * c ** (2.0 / nt)))
+            else:
+                dense.append((hw * sn ** (2.0 / nb), yc - (yc - bot) * (-c) ** (2.0 / nb)))
+        dense[0] = (0.0, top)
+        dense[-1] = (0.0, bot)
+        acc = [0.0]
+        for i in range(steps):
+            acc.append(acc[-1] + math.hypot(dense[i + 1][0] - dense[i][0], dense[i + 1][1] - dense[i][1]))
+        whole = acc[-1]
+        out = []
+        for j in range(half + 1):
+            want = whole * j / half
+            i = min(bisect.bisect_right(acc, want) - 1, steps - 1)
+            span = acc[i + 1] - acc[i]
+            t = (want - acc[i]) / span if span > 1e-12 else 0.0
+            out.append((lerp(dense[i][0], dense[i + 1][0], t), lerp(dense[i][1], dense[i + 1][1], t), want))
+        return out, whole
+
+
+# The type being built (set by `use`): its numbers, its skins, and the places the shader shares.
+P = {}
+BODY_SKIN = None
+JAW_SKIN = None
+HINGE_S = 0.0
+HINGE_Y = 0.0
+GILL_S = 0.0
+EYE_AT = (0.0, 0.0)
+PEC_ROOT = Vector((0.0, 0.0, 0.0))
+
+
+def use(name):
+    """Makes `name` the shape being built."""
+    global P, BODY_SKIN, JAW_SKIN, HINGE_S, HINGE_Y, GILL_S, EYE_AT
+    P = dict(TYPES[name])
+    P["name"] = name
+    top = curve(P["top"] + END_TOP)
+    bot = curve(P["bot"] + END_BOT)
+    hw = curve(P["hw"] + END_HW)
+    P["sil_top"], P["sil_bot"], P["sil_hw"] = top, bot, hw
+    HINGE_S, HINGE_Y = P["hinge"]
+    GILL_S = P["gill"]
+    EYE_AT = (P["eye"][0], P["eye"][1])
+    hs, hy, ym = HINGE_S, HINGE_Y, P["mouth"]
+
+    def roof(s):
+        """The line of the mouth: the flat underside of the upper snout."""
+        return lerp(ym, hy, min(s / hs, 1.0))
+
+    def body_bot(s):
+        return lerp(roof(s), bot(s), smooth(hs - 0.004, hs + 0.022, s))
+    BODY_SKIN = Section(
+        0.0, 0.895, top, body_bot, hw,
+        lambda s: lerp(0.3, 0.5, smooth(hs, hs + 0.08, s)),
+        lambda s: lerp(2.0, P.get("sharp", 1.75), smooth(GILL_S * 0.5, GILL_S * 1.2, s)),
+        lambda s: lerp(3.2, P.get("sharp", 1.75) + 0.15, smooth(hs, hs + 0.06, s)))
+    first = min(0.004, hs * 0.1)
+    last = hs + 0.05
+
+    def jaw_bot(s):
+        return bot(s) + 0.006 * smooth(hs + 0.004, hs + 0.03, s)
+
+    def jaw_top(s):
+        if s <= hs:
+            return max(roof(s) + 0.002, jaw_bot(s) + 0.003)
+        return lerp(roof(hs) + 0.002, jaw_bot(s) + 0.001, smooth(hs, last, s))
+
+    def jaw_hw(s):
+        return 0.92 * hw(s) * min(1.0, max(s - first, 0.0) / 0.004) ** 0.5 * (1.0 - smooth(hs + 0.012, last, s))
+    JAW_SKIN = Section(first, last, jaw_top, jaw_bot, jaw_hw, lambda s: 0.75, lambda s: 3.5, lambda s: 2.0)
+    depth = max(top(i / 200.0) - bot(i / 200.0) for i in range(40, 140))
+    width = 2.0 * max(hw(i / 200.0) for i in range(20, 140))
+    P["told"] = "hinge_s=%.4f hinge_y=%.4f gill_s=%.4f eye=(%.4f, %.4f) depth=%.4f m width=%.4f m" % (
+        HINGE_S, HINGE_Y, GILL_S, EYE_AT[0], EYE_AT[1], depth * LENGTH, width * LENGTH)
+
+
+def gill_edge(h):
+    """Where the gill cover's rear edge is (s) at a height on the body (0 belly to 1 back): a crescent."""
+    return GILL_S - 0.22 * (h - 0.45) ** 2
+
+
+def gill_plate(s, h):
+    """How far the gill cover stands out from the skin behind it (body lengths)."""
+    edge = gill_edge(h)
+    band = smooth(0.1, 0.22, h) * (1.0 - smooth(0.66, 0.8, h))
+    behind = 1.0 - smooth(edge - 0.004, edge + 0.008, s)
+    return 0.0035 * smooth(GILL_S - 0.08, GILL_S - 0.018, s) * behind * band
+
+
+def body_x(s, y):
+    """How far out the body's skin is at height y, gill cover and all."""
+    top, bot = BODY_SKIN.top(s), BODY_SKIN.bot(s)
+    h = (y - bot) / max(top - bot, 1e-9)
+    return BODY_SKIN.x_at(s, y) + gill_plate(s, h)
+
+
+def body_frame(s, y):
+    """A place on the body's right side: the point, the way out of the skin there, and the way up along it."""
+    e = 0.002
+    x = body_x(s, y)
+    dy = (body_x(s, y + e) - body_x(s, y - e)) / (2 * e)
+    ds = (body_x(s + e, y) - body_x(s - e, y)) / (2 * e)
+    return Vector((x, y, s - 0.5)), Vector((1.0, -dy, -ds)).normalized(), Vector((dy, 1.0, 0.0)).normalized()
+
+
+class Part:
+    """One closed piece of the fish: points (body lengths), what each is for the shader, and four-cornered
+    faces. `done` welds it, turns every face outward and checks that."""
+
+    def __init__(self, name):
+        self.name = name
+        self.verts = []
+        self.data = []
+        self.faces = []
+
+    def add(self, p, uv, uv2, colour):
+        self.verts.append(Vector(p))
+        self.data.append((uv, uv2, colour))
+        return len(self.verts) - 1
+
+    def loft(self, rings):
+        for a, b in zip(rings, rings[1:]):
+            n = len(a)
+            for j in range(n):
+                self.faces.append((a[j], a[(j + 1) % n], b[(j + 1) % n], b[j]))
+
+    def mirrored(self, name, flip):
+        other = Part(name)
+        for p, d in zip(self.verts, self.data):
+            other.add((-p.x, p.y, p.z), *flip(d))
+        other.faces = list(self.faces)
+        return other
+
+    @staticmethod
+    def inside_out(bm):
+        """How many of a closed solid's faces face inwards, and how many were looked at: a line out of a face,
+        the way the face faces, comes out through the solid's skin an even number of times (none, for most)."""
+        cut = bm.copy()
+        bmesh.ops.triangulate(cut, faces=cut.faces)
+        cut.normal_update()
+        tree = BVHTree.FromBMesh(cut)
+        wrong = 0
+        counted = 0
+        for f in cut.faces:
+            if f.calc_area() > 1e-11:
+                counted += 1
+                at = f.calc_center_median() + f.normal * 2e-6
+                hits = 0
+                while hits < 40:
+                    hit = tree.ray_cast(at, f.normal)
+                    if hit[0] is None:
+                        break
+                    hits += 1
+                    at = hit[0] + f.normal * 2e-6
+                if hits % 2:
+                    wrong += 1
+        cut.free()
+        return wrong, counted
+
+    def done(self):
+        """Returns (faces as lists of (point in Blender metres, uv, uv2, colour), faces wound wrongly, faces)."""
+        bm = bmesh.new()
+        uv = bm.loops.layers.uv.new("uv")
+        uv2 = bm.loops.layers.uv.new("uv2")
+        colour = bm.loops.layers.float_color.new("colour")
+        made = [bm.verts.new(to_b(p * LENGTH)) for p in self.verts]
+        for face in self.faces:
+            # (a face that closes to a point at the end of a skin has corners in one place: the weld below
+            # makes a triangle of it or drops it)
+            try:
+                f = bm.faces.new([made[i] for i in face])
+            except ValueError:
+                continue
+            for loop, i in zip(f.loops, face):
+                d = self.data[i]
+                loop[uv].uv = d[0]
+                loop[uv2].uv = d[1]
+                loop[colour] = (d[2][0], d[2][1], d[2][2], 1.0)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
+        # (where a skin closes to a line on the middle plane, or a fin on that plane thins to nothing at its
+        # leading tip, a four-cornered face has three corners in that plane: cut it from its fourth corner, or
+        # whoever cuts it in two later may leave a triangle lying flat in the plane, back to back with its twin)
+        for f in list(bm.faces):
+            if len(f.verts) == 4:
+                off = [loop for loop in f.loops if abs(loop.vert.co.x) > 1e-8]
+                if len(off) == 1:
+                    bmesh.ops.connect_verts(bm, verts=[off[0].vert, off[0].link_loop_next.link_loop_next.vert])
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        bm.normal_update()
+        # The check, which does not trust the line above (it has turned a whole fin inside out before now).
+        wrong, counted = self.inside_out(bm)
+        if wrong * 2 > counted:
+            bmesh.ops.reverse_faces(bm, faces=bm.faces)
+            bm.normal_update()
+            wrong, counted = self.inside_out(bm)
+        out = []
+        for f in bm.faces:
+            out.append([(loop.vert.co.copy(), tuple(loop[uv].uv), tuple(loop[uv2].uv), tuple(loop[colour]))
+                        for loop in f.loops])
+        bm.free()
+        return out, wrong, counted
+
+
+def flip_side(d):
+    return d[0], (-d[1][0], d[1][1]), d[2]
+
+
+def skin(part, section, places, half, kind):
+    """Lofts a Section into a Part. `kind` is BODY or JAW."""
+    rings = []
+    for s in places:
+        side, whole = section.outline(s, half)
+        top, bot = section.top(s), section.bot(s)
+        ring = []
+        ends = s <= section.first or s >= section.last
+        # (down the right side and back up the left; the belly line is there twice, once for each side)
+        for j in list(range(half + 1)) + list(range(half, 0, -1)):
+            x, y, arc = side[j]
+            sign = 1.0 if len(ring) <= half else -1.0
+            h = (y - bot) / max(top - bot, 1e-9)
+            yc = bot + section.at(s)[3] * (top - bot)
+            if kind == BODY:
+                x += gill_plate(s, h) * (0.0 if ends else 1.0)
+                # the roof of the mouth: the flat underside of the upper snout, ahead of the jaw's hinge
+                roof = smooth(0.4, 0.12, (y - bot) / max(yc - bot, 1e-9)) * smooth(HINGE_S + 0.014, HINGE_S - 0.006, s)
+                ring.append(part.add((sign * x, y, s - 0.5), (s, 1.0 - h),
+                                     (sign * arc * LENGTH, 1.0 - whole * LENGTH), (0.0, 0.0, roof)))
+            else:
+                inside = smooth(0.55, 0.92, (y - yc) / max(top - yc, 1e-9)) if y > yc else 0.0
+                inside *= smooth(HINGE_S + 0.02, HINGE_S - 0.002, s)
+                ring.append(part.add((sign * x, y, s - 0.5), (s, 1.0 - h),
+                                     (sign * x * LENGTH, 1.0), (JAW / 10.0, 0.0, inside)))
+        rings.append(ring)
+    part.loft(rings)
+
+
+def body_places(low):
+    head = 6 if low else 24
+    rest = 10 if low else 44
+    behind = GILL_S + 0.014
+    places = [behind * (i / head) ** 1.35 for i in range(head)]
+    places += [lerp(behind, BODY_SKIN.last, i / rest) for i in range(rest + 1)]
+    return places
+
+
+def eye(low):
+    """The right eye: a dome set in the side of the head."""
+    part = Part("eye")
+    at, out, up = body_frame(*EYE_AT)
+    along = up.cross(out).normalized()
+    ball, stands, shown = P["eye"][2:]
+    # (the dome goes on under the skin: what shows is `shown` of how far across it is made)
+    seen = math.sqrt(1.0 - (1.0 - stands / ball) ** 2)
+    reach = math.asin(min(seen / shown, 0.999))
+    centre = at - out * (ball - stands)
+    rows = 2 if low else 6
+    around = 6 if low else 18
+    rings = []
+    for i in range(rows + 1):
+        a = reach * i / rows
+        ring = []
+        for k in range(around):
+            q = TAU * k / around
+            p = centre + out * (ball * math.cos(a)) + (up * math.cos(q) + along * math.sin(q)) * (ball * math.sin(a))
+            # (UV: where it is on the eye's round face, seen straight on: its middle at (0.5, 0.5); where the
+            # eye meets the skin is 0.644 of the way out)
+            across = 0.5 * 0.644 * math.sin(a) / seen
+            ring.append(part.add(p, (0.5 + across * math.cos(q), 1.0 - (0.5 + across * math.sin(q))), (0.0, 1.0),
+                                 (EYE / 10.0, 0.0, 0.0)))
+        rings.append(ring)
+    # (closed behind, inside the head)
+    back = centre + out * (ball * math.cos(reach) - 0.003)
+    rings.append([part.add(back, (0.5 + 0.5 * math.cos(TAU * k / around), 0.5 - 0.5 * math.sin(TAU * k / around)),
+                           (0.0, 1.0), (EYE / 10.0, 0.0, 0.0)) for k in range(around)])
+    part.loft(rings)
+    return part
+
+
+def cheek_spine(low):
+    """The spine at the lower corner of the cheek (the angelfishes' mark), lying back along the gill cover."""
+    part = Part("spine")
+    s0, y0, long = P["spine"]
+    stations = 3 if low else 8
+    around = 4 if low else 8
+    rings = []
+    for i in range(stations + 1):
+        u = i / stations
+        s = s0 + long * u
+        y = y0 - 0.22 * long * u
+        at, out, up = body_frame(s, y)
+        back = Vector((0.0, -0.22, 1.0)).normalized()
+        up = out.cross(back).normalized()
+        thick = 0.012 * (1.0 - u) ** 0.8 * min(1.0, u / 0.12 + 0.35)
+        ring = []
+        for k in range(around):
+            q = TAU * k / around
+            p = at + out * (0.001 + 0.003 * u) + up * (thick * math.cos(q)) + out * (thick * 0.55 * math.sin(q))
+            ring.append(part.add(p, (u, 1.0 - 0.5), (0.0, 1.0), (SPINE / 10.0, 0.0, 0.0)))
+        rings.append(ring)
+    part.loft(rings)
+    # (closed at its root)
+    middle = sum((part.verts[i] for i in rings[0]), Vector()) / around
+    hub = part.add(middle, (0.0, 0.5), (0.0, 1.0), (SPINE / 10.0, 0.0, 0.0))
+    for k in range(around):
+        part.faces.append((rings[0][(k + 1) % around], rings[0][k], hub))
+    return part
+
+
+def fin(name, kind, rays, base, direction, length, normal, thick, cols, rows, ridges):
+    """A fin: `rays` rays fanned from the line `base(t)` (t 0 its leading edge to 1 its trailing edge), each
+    going the way `direction(t)` for `length(t)`; flat, facing `normal`; `thick` at its root; `cols` strips
+    across it and `rows` along its rays."""
+    part = Part(name)
+    normal = normal.normalized()
+    left, right = [], []
+    for i in range(cols + 1):
+        t = i / cols
+        b, d, long = base(t), direction(t).normalized(), length(t)
+        ridge = 0.5 + 0.5 * math.cos(TAU * (t * rays - 0.5)) if (rays > 1 and ridges) else 0.0
+        edge = min(1.0, t / 0.06) ** 0.5 * min(1.0, (1.0 - t) / 0.1) ** 0.5
+        a, c = [], []
+        for j in range(rows + 1):
+            r = j / rows
+            taper = 1.0 - r
+            th = edge * (taper ** 0.5) * (thick * (0.1 + 0.9 * taper ** 1.6) + 0.0009 * ridge * smooth(0.0, 0.14, r))
+            mid = b + d * (long * r)
+            data = ((r, 1.0 - t * rays), (normal.x, 1.0 - normal.y), (kind / 10.0, 0.0, normal.z * 0.5 + 0.5))
+            a.append(part.add(mid + normal * (th * 0.5), *data))
+            c.append(part.add(mid - normal * (th * 0.5), *data))
+        left.append(a)
+        right.append(c)
+    for i in range(cols):
+        for j in range(rows):
+            for sheet in (left, right):
+                a, b, c, d = sheet[i][j], sheet[i + 1][j], sheet[i + 1][j + 1], sheet[i][j + 1]
+                # (at the two corners of its edge three of a face's corners have no thickness: cut it from
+                # the fourth, so that no triangle lies flat between the fin's two sides)
+                if j == rows - 1 and i == 0:
+                    part.faces += [(a, b, d), (b, c, d)]
+                elif j == rows - 1 and i == cols - 1:
+                    part.faces += [(a, b, c), (a, c, d)]
+                else:
+                    part.faces.append((a, b, c, d))
+        # (closed at the root, inside the body)
+        part.faces.append((left[i][0], right[i][0], right[i + 1][0], left[i + 1][0]))
+    return part
+
+
+def turn(d0, d1, t):
+    """From one direction round to another."""
+    d0, d1 = d0.normalized(), d1.normalized()
+    angle = d0.angle(d1)
+    return (d0 * math.sin((1.0 - t) * angle) + d1 * math.sin(t * angle)) / math.sin(angle)
+
+
+def clearance(part, root, swing):
+    """The least gap (mm) between a pectoral fin and the body's side at the inward end of its stroke: every
+    point of the fin from a third of the way out, turned `swing` radians in towards the body about the upright
+    line through `root` (as the shader rows it), against the body's skin at its height."""
+    least = 1e9
+    c, sn = math.cos(-swing), math.sin(-swing)
+    for p, d in zip(part.verts, part.data):
+        r = d[0][0]
+        if r < 0.35:
+            continue
+        dx, dz = p.x - root.x, p.z - root.z
+        q = Vector((root.x + dx * c + dz * sn, p.y, root.z - dx * sn + dz * c))
+        s = q.z + 0.5
+        if s < BODY_SKIN.last and BODY_SKIN.bot(s) < q.y < BODY_SKIN.top(s):
+            least = min(least, (q.x - body_x(s, q.y)) * LENGTH * 1000.0)
+    return least if least < 1e8 else float("inf")
+
+
+def middle_fin(name, kind, spec, up, low, low_cols):
+    """The dorsal fin (up 1) or the anal fin (up -1)."""
+    s0, s1, rays, spines, notch = spec["s0"], spec["s1"], spec["rays"], spec["spines"], spec["notch"]
+    long = curve(spec["len"])
+    angle = curve(spec["ang"])
+    line = BODY_SKIN.top if up > 0 else BODY_SKIN.bot
+
+    def length(t):
+        k = t * rays
+        out = long(t)
+        if not low and k < spines:
+            # (each spine a point, the skin dipping between)
+            out *= 1.0 - notch * (0.5 - 0.5 * math.cos(TAU * k))
+        return out
+    return fin(
+        name, kind, rays,
+        lambda t: Vector((0.0, line(lerp(s0, s1, t)) - up * 0.01, lerp(s0, s1, t) - 0.5)),
+        lambda t: Vector((0.0, up * math.sin(math.radians(angle(t))), math.cos(math.radians(angle(t))))),
+        length, Vector((1.0, 0.0, 0.0)), 0.009, low_cols if low else rays * 2, 2 if low else 6, not low)
+
+
+def fins(low):
+    global PEC_ROOT
+    made = []
+    made.append(middle_fin("dorsal", DORSAL, P["dorsal"], 1.0, low, 9))
+    made.append(middle_fin("anal", ANAL, P["anal"], -1.0, low, 5))
+    if P.get("filament"):
+        # The threadfin's thread, trailing from the soft dorsal fin (how pointed 0: a strip); the bannerfish's
+        # banner, a long pennant (how pointed 1).
+        f0, f1, f_long, f_angle, pointed = P["filament"]
+        way = Vector((0.0, math.sin(math.radians(f_angle)), math.cos(math.radians(f_angle))))
+
+        def f_length(t):
+            a = abs(2.0 * t - 1.0)
+            return f_long * lerp(1.0 - 0.12 * a * a, 0.22 + 0.78 * (1.0 - a) ** 0.8, pointed)
+        made.append(fin(
+            "filament", FILAMENT, 3,
+            lambda t: Vector((0.0, BODY_SKIN.top(lerp(f0, f1, t)) - 0.01, lerp(f0, f1, t) - 0.5)),
+            lambda t: way, f_length, Vector((1.0, 0.0, 0.0)), 0.014 if pointed < 0.5 else 0.011,
+            2 if low else 6, 3 if low else 12, False))
+    # The tail: small, square-ended or a little rounded.
+    t_s, t_spread, t_round = P["tail"]
+
+    def tail_base(t):
+        return Vector((0.0, lerp(PED, -PED, t), t_s + 0.012 - 0.02 * (2.0 * t - 1.0) ** 2 - 0.5))
+
+    def tail_long(t):
+        a = abs(2.0 * t - 1.0)
+        reach = (0.5 - tail_base(t).z) / math.cos(math.radians(t_spread * a))
+        return reach * (1.0 - t_round * a * a - 0.05 * smooth(0.8, 1.0, a) - max(-t_round, 0.0) * 2.0 * (1.0 - a * a))
+    made.append(fin(
+        "tail", TAIL, 17, tail_base,
+        lambda t: Vector((0.0, math.sin(math.radians(t_spread * (1.0 - 2.0 * t))), math.cos(math.radians(t_spread * (1.0 - 2.0 * t))))),
+        tail_long, Vector((1.0, 0.0, 0.0)), 0.016, 6 if low else 34, 2 if low else 6, not low))
+
+    # The paired fins, the right one of each (the left is its mirror picture).
+    def on_body(s, y, sunk=0.003):
+        return Vector((max(body_x(s, y) - sunk, 0.0), y, s - 0.5))
+    pv, pv_long = P["pelvic"]
+    belly = BODY_SKIN.bot(pv)
+    p0, p1 = on_body(pv, belly + 0.016), on_body(pv + 0.04, BODY_SKIN.bot(pv + 0.04) + 0.012)
+    d0, d1 = Vector((0.16, -0.82, 0.55)), Vector((0.1, -0.3, 0.95))
+    pelvic = fin(
+        "pelvic", PELVIC, 6, lambda t: p0.lerp(p1, t), lambda t: turn(d0, d1, t),
+        lambda t: pv_long * (1.0 - 0.6 * t ** 0.9) * (0.9 + 0.1 * smooth(0.0, 0.16, t)),
+        d0.cross(d1), 0.008, 2 if low else 12, 2 if low else 5, not low)
+    made += [pelvic, pelvic.mirrored("pelvic_left", flip_side)]
+    # The pectoral fins: what it rows with. Rounded paddles, held out from the body.
+    pc_y, pc_long = P["pectoral"]
+    q0, q1 = on_body(GILL_S + 0.012, pc_y), on_body(GILL_S + 0.018, pc_y - 0.045)
+    e0, e1 = Vector((0.56, 0.3, 0.77)), Vector((0.5, -0.52, 0.7))
+    pectoral = fin(
+        "pectoral", PECTORAL, 14, lambda t: q0.lerp(q1, t), lambda t: turn(e0, e1, t),
+        lambda t: pc_long * (0.62 + 0.38 * math.sin(math.pi * (0.12 + 0.6 * t)) ** 0.8) * (1.0 - 0.3 * t ** 2),
+        e0.cross(e1), 0.007, 3 if low else 28, 2 if low else 6, not low)
+    made += [pectoral, pectoral.mirrored("pectoral_left", flip_side)]
+    PEC_ROOT = (q0 + q1) * 0.5
+    if not low:
+        print("CLEARANCE %s pectoral fin to body, at the inward end of its stroke: %.1f mm" % (
+            P["name"], clearance(pectoral, PEC_ROOT, 0.3)))
+    return made
+
+
+def make(name, low):
+    parts = []
+    body = Part("body")
+    skin(body, BODY_SKIN, body_places(low), 4 if low else 13, BODY)
+    parts.append(body)
+    jaw = Part("jaw")
+    jaw_rings = 4 if low else 12
+    skin(jaw, JAW_SKIN, [lerp(JAW_SKIN.first, JAW_SKIN.last, (i / jaw_rings) ** 1.25) for i in range(jaw_rings + 1)],
+         2 if low else 6, JAW)
+    parts.append(jaw)
+    ball = eye(low)
+    parts += [ball, ball.mirrored("eye_left", lambda d: d)]
+    if P.get("spine"):
+        spine = cheek_spine(low)
+        parts += [spine, spine.mirrored("spine_left", lambda d: d)]
+    parts += fins(low)
+
+    verts, faces, corners = [], [], []
+    told = []
+    wrong_all = 0
+    for part in parts:
+        out, wrong, counted = part.done()
+        told.append("%s %d/%d wrong" % (part.name, wrong, counted))
+        wrong_all += wrong
+        for face in out:
+            first = len(verts)
+            for co, uv, uv2, colour in face:
+                verts.append(co)
+                corners.append((uv, uv2, colour))
+            faces.append(list(range(first, first + len(face))))
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata(verts, [], faces)
+    # (every layer made first, then each looked up by name: making one moves the others)
+    mesh.uv_layers.new(name="UVMap")
+    mesh.uv_layers.new(name="UV2")
+    mesh.color_attributes.new(name="Color", type="FLOAT_COLOR", domain="CORNER")
+    uv = mesh.uv_layers["UVMap"].data
+    uv2 = mesh.uv_layers["UV2"].data
+    colour = mesh.color_attributes["Color"].data
+    for poly in mesh.polygons:
+        for corner, vi in enumerate(poly.vertices):
+            d = corners[vi]
+            uv[poly.loop_start + corner].uv = d[0]
+            uv2[poly.loop_start + corner].uv = d[1]
+            colour[poly.loop_start + corner].color = d[2]
+    mesh.color_attributes.active_color = mesh.color_attributes["Color"]
+    mesh.color_attributes.render_color_index = mesh.color_attributes.find("Color")
+    material = bpy.data.materials.get(FAMILY) or bpy.data.materials.new(FAMILY)
+    material.use_nodes = True
+    bsdf = next(n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    bsdf.inputs["Base Color"].default_value = (0.8, 0.72, 0.4, 1.0)
+    material.diffuse_color = (0.8, 0.72, 0.4, 1.0)
+    mesh.materials.append(material)
+    for poly in mesh.polygons:
+        poly.use_smooth = True
+    mesh.update()
+    # (every face was made with corners of its own; the same point with the same data is one point again)
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.mesh.remove_doubles(threshold=1e-7)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    tris = sum(len(p.vertices) - 2 for p in mesh.polygons)
+    low_x = min(v.co.x for v in mesh.vertices), max(v.co.x for v in mesh.vertices)
+    low_z = min(v.co.z for v in mesh.vertices), max(v.co.z for v in mesh.vertices)
+    low_y = min(-v.co.y for v in mesh.vertices), max(-v.co.y for v in mesh.vertices)
+    print("BUILT %s verts=%d tris=%d reach (m): x %.4f..%.4f, up %.4f..%.4f, along %.4f..%.4f" % (
+        name, len(mesh.vertices), tris, low_x[0], low_x[1], low_z[0], low_z[1], low_y[0], low_y[1]))
+    print("WINDING %s: %s: %s" % (name, "ok" if wrong_all == 0 else "INSIDE OUT", ", ".join(told)))
+    return obj
+
+
+def export_one(obj, path):
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.ops.export_scene.gltf(
+        filepath=path, export_format="GLB", export_yup=True, use_selection=True,
+        export_animations=False, export_vertex_color="ACTIVE", export_texcoords=True,
+    )
+
+
+def render(folder, made):
+    scene = bpy.context.scene
+    scene.render.engine = "BLENDER_WORKBENCH"
+    scene.display.shading.light = "STUDIO"
+    scene.display.shading.color_type = "MATERIAL"
+    scene.display.shading.show_cavity = True
+    scene.render.resolution_x, scene.render.resolution_y = 1000, 800
+    scene.world = bpy.data.worlds.new("World")
+    scene.world.color = (0.02, 0.05, 0.3)
+    camera = bpy.data.objects.new("Camera", bpy.data.cameras.new("Camera"))
+    camera.data.type = "ORTHO"
+    camera.data.clip_end = 100.0
+    scene.collection.objects.link(camera)
+    scene.camera = camera
+    # (Blender space: the nose is towards +Y, up is +Z; frames and targets in body lengths)
+    views = [("right", (1, 0, 0), (0, 0, 0.03), 1.3), ("left", (-1, 0, 0), (0, 0, 0.03), 1.3),
+             ("top", (0, -0.001, 1), (0, 0, 0), 1.2), ("under", (0, 0.001, -1), (0, 0, 0), 1.2),
+             ("front", (0, 1, 0), (0, 0, 0.03), 0.9), ("back", (0, -1, 0), (0, 0, 0.03), 0.9),
+             ("quarter", (0.7, 0.6, 0.35), (0, 0, 0.03), 1.2),
+             ("head", (1, 0.15, 0.05), (0, 0.36, 0), 0.4), ("head_under", (0.5, 0.5, -0.7), (0, 0.4, -0.03), 0.3)]
+    for low, obj in ((False, made[0]), (True, made[1])):
+        for other in made:
+            other.hide_render = other is not obj
+        for view, direction, target, frame in views:
+            if low and view not in ("right", "quarter"):
+                continue
+            offset = Vector(direction).normalized() * 10.0
+            camera.data.ortho_scale = frame * LENGTH
+            camera.location = Vector(target) * LENGTH + offset
+            camera.rotation_euler = (-offset).to_track_quat("-Z", "X" if view in ("top", "under") else "Y").to_euler()
+            scene.render.filepath = os.path.join(folder, "%s%s.png" % ("lo_" if low else "", view))
+            bpy.ops.render.render(write_still=True)
+
+
+def main():
+    os.makedirs(OUT, exist_ok=True)
+    for kind in WANTED:
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        bpy.context.preferences.filepaths.save_version = 0
+        use(kind)
+        name = "%s_%s" % (FAMILY, kind)
+        full = make(name, False)
+        low = make(name + "_lo", True)
+        print("SHAPE %s: %s pec_root=(%.4f, %.4f, %.4f)" % (kind, P["told"], PEC_ROOT.x, PEC_ROOT.y, PEC_ROOT.z + 0.5))
+        export_one(full, os.path.join(OUT, name + ".glb"))
+        export_one(low, os.path.join(OUT, name + "_lo.glb"))
+        low.location.x = LENGTH
+        bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, name + ".blend"))
+        low.location.x = 0.0
+        if PREVIEW:
+            folder = os.path.join(PREVIEW, kind)
+            os.makedirs(folder, exist_ok=True)
+            render(folder, [full, low])
+
+
+if __name__ == "__main__":
+    main()

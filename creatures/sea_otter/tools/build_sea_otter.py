@@ -1,0 +1,856 @@
+"""Builds the sea otter (creatures/sea_otter) and exports it for Godot.
+
+Run from the game's root:
+    blender --background --python creatures/sea_otter/tools/build_sea_otter.py
+    blender --background --python creatures/sea_otter/tools/build_sea_otter.py -- <preview folder>   # with pictures
+
+Writes creatures/sea_otter/models/sea_otter.glb (the full model, for close pictures) and sea_otter_lo.glb (far
+off, phones), and the editable creatures/sea_otter/tools/sea_otter.blend (this folder has a .gdignore). Each
+model is one still mesh with one surface: the shader (sea_otter.gdshader) draws its fur, swims it, opens its jaw
+and lays it on its back to float. It prints a WINDING line: the check that nothing is inside out.
+
+A sea otter (Enhydra lutris), 1.3 m from the tip of its nose to the tip of its tail, built from the species (no
+picture was traced):
+
+- THE BODY: long, loose and round (0.24 m deep, 0.26 m wide), on a short thick neck, running into a thick tail,
+  flattened from above, a little over a quarter of its length. A blunt, broad head with fat whisker pads and a
+  small rounded ear low on each side.
+- THE HEAD: small dark eyes; the upper head is cut away below the line of the lips, so that its underside is
+  the roof of the mouth; the LOWER JAW is a part of its own which the shader swings down about its hinge;
+  teeth in both jaws and a tongue, hidden while the mouth is shut; short stiff whiskers hanging from the pads.
+- THE LIMBS: two short fore legs with small mitten paws, tucked back against the chest (the shader brings the
+  paws together on the chest to float); two big webbed hind feet like flippers, pointing back beside the tail,
+  the outer toe the longest.
+
+The numbers marked "as the shader has it" are in sea_otter.gdshader too: change one, change the other.
+"""
+
+import math
+import os
+import sys
+
+import bpy
+from mathutils import Vector
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+OUT = os.path.join(HERE, "..", "models")
+ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+PREVIEW = ARGS[0] if ARGS else ""
+
+NAME = "sea_otter"
+LENGTH = 1.3
+COLOUR = (0.2, 0.12, 0.07, 1.0)
+
+# The body's outline: metres behind the nose, the height of its back line, the height it is widest at, the
+# height of its belly line (of the chin, where the mouth is), half its width.
+PROFILE = [
+    (0.0, 0.012, 0.002, -0.008, 0.0005),
+    (0.004, 0.027, 0.002, -0.022, 0.023),
+    (0.015, 0.039, 0.002, -0.032, 0.037),
+    (0.035, 0.051, 0.004, -0.040, 0.047),
+    (0.06, 0.063, 0.006, -0.048, 0.057),
+    (0.09, 0.071, 0.006, -0.054, 0.066),
+    (0.12, 0.071, 0.004, -0.058, 0.067),
+    (0.16, 0.067, 0.002, -0.062, 0.065),
+    (0.22, 0.075, 0.0, -0.074, 0.075),
+    (0.32, 0.100, 0.0, -0.100, 0.105),
+    (0.45, 0.118, 0.0, -0.120, 0.128),
+    (0.58, 0.120, 0.0, -0.122, 0.130),
+    (0.72, 0.108, 0.0, -0.108, 0.116),
+    (0.84, 0.085, 0.0, -0.082, 0.092),
+    (0.92, 0.058, 0.0, -0.052, 0.068),
+    (0.98, 0.036, 0.0, -0.030, 0.052),
+    (1.06, 0.023, 0.0, -0.019, 0.043),
+    (1.16, 0.019, 0.0, -0.015, 0.039),
+    (1.24, 0.015, 0.0, -0.012, 0.031),
+    (1.285, 0.009, 0.0, -0.007, 0.017),
+    (1.30, 0.002, 0.0, -0.002, 0.002),
+]
+BODY_FROM = 0.0015
+BODY_TO = 1.30
+# (how closely the rings of points are spaced, as far back as each place)
+RINGS = ((0.17, 0.0036), (0.34, 0.009), (0.95, 0.015), (BODY_TO, 0.012))
+AROUND = 76
+AROUND_LO = 20
+ROUND = 0.92
+
+# The mouth. As the shader has it: the corner of the mouth and the jaw's hinge.
+CORNER = 0.058
+HINGE_X = 0.094
+HINGE_Y = -0.026
+JAW_TIP = 0.004
+JAW_ROUND = 0.012
+JAW_WIDE = 0.95
+GAP = 0.001
+OVERHANG = 0.002
+# (how far the roof of the mouth is arched up and its floor sunk, as shares of the head above and the jaw below)
+PALATE = 0.2
+TROUGH = 0.3
+# (metres behind the nose, out to the side as a share of the lip's edge, how long, how wide at the root): four
+# incisors, the canines, four blunt cheek teeth a side (they crush shells)
+TEETH = [
+    (0.014, 0.16, 0.0045, 0.002), (0.016, 0.42, 0.005, 0.0022),
+    (0.022, 0.64, 0.011, 0.0036),
+    (0.03, 0.74, 0.0045, 0.0034), (0.037, 0.77, 0.005, 0.004), (0.045, 0.79, 0.005, 0.0042),
+    (0.052, 0.8, 0.0045, 0.0038),
+]
+TEETH_LOW = 0.01
+TONGUE_AT = (0.016, 0.054, 0.006)
+# (metres behind the nose, degrees round from the back line, its radius, how far it bulges)
+EYE_AT = (0.06, 47.0, 0.0085, 0.0034)
+
+
+def lip(xm):
+    """The line of the lips: how high, `xm` behind the nose."""
+    return -0.010 - 0.2 * xm
+
+
+def sculpt(xm, c):
+    """How much wider the skin is at a place than the plain outline: the fat whisker pads, the cheeks."""
+    pad = math.exp(-((xm - 0.024) / 0.02) ** 2) * math.exp(-((c + 0.1) / 0.5) ** 2)
+    cheek = math.exp(-((xm - 0.1) / 0.035) ** 2) * math.exp(-((c + 0.35) / 0.5) ** 2)
+    return 1.0 + 0.2 * pad + 0.07 * cheek
+
+
+def extras(m, low):
+    d = 3 if low else 1
+    for sx in (1.0, -1.0):
+        # The fore legs: short, with small mitten paws, tucked back against the chest. (As the shader has
+        # it: the way they lie.)
+        at = math.radians(128.0) * sx
+        out = out_of_skin(0.31, at)
+        shoulder = skin(0.31, at) - out * 0.022
+        way = Vector((-sx * 0.12, -0.42, 0.9)).normalized()
+        a = way.cross(Y).normalized()
+        b = way.cross(a).normalized()
+        group = FORE_L if sx > 0.0 else FORE_R
+        along = lambda p, shoulder=shoulder, way=way: max(0.0, min(1.0, (p - shoulder).dot(way) / 0.15))
+        m.part(SKIN, group, shoulder)
+        blob(m, shoulder + way * 0.052, a * 0.03, b * 0.027, way * 0.07, "fore legs", 8 if low else 16, 5 if low else 10, along)
+        m.part(HIDE, group, shoulder)
+        blob(m, shoulder + way * 0.125, a * 0.024, b * 0.016, way * 0.03, "paws", 6 if low else 14, 4 if low else 8, along)
+        # The hind feet: big webbed flippers pointing back beside the tail, the outer toe the longest.
+        at = math.radians(110.0) * sx
+        out = out_of_skin(0.875, at)
+        root = skin(0.875, at) - out * 0.02
+        span = Vector((sx * 0.3, -0.1, 1.0)).normalized()
+        chord = (Vector((sx, 0.0, 0.0)) - span * span.x * sx).normalized()
+        facing = span.cross(chord).normalized()
+        if facing.y < 0.0:
+            facing = -facing
+
+        def hind_point(t, u):
+            fan = math.radians(17.0) * (u * 2.0 - 1.0)
+            reach = 0.215 * (0.8 + 0.2 * u) * (0.93 + 0.07 * abs(math.cos(math.pi * (u * 4.0 + 0.5))) ** 0.5)
+            a0 = (0.0, (u - 0.5) * 0.055)
+            b0 = (math.cos(fan) * reach, math.sin(fan) * reach + (u - 0.5) * 0.03)
+            k = t ** 0.9
+            return (a0[0] + (b0[0] - a0[0]) * k, a0[1] + (b0[1] - a0[1]) * k)
+
+        m.part(HIDE, HIND_L if sx > 0.0 else HIND_R, root)
+        blade(m, "hind feet", hind_point, lambda p, root=root, span=span, chord=chord: root + span * p[0] + chord * p[1],
+              facing, 0.03, 20 // d, 26 // d, tip=0.14)
+        # The ears: small and round, low on the sides of the head.
+        m.part(SKIN)
+        at = math.radians(66.0) * sx
+        out = out_of_skin(0.118, at)
+        up = (Vector((0.0, 0.8, 0.45)) + out * 0.5).normalized()
+        across = out.cross(up).normalized()
+        blob(m, skin(0.118, at) + out * 0.002 + up * 0.004, across * 0.0095, out * 0.0045, up * 0.012, "ears",
+             6 if low else 12, 4 if low else 8)
+        # Whiskers: short and stiff, hanging from the pads of the muzzle.
+        m.part(WHISKER)
+        rows = ((84.0, 0.05), (99.0, 0.065), (113.0, 0.06)) if not low else ((99.0, 0.06),)
+        for degrees, length in rows:
+            for k in range(2 if low else 5):
+                xm = 0.012 + 0.0062 * k * (2.5 if low else 1.0)
+                at = math.radians(degrees + 3.0 * (k % 2)) * sx
+                out = out_of_skin(xm, at)
+                way = (out + Vector((0.0, -0.45, 0.2 + 0.07 * k))).normalized()
+                whisker(m, skin(xm, at) - out * 0.002, way, length * (0.7 + 0.08 * k),
+                        Vector((0.0, -0.3, 0.15)), 0.001, low)
+
+
+# ======================================================================================================
+# From here down GameCommon's three sea mammals (harbor seal, sea lion, sea otter) are built by the same
+# code: change it in one, change it in the others. Everything above is this animal's own.
+#
+# Everything is in Godot space (metres, Y up, +X its left side, its nose at -Z) until it is written out;
+# the origin is on its middle line, half way along. `xm` is metres behind the tip of its nose.
+#
+# What a point is, for the shader:
+#   vertex colour red   what it is made of, as a tenth (0 fur, 0.1 an eye, 0.2 a tooth, 0.3 the tongue,
+#                       0.4 a whisker, 0.5 bare hide, 0.6 a claw)
+#   vertex colour green how far inside the mouth it is (0 outside, 0.5 the lip's edge, 1 inside)
+#   vertex colour blue  on a flipper or a limb: how far along it, 0 its root to 1 its tip; on an eye, 0 its
+#                       middle to 1 its rim; on the skin of the head and jaw, how much it is the lips' edge
+#   UV2.y               what moves it, as an eighth (0 nothing, 1 the lower jaw, 2 and 3 the left and right
+#                       fore limbs, 4 and 5 the left and right hind limbs)
+#   UV.x, UV.y, UV2.x   its hinge: where the jaw or the limb it belongs to turns, as z, y and x in body
+#                       lengths plus a half (so always between 0 and 1)
+# (The glTF writer flips V: what is written here is 1 - v, so that Godot reads v.)
+
+HALF = LENGTH * 0.5
+TAU = math.tau
+SKIN, EYE, TOOTH, TONGUE, WHISKER, HIDE, CLAW = range(7)
+STILL, JAW, FORE_L, FORE_R, HIND_L, HIND_R = range(6)
+X = Vector((1.0, 0.0, 0.0))
+Y = Vector((0.0, 1.0, 0.0))
+Z = Vector((0.0, 0.0, 1.0))
+
+
+def to_b(p):
+    return Vector((p.x, -p.z, p.y))
+
+
+def smooth(a, b, x):
+    t = max(0.0, min(1.0, (x - a) / (b - a)))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _slopes(xs, ys):
+    """Tangents for a curve through the points that never overshoots them (Fritsch and Carlson)."""
+    d = [(ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]) for i in range(len(xs) - 1)]
+    m = [d[0]]
+    for i in range(1, len(xs) - 1):
+        if d[i - 1] * d[i] <= 0.0:
+            m.append(0.0)
+        else:
+            w1 = 2.0 * (xs[i + 1] - xs[i]) + (xs[i] - xs[i - 1])
+            w2 = (xs[i + 1] - xs[i]) + 2.0 * (xs[i] - xs[i - 1])
+            m.append((w1 + w2) / (w1 / d[i - 1] + w2 / d[i]))
+    m.append(d[-1])
+    return m
+
+
+_XS = [p[0] for p in PROFILE]
+_CURVES = []
+for _column in (1, 2, 3, 4):
+    _ys = [p[_column] for p in PROFILE]
+    _CURVES.append((_ys, _slopes(_XS, _ys)))
+
+
+def outline(xm):
+    """(the back line's height, the height it is widest at, the belly line's height, half its width) at `xm`."""
+    xm = max(_XS[0], min(_XS[-1], xm))
+    i = 0
+    while i < len(_XS) - 2 and xm > _XS[i + 1]:
+        i += 1
+    h = _XS[i + 1] - _XS[i]
+    t = (xm - _XS[i]) / h
+    out = []
+    for ys, m in _CURVES:
+        a = (2 * t ** 3 - 3 * t ** 2 + 1) * ys[i] + (t ** 3 - 2 * t ** 2 + t) * h * m[i]
+        b = (-2 * t ** 3 + 3 * t ** 2) * ys[i + 1] + (t ** 3 - t ** 2) * h * m[i + 1]
+        out.append(a + b)
+    out[3] = max(out[3], 0.0003)
+    return out
+
+
+def full_point(xm, angle):
+    """(how far to its side, how high) the skin is, as if it had no mouth: `angle` round the body from the
+    back line (0) by its left side (a quarter turn) to the belly line (half a turn)."""
+    top, mid, bot, wide = outline(xm)
+    c = math.cos(angle)
+    s = math.sin(angle)
+    y = mid + c * ((top - mid) if c >= 0.0 else (mid - bot))
+    side = math.copysign(abs(s) ** ROUND, s) * wide
+    return side * sculpt(xm, c), y
+
+
+def angle_at(xm, y):
+    """The angle at which the skin is `y` high."""
+    top, mid, bot, _ = outline(xm)
+    if y >= mid:
+        c = min(1.0, (y - mid) / max(top - mid, 1e-6))
+    else:
+        c = -min(1.0, (mid - y) / max(mid - bot, 1e-6))
+    return math.acos(c)
+
+
+def skin(xm, angle):
+    side, y = full_point(xm, angle)
+    return Vector((side, y, xm - HALF))
+
+
+def out_of_skin(xm, angle):
+    """The way the skin faces at a place (a unit vector)."""
+    sx = 1.0 if angle >= 0.0 else -1.0
+    along = skin(xm + 0.003, angle) - skin(xm - 0.003, angle)
+    around = skin(xm, angle + 0.02) - skin(xm, angle - 0.02)
+    out = around.cross(along)
+    out.normalize()
+    here = skin(xm, angle)
+    if out.dot(Vector((here.x, here.y - outline(xm)[1], 0.0))) < 0.0:
+        out = -out
+    if out.length < 0.5:
+        out = Vector((sx, 0.0, 0.0))
+    return out
+
+
+def palate_at(xm, share):
+    """How far the roof of the mouth is arched up above the line of the lips: `share` is how far out from
+    the middle line to the lip's edge."""
+    front = smooth(JAW_TIP + JAW_ROUND * 0.5, JAW_TIP + JAW_ROUND * 1.5, xm)
+    return PALATE * (outline(xm)[0] - lip(xm)) * (1.0 - min(1.0, share) ** 4) * (1.0 - wall(xm)) * front
+
+
+def trough_at(xm, share):
+    """How far the floor of the mouth is sunk below the lower lip."""
+    return TROUGH * max(0.0, jaw_floor(xm) - outline(xm)[2]) * (1.0 - min(1.0, share) ** 2) ** 2
+
+
+def jaw_grow(xm):
+    return max(0.0, min(1.0, (xm - JAW_TIP) / JAW_ROUND)) ** 0.5
+
+
+def wall(xm):
+    """0 where the mouth is, rising to 1 at the jaw's hinge: the back of the mouth."""
+    return smooth(CORNER, HINGE_X, xm)
+
+
+def roof(xm):
+    """Where the upper head's skin is cut away for the mouth: there is none of it below this height. As far
+    back as the corner of the mouth it is the line of the lips; behind, it falls away to the throat."""
+    line = lip(xm)
+    if xm <= CORNER:
+        # (the upper lip hangs a little way down over the lower)
+        return line - OVERHANG * smooth(JAW_TIP, JAW_TIP + JAW_ROUND, xm) * (1.0 - smooth(CORNER - 0.3 * (HINGE_X - CORNER), CORNER, xm))
+    bot = outline(xm)[2]
+    return line - wall(xm) * (line - bot)
+
+
+def jaw_floor(xm):
+    """The top of the lower jaw: just under the line of the lips, and behind the corner of the mouth just
+    under where the upper head's skin is cut away, so that the jaw thins to nothing at its hinge."""
+    return (lip(xm) if xm <= CORNER else roof(xm)) - GAP * (1.0 - wall(xm))
+
+
+def columns(xm, half, split, cut, even_share):
+    """The angles of a ring's points down one side, from the back line (0) to the belly line (pi). Where
+    the mouth is, point `split` lies on the edge of the cut, so that the lip is a clean line."""
+    even = [math.pi * h / half for h in range(half + 1)]
+    if even_share >= 1.0:
+        return even
+    a = min(max(angle_at(xm, cut), 0.2 * math.pi), 0.985 * math.pi)
+    out = []
+    for h in range(half + 1):
+        mine = a * h / split if h <= split else a + (math.pi - a) * (h - split) / (half - split)
+        out.append(mine + (even[h] - mine) * even_share)
+    return out
+
+
+class Mesh:
+    def __init__(self):
+        self.verts = []
+        self.faces = []
+        # per point: (what it is, what moves it, its hinge, inside the mouth, along its limb)
+        self.data = []
+        # per face: the way it should face, and the name of its part
+        self.out = []
+        self.count = {}
+        self.kind = SKIN
+        self.group = STILL
+        self.hinge = Vector((0.0, 0.0, 0.0))
+
+    def part(self, kind, group=STILL, hinge=None):
+        self.kind = kind
+        self.group = group
+        self.hinge = Vector(hinge) if hinge is not None else Vector((0.0, 0.0, 0.0))
+
+    def add(self, p, inside=0.0, along=0.0):
+        self.verts.append(Vector(p))
+        self.data.append((self.kind, self.group, self.hinge, inside, along))
+        return len(self.verts) - 1
+
+    def face(self, points, out, name):
+        """A face wound so that its front (the side its points go round anticlockwise) is towards `out`."""
+        ps = [self.verts[i] for i in points]
+        n = Vector((0.0, 0.0, 0.0))
+        for i in range(len(ps)):
+            n += ps[i].cross(ps[(i + 1) % len(ps)])
+        if n.length < 1e-13:
+            return
+        if n.dot(out) < 0.0:
+            points = tuple(reversed(points))
+            n = -n
+        if len(points) == 4:
+            # (a twisted four-sided face: cut it the way that leaves neither half folded over)
+            a, b, c, d = points
+            pa, pb, pc, pd = (self.verts[i] for i in points)
+
+            def faces_out(p, q, r):
+                return (q - p).cross(r - p).dot(n) > 0.0
+
+            first = faces_out(pa, pb, pc) and faces_out(pa, pc, pd)
+            second = faces_out(pa, pb, pd) and faces_out(pb, pc, pd)
+            if not (first and second):
+                halves = ((a, b, d), (b, c, d)) if second and not first else ((a, b, c), (a, c, d))
+                for half in halves:
+                    self.face(half, out, name)
+                return
+        self.faces.append(tuple(points))
+        self.out.append((Vector(out), name))
+        self.count[name] = self.count.get(name, 0) + 1
+
+
+def rings(low):
+    xs = []
+    x = BODY_FROM
+    for until, step in RINGS:
+        if low:
+            step *= 4.0
+        n = max(1, round((until - x) / step))
+        for i in range(n):
+            xs.append(x + (until - x) * i / n)
+        x = until
+    xs.append(BODY_TO)
+    return xs
+
+
+def body(m, low):
+    """The skin from the nose to the end of the body (or of the tail), the upper head cut away below the line
+    of the lips: its underside there is the roof of the mouth."""
+    m.part(SKIN)
+    half = (AROUND_LO if low else AROUND) // 2
+    around = half * 2
+    split = round(half * 0.62)
+    grid = []
+    cut_away = []
+    centre = []
+    for xm in rings(low):
+        mouth = xm < HINGE_X
+        cut = roof(xm) if mouth else -1e9
+        angles = columns(xm, half, split, cut, wall(xm) if mouth else 1.0)
+        front = smooth(JAW_TIP + JAW_ROUND * 0.8, JAW_TIP + JAW_ROUND * 1.8, xm)
+        edge = max(abs(full_point(xm, angles[split])[0]), 1e-6)
+        row = []
+        flags = []
+        for c in range(around):
+            h = c if c <= half else around - c
+            angle = angles[h] if c <= half else -angles[h]
+            side, y = full_point(xm, angle)
+            inside = 0.0
+            lips = 0.0
+            gone = False
+            if mouth and xm <= CORNER:
+                lips = max(0.0, 1.0 - abs(h - split) / 3.0) * front
+            if mouth and y <= cut + 1e-7:
+                gone = y < cut - 1e-7 or h > split
+                y = max(y, cut)
+                if xm <= CORNER:
+                    inside = min(1.0, max(0.0, (h - split) / 4.0))
+                    y += palate_at(xm, abs(side) / edge)
+                else:
+                    inside = 1.0 if gone else 0.0
+                    lips = max(lips, (0.0 if gone else 1.0) * (1.0 - smooth(0.0, 0.4, wall(xm))))
+                inside *= front
+            row.append(m.add(Vector((side, y, xm - HALF)), inside, lips))
+            flags.append(gone)
+        grid.append(row)
+        cut_away.append(flags)
+        top, _, bot, _ = outline(xm)
+        centre.append(0.5 * (top + max(bot, cut)))
+    for r in range(len(grid) - 1):
+        for c in range(around):
+            n = (c + 1) % around
+            quad = (grid[r][c], grid[r][n], grid[r + 1][n], grid[r + 1][c])
+            if cut_away[r][c] and cut_away[r][n] and cut_away[r + 1][n] and cut_away[r + 1][c]:
+                m.face(quad, Vector((0.0, -1.0, -1.0)), "mouth")
+                continue
+            middle = sum((m.verts[q] for q in quad), Vector()) * 0.25
+            m.face(quad, Vector((middle.x, middle.y - 0.5 * (centre[r] + centre[r + 1]), 0.0)), "body")
+    # the tip of the nose and the end of the body: a fan each
+    first = m.verts[grid[0][0]]
+    last = m.verts[grid[-1][0]]
+    for row, at, way in ((grid[0], Vector((0.0, centre[0], first.z - 0.002)), -1.0),
+                         (grid[-1], Vector((0.0, centre[-1], last.z + 0.002)), 1.0)):
+        tip = m.add(at)
+        for c in range(around):
+            m.face((tip, row[c], row[(c + 1) % around]), Vector((0.0, 0.0, way)), "body")
+
+
+def jaw_point(xm, angle, clamp):
+    """A point of the lower jaw: the skin as if it had no mouth, cut away above the mouth's floor, a little
+    narrower than the upper lip, rounded off to the chin at its tip."""
+    floor = jaw_floor(xm)
+    grow = jaw_grow(xm)
+    narrow = JAW_WIDE + (1.0 - JAW_WIDE) * smooth(CORNER - 0.3 * (HINGE_X - CORNER), CORNER + 0.4 * (HINGE_X - CORNER), xm)
+    side, y = full_point(xm, angle)
+    if clamp:
+        y = floor - trough_at(xm, abs(side) / max(abs(full_point(xm, angle_at(xm, floor))[0]), 1e-6))
+    y = floor - (floor - min(y, floor)) * grow
+    return Vector((side * narrow * grow, y, xm - HALF))
+
+
+def jaw(m, low):
+    """The lower jaw and chin: a part of its own from its tip back to its hinge, where it meets the throat's
+    skin; the shader swings it down. Its top is the floor of the mouth."""
+    m.part(SKIN, JAW, (0.0, HINGE_Y, HINGE_X - HALF))
+    half = max(6, (AROUND_LO if low else AROUND) // 4)
+    around = half * 2
+    split = max(2, round(half * 0.3))
+    n = 9 if low else 44
+    grid = []
+    centre = []
+    xs = [JAW_TIP + (HINGE_X - JAW_TIP) * (i / n) ** 1.35 for i in range(1, n + 1)]
+    for xm in xs:
+        floor = jaw_floor(xm)
+        angles = columns(xm, half, split, floor, 0.0)
+        row = []
+        for c in range(around):
+            h = c if c <= half else around - c
+            angle = angles[h] if c <= half else -angles[h]
+            inside = min(1.0, max(0.0, (split - h) / 4.0))
+            lips = max(0.0, 1.0 - abs(h - split) / 3.0) * (1.0 - smooth(0.0, 0.4, wall(xm)))
+            if xm > CORNER:
+                inside = 1.0 if h < split else 0.0
+            row.append(m.add(jaw_point(xm, angle, h <= split), inside, lips))
+        grid.append(row)
+        centre.append(0.5 * (floor + m.verts[row[half]].y))
+    for r in range(len(grid) - 1):
+        for c in range(around):
+            n2 = (c + 1) % around
+            hs = [q if q <= half else around - q for q in (c, n2)]
+            quad = (grid[r][c], grid[r][n2], grid[r + 1][n2], grid[r + 1][c])
+            if max(hs) <= split:
+                m.face(quad, Y, "jaw floor")
+                continue
+            middle = sum((m.verts[q] for q in quad), Vector()) * 0.25
+            m.face(quad, Vector((middle.x, middle.y - 0.5 * (centre[r] + centre[r + 1]), 0.0)), "jaw")
+    tip = m.add(Vector((0.0, lip(JAW_TIP) - GAP, JAW_TIP - HALF)), 0.0, 1.0)
+    for c in range(around):
+        m.face((tip, grid[0][c], grid[0][(c + 1) % around]), Vector((0.0, -0.3, -1.0)), "jaw")
+
+
+def cone(m, base, tip, radius, name, sides=8, rows=3, blunt=0.0):
+    """A tooth, a claw: round at `base` (left open: bury it), coming to `tip`."""
+    axis = (tip - base)
+    way = axis.normalized()
+    a = way.orthogonal().normalized()
+    b = way.cross(a)
+    last = None
+    for r in range(rows):
+        t = r / rows
+        ring = []
+        for s in range(sides):
+            ang = s / sides * TAU
+            wide = radius * ((1.0 - t) ** 0.8 * (1.0 - blunt) + blunt * math.sqrt(max(0.0, 1.0 - t * t)))
+            ring.append(m.add(base + axis * t + (a * math.cos(ang) + b * math.sin(ang)) * wide, 0.0, t))
+        if last:
+            for s in range(sides):
+                n = (s + 1) % sides
+                middle = (m.verts[last[s]] + m.verts[ring[n]]) * 0.5
+                m.face((last[s], last[n], ring[n], ring[s]), middle - (base + axis * (t - 0.5 / rows)) + way * radius * 0.1, name)
+        last = ring
+    end = m.add(tip, 0.0, 1.0)
+    for s in range(sides):
+        n = (s + 1) % sides
+        middle = (m.verts[last[s]] + m.verts[last[n]]) * 0.5
+        m.face((last[s], last[n], end), middle - (base + axis * (1.0 - 1.0 / rows)) + way * radius * 0.3, name)
+
+
+def blob(m, centre, ax, ay, az, name, around=14, rows=8, along=None):
+    """A closed rounded lump: `ax`, `ay` and `az` are its three half-axes. `along(p)` gives each point how far
+    along its limb it is."""
+    def point(p):
+        return m.add(p, 0.0, along(p) if along else 0.0)
+    north = point(centre + az)
+    south = point(centre - az)
+    grid = []
+    for r in range(1, rows):
+        lat = math.pi * r / rows
+        row = []
+        for s in range(around):
+            lon = s / around * TAU
+            row.append(point(centre + az * math.cos(lat) + (ax * math.cos(lon) + ay * math.sin(lon)) * math.sin(lat)))
+        grid.append(row)
+
+    def out(points):
+        middle = sum((m.verts[q] for q in points), Vector()) / len(points) - centre
+        # (the way an ellipsoid faces there)
+        return Vector([sum(middle.dot(axis) / axis.length_squared * axis[k] / axis.length_squared for axis in (ax, ay, az)) for k in range(3)])
+
+    for s in range(around):
+        n = (s + 1) % around
+        m.face((north, grid[0][s], grid[0][n]), out((north, grid[0][s], grid[0][n])), name)
+        m.face((south, grid[-1][s], grid[-1][n]), out((south, grid[-1][s], grid[-1][n])), name)
+        for r in range(len(grid) - 1):
+            quad = (grid[r][s], grid[r][n], grid[r + 1][n], grid[r + 1][s])
+            m.face(quad, out(quad), name)
+
+
+def blade(m, name, point, place, facing, thick, nt, nu, edge=0.0, tip=0.0):
+    """A flipper: a closed blade. `point(t, u)` is a place in its own flat (t 0 at its root to 1 at its tip,
+    u 0 at its leading edge to 1 at its trailing edge), `place` puts that in the model, `facing` is the way
+    one of its two skins faces. It is `thick` at its root (left open: bury it), a foil across (thickest a
+    third of the way back, `edge` of that at its edges), thinning to `tip` of that at its tip. The two skins
+    share their points round the edges."""
+    grids = []
+    for side in (1.0, -1.0):
+        grid = []
+        for ti in range(nt + 1):
+            t = ti / nt
+            row = []
+            for ui in range(nu + 1):
+                u = ui / nu
+                foil = edge + (1.0 - edge) * 2.6 * math.sqrt(u) * (1.0 - u)
+                if edge > 0.0:
+                    foil *= math.sqrt(max(0.0, 1.0 - (2.0 * u - 1.0) ** 6))
+                swell = thick * (tip + (1.0 - tip) * (1.0 - t) ** 0.7) * foil * math.sqrt(max(0.0, 1.0 - t ** 10))
+                if side < 0.0 and swell < 1e-9:
+                    row.append(grids[0][ti][ui])
+                else:
+                    row.append(m.add(place(point(t, u)) + facing * (side * swell * 0.5), 0.0, t))
+            grid.append(row)
+        grids.append(grid)
+        for ti in range(nt):
+            for ui in range(nu):
+                a, b, c, d = grid[ti][ui], grid[ti][ui + 1], grid[ti + 1][ui + 1], grid[ti + 1][ui]
+                # (at the tip's two corners three of a face's points lie in the flipper's flat: cut it so
+                # that neither half lies wholly in the flat, where the two skins would share it)
+                if ti == nt - 1 and ui == 0:
+                    m.face((a, b, d), facing * side, name)
+                    m.face((b, c, d), facing * side, name)
+                elif ti == nt - 1 and ui == nu - 1:
+                    m.face((a, b, c), facing * side, name)
+                    m.face((a, c, d), facing * side, name)
+                else:
+                    m.face((a, b, c, d), facing * side, name)
+
+
+def whisker(m, root, way, length, bend, thick, low, name="whiskers"):
+    """A whisker: a three-sided hair from `root` (left open: bury it) `way`, curving towards `bend`."""
+    steps = 2 if low else 6
+    last = None
+    here = Vector(root)
+    a = way.orthogonal().normalized()
+    for k in range(steps + 1):
+        t = k / steps
+        at = root + way * (length * t) + bend * (length * t * t)
+        ahead = (way + bend * (2.0 * t)).normalized()
+        # (the same way round all the way along: each ring's first point follows the last ring's)
+        a = (a - ahead * a.dot(ahead)).normalized()
+        b = ahead.cross(a)
+        if k == steps:
+            end = m.add(at, 0.0, 1.0)
+            for s in range(3):
+                n = (s + 1) % 3
+                middle = (m.verts[last[s]] + m.verts[last[n]]) * 0.5
+                m.face((last[s], last[n], end), middle - here, name)
+            break
+        ring = [m.add(at + (a * math.cos(s / 3 * TAU) + b * math.sin(s / 3 * TAU)) * thick * (1.0 - 0.75 * t), 0.0, t) for s in range(3)]
+        if last:
+            for s in range(3):
+                n = (s + 1) % 3
+                middle = (m.verts[last[s]] + m.verts[last[n]] + m.verts[ring[s]] + m.verts[ring[n]]) * 0.25
+                m.face((last[s], last[n], ring[n], ring[s]), middle - (here + at) * 0.5, name)
+        last = ring
+        here = at
+
+
+def eye(m, sx, low):
+    """A dome lying on the skin of the head."""
+    m.part(EYE)
+    spokes = 12 if low else 36
+    steps = 3 if low else 10
+    xe, degrees, radius, bulge = EYE_AT
+    angle = math.radians(degrees)
+    here = skin(xe, sx * angle)
+    round_here = max(0.015, Vector((here.x, here.y - outline(xe)[1])).length)
+
+    def on_skin(dx, dy):
+        return skin(xe + dx, sx * (angle - dy / round_here))
+
+    out = out_of_skin(xe, sx * angle)
+    middle = m.add(here + out * (bulge + 0.0006), 0.0, 0.0)
+    last = None
+    for k in range(1, steps + 1):
+        r = k / steps
+        row = []
+        for s in range(spokes):
+            a = s / spokes * TAU
+            p = on_skin(math.cos(a) * radius * r, math.sin(a) * radius * r)
+            row.append(m.add(p + out * (bulge * (1.0 - r * r) + 0.0006 * (1.0 - r)), 0.0, r))
+        for s in range(spokes):
+            n = (s + 1) % spokes
+            if last is None:
+                m.face((middle, row[s], row[n]), out, "eyes")
+            else:
+                m.face((last[s], row[s], row[n], last[n]), out, "eyes")
+        last = row
+
+
+def lip_side(xm):
+    """How far out to its side the edge of the upper lip is."""
+    return abs(full_point(xm, angle_at(xm, lip(xm)))[0])
+
+
+def teeth(m, low):
+    """Its teeth: in the upper jaw (still) and the lower (they swing with it), hidden inside the other jaw
+    while the mouth is shut. TEETH lists them: (metres behind the nose, how far out to the side as a share
+    of the lip's edge there, how long, how wide at the root), each made on both sides, above and below; a
+    tooth on the middle line is made once."""
+    sides = 5 if low else 9
+    rows = 2 if low else 4
+    for upper in (True, False):
+        m.part(TOOTH, STILL if upper else JAW, (0.0, HINGE_Y, HINGE_X - HALF))
+        for xm, share, length, radius in TEETH:
+            if low and length < TEETH_LOW:
+                continue
+            if not upper:
+                # (the lower ones sit a little ahead, between the upper ones, and a little further in)
+                xm = xm - radius * 1.6
+                share *= 0.82
+                length *= 0.85
+                if xm < JAW_TIP + radius * 1.2:
+                    continue
+            for sx in ((1.0, -1.0) if share > 0.0 else (1.0,)):
+                if upper:
+                    x = sx * share * lip_side(xm)
+                    at = roof(xm) + palate_at(xm, share)
+                    base = Vector((x, at + radius * 0.9, xm - HALF))
+                    tip = Vector((x * 0.9, at - length, xm - HALF + length * 0.12))
+                else:
+                    grow = jaw_grow(xm)
+                    x = sx * share * lip_side(xm) * JAW_WIDE * grow
+                    at = lip(xm) - GAP - trough_at(xm, share) * grow
+                    base = Vector((x, at - radius * 0.9, xm - HALF))
+                    tip = Vector((x * 0.9, at + length, xm - HALF + length * 0.06))
+                cone(m, base, tip, radius, "upper teeth" if upper else "lower teeth", sides, rows, blunt=0.35)
+
+
+def tongue(m, low):
+    m.part(TONGUE, JAW, (0.0, HINGE_Y, HINGE_X - HALF))
+    front, back, thick = TONGUE_AT
+    middle = 0.5 * (front + back)
+    wide = lip_side(middle) * JAW_WIDE * 0.6
+    blob(m, Vector((0.0, lip(middle) - GAP - trough_at(middle, 0.0) * 0.75, middle - HALF)),
+         X * wide, Y * thick, Vector((0.0, 0.5 * (lip(front) - lip(back)), -0.5 * (back - front))), "tongue",
+         8 if low else 18, 4 if low else 10)
+
+
+def make(name, low):
+    m = Mesh()
+    body(m, low)
+    jaw(m, low)
+    teeth(m, low)
+    tongue(m, low)
+    for sx in (1.0, -1.0):
+        eye(m, sx, low)
+    extras(m, low)
+    mesh = bpy.data.meshes.new(name)
+    mesh.from_pydata([to_b(p) for p in m.verts], [], m.faces)
+    # (every layer made first, then each looked up by name: making one moves the others)
+    mesh.uv_layers.new(name="UVMap")
+    mesh.uv_layers.new(name="UV2")
+    mesh.color_attributes.new(name="Color", type="FLOAT_COLOR", domain="CORNER")
+    uv = mesh.uv_layers["UVMap"].data
+    uv2 = mesh.uv_layers["UV2"].data
+    colour = mesh.color_attributes["Color"].data
+    for poly in mesh.polygons:
+        for corner, vi in enumerate(poly.vertices):
+            kind, group, hinge, inside, along = m.data[vi]
+            uv[poly.loop_start + corner].uv = (hinge.z / LENGTH + 0.5, 1.0 - (hinge.y / LENGTH + 0.5))
+            uv2[poly.loop_start + corner].uv = (hinge.x / LENGTH + 0.5, 1.0 - group / 8.0)
+            colour[poly.loop_start + corner].color = (kind / 10.0, inside, along, 1.0)
+    mesh.color_attributes.active_color = mesh.color_attributes["Color"]
+    mesh.color_attributes.render_color_index = mesh.color_attributes.find("Color")
+    material = bpy.data.materials.get(NAME) or bpy.data.materials.new(NAME)
+    material.use_nodes = True
+    bsdf = next(n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    bsdf.inputs["Base Color"].default_value = COLOUR
+    material.diffuse_color = COLOUR
+    mesh.materials.append(material)
+    for poly in mesh.polygons:
+        poly.use_smooth = True
+    # (a fold sharper than this is an edge: the two sides of it do not share their shading)
+    mesh.set_sharp_from_angle(angle=math.radians(62.0))
+    mesh.update()
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+    tris = sum(len(p.vertices) - 2 for p in mesh.polygons)
+    box = [(min(p[k] for p in m.verts), max(p[k] for p in m.verts)) for k in range(3)]
+    print("BUILT %s verts=%d tris=%d x %.3f..%.3f y %.3f..%.3f z %.3f..%.3f" % (
+        name, len(mesh.vertices), tris, box[0][0], box[0][1], box[1][0], box[1][1], box[2][0], box[2][1]))
+    winding(name, mesh, m)
+    return obj
+
+
+def winding(name, mesh, m):
+    """Nothing inside out: the skin of the body faces away from its middle line, each skin of a flipper away
+    from the flipper's own flat, a tooth away from its own middle (Blender's front is the side a face's
+    normal is on)."""
+    bad = {}
+    for poly in mesh.polygons:
+        out, group = m.out[poly.index]
+        if poly.normal.dot(to_b(out)) <= 0.0:
+            bad[group] = bad.get(group, 0) + 1
+    told = ["%s %d/%d wrong" % (group, bad.get(group, 0), count) for group, count in m.count.items()]
+    print("WINDING %s: %s: %s" % (name, "ok" if not bad else "INSIDE OUT", ", ".join(told)))
+
+
+def export_one(obj, path):
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.ops.export_scene.gltf(
+        filepath=path, export_format="GLB", export_yup=True, use_selection=True,
+        export_animations=False, export_vertex_color="ACTIVE", export_texcoords=True,
+    )
+
+
+def render(folder, made):
+    scene = bpy.context.scene
+    scene.render.engine = "BLENDER_WORKBENCH"
+    scene.display.shading.light = "STUDIO"
+    scene.display.shading.color_type = "MATERIAL"
+    scene.display.shading.show_cavity = True
+    scene.display.shading.show_backface_culling = True
+    scene.render.resolution_x, scene.render.resolution_y = 1400, 800
+    scene.world = bpy.data.worlds.new("World")
+    scene.world.color = (0.02, 0.05, 0.3)
+    camera = bpy.data.objects.new("Camera", bpy.data.cameras.new("Camera"))
+    camera.data.type = "ORTHO"
+    camera.data.clip_end = 1000.0
+    scene.collection.objects.link(camera)
+    scene.camera = camera
+    # (Blender space: it lies along Y, its nose at +Y, up is Z)
+    long = LENGTH * 1.15
+    views = [("left", (1, 0, 0), (0, 0, 0), long), ("right", (-1, 0, 0), (0, 0, 0), long),
+             ("front", (0, 1, 0), (0, 0, 0), long * 0.6), ("back", (0, -1, 0), (0, 0, 0), long * 0.6),
+             ("top", (0.001, 0, 1), (0, 0, 0), long * 1.8), ("under", (0.001, 0, -1), (0, 0, 0), long * 1.8),
+             ("head", (0.8, 0.5, 0.2), (0, HALF * 0.75, 0), long * 0.35),
+             ("chin", (0.5, 0.6, -0.6), (0, HALF * 0.8, 0), long * 0.3),
+             ("tail", (0.7, -0.6, 0.3), (0, -HALF * 0.7, 0), long * 0.5)]
+    for low, obj in ((False, made[0]), (True, made[1])):
+        for other in made:
+            other.hide_render = other is not obj
+        for view, direction, target, frame in views:
+            if low and view not in ("left", "head"):
+                continue
+            offset = Vector(direction).normalized() * 40.0
+            camera.data.ortho_scale = frame
+            camera.location = Vector(target) + offset
+            camera.rotation_euler = (-offset).to_track_quat("-Z", "Y" if abs(direction[2]) < 0.9 else "X").to_euler()
+            scene.render.filepath = os.path.join(folder, "%s%s.png" % ("lo_" if low else "", view))
+            bpy.ops.render.render(write_still=True)
+
+
+def main():
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.context.preferences.filepaths.save_version = 0
+    full = make(NAME, False)
+    low = make(NAME + "_lo", True)
+    os.makedirs(OUT, exist_ok=True)
+    export_one(full, os.path.join(OUT, NAME + ".glb"))
+    export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
+    low.location.x = LENGTH
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))
+    low.location.x = 0.0
+    if PREVIEW:
+        os.makedirs(PREVIEW, exist_ok=True)
+        render(PREVIEW, [full, low])
+
+
+if __name__ == "__main__":
+    main()

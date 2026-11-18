@@ -1,0 +1,164 @@
+class_name HarborSeal
+extends Node3D
+## A harbor seal (Phoca vitulina), 1.6 m from its nose to the tips of its hind flippers: a plump
+## spindle with a round, cat-like head and no ear flaps, big dark eyes, whiskers, a V of
+## nostrils, short clawed fore flippers held to its sides and hind flippers that point straight
+## back; silver-grey (or tan: `tawny`) covered in dark spots and pale rings.
+##
+## How it looks and swims only: whatever moves it puts it where it is and turns it the way it
+## goes. Its nose points along its own -Z (Godot's forward), its belly down; its origin is on
+## its middle line, half way along, so it reaches 0.8 m ahead and 0.8 m behind. `scale` it for
+## a bigger or smaller one. No sound.
+##
+## It swims as true seals do: it sculls its hind flippers and the rear of its body from side to
+## side, like a fish, each flipper fanned open as it pushes; its fore flippers stay at its
+## sides. All of that is drawn by the shader (no bones).
+##
+## Everything that moves runs on `phase`, 0 to 1 through one `beat`, in which it sculls
+## `tail_beats` times (a whole number), so its motion comes round again exactly every beat.
+## Either call `step(velocity, delta)` each frame, which moves `phase` on by delta / beat, or
+## set `phase` yourself. The same names and meanings as GameCommon's fish (YellowfinTuna).
+##
+## The model is creatures/harbor_seal/models/harbor_seal.glb (and _lo), built by
+## tools/build_harbor_seal.py; harbor_seal.gdshader draws its coat and moves it.
+
+const MODEL := "res://creatures/harbor_seal/models/harbor_seal%s.glb"
+const SHADER := preload("res://creatures/harbor_seal/harbor_seal.gdshader")
+## As the model is built (tools/build_harbor_seal.py): from the tip of its nose to the tips of
+## its hind flippers, and how deep and how wide its body is at its fattest (metres, at scale 1).
+const LENGTH := 1.6
+const DEPTH := 0.41
+const WIDTH := 0.43
+
+## Seconds one beat takes: everything it does comes round again each beat.
+@export var beat := 2.4
+## How many times in a beat it sculls its hind flippers (there and back).
+@export var tail_beats := 2:
+	set(value):
+		tail_beats = maxi(value, 0)
+		_send_phase()
+## How widely it sculls: 1 a seal cruising (its flipper tips swing about 0.2 m either way), 0
+## gliding still.
+@export_range(0.0, 2.0) var sway := 1.0:
+	set(value):
+		sway = value
+		_send(&"sway", value)
+## Its mouth: 0 shut, 1 wide open, as when it bites.
+@export_range(0.0, 1.0) var gape := 0.0:
+	set(value):
+		gape = value
+		_send(&"gape", value)
+## Turning: how far its body is bent round to one side behind its head, radians from neck to
+## hind flippers (more than 0 and its tail comes round to its left, +X).
+@export_range(-1.6, 1.6) var curl := 0.0:
+	set(value):
+		curl = value
+		_send(&"curl", value)
+## The same, up or down (more than 0 and its tail comes up, as when it dives).
+@export_range(-1.6, 1.6) var arch := 0.0:
+	set(value):
+		arch = value
+		_send(&"arch", value)
+## The low model (about a fourteenth of the triangles), for far off or for many of them.
+@export var low := false:
+	set(value):
+		low = value
+		_show()
+## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set
+## it yourself.
+var phase := 0.0:
+	set(value):
+		phase = fposmod(value, 1.0)
+		_send_phase()
+
+static var _meshes := {}
+
+var _material: ShaderMaterial
+var _full: MeshInstance3D
+var _low: MeshInstance3D
+
+
+## The full model's mesh, or the low one's (each one surface, to wear `new_material()`): for
+## drawing a seal without this node.
+static func mesh_of(low_wanted := false) -> Mesh:
+	return _mesh_at(MODEL % ("_lo" if low_wanted else ""))
+
+
+## A new material for `mesh_of()`'s meshes. Its shader settings are the game's to set: `phase`
+## (0..1 through one scull), `sway`, `gape`, `curl`, `arch` and the rest (the top of the shader
+## lists them).
+static func new_material() -> ShaderMaterial:
+	var made := ShaderMaterial.new()
+	made.shader = SHADER
+	return made
+
+
+func _init() -> void:
+	_material = new_material()
+
+
+func _ready() -> void:
+	_full = _instance_of(false)
+	_low = _instance_of(true)
+	_show()
+	_send_phase()
+	_send(&"sway", sway)
+	_send(&"gape", gape)
+	_send(&"curl", curl)
+	_send(&"arch", arch)
+
+
+## Each frame, for one that is not having its `phase` set for it: moves it on through its beat.
+## (`velocity` is taken so that it is called as the fish's are; its beat here does not change
+## with its speed: set `sway` and `beat` for that.)
+func step(_velocity: Vector3, delta: float) -> void:
+	phase += delta / maxf(beat, 0.01)
+
+
+## Sets one of the shader's settings: `wave` (the length of the wave along its body, in body
+## lengths), `tawny` (0 a silver-grey seal to 1 a tan one), `spots_show`, `wet` (1 just out of a
+## dive, 0 dry fur) and its colours (`coat`, `coat_back`, `belly`, `coat_tan`, `spot`, `ring`,
+## `nose`, `mouth_inside`, `tooth`, `whiskers`, `claw`).
+func set_shader_parameter(setting: StringName, value: Variant) -> void:
+	_material.set_shader_parameter(setting, value)
+
+
+## Its one material (both models wear it).
+func material() -> ShaderMaterial:
+	return _material
+
+
+func _send(setting: StringName, value: Variant) -> void:
+	if _material:
+		_material.set_shader_parameter(setting, value)
+
+
+# (the shader is given how far through one scull it is)
+func _send_phase() -> void:
+	_send(&"phase", fposmod(phase * tail_beats, 1.0))
+
+
+func _show() -> void:
+	if _full:
+		_full.visible = not low
+		_low.visible = low
+
+
+func _instance_of(low_wanted: bool) -> MeshInstance3D:
+	var mesh := MeshInstance3D.new()
+	mesh.mesh = mesh_of(low_wanted)
+	mesh.material_override = _material
+	# (its flippers swing out past where the still model ends; `curl` and `arch` further)
+	mesh.extra_cull_margin = 0.5
+	mesh.name = "HarborSealLo" if low_wanted else "HarborSeal"
+	add_child(mesh)
+	return mesh
+
+
+static func _mesh_at(path: String) -> Mesh:
+	if not _meshes.has(path):
+		var made := (load(path) as PackedScene).instantiate()
+		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+		_meshes[path] = found.mesh
+		made.free()
+	return _meshes[path]

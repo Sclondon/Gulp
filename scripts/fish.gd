@@ -171,6 +171,10 @@ func _wear(look: Node3D, long: float, front := -1.0, curls := true) -> void:
 		look.set(&"phase", randf())
 	look.position = Vector3(0.0, 0.0, _front - _long * 0.5)
 	_body.add_child(look)
+	# (Godot's importer makes coarser stand-ins for far off; a body bent in its shader then bends
+	# in straight pieces, so they are never used)
+	for mesh: MeshInstance3D in look.find_children("*", "MeshInstance3D", true, false):
+		mesh.lod_bias = 64.0
 
 
 # Puts a code-built mesh in the holder, under the old fish shader.
