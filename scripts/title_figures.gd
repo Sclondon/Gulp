@@ -87,12 +87,31 @@ static func look_about(figure: Node3D) -> void:
 		(figure as Idle).looking = false
 
 
-## Which of his outfits the captain wears (the user, 2026-11-18: "the captain should have the outfit from teh first
-## concept as well to switch into"): "open" (his coat open over a striped undershirt; the default) or "closed" (the
-## navy gansey). Each outfit is meshes named <name>__<outfit> in his model; this shows one set and hides the others.
+## Which look the captain wears (the user, 2026-11-18: "the captain should have the outfit from teh first concept as
+## well to switch into", and his base body "so you can add clothes on top"): "open" (his coat open over a striped
+## undershirt; the default), "closed" (the navy gansey) or "boxers" (his base body in heart-print boxer shorts).
+## His model's meshes named <part>__<looks> show in the looks listed after the "__" (joined by "_"); the rest always.
 static func wear(figure: Node3D, outfit: String) -> void:
+	_choose(figure, OUTFITS, outfit)
+
+
+## Which face the captain has (a test, the user, 2026-11-18: "can the models look that good? remember twilight
+## princess", "lets try it"): "painted" (a low-poly head with a face painted from the concept; the default for the
+## test) or "mask" (the smooth mask face with modelled slits for eyes).
+static func face(figure: Node3D, which: String) -> void:
+	_choose(figure, FACES, which)
+
+
+const OUTFITS := ["open", "closed", "boxers"]
+const FACES := ["mask", "painted"]
+
+
+## Shows, of the meshes named <part>__<options> whose options are among `options`, those that list `chosen`.
+static func _choose(figure: Node3D, options: Array, chosen: String) -> void:
 	for mesh: MeshInstance3D in figure.find_children("*__*", "MeshInstance3D", true, false):
-		mesh.visible = String(mesh.name).get_slice("__", 1) == outfit
+		var listed := String(mesh.name).get_slice("__", 1).split("_")
+		if Array(listed).any(func(o: String) -> bool: return o in options):
+			mesh.visible = chosen in listed
 
 
 ## The plain standing idle instead of the figure's task (`work(figure)` puts him back to it).
@@ -157,6 +176,15 @@ static func _make(path: String, kind: Kind, size: float) -> Node3D:
 		mount.child_exiting_tree.connect(func(_off: Node) -> void: crown.visible = mount.get_child_count() > 1)
 	if kind == Kind.CAPTAIN:
 		wear(figure, "open")
+		face(figure, "painted")
+		# (the painted face carries the concept's own light and shade, so it is drawn unlit, as the panel's baked
+		# paint is: lit again it went dark and muddy)
+		var painted := model.find_child("captain_face__painted", true, false) as MeshInstance3D
+		if painted:
+			for s in painted.mesh.get_surface_count():
+				var material := painted.mesh.surface_get_material(s) as BaseMaterial3D
+				if material and material.albedo_texture:
+					material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	figure.seed_time = float(kind) * 2.3
 	return figure
 
@@ -168,7 +196,8 @@ const HAIR_SHADER := "res://shaders/ink/hair_ink.gdshader"
 const HAIR_COLOURS := {
 	"boy_hair": [Color(0.74, 0.61, 0.4), Color(0.93, 0.84, 0.64), Color(0.3, 0.2, 0.11), Color(0.98, 0.93, 0.8)],
 	"boy_hairtop": [Color(0.74, 0.61, 0.4), Color(0.93, 0.84, 0.64), Color(0.3, 0.2, 0.11), Color(0.98, 0.93, 0.8)],
-	"captain_chesthair__open": [Color(0.42, 0.4, 0.37), Color(0.62, 0.6, 0.57), Color(0.2, 0.19, 0.18), Color(0.95, 0.95, 0.93)],
+	"captain_chesthair__open_boxers": [Color(0.42, 0.4, 0.37), Color(0.62, 0.6, 0.57), Color(0.2, 0.19, 0.18), Color(0.95, 0.95, 0.93)],
+	"captain_bellyhair__boxers": [Color(0.42, 0.4, 0.37), Color(0.62, 0.6, 0.57), Color(0.2, 0.19, 0.18), Color(0.95, 0.95, 0.93)],
 }
 static var _hair := {}
 

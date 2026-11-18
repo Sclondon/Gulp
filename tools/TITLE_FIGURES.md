@@ -624,10 +624,9 @@ looks a little to tall and lanky so far in what I can see you are working on", "
 proportions", "he should have hear shaped boxers pose so you can add clothes on top", "his eyes should just be
 wrinkly slits", "maybe added on as afacial feature", and "no we need the tpose".
 
-**On hold:** his proportions, a base body in heart-print boxers with the clothes over it, and the other outfits of
-`concept_captain_outfits.jpg` wait for `tools/art_src/concept_captain_tpose.jpg` (the user's call: "no we need the
-tpose"). Everything below is built on his old (tall) body and will be rebuilt on the new one. Measured on the old
-body: about 7.4 heads tall (1.25 m modelled to the crown, a head of 0.17 m), where the concept is about 5 to 5.5.
+**Superseded in part:** he was rebuilt on his base body later the same day (the next section). What follows was the
+first pass, on his old tall body (about 7.4 heads tall, 1.8 m, against the concept's 5 to 5.5); its outfits, tattoos,
+chest hair and eyes carried over, as that section says.
 
 ### Built so far
 
@@ -663,3 +662,132 @@ body: about 7.4 heads tall (1.25 m modelled to the crown, a head of 0.17 m), whe
 - A point of each sleeve roll was thrown metres out by Blender's solidify (a sliver at the cut): that was a long dark
   line in the first pictures. `band_of` now puts any point thrown more than 5 cm back on the surface.
 - The diver's glb came out byte for byte the same.
+
+## The captain on his base body, three looks, a painted face (2026-11-18)
+
+The user: "no we need the tpose"; "make sure to overly the model onto the tpose until it looks right"; "and if you
+need more poses for concept art ask for them"; and, of a trial sheet of faces, "can the models look that good?
+remember twilight princess", then "lets try it".
+
+Sheets used: `tools/art_src/concept_captain_tpose.jpg` (his base body, front, side, back, arms hanging low),
+`concept_captain_tpose_clothed.jpg` (the same in the open coat), `concept_captain_head.jpg` (his head from the front,
+three-quarter, side, back and top), `concept_faces_trial.jpg` (the face test's look). `concept_captain_tpose2.jpg`
+was read (its arms hang low too: there is still no true T-pose) and `concept_captain_hands_wheel.jpg` and
+`concept_captain_closed.jpg` were not yet built to (see "Not done").
+
+### His proportions (the skeleton changed, not only the mesh)
+
+Everything of him is built on Gloaming's man as before, then given his proportions in one step at rest
+(`WARP` and `warp_captain` in the build script): each bone is moved to a new joint and its flesh scaled along and
+across it, and every piece (skin, clothes, hair, head) takes the change by its own skin weights (linear blend
+skinning done once). The skeleton's bones keep their names; their rest positions are the new joints. The table is
+tuned by overlaying him on the sheet (below). Numbers in his model's units (TitleFigures stands him 1.44 times
+bigger):
+
+| Joint | Gloaming's man | The captain |
+| --- | --- | --- |
+| hips | 0.643 | 0.55 |
+| chest | 0.842 | 0.75 |
+| neck / head | 1.0 / 1.053 | 0.925 / 0.96 |
+| shoulder (x, y) | 0.131, 0.934 | 0.225, 0.815 |
+| elbow, wrist (x) | 0.341, 0.484 | 0.414, 0.578 |
+| hip (x, y), knee, ankle | 0.063, 0.613; 0.323; 0.06 | 0.115, 0.528; 0.222; 0.054 |
+
+Flesh across the bones: hips 1.2, belly 1.28 wide and 1.25 deep, chest 1.2 wide and 1.45 deep, neck 1.45, upper
+arms 1.15 to 1.2, forearms 1.3, hands 1.15, thighs 1.3, shins 1.9 wide and 1.75 deep, feet 1.75 wide; the head 1.25
+all round. The build key `body_gut` is still 0.35.
+
+Measured, before and after: 1.8 m and about 7.4 heads before; now 1.60 m to his crown (1.70 m to the cap's top),
+5.4 heads (his mask head) or about 5 (the painted head, whose beard hangs lower). Shoulder joint 0.73 of his height
+(the sheet 0.73); shoulder to wrist 0.32 (the sheet, along the drawn arm, 0.33); hip joint 0.47 (the sheet 0.46);
+head 0.185 of his height (the sheet 0.17 to 0.2).
+
+### The overlay (the measure of done)
+
+His orthographic renders from the front, side and back, in the sheet's pose (arms 64 degrees down from level, the
+elbows a little bent), scaled and placed on the sheet's floor and cap-top lines, laid over the painting at half
+opacity and as an outline, three views each. Rounds 1 to 9 are kept in the scratch folder. Fixes by round: (1) to (2)
+shoulders too high and square, arms too long and thick at the top; (2) to (3) legs too thin and too close together,
+feet too small; (3) to (4) the hips grew a ledge; (5) to (9) the clothed look: the coat stood too far off, its skirt
+added (the sheet's coat reaches the thigh) and drawn in, the trousers slimmed to the sheet's (narrower than his bare
+legs: the skin under them is hidden). Worst remaining difference: about 2 to 2.5 % of his height (3 to 4 cm in the
+game), at the hips of the clothed look (the coat's skirt) and the outside of the thighs; the bare body is within
+about 2 % everywhere but the cap and beard of the mask head, which the painted head replaces.
+
+### Three looks: `TitleFigures.wear(captain, "open" | "closed" | "boxers")`
+
+His glb holds one body cut into the pieces each look leaves bare, and clothes over it; meshes are named
+`<part>__<looks>`: `captain_skin__boxers`, `captain_forearms__open_boxers`, `captain_neck__open_boxers`,
+`captain_scoop__open_boxers` (the chest in the undershirt's low neck), `captain_chesthair__open_boxers`,
+`captain_bellyhair__boxers`, `captain_shorts__boxers`, `captain_legs__open_closed` (oilskins and boots),
+`captain_outfit__open`, `captain_outfit__closed`. The covered skin is not drawn, so nothing pokes through. "open" is
+the default.
+
+- **Boxers** (his base body): loose white shorts with red hearts (a picture, `tools/art_src/captain_boxers.png`,
+  repeated round him), a plain waistband, the same modest fullness at the fly.
+- **Body hair:** a tufted grey bush on his chest and a trail down his belly (the hair shader, as the boy's hair);
+  the light fuzz on his forearms, legs and back is painted on his skin.
+- **Tattoos,** painted on his skin's picture (`tools/art_src/captain_skin.png`, laid on by region: arms, legs, front,
+  back): forearms (an anchor, swallows, a compass star, a ship on a ribbon, a heart), upper arms (a ship; a heart and
+  a swallow), his chest (an anchor), a swallow by his right shoulder, and across his back a ship, swallows, a heart and
+  a compass star. No letters.
+- **Open:** the coat now hugs him and has a skirt to the thigh (a laid sheet round him, open in front); the
+  undershirt, braces, rolls as before.
+- **Closed:** the gansey as before, on the new body. (It is not yet rebuilt to the new closed sheet: see below.)
+
+### The painted face (the test): `TitleFigures.face(captain, "painted" | "mask")`
+
+- **Method,** as games of that era did it: a low-poly head built to the head turnaround's own silhouettes (rings row
+  by row, as wide as the front view and as deep as the side view: the cap, the head, the beard as one mass, the neck;
+  the nose lofted down the side view's profile; ears; the cap's peak; a gold hoop where the sheet has it), 1,860
+  triangles with its earring, one UV island set (Blender's smart projection), and one 512-square picture painted by
+  projecting the turnaround's front, side and back views onto it, each texel taking the view it faces most squarely
+  (and only where that view shows him, not its background), blended, the gaps between islands filled out. All in the
+  build script (`painted_head`, `paint_face`, `silhouette`), from crops it makes itself
+  (`tools/art_src/captain_face_front.png`, `_side`, `_back`); the result is `captain_face_painted.png`. No hand
+  touch-up. Eyes, brows, wrinkles, cheeks and lips are paint, not geometry.
+- **How it is drawn:** a StandardMaterial3D (the glTF's own) with its picture, set unlit by TitleFigures. Lit again
+  by the scene, the painting's own light and shade went dark and muddy (seen side by side); unlit, it sits as the
+  panel's baked paint does. No new shader program. Claude's pick.
+- **The mask face** (the smooth mask with slits for eyes, its cap and pipe) is kept as the other face; the painted
+  head brings its own cap (painted, badge and buttons included) and has no pipe (the head sheet has none).
+- **Judged at the game's distances** (a picture of the three beside the concept): close up it holds well from the
+  front and the side (the eyes, brows, wrinkles, nose and beard read as the painting); waist-up at a third of a
+  1280 by 720 screen it reads as the concept; from the title's camera he is a few pixels in the wheelhouse window and
+  either face would do. Where it falls short: the ears are rough boxes painted from the side view; the nose's sides
+  catch a little background colour; the beard meets the neck in a hard line where the body's neck piece starts; the
+  back of the cap is plain; the picture's 512 pixels go soft at full-screen close-ups; the face does not take the
+  scene's light (it is unlit).
+
+### At the wheel
+
+He stands on a low oak grating, 12 cm, part of his model (not skinned) at his origin: the wheel stays where the boat
+has it, and he is now short enough that he would otherwise reach up to it. His hands are on the rim to within 5 and
+3 mm (the solve's own measure) over the run. No point of either coat (hands apart) comes within 2 cm of the wheel's
+disc; the nearest is 4.2 cm (open) and 2.9 cm (closed) in model units (6 and 4 cm in the game). From the title's
+camera his cap and face show through the wheelhouse's window. `scripts/title_figures.gd`'s wheel numbers are
+unchanged.
+
+### Checks
+
+- Triangles drawn, with the painted head (1,860) and the grating (160): open 10,124, closed 5,818, boxers 8,677
+  (his old closed look was 7,069). His glb holds all three looks and both faces: 20,970 in all.
+- Winding against normals, every mesh of his glb: 98.9 to 100 %.
+- Clipping at the wheel, the pose taken from the running title: forearm skin through the rolls 3 of 137 (up to 9 mm),
+  undershirt through the coat 30 of 644 (up to 11 mm, at the shoulders by the neck), braces' edges dip up to 8 mm.
+- The boy's and the diver's glb files came out byte for byte the same.
+
+### Not done (asked for, still to do)
+
+- The closed look rebuilt to `concept_captain_closed.jpg` (a buttoned double-breasted pea coat, collar up, over the
+  gansey) and overlaid on it.
+- His hands to `concept_captain_hands_wheel.jpg` (they are the man's hands, 1.15 times bigger), and his stance at the
+  wheel compared with its side and three-quarter views.
+- Views still wanted from the image generator: a true T-pose (arms level), for the arms' length and shoulders.
+
+### Whose calls
+
+The user's: the T-pose sheet as the measure, the overlay method, the boxers base body, the painted-face test, more
+views when needed. Claude's: the bone table's numbers, the grating, the coat's skirt, trousers slimmer than his legs,
+the painted face drawn unlit, the painted head with its own cap and no pipe, the earring in both faces, the tattoos'
+places where the sheet was unclear.

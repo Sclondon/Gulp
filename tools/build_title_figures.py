@@ -977,7 +977,7 @@ CAPTAIN_COLOURS = {
     "oilskin": (0.70, 0.57, 0.27), "rubber": (0.09, 0.09, 0.09), "beard": (0.80, 0.79, 0.76), "hair": (0.60, 0.59, 0.56),
     "cap": (0.15, 0.17, 0.23), "peak": (0.06, 0.06, 0.07), "brass": (0.66, 0.55, 0.32), "pipe": (0.34, 0.22, 0.14),
     "braces": (0.21, 0.19, 0.17), "steel": (0.45, 0.45, 0.46), "gold": (0.83, 0.66, 0.3),
-    "slit": (0.2, 0.12, 0.1), "crease": (0.6, 0.42, 0.34),
+    "slit": (0.2, 0.12, 0.1), "crease": (0.6, 0.42, 0.34), "boxerband": (0.9, 0.89, 0.86), "grating": (0.36, 0.27, 0.18),
 }
 
 
@@ -990,12 +990,8 @@ SCOOP = 0.865         # the bottom of his undershirt's low neck, in front
 VEST_HEM = 0.575
 STRIPE = 0.028        # each stripe of the undershirt, cream then navy
 TROUSERS_TOP = 0.542  # (where the closed outfit has always cut them, under the gansey's hem)
-TATTOOS = os.path.join(HERE, "art_src", "captain_tattoos.png")
-# (the tattoo picture: the forearms in its lower three quarters, the left (his left, +X) in its left half, round
-# the arm across and elbow to wrist up; his chest in the top quarter)
-TATTOO_ARM = (COAT_SLEEVE - 0.06, HAND_FROM + 0.012)
-TATTOO_CHEST = (-0.14, 0.14, SCOOP - 0.05, 1.0)
-ARM_ROUND = 0.042     # about the radius of his forearm (m), to lay the pictures out true
+BOXER_TOP = 0.655    # his boxer shorts: the waistband, and the hem on his thighs
+BOXER_HEM = 0.45
 
 
 def coat_open(y):
@@ -1024,66 +1020,102 @@ def hair_lock(b, base, n, way, length, width, lift):
     b.tube([(p, side * width * w, n * width * t) for p, (w, t) in zip(pts, ((1.0, 0.55), (0.8, 0.45), (0.22, 0.12)))], 5)
 
 
-def tattoo_uvs(o):
-    """Lays the tattoo picture (paint_tattoos) round his forearms and over his chest: UV of each corner."""
+SKIN_PICTURE = os.path.join(HERE, "art_src", "captain_skin.png")
+BOXERS_PICTURE = os.path.join(HERE, "art_src", "captain_boxers.png")
+# (the skin picture's layout, in his model's space before his proportions are changed (captain_warp): the arms in
+# its lowest 0.45, the left (+X) in its left half, round the arm across and shoulder to wrist up; the legs above
+# (0.45 to 0.6), the left in the left half, round the leg across and sole to hip up; the front of his body (0.6 to
+# 0.8) and the back (0.8 to 1), across and up as they are)
+SKIN_ARM = (0.13, HAND_FROM + 0.012)
+SKIN_LEG = (0.0, 0.62)
+SKIN_BODY = (-0.25, 0.25, 0.5, 1.04)
+ARM_ROUND = 0.045     # about the radius of his arm (m), to lay the pictures out true
+LEG_X = 0.063         # his legs' middles
+
+
+def skin_region(c):
+    """Which part of the skin picture a face (its middle, c) takes its colour from."""
+    if abs(c.x) > 0.17 and c.y > 0.82:
+        return "arm"
+    if c.y < 0.55:
+        return "leg"
+    return "front" if c.z > 0.01 else "back"
+
+
+def skin_uvs(o):
+    """Lays the skin picture (paint_skin) over his body: UV of each corner, by the part its face is in."""
     mesh = o.data
     while mesh.uv_layers:
         mesh.uv_layers.remove(mesh.uv_layers[0])
     uv = mesh.uv_layers.new(name="UVMap")
-    lo, hi = TATTOO_ARM
-    x0, x1, y0, y1 = TATTOO_CHEST
+    a0, a1 = SKIN_ARM
+    l0, l1 = SKIN_LEG
+    x0, x1, y0, y1 = SKIN_BODY
+    clamp = lambda v: min(max(v, 0.0), 0.999)  # noqa: E731
     for poly in mesh.polygons:
+        region = skin_region(G(poly.center))
         coords = []
         for li in poly.loop_indices:
             p = G(mesh.vertices[mesh.loops[li].vertex_index].co)
-            if abs(p.x) > 0.2:
-                a = math.atan2(p.z, p.y - ARM_Y)  # 0 on top of the arm, a quarter turn to the front
-                coords.append([(a / math.tau + 0.5), min(max((abs(p.x) - lo) / (hi - lo), 0.0), 0.999), p.x > 0.0])
+            side = 0.0 if (p.x > 0.0 if region in ("arm", "leg") else True) else 0.5
+            if region == "arm":
+                round_ = math.atan2(p.z, p.y - ARM_Y) / math.tau + 0.5
+                coords.append([round_, 0.45 * clamp((abs(p.x) - a0) / (a1 - a0)), side])
+            elif region == "leg":
+                round_ = math.atan2(p.x - math.copysign(LEG_X, p.x), p.z) / math.tau + 0.5
+                coords.append([round_, 0.45 + 0.15 * clamp((p.y - l0) / (l1 - l0)), side])
             else:
-                coords.append([None, (p.x - x0) / (x1 - x0), min(max((p.y - y0) / (y1 - y0), 0.0), 0.999)])
-        if coords[0][0] is not None and max(c[0] for c in coords) - min(c[0] for c in coords) > 0.5:
-            for c in coords:
-                if c[0] < 0.5:
-                    c[0] += 1.0
-        for li, c in zip(poly.loop_indices, coords):
-            if c[0] is None:
-                uv.data[li].uv = (min(max(c[1], 0.0), 0.999), 0.75 + 0.25 * c[2])
-            else:
-                u = min(max(c[0], 0.0), 1.0)
-                uv.data[li].uv = ((0.0 if c[2] else 0.5) + 0.5 * u, 0.75 * c[1])
+                base = 0.6 if region == "front" else 0.8
+                coords.append([None, clamp((p.x - x0) / (x1 - x0)), base + 0.2 * clamp((p.y - y0) / (y1 - y0))])
+        if coords[0][0] is not None:
+            if max(c[0] for c in coords) - min(c[0] for c in coords) > 0.5:
+                for c in coords:
+                    if c[0] < 0.5:
+                        c[0] += 1.0
+            # (one side's half of the picture for the whole face)
+            side = coords[0][2]
+            for li, c in zip(poly.loop_indices, coords):
+                uv.data[li].uv = (side + 0.5 * min(max(c[0], 0.0), 1.0), c[1])
+        else:
+            for li, c in zip(poly.loop_indices, coords):
+                uv.data[li].uv = (c[1], c[2])
 
 
-def paint_tattoos(skin, size=1024):
-    """Paints his tattoos: old sailor's flash (anchor, swallow, compass star, a ship on a ribbon, a heart; no letters),
-    faded blue-black ink on his skin's colour. Shapes are drawn true in metres on the arm (see tattoo_uvs).
-    Gives a Blender image, also saved as tools/art_src/captain_tattoos.png."""
+def paint_skin(skin, size=1024):
+    """Paints his skin: old sailor's tattoos as the base-body sheet has them (anchors, swallows, a ship, hearts, a
+    compass star; no letters), faded blue-black, and a light fuzz of grey hair (short strokes) on his forearms, legs
+    and back. Drawn true in metres on each part (see skin_uvs). Gives a Blender image, also saved as
+    tools/art_src/captain_skin.png."""
     import numpy as np
     j, i = np.mgrid[0:size, 0:size]
     u, v = (i + 0.5) / size, (j + 0.5) / size
     ink = np.zeros((size, size))
-    lo, hi = TATTOO_ARM
-    x0, x1, y0, y1 = TATTOO_CHEST
-    # (each pixel's place: round and along an arm, or on the chest)
-    left = (u < 0.5) & (v < 0.75)
-    right = (u >= 0.5) & (v < 0.75)
-    ul = np.where(u < 0.5, u * 2.0, (u - 0.5) * 2.0)
-    s = (ul - 0.5) * math.tau * ARM_ROUND
-    t = lo + v / 0.75 * (hi - lo)
-    cx, cy = x0 + u * (x1 - x0), y0 + (v - 0.75) / 0.25 * (y1 - y0)
+    fuzz = np.zeros((size, size))
+    a0, a1 = SKIN_ARM
+    x0, x1, y0, y1 = SKIN_BODY
+    arm = v < 0.45
+    leg = (v >= 0.45) & (v < 0.6)
+    front = (v >= 0.6) & (v < 0.8)
+    back = v >= 0.8
+    left = u < 0.5
+    ul = np.where(left, u * 2.0, (u - 0.5) * 2.0)
+    s = (ul - 0.5) * math.tau * ARM_ROUND   # round the arm (m), 0 on top, + toward the front
+    t = a0 + v / 0.45 * (a1 - a0)          # along the arm: |x|
+    bx = x0 + u * (x1 - x0)
+    by = y0 + ((v - 0.6) / 0.2) * (y1 - y0)
+    by_back = y0 + ((v - 0.8) / 0.2) * (y1 - y0)
 
     def poly(X, Y, pts):
         inside = np.zeros(X.shape, bool)
-        for (ax, ay), (bx, by) in zip(pts, pts[1:] + pts[:1]):
-            cross = ((ay > Y) != (by > Y)) & (X < (bx - ax) * (Y - ay) / (by - ay + 1e-9) + ax)
-            inside ^= cross
+        for (ax, ay), (bx_, by_) in zip(pts, pts[1:] + pts[:1]):
+            inside ^= ((ay > Y) != (by_ > Y)) & (X < (bx_ - ax) * (Y - ay) / (by_ - ay + 1e-9) + ax)
         return inside
 
     def disc(X, Y, x, y, r):
         return (X - x) ** 2 + (Y - y) ** 2 < r * r
 
     def ring(X, Y, x, y, r, w):
-        d = np.sqrt((X - x) ** 2 + (Y - y) ** 2)
-        return np.abs(d - r) < w
+        return np.abs(np.sqrt((X - x) ** 2 + (Y - y) ** 2) - r) < w
 
     def anchor(X, Y):
         m = (np.abs(X) < 0.07) & (np.abs(Y + 0.05) < 0.6)
@@ -1092,15 +1124,14 @@ def paint_tattoos(skin, size=1024):
         m |= ring(X, Y, 0.0, -0.15, 0.5, 0.07) & (Y < -0.15)
         for sx in (1.0, -1.0):
             m |= poly(X, Y, [(sx * 0.5, 0.0), (sx * 0.72, -0.28), (sx * 0.34, -0.22)])
-        return m, m & False
+        return m, m
 
     def swallow(X, Y):
         m = ((X / 0.36) ** 2 + ((Y + 0.02) / 0.17) ** 2 < 1.0) | disc(X, Y, 0.36, 0.06, 0.13)
         m |= poly(X, Y, [(0.05, 0.08), (-0.55, 0.75), (-0.2, 0.05)])
         m |= poly(X, Y, [(0.1, -0.05), (-0.45, -0.6), (-0.15, -0.08)])
         m |= poly(X, Y, [(-0.3, 0.0), (-0.85, 0.22), (-0.62, 0.0), (-0.85, -0.2)])
-        dark = m & (Y > 0.0) & (X > -0.3)
-        return m, dark
+        return m, m & (Y > 0.0) & (X > -0.3)
 
     def star(X, Y):
         pts = []
@@ -1108,9 +1139,8 @@ def paint_tattoos(skin, size=1024):
             a = math.pi / 2 + k * math.pi / 5
             r = 0.75 if k % 2 == 0 else 0.3
             pts.append((r * math.cos(a), r * math.sin(a)))
-        m = poly(X, Y, pts)
-        sector = (np.arctan2(Y, X) - math.pi / 2) % (2 * math.pi / 5)
-        return m, m & (sector < math.pi / 5)
+        m = poly(X, Y, pts) | ring(X, Y, 0.0, 0.0, 0.85, 0.04)
+        return m, m & (((np.arctan2(Y, X) - math.pi / 2) % (2 * math.pi / 5)) < math.pi / 5)
 
     def heart(X, Y):
         m = disc(X, Y, -0.25, 0.15, 0.3) | disc(X, Y, 0.25, 0.15, 0.3) | poly(X, Y, [(-0.53, 0.06), (0.53, 0.06), (0.0, -0.62)])
@@ -1127,81 +1157,472 @@ def paint_tattoos(skin, size=1024):
             & ~poly(X, Y, [(-0.8, -0.3), (-0.66, -0.42), (-0.8, -0.54)])
         return m | sails | ribbon, m
 
-    def place(shape, mask, X0, Y0, x, y, size_m, turn=0.0):
+    def put(shape, mask, X0, Y0, x, y, size_m, turn=0.0, flip=False):
         X, Y = (X0 - x) / size_m, (Y0 - y) / size_m
+        if flip:
+            X = -X
         if turn:
             X, Y = X * math.cos(turn) - Y * math.sin(turn), X * math.sin(turn) + Y * math.cos(turn)
         m, dark = shape(X, Y)
         return np.where(mask & m, np.where(dark, 1.0, 0.55), 0.0)
 
-    # (on the arms "up" is toward the elbow, as a tattoo reads with the arm hanging: Y = -(t - y))
-    arm_up = lambda shape, mask, x, y, size_m, turn=0.0: place(shape, mask, s, -t, x, -y, size_m, turn)  # noqa: E731
-    # his right forearm: an anchor, and a compass star by the wrist
-    ink = np.maximum(ink, arm_up(anchor, right, 0.02, 0.37, 0.034))
-    ink = np.maximum(ink, arm_up(star, right, 0.035, 0.425, 0.018))
-    # his left: a swallow by the elbow, a ship on a ribbon, a heart by the wrist
-    ink = np.maximum(ink, arm_up(swallow, left, 0.035, 0.345, 0.022, 0.4))
-    ink = np.maximum(ink, arm_up(ship, left, 0.018, 0.39, 0.03))
-    ink = np.maximum(ink, arm_up(heart, left, 0.045, 0.437, 0.014))
-    # his chest, beside the hair on his left: a small anchor
-    ink = np.maximum(ink, place(anchor, v >= 0.75, cx, cy, 0.082, 0.915, 0.024, -0.25))
-    # (faded and soft: blurred a little, grain through it)
+    def on_arm(shape, side_left, at_s, at_t, size_m, turn=0.0):
+        # (up the picture is toward his shoulder: Y = -(t - at_t))
+        return put(shape, arm & (left if side_left else ~left), s, -t, at_s, -at_t, size_m, turn)
+
+    # Forearms: his right an anchor, swallows and a compass star; his left a swallow, a ship and a heart.
+    for shape, side_left, at_s, at_t, size_m, turn in (
+            (anchor, False, 0.02, 0.37, 0.034, 0.0), (star, False, 0.035, 0.425, 0.018, 0.0), (swallow, False, -0.03, 0.42, 0.018, 0.5),
+            (swallow, True, 0.035, 0.345, 0.022, 0.4), (ship, True, 0.018, 0.39, 0.03, 0.0), (heart, True, 0.045, 0.437, 0.014, 0.0),
+            # upper arms: his left a ship, his right a heart and a swallow
+            (ship, True, 0.0, 0.2, 0.036, 0.0), (heart, False, 0.01, 0.2, 0.022, 0.0), (swallow, False, 0.045, 0.255, 0.02, -0.3)):
+        ink = np.maximum(ink, on_arm(shape, side_left, at_s, at_t, size_m, turn))
+    # Front: an anchor on his left breast, a swallow by his right shoulder.
+    ink = np.maximum(ink, put(anchor, front, bx, by, 0.085, 0.915, 0.026, -0.25))
+    ink = np.maximum(ink, put(swallow, front, bx, by, -0.14, 0.955, 0.02, 0.3, True))
+    # Back (seen from behind: drawn mirrored so they read): a ship on his left shoulder blade, a swallow and a heart
+    # on his right, a compass star on his right shoulder, a swallow low on his left.
+    for shape, x, y, size_m, turn in ((ship, 0.1, 0.87, 0.042, 0.0), (swallow, -0.11, 0.91, 0.026, -0.3), (heart, -0.08, 0.83, 0.02, 0.0),
+                                      (star, -0.18, 0.945, 0.022, 0.0), (swallow, 0.06, 0.74, 0.024, 0.4)):
+        ink = np.maximum(ink, put(shape, back, bx, by_back, x, y, size_m, turn, True))
+
+    # The fuzz: short strokes along the hair's lie, many on the forearms, legs and the middle of his back.
+    rng = np.random.default_rng(7)
+
+    def strokes(count, umin, umax, vmin, vmax, angle, spread, length, keep=None):
+        nonlocal fuzz
+        pu = rng.uniform(umin, umax, count) * size
+        pv = rng.uniform(vmin, vmax, count) * size
+        ang = angle + rng.normal(0.0, spread, count)
+        ln = rng.uniform(length * 0.6, length * 1.3, count)
+        for k in range(9):
+            f = k / 8.0
+            cu = np.clip((pu + np.cos(ang) * ln * f).astype(int), 0, size - 1)
+            cv = np.clip((pv + np.sin(ang) * ln * f).astype(int), 0, size - 1)
+            ok = np.ones(count, bool) if keep is None else keep(cu, cv)
+            np.maximum.at(fuzz, (cv[ok], cu[ok]), 0.42 * (1.0 - 0.4 * abs(f - 0.5)))
+
+    fore0 = (COAT_SLEEVE - 0.05 - a0) / (a1 - a0) * 0.45
+    for off in (0.0, 0.5):
+        # forearms (the outer half of the arm round: the top and the back), the hair lying toward the hand
+        strokes(5000, off + 0.05, off + 0.45, fore0, 0.445, math.pi / 2, 0.35, 9.0)
+        strokes(900, off + 0.1, off + 0.4, 0.05, fore0, math.pi / 2, 0.4, 7.0)  # (a little on the upper arms)
+        strokes(7000, off, off + 0.5, 0.455, 0.595, -math.pi / 2, 0.3, 10.0)  # legs, lying down toward the feet
+    # the back: thick up the middle and over the shoulder blades, thinning out
+    yb0, yb1 = (0.7 - y0) / (y1 - y0) * 0.2 + 0.8, (0.98 - y0) / (y1 - y0) * 0.2 + 0.8
+    strokes(5000, 0.36, 0.64, yb0, yb1, math.pi / 2, 0.5, 9.0)
+    strokes(1500, 0.25, 0.75, yb0 + 0.04, yb1, math.pi / 2, 0.6, 8.0)
+    # round the chest's tufted bush and down his belly, lighter (the bush itself is modelled)
+    yf0, yf1 = (0.62 - y0) / (y1 - y0) * 0.2 + 0.6, (0.97 - y0) / (y1 - y0) * 0.2 + 0.6
+    strokes(2500, 0.36, 0.64, yf0, yf1, math.pi / 2, 0.8, 7.0)
+
     soft = ink.copy()
     for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
         soft += np.roll(np.roll(ink, di, 1), dj, 0)
-    ink = soft / 5.0 * 0.78 * (0.9 + 0.1 * np.random.default_rng(3).random((size, size)))
-    colour = np.array([kit.linear(c) for c in (0.17, 0.22, 0.29)])
-    base = np.array([kit.linear(c) for c in skin])
-    rgb = base[None, None, :] * (1.0 - ink[..., None]) + colour[None, None, :] * ink[..., None]
-    pixels = np.concatenate([rgb, np.ones((size, size, 1))], axis=2).astype(np.float32)
-    image = bpy.data.images.new("captain_tattoos", size, size)
+    ink = soft / 5.0 * 0.78 * (0.9 + 0.1 * rng.random((size, size)))
+    base = np.array(skin)
+    tattoo = np.array((0.17, 0.22, 0.29))
+    hair = np.array((0.4, 0.36, 0.33))
+    rgb = base[None, None, :] * (1.0 - fuzz[..., None]) + hair[None, None, :] * fuzz[..., None]
+    rgb = rgb * (1.0 - ink[..., None]) + tattoo[None, None, :] * ink[..., None]
+    return save_picture("captain_skin", rgb, SKIN_PICTURE)
+
+
+def save_picture(name, rgb, path):
+    """An sRGB picture (rows bottom up) as a Blender image, saved to path and packed."""
+    import numpy as np
+    h, w = rgb.shape[:2]
+    pixels = np.concatenate([np.clip(rgb, 0.0, 1.0), np.ones((h, w, 1))], axis=2).astype(np.float32)
+    image = bpy.data.images.new(name, w, h)
     image.colorspace_settings.name = "sRGB"
-    image.pixels.foreach_set(np.ravel(np.power(np.clip(pixels, 0, 1), [1 / 2.2, 1 / 2.2, 1 / 2.2, 1.0])).astype(np.float32))
-    image.filepath_raw = TATTOOS
+    image.pixels.foreach_set(np.ravel(pixels))
+    image.filepath_raw = path
     image.file_format = "PNG"
     image.save()
     image.pack()
     return image
 
 
-def inked_material(image):
-    material = bpy.data.materials.new("captain_inked")
+def paint_boxers(size=256):
+    """His boxer shorts' print: small red hearts on white, staggered; one tile, repeated round him (boxer_uvs)."""
+    import numpy as np
+    j, i = np.mgrid[0:size, 0:size]
+    u, v = (i + 0.5) / size, (j + 0.5) / size
+    rgb = np.ones((size, size, 3)) * np.array((0.9, 0.89, 0.86))
+    for cx, cy in ((0.25, 0.25), (0.75, 0.75)):
+        X, Y = (u - cx) / 0.13, (v - cy) / 0.13
+        m = ((X + 0.25) ** 2 + (Y - 0.15) ** 2 < 0.09) | ((X - 0.25) ** 2 + (Y - 0.15) ** 2 < 0.09)
+        m |= (Y < 0.08) & (Y > -0.62) & (np.abs(X) < 0.53 * (Y + 0.62) / 0.7)
+        rgb[m] = (0.74, 0.16, 0.15)
+    return save_picture("captain_boxers", rgb, BOXERS_PICTURE)
+
+
+def boxer_uvs(o):
+    """The print round his boxers: round each leg (or his hips), so many tiles to a turn, and up."""
+    mesh = o.data
+    while mesh.uv_layers:
+        mesh.uv_layers.remove(mesh.uv_layers[0])
+    uv = mesh.uv_layers.new(name="UVMap")
+    for poly in mesh.polygons:
+        coords = []
+        for li in poly.loop_indices:
+            p = G(mesh.vertices[mesh.loops[li].vertex_index].co)
+            coords.append([(math.atan2(p.x, p.z) / math.tau + 0.5) * 7.0, p.y * 14.0])
+        us = [c[0] for c in coords]
+        if max(us) - min(us) > 3.5:
+            for c in coords:
+                if c[0] < 3.5:
+                    c[0] += 7.0
+        for li, c in zip(poly.loop_indices, coords):
+            uv.data[li].uv = tuple(c)
+
+
+def textured_material(name, image, roughness=1.0):
+    material = bpy.data.materials.new(name)
     material.use_nodes = True
     shader = next(n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
     texture = material.node_tree.nodes.new("ShaderNodeTexImage")
     texture.image = image
     material.node_tree.links.new(texture.outputs["Color"], shader.inputs["Base Color"])
-    shader.inputs["Roughness"].default_value = 1.0
+    shader.inputs["Roughness"].default_value = roughness
     return material
 
+
+# His proportions, from the base-body sheet (tools/art_src/concept_captain_tpose.jpg): the man's skeleton with its
+# bones moved and each bone's flesh scaled (along the bone, across it), so everything built on the man (his skin,
+# his clothes, as they are skinned) takes the new shape by the same weights: linear blend skinning, done once, at
+# rest. Godot space, the model's own units (TitleFigures stands him 1.44 times bigger); +X his left. (new joint,
+# scale (x, y, z)) for the left side; the right is its mirror. Every other bone goes with its parent here (fingers
+# with the hand, the hair and eye bones with the head, the toe with the foot, the knee with the shin, the seat with
+# the thigh). Measured against the sheet: see tools/TITLE_FIGURES.md.
+WARP = {
+    "hips": ((0.0, 0.55, 0.0), (1.2, 1.03, 1.15)),
+    "spine": ((0.0, 0.64, 0.0), (1.28, 0.98, 1.25)),
+    "chest": ((0.0, 0.75, 0.0), (1.2, 1.12, 1.45)),
+    "neck": ((0.0, 0.925, 0.0), (1.45, 0.66, 1.3)),
+    "head": ((0.0, 0.96, 0.0), (1.25, 1.25, 1.25)),
+    "upper_arm_l": ((0.225, 0.815, 0.0), (0.9, 1.15, 1.2)),
+    "forearm_l": ((0.414, 0.815, 0.0), (1.15, 1.3, 1.3)),
+    "hand_l": ((0.578, 0.815, 0.0), (1.15, 1.15, 1.15)),
+    "thigh_l": ((0.115, 0.528, 0.0), (1.3, 1.055, 1.4)),
+    "shin_l": ((0.12, 0.222, 0.0), (1.9, 0.64, 1.75)),
+    "foot_l": ((0.122, 0.054, 0.0), (1.75, 0.9, 1.2)),
+}
+# He stands on a low grating at the wheel (title_figures' wheel is where it was; he is shorter): this high (model units).
+GRATING = 0.083
+WARP_OWNER = {"finger": "hand", "thumb": "hand", "hair": "head", "cap": "head", "eye": "head", "toe": "foot",
+              "knee": "shin", "seat": "thigh"}
+
+
+def warp_owner(name):
+    """The bone whose move a bone takes (itself, if WARP has it)."""
+    if name in WARP or name.replace("_r", "_l") in WARP:
+        return name
+    side = name[-2:] if name[-2:] in ("_l", "_r") else ""
+    for stem, owner in WARP_OWNER.items():
+        if name.startswith(stem):
+            return owner if owner == "head" else owner + side
+    return "head"
+
+
+def warp_bones(joints):
+    """Each bone's (old joint, new joint, scale) by name: its owner's."""
+    old = {name: at for name, at, _ in joints}
+    table = {}
+    for name, at, _ in joints:
+        owner = warp_owner(name)
+        new, scale = WARP[owner.replace("_r", "_l")]
+        new = Vector(new) + Vector((0.0, GRATING, 0.0))
+        if owner.endswith("_r"):
+            new.x = -new.x
+        table[name] = (old[owner], new, Vector(scale))
+    return table
+
+
+def warp_point(table, p, weights):
+    total, out = 0.0, Vector()
+    for bone, w in weights.items():
+        if bone not in table or w <= 0.0:
+            continue
+        old, new, scale = table[bone]
+        d = p - old
+        out += (new + Vector((d.x * scale.x, d.y * scale.y, d.z * scale.z))) * w
+        total += w
+    return out / total if total > 0.0 else p
+
+
+def warp_captain(objs, joints):
+    """Gives everything of him his proportions (WARP) and stands him on his grating; gives back the new joints."""
+    table = warp_bones(joints)
+    for o in objs:
+        names = {g.index: g.name for g in o.vertex_groups}
+        for v in o.data.vertices:
+            weights = {names[g.group]: g.weight for g in v.groups if g.group in names}
+            v.co = B(warp_point(table, G(v.co), weights or {"hips": 1.0}))
+        o.data.update()
+    return [(name, warp_point(table, at, {name: 1.0}), parent) for name, at, parent in joints]
+
+
+
+# The painted-face test: crops of the head turnaround (tools/art_src/concept_captain_head.jpg, one scale, flat light; made
+# by the build, so it is repeatable) and where his features are in them (crop pixels, rows down from the top; the
+# three crops share their rows). The side shows his left side, facing left; it is used mirrored for his right.
+HEAD_SHEET = os.path.join(HERE, "art_src", "concept_captain_head.jpg")
+FACE_FRONT_SRC = (HEAD_SHEET, (140, 130, 665, 950))
+FACE_SIDE_SRC = (HEAD_SHEET, (1400, 130, 2015, 950))
+FACE_BACK_SRC = (HEAD_SHEET, (2115, 130, 2635, 950))
+FACE_FRONT = {"half": 205.0, "eye": (262.0, 352.0), "nose": (262.0, 435.0), "ear": (20.0, 380.0)}
+FACE_SIDE = {"eye": (160.0, 352.0), "ear": (410.0, 380.0)}
+FACE_BACK = {"middle": 260.0}
+FACE_PICTURE = os.path.join(HERE, "art_src", "captain_face_painted.png")
+HAIR_GREY = (0.66, 0.65, 0.62)
+
+
+def concept_crop(src, name):
+    """A crop of a concept sheet as an array (rows top down, RGB), also saved beside the sheets as captain_<name>.png."""
+    import numpy as np
+    path, (x0, y0, x1, y1) = src
+    img = bpy.data.images.load(path)
+    w, h = img.size
+    pix = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)[::-1][y0:y1, x0:x1, :3]
+    save_picture("captain_" + name, pix[::-1].copy(), os.path.join(HERE, "art_src", "captain_%s.png" % name))
+    bpy.data.images.remove(img)
+    return pix
+
+
+def paint_face(o, eye_y, eye_z, s_f, size=512):
+    """Unwraps the painted head and paints it: each texel takes the front painting where it faces forward, the side
+    painting where it faces sideways (his left side's, used for both), the back painting where it faces back;
+    blended by the square of how squarely it faces each way; gaps between islands filled out. Gives the image (saved
+    as tools/art_src/captain_face_painted.png)."""
+    import numpy as np
+    activate(o)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(60.0), island_margin=0.02)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    front = concept_crop(FACE_FRONT_SRC, "face_front")
+    side = concept_crop(FACE_SIDE_SRC, "face_side")
+    rear = concept_crop(FACE_BACK_SRC, "face_back")
+    mesh = o.data
+    mesh.calc_loop_triangles()
+    uv = mesh.uv_layers.active.data
+    pos = np.zeros((size, size, 3))
+    nrm = np.zeros((size, size, 3))
+    hit = np.zeros((size, size), bool)
+    for tri in mesh.loop_triangles:
+        uvs = np.array([tuple(uv[li].uv) for li in tri.loops]) * size
+        ps = np.array([tuple(G(mesh.vertices[vi].co)) for vi in tri.vertices])
+        ns = np.array([tuple(G(mesh.vertices[vi].normal)) for vi in tri.vertices])
+        lo = np.floor(uvs.min(axis=0)).astype(int)
+        hi = np.ceil(uvs.max(axis=0)).astype(int)
+        lo, hi = np.clip(lo, 0, size - 1), np.clip(hi, 0, size - 1)
+        xs, ys = np.meshgrid(np.arange(lo[0], hi[0] + 1) + 0.5, np.arange(lo[1], hi[1] + 1) + 0.5)
+        a, b, c = uvs
+        den = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+        if abs(den) < 1e-9:
+            continue
+        w0 = ((b[1] - c[1]) * (xs - c[0]) + (c[0] - b[0]) * (ys - c[1])) / den
+        w1 = ((c[1] - a[1]) * (xs - c[0]) + (a[0] - c[0]) * (ys - c[1])) / den
+        w2 = 1.0 - w0 - w1
+        inside = (w0 >= -0.02) & (w1 >= -0.02) & (w2 >= -0.02)
+        if not inside.any():
+            continue
+        wv = np.stack([w0, w1, w2], -1)[inside]
+        rows, cols = (ys[inside] - 0.5).astype(int), (xs[inside] - 0.5).astype(int)
+        pos[rows, cols] = wv @ ps
+        nrm[rows, cols] = wv @ ns
+        hit[rows, cols] = True
+    n = nrm / np.maximum(np.linalg.norm(nrm, axis=-1, keepdims=True), 1e-6)
+
+    def sample(picture, cx, cy):
+        h, w = picture.shape[:2]
+        inside = (cx >= 0) & (cx < w - 1) & (cy >= 0) & (cy < h - 1)
+        colour = picture[np.clip(cy, 0, h - 1).astype(int), np.clip(cx, 0, w - 1).astype(int)]
+        # (only where the picture shows him, not its background)
+        ground = np.median(picture[:12, :12].reshape(-1, 3), axis=0)
+        return colour, inside & (np.linalg.norm(colour - ground, axis=-1) > 0.1)
+
+    fc, fin = sample(front, FACE_FRONT["eye"][0] + pos[..., 0] * s_f, FACE_FRONT["eye"][1] - (pos[..., 1] - eye_y) * s_f)
+    row = FACE_FRONT["eye"][1] - (pos[..., 1] - eye_y) * s_f
+    sc, sin_ = sample(side, FACE_SIDE["eye"][0] - (pos[..., 2] - eye_z) * s_f, row)
+    back, bin_ = sample(rear, FACE_BACK["middle"] - pos[..., 0] * s_f, row)
+    up = 0.6 * np.clip(n[..., 1], 0.0, 1.0) ** 2  # (the top from the front view on the front half, the back view behind)
+    wf = (np.clip(n[..., 2], 0.0, 1.0) ** 2 + up * (n[..., 2] >= 0.0)) * fin
+    ws = np.abs(n[..., 0]) ** 2 * sin_
+    wb = (np.clip(-n[..., 2], 0.0, 1.0) ** 2 + up * (n[..., 2] < 0.0)) * bin_
+    fallback = 0.001
+    rgb = (fc * wf[..., None] + sc * ws[..., None] + back * wb[..., None] + np.array(CAPTAIN_COLOURS["skin"]) * fallback) / (wf + ws + wb + fallback)[..., None]
+    # (the gaps between islands filled out from their edges, so no seam shows the background)
+    filled = hit.copy()
+    for _ in range(12):
+        grow = np.zeros_like(rgb)
+        count = np.zeros(filled.shape)
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            m = np.roll(np.roll(filled, dy, 0), dx, 1)
+            grow += np.roll(np.roll(rgb, dy, 0), dx, 1) * m[..., None]
+            count += m
+        new = ~filled & (count > 0)
+        rgb[new] = grow[new] / count[new][..., None]
+        filled |= new
+    return save_picture("captain_face_painted", rgb, FACE_PICTURE)
+
+
+FACE_ROWS = (14, 700, 18)    # the head's rings: from the cap's crown to the neck, so many picture rows apart
+FACE_PEAK = (175, 262)       # the rows the cap's peak takes in the side view (taken out of the cap's depth there)
+FACE_EARRING = (390, 475)    # the earring, in the side view (column, row)
+FACE_EARS = (300, 455)       # the rows the ears take in the front view (taken out of the head's width there)
+FACE_NOSE = (395, 478)       # the rows the nose takes in the side view (taken out of the face's depth there)
+
+
+def silhouette(picture, threshold=0.1):
+    """For each row of a picture: (first, last) column of the figure (pixels unlike the background, in runs of 6 or
+    more, so the sheet's guide lines do not count), or None."""
+    import numpy as np
+    ground = np.median(picture[:12, :12].reshape(-1, 3), axis=0)
+    figure = np.linalg.norm(picture - ground, axis=-1) > threshold
+    out = []
+    for row in figure:
+        run = np.convolve(row.astype(int), np.ones(6, int), "same") >= 6
+        cols = np.where(run)[0]
+        out.append((cols.min(), cols.max()) if len(cols) else None)
+    return out
+
+
+def painted_head(eye_y, eye_z, s_f, m):
+    """The painted head: see build_captain. Rings from the silhouettes, ears and a nose, UV'd and painted."""
+    front = concept_crop(FACE_FRONT_SRC, "face_front")
+    side = concept_crop(FACE_SIDE_SRC, "face_side")
+    fs, ss = silhouette(front), silhouette(side)
+    to_y = lambda row: eye_y - (row - FACE_FRONT["eye"][1]) / s_f  # noqa: E731
+    to_z = lambda col: eye_z - (col - FACE_SIDE["eye"][0]) / s_f  # noqa: E731
+    r0, r1, step = FACE_ROWS
+
+    def half_width(row):
+        if FACE_EARS[0] <= row <= FACE_EARS[1]:
+            a, b = half_width(FACE_EARS[0] - 1), half_width(FACE_EARS[1] + 1)
+            t = (row - FACE_EARS[0]) / (FACE_EARS[1] - FACE_EARS[0])
+            return a + (b - a) * t
+        lo, hi = fs[row]
+        return (hi - lo) / 2.0 / s_f
+
+    def depth(row):
+        lo, hi = ss[row]
+        zf, zb = to_z(lo), to_z(hi)
+        for r0_, r1_ in (FACE_NOSE, FACE_PEAK):
+            if r0_ <= row <= r1_:
+                a, b = depth(r0_ - 1)[0], depth(r1_ + 1)[0]
+                zf = a + (b - a) * (row - r0_) / (r1_ - r0_)
+        return zf, zb
+
+    b = kit.Builder()
+    rings = []
+    for row in range(r0, r1 + 1, step):
+        hx = half_width(row)
+        zf, zb = depth(row)
+        zc, rz_f, rz_b = (zf + zb) / 2.0, (zf - zb) / 2.0, (zf - zb) / 2.0
+        rings.append((to_y(row), hx, zc, rz_f))
+    # (a ring of points round each row: a soft box, x from the front view, z from the side)
+    bm = b.bm
+    loops = []
+    seg = 16
+    for y, hx, zc, rz in rings:
+        loop = []
+        for k in range(seg):
+            a = math.tau * k / seg
+            sx, cz = math.sin(a), math.cos(a)
+            x = hx * math.copysign(abs(sx) ** 0.75, sx)
+            z = zc + rz * math.copysign(abs(cz) ** 0.75, cz)
+            loop.append(bm.verts.new(B(Vector((x, y, z)))))
+        loops.append(loop)
+    for a_loop, b_loop in zip(loops, loops[1:]):
+        for k in range(seg):
+            j = (k + 1) % seg
+            bm.faces.new((a_loop[k], a_loop[j], b_loop[j], b_loop[k]))
+    top = bm.verts.new(B(Vector((0.0, rings[0][0] + 0.004, rings[0][2]))))
+    bottom = bm.verts.new(B(Vector((0.0, rings[-1][0] - 0.004, rings[-1][2]))))
+    for k in range(seg):
+        bm.faces.new((loops[-1][k], loops[-1][(k + 1) % seg], bottom))
+    for k in range(seg):
+        bm.faces.new((loops[0][(k + 1) % seg], loops[0][k], top))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    # The nose, from the side view's tip and the front view's width; the ears, where the views put them.
+    tip_row = min(range(FACE_NOSE[0], FACE_NOSE[1]), key=lambda r: ss[r][0])
+    tip_z = to_z(ss[tip_row][0])
+    face_z = depth(tip_row)[0]
+    ny = to_y(tip_row)
+    # (the nose lofted down the side view's profile, as wide as the painted nose is at each row)
+    widths = ((FACE_NOSE[0], 22.0), (410, 30.0), (425, 55.0), (445, 68.0), (465, 60.0), (FACE_NOSE[1], 35.0))
+    nose_rings = []
+    for r in range(FACE_NOSE[0], FACE_NOSE[1] + 1, 8):
+        k = next(i for i in range(len(widths) - 1) if widths[i + 1][0] >= r)
+        (ra, wa), (rb, wb_) = widths[k], widths[k + 1]
+        half = (wa + (wb_ - wa) * (r - ra) / max(rb - ra, 1)) / s_f
+        base, tip = depth(r)[0] - 0.006, to_z(ss[r][0])
+        nose_rings.append((Vector((0.0, to_y(r), (base + tip) * 0.5)), X * half, Z * max((tip - base) * 0.5, 0.002)))
+    b.tube(kit.dome(nose_rings[0], Y, 0.004, 2)[::-1] + nose_rings + kit.dome(nose_rings[-1], -Y, 0.006, 2), 10)
+    ear_y = to_y((FACE_EARS[0] + FACE_EARS[1]) / 2.0)
+    ear_z = to_z(FACE_SIDE["ear"][0])
+    ear_x = half_width((FACE_EARS[0] + FACE_EARS[1]) // 2) + 0.004
+    for s in (1.0, -1.0):
+        b.ellipsoid(Vector((s * ear_x, ear_y, ear_z)), Vector((0.009, 0.026, 0.017)), Matrix.Rotation(s * 0.25, 3, "Y"), 8, 3)
+    # The cap's peak: from the band's front out to the side view's tip, a flattened wedge.
+    tip_row = min(range(*FACE_PEAK), key=lambda r: ss[r][0])
+    peak_tip, peak_root = to_z(ss[tip_row][0]), depth(FACE_PEAK[1] + 1)[0]
+    py = to_y(tip_row + 6)
+    pw = half_width(FACE_PEAK[1] + 1) * 0.85
+    b.tube([(Vector((0.0, py + 0.006 * (1 - f), peak_root - 0.01 + (peak_tip - peak_root + 0.01) * f)), X * pw * (1.0 - 0.35 * f * f), Y * 0.004)
+            for f in (0.0, 0.35, 0.7, 1.0)], 10)
+    head = from_builder("captain_painted_head", b, None, m["skin"], rigid("head"))
+    head.data.materials.clear()
+    head.data.materials.append(textured_material("captain_painted", paint_face(head, eye_y, eye_z, s_f)))
+    smooth_shade(head)
+    # (his earring where the turnaround has it, in his left ear's lobe)
+    b = kit.Builder()
+    lobe = Vector((ear_x + 0.004, to_y(FACE_EARRING[1]), to_z(FACE_EARRING[0])))
+    hoop = [lobe + (Y * -(1.0 - math.cos(a)) + Z * math.sin(a)) * 0.008 for a in (math.tau * k / 12 for k in range(13))]
+    b.strand(hoop, [0.0018] * len(hoop), 4)
+    ring = from_builder("captain_painted_earring", b, None, m["gold"], rigid("head"))
+    activate(head)
+    ring.select_set(True)
+    bpy.ops.object.join()
+    return head
 
 def build_captain(collection):
     m = {name: make_material("captain_" + name, c, 0.35 if name in ("brass", "steel", "gold") else 0.0, 0.5 if name in ("brass", "steel", "peak", "rubber", "oilskin", "gold") else 1.0)
          for name, c in CAPTAIN_COLOURS.items()}
-    m["inked"] = inked_material(paint_tattoos(CAPTAIN_COLOURS["skin"]))
+    m["inked"] = textured_material("captain_inked", paint_skin(CAPTAIN_COLOURS["skin"]))
+    m["boxers"] = textured_material("captain_boxers", paint_boxers())
     joints, body, legs = import_man(CAPTAIN_KEYS)
     head_joint = next(at for name, at, _ in joints if name == "head")
     parts = []
 
-    # His hands, and his forearms bare below the pushed-up sleeves, heavy, with old sailor's tattoos (a picture
-    # painted by paint_tattoos, laid round each forearm).
+    # His hands, the same in every look.
     parts.append(hands_of(body, "captain_hands", m["skin"], 1.15))
-    # His two outfits (the user: "the captain should have the outfit from teh first concept as well to switch into"):
-    # the open coat (concept_captain.jpg, the default) and the closed gansey (concept_characters.jpg); each its own mesh,
-    # captain_outfit__open and captain_outfit__closed, shown or hidden by TitleFigures.wear.
+    # His looks (TitleFigures.wear): "open" (concept_captain.jpg; the default), "closed" (concept_characters.jpg) and
+    # "boxers" (his base body, concept_captain_tpose.jpg). Each mesh is named <part>__<the looks it shows in>, joined
+    # from the pieces listed under that name in `looks`.
     opened, closed = [], []
-    forearms = copy_of(body, "captain_forearms")
-    keep_only(forearms, lambda p: COAT_SLEEVE - 0.035 < abs(p.x) < HAND_FROM + 0.012 and p.y > 0.85)
-    for v in forearms.data.vertices:
-        p = G(v.co)
-        # (heavier in the middle of the forearm, back to his own size at the elbow and the wrist)
-        swell = 1.0 + 0.12 * ease(COAT_SLEEVE - 0.02, 0.38, abs(p.x)) * ease(HAND_FROM, 0.41, abs(p.x))
-        v.co = B(Vector((p.x, ARM_Y + (p.y - ARM_Y) * swell, p.z * swell)))
-    decimate(forearms, 520)
-    recolour(forearms, {}, m["inked"])
-    smooth_shade(forearms)
-    tattoo_uvs(forearms)
-    opened.append(forearms)
+    # His two faces (TitleFigures.face): "painted" (a low-poly head with a painted face, the test) and "mask".
+    mask = []
+    looks = {}
+
+    # His base body: his own skin from the neck to the wrists and the soles, painted with his tattoos and the light
+    # fuzz of hair (paint_skin), cut into the pieces the outfits leave bare or cover.
+    skin = copy_of(body, "captain_skin")
+    keep_only(skin, lambda p: p.y < 1.04 and abs(p.x) < HAND_FROM + 0.012)
+    decimate(skin, 3600)
+    recolour(skin, {}, m["inked"])
+    smooth_shade(skin)
+    skin_uvs(skin)
+    for name, inside in (("captain_forearms__open_boxers", lambda p: abs(p.x) > COAT_SLEEVE - 0.035 and p.y > 0.8),
+                         ("captain_neck__open_boxers", lambda p: p.y > 0.95 and math.hypot(p.x, p.z) < 0.085),
+                         ("captain_scoop__open_boxers", lambda p: p.z > 0.0 and abs(p.x) < 0.11 and p.y > SCOOP - 0.02 + 5.6 * p.x * p.x)):
+        piece = copy_of(skin, name.split("__")[0])
+        keep_only(piece, inside)
+        keep_only(skin, lambda p, inside=inside: not inside(p))
+        looks[name] = [piece]
+    looks["captain_skin__boxers"] = [skin]
 
     # The striped undershirt, cut low: his body stood off, from the hips to the neck, no sleeves (the coat's cover
     # his arms), the stripes cut in as faces of two colours.
@@ -1236,15 +1657,6 @@ def build_captain(collection):
     smooth_shade(vest)
     opened.append(vest)
 
-    # The skin of his neck and chest where the undershirt is cut low (a tattoo on it, beside the hair).
-    chest = copy_of(body, "captain_chest")
-    keep_only(chest, lambda p: p.y < 1.04 and ((p.y > 0.95 and math.hypot(p.x, p.z) < 0.085)
-              or (p.z > 0.0 and abs(p.x) < 0.11 and p.y > SCOOP - 0.02 + 5.6 * p.x * p.x)))
-    decimate(chest, 380)
-    recolour(chest, {}, m["inked"])
-    smooth_shade(chest)
-    tattoo_uvs(chest)
-    opened.append(chest)
 
     # The coat, hanging open: his body stood well off, open down the front and wider toward the neck (where it
     # turns back), sleeves pushed up to below the elbow and bunched there; given an inside (solid), so the open
@@ -1259,7 +1671,7 @@ def build_captain(collection):
         return not (p.z > 0.0 and abs(p.x) < coat_open(p.y) - 0.025)
 
     keep_only(coat, in_coat)
-    stand_off(coat, lambda p: 0.03 + 0.016 * ease(0.66, 0.58, p.y), smooth=10)
+    stand_off(coat, lambda p: 0.017 + 0.01 * ease(0.66, 0.58, p.y) - 0.003 * ease(0.17, 0.22, abs(p.x)), smooth=10)
     # (the open front cut clean, each side by a slanting plane through its front only)
     for s in (1.0, -1.0):
         cut_front(coat, Vector((s * coat_open(COAT_HEM), COAT_HEM, 0.0)), Vector((s, -0.12, 0.0)))
@@ -1304,6 +1716,23 @@ def build_captain(collection):
     for roll in rolls:
         decimate(roll, 200)
     opened += [coat] + rolls
+    # (its skirt, hanging free below his hips to his thighs, as the clothed sheet has it: a laid sheet of cloth round
+    # him, open at the front as the coat is, flaring a little)
+    sx, sback, sfront = extents(coat, COAT_HEM + 0.01, 0.01)
+    scz, srz = (sback + sfront) * 0.5, (sfront - sback) * 0.5
+    rows = []
+    for k, y in enumerate((COAT_HEM + 0.012, COAT_HEM - 0.03, COAT_HEM - 0.07, COAT_HEM - 0.11, COAT_HEM - 0.135)):
+        flare = -0.012 + 0.03 * (COAT_HEM - y)
+        rx, rz = sx + flare, srz + flare
+        gap = math.asin(min(0.95, coat_open(y) / rx))
+        row = []
+        for c in range(17):
+            a = gap + (math.tau - 2.0 * gap) * c / 16.0
+            p = Vector((math.sin(a) * rx, y, scz + math.cos(a) * rz))
+            n = Vector((math.sin(a) / rx, 0.0, math.cos(a) / rz)).normalized()
+            row.append((p - n * 0.006, n))
+        rows.append(row)
+    opened.append(sheet("captain_skirt", rows, 0.006, m["coat"], lambda p: blended_weights(body, p)))
     weigh = lambda p: blended_weights(body, p)  # noqa: E731
     # (its collar, turned down round the back of his neck)
     neck_axis = lambda p: Vector((0.0, p.y, 0.0))  # noqa: E731
@@ -1331,49 +1760,81 @@ def build_captain(collection):
     opened.append(from_builder("captain_braces", b, None, m["braces"], weigh))
     opened.append(from_builder("captain_clips", clips, None, m["steel"], weigh))
 
-    # A thick bush of grey chest hair in the low neck of his undershirt: a shell on his chest and tufts on it,
-    # curling up and out, drawn by the hair shader as the boy's hair is (its own mesh: the shader reads UV along the
-    # hair and UV2 in metres).
-    bush = copy_of(body, "captain_chesthair")
-    keep_only(bush, lambda p: p.z > 0.02 and SCOOP - 0.005 < p.y < 0.97 and abs(p.x) < 0.024 + 0.45 * (p.y - SCOOP))
-    stand_off(bush, lambda p: 0.007, smooth=3, lam=0.3)
-    decimate(bush, 160)
-    tufts = kit.Builder()
+    # His body hair where it is a tufted mass, drawn by the hair shader as the boy's hair is (each its own mesh: the
+    # shader reads UV along the hair and UV2 in metres): a thick grey bush on his chest (in the low neck of the open
+    # outfit's undershirt, so that look shows it too) and a trail of it down his belly (the boxers alone). The light
+    # fuzz elsewhere is painted on his skin (paint_skin).
     import random
     rnd = random.Random(5)
-    centre = Vector((0.0, 0.86, -0.05))
-    for k in range(26):
-        y = SCOOP + 0.008 + 0.088 * rnd.random()
-        x = (0.02 + 0.42 * (y - SCOOP)) * rnd.uniform(-0.95, 0.95)
-        (base, n), = lay([bush], [Vector((x, y, 0.3))], lambda p: Vector((p.x * 0.5, p.y, 0.0)), -0.003)
-        way = Vector((rnd.uniform(-0.6, 0.6) + x * 6.0, 1.0, 0.0))
-        way -= n * way.dot(n)
-        way.normalize()
-        hair_lock(tufts, base, n, way, rnd.uniform(0.018, 0.03), rnd.uniform(0.009, 0.013), rnd.uniform(0.6, 1.0))
-    locks = from_builder("captain_chestlocks", tufts, None, m["chesthair"], rigid("chest"))
-    recolour(bush, {}, m["chesthair"])
-    smooth_shade(bush)
-    mesh = bush.data
-    while mesh.uv_layers:
-        mesh.uv_layers.remove(mesh.uv_layers[0])
-    plain, metres = mesh.uv_layers.new(name="UVMap"), mesh.uv_layers.new(name="Metres")
-    for li, loop in enumerate(mesh.loops):
-        p = G(mesh.vertices[loop.vertex_index].co)
-        plain.data[li].uv = ((p.y - SCOOP) / 0.1, p.x / 0.16 + 0.5)
-        metres.data[li].uv = (p.y - SCOOP, p.x)
-    activate(bush)
-    locks.select_set(True)
-    bpy.ops.object.join()
-    bush.name = bush.data.name = "captain_chesthair"
-    for g in list(bush.vertex_groups):
-        bush.vertex_groups.remove(g)
-    groups = {}
-    for v in mesh.vertices:
-        for bone, share in blended_weights(body, G(v.co)).items():
-            if share > 0.001:
-                if bone not in groups:
-                    groups[bone] = bush.vertex_groups.new(name=bone)
-                groups[bone].add([v.index], share, "REPLACE")
+
+    def hair_mass(name, keep, width_at, y0, y1, count, length, width, up):
+        shell = copy_of(body, name)
+        keep_only(shell, keep)
+        stand_off(shell, lambda p: 0.007, smooth=3, lam=0.3)
+        decimate(shell, 160)
+        tufts = kit.Builder()
+        for k in range(count):
+            y = y0 + (y1 - y0) * rnd.random()
+            x = width_at(y) * rnd.uniform(-0.95, 0.95)
+            (base, n), = lay([shell], [Vector((x, y, 0.3))], lambda p: Vector((p.x * 0.5, p.y, 0.0)), -0.003)
+            way = Vector((rnd.uniform(-0.6, 0.6) + x * 6.0, up, 0.0))
+            way -= n * way.dot(n)
+            way.normalize()
+            hair_lock(tufts, base, n, way, rnd.uniform(*length), rnd.uniform(*width), rnd.uniform(0.6, 1.0))
+        locks = from_builder(name + "_locks", tufts, None, m["chesthair"], rigid("chest"))
+        recolour(shell, {}, m["chesthair"])
+        smooth_shade(shell)
+        mesh = shell.data
+        while mesh.uv_layers:
+            mesh.uv_layers.remove(mesh.uv_layers[0])
+        plain, metres = mesh.uv_layers.new(name="UVMap"), mesh.uv_layers.new(name="Metres")
+        for li, loop in enumerate(mesh.loops):
+            p = G(mesh.vertices[loop.vertex_index].co)
+            plain.data[li].uv = ((p.y - y0) / 0.1, p.x / 0.16 + 0.5)
+            metres.data[li].uv = (p.y - y0, p.x)
+        activate(shell)
+        locks.select_set(True)
+        bpy.ops.object.join()
+        shell.name = shell.data.name = name
+        for g in list(shell.vertex_groups):
+            shell.vertex_groups.remove(g)
+        groups = {}
+        for v in mesh.vertices:
+            for bone, share in blended_weights(body, G(v.co)).items():
+                if share > 0.001:
+                    if bone not in groups:
+                        groups[bone] = shell.vertex_groups.new(name=bone)
+                    groups[bone].add([v.index], share, "REPLACE")
+        return shell
+
+    chest_width = lambda y: 0.022 + 0.42 * (y - SCOOP)  # noqa: E731
+    looks["captain_chesthair__open_boxers"] = [hair_mass(
+        "captain_chesthair", lambda p: p.z > 0.02 and SCOOP - 0.005 < p.y < 0.97 and abs(p.x) < chest_width(p.y) + 0.004,
+        chest_width, SCOOP + 0.008, SCOOP + 0.096, 26, (0.018, 0.03), (0.009, 0.013), 1.0)]
+    belly_width = lambda y: 0.016 + 0.3 * max(0.0, y - 0.72)  # noqa: E731
+    looks["captain_bellyhair__boxers"] = [hair_mass(
+        "captain_bellyhair", lambda p: p.z > 0.02 and BOXER_TOP - 0.01 < p.y < SCOOP + 0.002 and abs(p.x) < belly_width(p.y) + 0.004,
+        belly_width, BOXER_TOP + 0.005, SCOOP - 0.005, 18, (0.014, 0.024), (0.007, 0.011), -0.4)]
+
+    # His boxer shorts, loose, white with red hearts, a plain waistband, the same modest fullness at the fly.
+    shorts = copy_of(body, "captain_shorts")
+    keep_only(shorts, lambda p: BOXER_HEM - 0.03 < p.y < BOXER_TOP + 0.03 and abs(p.x) < 0.3)
+    stand_off(shorts, lambda p: 0.012 + 0.014 * ease(0.6, 0.47, p.y), smooth=8)
+    band = band_of(shorts, "captain_waistband", lambda p: p.y > BOXER_TOP - 0.04,
+                   [(Vector((0.0, BOXER_TOP - 0.022, 0.0)), Y), (Vector((0.0, BOXER_TOP + 0.002, 0.0)), -Y)], 0.004, 0.008, m["boxerband"])
+    cut(shorts, Vector((0.0, BOXER_TOP, 0.0)), -Y)
+    cut(shorts, Vector((0.0, BOXER_HEM, 0.0)), Y)
+    for v in shorts.data.vertices:
+        p = G(v.co)
+        if p.z > 0.0:
+            p.z += 0.008 * math.exp(-((p.x / 0.032) ** 2 + ((p.y - 0.53) / 0.035) ** 2))
+            v.co = B(p)
+    decimate(shorts, 700)
+    decimate(band, 160)
+    recolour(shorts, {}, m["boxers"])
+    smooth_shade(shorts)
+    boxer_uvs(shorts)
+    looks["captain_shorts__boxers"] = [shorts, band]
 
     # The closed outfit, as the first concept has him: a navy gansey with ribbed bands, braces over it.
     # The gansey, grown from his body: stood off it, smoothed of his muscles, ending at the hem, cuffs and neck.
@@ -1429,6 +1890,15 @@ def build_captain(collection):
 
     # The man's own trousers piece, in oilskin and rubber, its top (under the undershirt) cut away and drawn in a
     # little; with a modest fullness at the fly (the user: "the captain should have a tasteful bulge").
+    # (baggy, as the clothed sheet has them: stood off between the boot tops and the waist)
+    stand_off(legs, lambda p: 0.006 * ease(0.15, 0.24, p.y) * ease(TROUSERS_TOP, TROUSERS_TOP - 0.06, p.y), smooth=2, lam=0.3)
+    # (and slimmer across than his bare legs, as the clothed sheet draws them: the skin under them is hidden in the
+    # looks that wear them, so they can be)
+    for v in legs.data.vertices:
+        p = G(v.co)
+        k = 1.0 - 0.2 * ease(0.12, 0.2, p.y)
+        centre = math.copysign(0.063, p.x) * (1.0 - ease(0.5, 0.6, p.y))
+        v.co = B(Vector((centre + (p.x - centre) * k, p.y, p.z)))
     cut(legs, Vector((0.0, TROUSERS_TOP, 0.0)), -Y)
     for v in legs.data.vertices:
         p = G(v.co)
@@ -1441,7 +1911,7 @@ def build_captain(collection):
     recolour(legs, {"hose": m["oilskin"], "boots": m["rubber"]}, m["oilskin"])
     smooth_shade(legs)
     legs.name = "captain_legs"
-    parts.append(legs)
+    looks["captain_legs__open_closed"] = [legs]
 
     # The boy's mask head, a man's size.
     made = import_glb(BOY_FULL)
@@ -1503,7 +1973,7 @@ def build_captain(collection):
     decimate(hair, 260)
     recolour(hair, {}, m["hair"])
     smooth_shade(hair)
-    parts += [beard, hair]
+    mask += [beard, hair]
 
     # The nose: big and round, set on the mask (the one feature it is given).
     b = kit.Builder()
@@ -1511,7 +1981,7 @@ def build_captain(collection):
     b.ellipsoid(Vector((0.0, nose_y - 0.004, face + 0.008)), Vector((0.017, 0.015, 0.015)))
     for side in (1.0, -1.0):
         b.ellipsoid(Vector((side * 0.011, nose_y - 0.009, face + 0.002)), Vector((0.010, 0.009, 0.010)))
-    parts.append(from_builder("captain_nose", b, (0.002, 2, 420), m["nose"], rigid("head")))
+    mask.append(from_builder("captain_nose", b, (0.002, 2, 420), m["nose"], rigid("head")))
 
     # His eyes (the user: "his eyes should just be wrinkly slits", "maybe added on as afacial feature"): on the mask,
     # as the nose is, two narrow creased squints between puffy lids, under heavy white brows, with crow's feet at the
@@ -1535,17 +2005,18 @@ def build_captain(collection):
             pts = [corner + way * d for d in (0.002, 0.006, 0.01)]
             pts = [Vector((p.x, p.y, front_at(p.y, p.x) + 0.0002)) for p in pts]
             creases.strand(pts, [0.0007, 0.0008, 0.0004], 4)
-    parts.append(from_builder("captain_slits", slits, None, m["slit"], rigid("head")))
-    parts.append(from_builder("captain_lids", lids, None, m["skin"], rigid("head")))
-    parts.append(from_builder("captain_brows", brows, None, m["beard"], rigid("head")))
-    parts.append(from_builder("captain_creases", creases, None, m["crease"], rigid("head")))
+    mask.append(from_builder("captain_slits", slits, None, m["slit"], rigid("head")))
+    mask.append(from_builder("captain_lids", lids, None, m["skin"], rigid("head")))
+    mask.append(from_builder("captain_brows", brows, None, m["beard"], rigid("head")))
+    mask.append(from_builder("captain_creases", creases, None, m["crease"], rigid("head")))
 
     # The moustache: two soft rolls under the nose, into the beard.
     b = kit.Builder()
     for side in (1.0, -1.0):
         b.ellipsoid(Vector((side * 0.014, mouth_y + 0.002, front_at(mouth_y, side * 0.014) + 0.006)), Vector((0.019, 0.008, 0.010)),
                     Matrix.Rotation(side * -0.32, 3, "Z"))
-    parts.append(from_builder("captain_moustache", b, (0.002, 2, 300), m["beard"], rigid("head")))
+    moustache = from_builder("captain_moustache", b, (0.002, 2, 300), m["beard"], rigid("head"))
+    mask.append(moustache)
 
     # The cap: a band round his head, a soft crown standing out over it, a short peak, a cord.
     head_now = bpy.data.objects["captain_head"]
@@ -1561,22 +2032,34 @@ def build_captain(collection):
     rings.append((top + 0.023, rings[-1][1] * 0.45, rings[-1][2] * 0.45, rings[-1][3]))
     b = kit.Builder()
     b.tube([kit.upright(0.0, y, cz, rx, rz) for y, rx, rz, cz in rings], 24)
-    parts.append(from_builder("captain_cap", b, None, m["cap"], rigid("head")))
+    mask.append(from_builder("captain_cap", b, None, m["cap"], rigid("head")))
     y0, rx0, rz0, cz0 = rings[0]
     front = cz0 + rz0
     b = kit.Builder()
     peak = [(Vector((0.0, y0 + 0.004 - 0.3 * dz, front - 0.006 + dz)), X * half, Y * 0.0035)
             for dz, half in ((0.0, rx0 * 0.95), (0.016, rx0 * 0.9), (0.03, rx0 * 0.74), (0.04, rx0 * 0.5))]
     b.tube(peak + kit.dome(peak[-1], Z, 0.005, 2), 14)
-    parts.append(from_builder("captain_peak", b, None, m["peak"], rigid("head")))
+    mask.append(from_builder("captain_peak", b, None, m["peak"], rigid("head")))
     b = kit.Builder()
     cord = [Vector((math.sin(a) * (rx0 + 0.002), y0 + 0.009, cz0 + math.cos(a) * (rz0 + 0.002))) for a in (-0.85, -0.4, 0.0, 0.4, 0.85)]
     b.strand(cord, [0.0026] * len(cord), 6)
-    parts.append(from_builder("captain_cord", b, None, m["brass"], rigid("head")))
+    mask.append(from_builder("captain_cord", b, None, m["brass"], rigid("head")))
     # (what of the head is under the cap is not kept)
     cut(head_now, Vector((0.0, top - 0.03, 0.0)), -Y)
     decimate(head_now, 1000)
-    parts.append(head_now)
+    mask.append(head_now)
+
+    # The painted face (the test the user asked for: "can the models look that good? remember twilight princess",
+    # "lets try it"): a low-poly head built to the head turnaround's own silhouettes (front and side: rings, row by
+    # row, as wide as the front view and as deep as the side view, the beard a mass of it; the ears and the nose
+    # their own shapes), with its own UV island and a picture painted onto it by projecting the turnaround's front,
+    # side and back views (paint_face). Eyes, brows, wrinkles and lips are paint, not geometry.
+    eye_y = nose_y + 0.021
+    eye_z = front_at(eye_y, 0.0) - 0.012
+    span = [G(v.co) for v in head_now.data.vertices if abs(G(v.co).y - eye_y) < 0.006]
+    s_f = FACE_FRONT["half"] / max(abs(p.x) for p in span)  # picture pixels a unit (the mask head's width at the eyes)
+    ph = painted_head(eye_y, eye_z, s_f, m)
+    print("CAPTAIN painted head: %d triangles; eye at y %.4f z %.4f, %.1f picture px a unit" % (kit.triangle_count(ph.data), eye_y, eye_z, s_f))
 
     # A gold ring in his left ear (the concept's): a small hoop through the lobe.
     (lobe, ln), = lay([head_now], [Vector((0.2, nose_y - 0.018, centre_z - 0.008))], lambda p: Vector((0.0, p.y, centre_z - 0.008)), 0.0)
@@ -1584,7 +2067,7 @@ def build_captain(collection):
     across = (Z * 0.8 + X * 0.6).normalized()
     hoop = [lobe + ln * 0.01 + (Y * -(1.0 - math.cos(a)) + across * math.sin(a)) * 0.0065 for a in (math.tau * k / 12 for k in range(13))]
     b.strand(hoop, [0.0014] * len(hoop), 4)
-    opened.append(from_builder("captain_earring", b, None, m["gold"], rigid("head")))
+    mask.append(from_builder("captain_earring", b, None, m["gold"], rigid("head")))
 
     # (the closed outfit's roll collar of the gansey, round his neck)
     span = extents(body, 1.0, 0.008, lambda p: abs(p.x) < 0.08 and p.z < 0.075)
@@ -1603,7 +2086,7 @@ def build_captain(collection):
     b.strand(stem, [0.0032, 0.0035, 0.004], 8)
     bowl = Vector((0.045, mouth_y - 0.012, beard_front + 0.050))
     b.tube([(bowl + Y * y, X * r, Z * r) for y, r in ((-0.012, 0.005), (-0.009, 0.009), (0.003, 0.010), (0.011, 0.009), (0.012, 0.007))], 12)
-    parts.append(from_builder("captain_pipe", b, None, m["pipe"], rigid("head")))
+    mask.append(from_builder("captain_pipe", b, None, m["pipe"], rigid("head")))
 
     from mathutils import noise
 
@@ -1630,13 +2113,17 @@ def build_captain(collection):
         return 1.0
 
     bpy.data.objects.remove(body, do_unlink=True)
-    for label, group in (("parts", parts), ("open", opened + [bush]), ("closed", closed)):
-        print("CAPTAIN %s:" % label, ", ".join("%s %d" % (o.name, kit.triangle_count(o.data)) for o in group))
+    looks["captain_outfit__open"] = opened
+    looks["captain_face__mask"] = mask
+    looks["captain_face__painted"] = [ph]
+    looks["captain_outfit__closed"] = closed
+    for name, group in [("parts", parts)] + list(looks.items()):
+        print("CAPTAIN %s:" % name, ", ".join("%s %d" % (o.name, kit.triangle_count(o.data)) for o in group))
+    # His proportions (WARP) and his grating, for everything of him at once, and his skeleton's new joints.
+    everything = parts + [o for group in looks.values() for o in group]
+    joints = warp_captain(everything, joints)
     armature = finish("captain", joints, parts, collection, shade)
-    # The outfits, a mesh each on the same skeleton (as Gloaming's man has his: man_<slot>__<option>), and the chest
-    # hair, its own mesh for the hair shader (it goes with the open outfit).
-    for name, group, tint in (("captain_outfit__open", opened, shade), ("captain_outfit__closed", closed, shade),
-                              ("captain_chesthair__open", [bush], None)):
+    for name, group in looks.items():
         activate(group[0])
         for o in group[1:]:
             o.select_set(True)
@@ -1644,13 +2131,28 @@ def build_captain(collection):
             bpy.ops.object.join()
         one = group[0]
         one.name = one.data.name = name
-        paint_tint(one, tint)
+        # (hair is coloured by the hair shader; the rest takes its tint)
+        paint_tint(one, None if "hair" in name else shade)
         one.parent = armature
         one.modifiers.new("Armature", "ARMATURE").object = armature
         for c in one.users_collection:
             c.objects.unlink(one)
         collection.objects.link(one)
         print("FIGURE %s tris=%d" % (name, kit.triangle_count(one.data)))
+    # The grating he stands on at the wheel (not skinned: it stays on the deck): a frame round slats, oak.
+    b = kit.Builder()
+    top = GRATING
+    for x0, x1, z0, z1 in ((-0.2, 0.2, -0.17, -0.14), (-0.2, 0.2, 0.19, 0.22), (-0.2, -0.17, -0.17, 0.22), (0.17, 0.2, -0.17, 0.22)):
+        b.tube([(Vector(((x0 + x1) / 2, y, (z0 + z1) / 2)), X * (x1 - x0) / 2 + Z * (z1 - z0) / 2, -X * (x1 - x0) / 2 + Z * (z1 - z0) / 2)
+                for y in (0.0, top)], 4)
+    for k in range(6):
+        x = -0.15 + k * 0.06
+        b.tube([(Vector((x, y, 0.025)), X * 0.018 + Z * 0.18, -X * 0.018 + Z * 0.18) for y in (top - 0.022, top - 0.002)], 4)
+    grating = from_builder("captain_grating", b, None, m["grating"], lambda p: {})
+    paint_tint(grating, lambda material, p: 0.85 + 0.15 * noise.noise(p * 20.0))
+    for c in grating.users_collection:
+        c.objects.unlink(grating)
+    collection.objects.link(grating)
     return armature
 
 
