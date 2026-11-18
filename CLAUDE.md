@@ -681,3 +681,7 @@ Claude's.
   outfits. Builders: `tools/build_brother.py` -> `models/brother.glb`, `tools/build_boy.py` -> `models/boy.glb` (bare
   base bodies by the captain's method). OWED once the three are done: animation cycles (walk, run, jump, swim) on
   their shared bone names, outfits, and GIFs of each for the user.
+- The older brother's look, settled by the user (2026-11-18, circling the head on `concept_brother_tpose3.jpg`): "I
+  like the face of this version, but with the newer body". FACE = tpose3 (softer boyish square face, rosy nose, thin
+  moustache); BODY = `concept_brother_tpose4.jpg` (tall, rugby build, hairy). New sheets of him are asked for with that
+  face on that body.
