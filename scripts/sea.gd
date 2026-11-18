@@ -67,11 +67,18 @@ const PIRATE_HEADING := 0.3
 const START := Vector2(-52.8, -36.8)
 
 ## The rocks, each as a sphere: x, y, z, radius (Scenery adds them: `add_rock`). They are kept
-## by the square of floor they stand on (`CELL` metres), so that a swimmer is only tried against
-## the few near it.
+## twice (tools/PERF.md, "Decision: two grids for the rocks"): by the square of floor they could be
+## felt from (`CELL` metres, their radius and REACH more: a quick "nothing here" for most of the
+## sea), and in a fine grid of FINE-metre cubes, each holding the spheres that overlap it, so that
+## a swimmer beside a wreck of a thousand spheres is tried against the few round it.
 static var rocks: Array[Vector4] = []
 const CELL := 8.0
+const FINE := 2.0
+## The most room a swimmer is given against a rock (m): more is asked of a big animal, but the
+## rocks it is tried against are those within this of it.
+const REACH := 3.0
 static var _cells := {}
+static var _fine := {}
 
 var sand: SandGround
 ## Whatever the snow should hang round (the camera).
@@ -145,31 +152,62 @@ static func keep_in(p: Vector3, room: float) -> Vector3:
 	return Vector3(x, clampf(p.y, low, maxf(low, SURFACE - room)), z)
 
 
-## A point pushed out of any rock it is in, `room` metres clear.
 ## Adds a rock: a sphere nothing may swim into.
 static func add_rock(rock: Vector4) -> void:
 	var at := rocks.size()
 	rocks.append(rock)
-	# (into every square it could be felt from: its own radius and 3 m of room)
-	var reach := rock.w + 3.0
+	# (into every square it could be felt from: its own radius and REACH of room)
+	var reach := rock.w + REACH
 	for cx in range(floori((rock.x - reach) / CELL), floori((rock.x + reach) / CELL) + 1):
 		for cz in range(floori((rock.z - reach) / CELL), floori((rock.z + reach) / CELL) + 1):
 			var key := Vector2i(cx, cz)
 			var list: PackedInt32Array = _cells.get(key, PackedInt32Array())
 			list.append(at)
 			_cells[key] = list
+	# (and into every fine cube it overlaps, as x, y, z, radius)
+	for cx in range(floori((rock.x - rock.w) / FINE), floori((rock.x + rock.w) / FINE) + 1):
+		for cy in range(floori((rock.y - rock.w) / FINE), floori((rock.y + rock.w) / FINE) + 1):
+			for cz in range(floori((rock.z - rock.w) / FINE), floori((rock.z + rock.w) / FINE) + 1):
+				var key := _fine_key(cx, cy, cz)
+				var list: PackedFloat32Array = _fine.get(key, PackedFloat32Array())
+				list.append_array(PackedFloat32Array([rock.x, rock.y, rock.z, rock.w]))
+				_fine[key] = list
 
 
+static func _fine_key(cx: int, cy: int, cz: int) -> int:
+	return ((cx + 32768) << 32) | ((cy + 32768) << 16) | (cz + 32768)
+
+
+## A point pushed out of any rock it is in, `room` metres clear.
 static func clear_of_rocks(p: Vector3, room: float) -> Vector3:
-	var near: Variant = _cells.get(Vector2i(floori(p.x / CELL), floori(p.z / CELL)))
-	if near == null:
+	# (most of the sea has no rock within reach: one look at the coarse squares says so)
+	if not _cells.has(Vector2i(floori(p.x / CELL), floori(p.z / CELL))):
 		return p
-	for at: int in near:
-		var rock := rocks[at]
-		var from := p - Vector3(rock.x, rock.y, rock.z)
-		var far := from.length()
-		if far < rock.w + room:
-			p = Vector3(rock.x, rock.y, rock.z) + (from / far if far > 0.001 else Vector3.UP) * (rock.w + room)
+	var reach := minf(room, REACH)
+	var x0 := floori((p.x - reach) / FINE)
+	var x1 := floori((p.x + reach) / FINE)
+	var y0 := floori((p.y - reach) / FINE)
+	var y1 := floori((p.y + reach) / FINE)
+	var z0 := floori((p.z - reach) / FINE)
+	var z1 := floori((p.z + reach) / FINE)
+	for cx in range(x0, x1 + 1):
+		for cy in range(y0, y1 + 1):
+			for cz in range(z0, z1 + 1):
+				var near: Variant = _fine.get(_fine_key(cx, cy, cz))
+				if near == null:
+					continue
+				var list: PackedFloat32Array = near
+				var k := 0
+				var n := list.size()
+				while k < n:
+					var middle := Vector3(list[k], list[k + 1], list[k + 2])
+					var clear := list[k + 3] + room
+					var from := p - middle
+					var far_sq := from.length_squared()
+					if far_sq < clear * clear:
+						var far := sqrt(far_sq)
+						p = middle + (from / far if far > 0.001 else Vector3.UP) * clear
+					k += 4
 	return p
 
 

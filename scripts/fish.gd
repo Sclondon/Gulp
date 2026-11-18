@@ -36,6 +36,18 @@ var _curls := false
 # Its mouth opens by a shader setting (`gape`) with no property of the node's.
 var _mouths := false
 var _near := true
+# Which of the look's settings it has, found once when it is worn (an `in` on an object each frame
+# was a good part of a frame's script time: tools/PERF.md).
+var _has_swim := false
+var _has_sway := false
+var _has_wings := false
+var _has_walk := false
+var _has_gape := false
+var _has_low := false
+# What was last sent to its look's shader and its holder's scale (sent again only when changed).
+var _sent_curl := INF
+var _sent_gape := INF
+var _sent_scale := -1.0
 var _phase := randf() * TAU
 var _bend := 0.0
 var _flash := 0.0
@@ -83,6 +95,7 @@ func set_kind(to: String) -> void:
 
 func set_length(to: float) -> void:
 	length = to
+	_sent_scale = -1.0
 	if _body:
 		_body.scale = Vector3.ONE * (length / _long)
 
@@ -101,8 +114,9 @@ func flash() -> void:
 func detail(near: bool) -> void:
 	if near != _near:
 		_near = near
-		if _look and &"low" in _look:
+		if _look and _has_low:
 			_look.set(&"low", not near)
+		_forget_sent()
 
 
 ## Each frame: turned the way it is heading, its tail wagging the harder the more `effort` it
@@ -114,7 +128,10 @@ func pose(delta: float, effort: float, turning: float) -> void:
 	if flat > 0.001:
 		global_basis = Basis.looking_at(heading, Vector3.UP)
 	# (it swells as it becomes something new, and settles)
-	_body.scale = Vector3.ONE * (length / _long) * (1.0 + 0.35 * _flash * _flash)
+	var grown := (length / _long) * (1.0 + 0.35 * _flash * _flash)
+	if grown != _sent_scale:
+		_sent_scale = grown
+		_body.scale = Vector3.ONE * grown
 	if _material:
 		_phase += delta * (5.0 + 9.0 * effort) / pow(maxf(length, 0.1), 0.25)
 		_material.set_shader_parameter(&"wag_phase", _phase)
@@ -127,23 +144,33 @@ func pose(delta: float, effort: float, turning: float) -> void:
 	# The creature keeps its own beat: quicker the harder it is swimming.
 	if _beat > 0.0:
 		_look.set(&"beat", _beat / (0.55 + 0.6 * effort))
-	if &"swim" in _look:
+	if _has_swim:
 		_look.set(&"swim", clampf(0.3 + 0.35 * effort, 0.0, 1.0))
-	elif &"sway" in _look:
+	elif _has_sway:
 		_look.set(&"sway", 0.6 + 0.45 * effort)
-	if &"wings" in _look:
+	if _has_wings:
 		# (a flying fish spreads its wings when it bolts)
 		_look.set(&"wings", move_toward(_look.get(&"wings"), 1.0 if effort > 1.1 else 0.0, delta * 3.0))
 	# (it really moves through the water, so there is no more current to add; what walks is told
 	# how fast it goes, to step by)
-	_look.call(&"step", velocity if &"walk" in _look else Vector3.ZERO, delta)
-	if _curls:
-		_look.call(&"set_shader_parameter", &"curl", _bend * CURL)
+	_look.call(&"step", velocity if _has_walk else Vector3.ZERO, delta)
+	if _curls and absf(_bend * CURL - _sent_curl) > 0.002:
+		_sent_curl = _bend * CURL
+		_look.call(&"set_shader_parameter", &"curl", _sent_curl)
 	_gape = move_toward(_gape, bite, delta * (9.0 if bite > _gape else 4.0))
-	if &"gape" in _look:
-		_look.set(&"gape", _gape)
-	elif _mouths:
-		_look.call(&"set_shader_parameter", &"gape", 0.07 + _gape * 0.55)
+	if _gape != _sent_gape:
+		_sent_gape = _gape
+		if _has_gape:
+			_look.set(&"gape", _gape)
+		elif _mouths:
+			_look.call(&"set_shader_parameter", &"gape", 0.07 + _gape * 0.55)
+
+
+# Its look is new, or shows another model: everything is sent to it again.
+func _forget_sent() -> void:
+	_sent_curl = INF
+	_sent_gape = INF
+	_sent_scale = -1.0
 
 
 ## `from` turned towards `to` (unit vectors) by no more than an angle.
@@ -164,10 +191,17 @@ static func turned(from: Vector3, to: Vector3, most: float) -> Vector3:
 func _wear(look: Node3D, long: float, front := -1.0, curls := true) -> void:
 	_look = look
 	_long = long
+	_forget_sent()
 	_front = long * 0.5 if front < 0.0 else front
 	_curls = curls
 	_mouths = look is SockeyeSalmon or look is CutthroatTrout or look is FlyingFish
 	_beat = float(look.get(&"beat")) if &"beat" in look else 0.0
+	_has_swim = &"swim" in look
+	_has_sway = &"sway" in look
+	_has_wings = &"wings" in look
+	_has_walk = &"walk" in look
+	_has_gape = &"gape" in look
+	_has_low = &"low" in look
 	# (each starts somewhere else in its beat)
 	if &"phase" in look:
 		look.set(&"phase", randf())
@@ -201,5 +235,12 @@ func _wear_mesh(mesh: Mesh) -> void:
 	_material.set_shader_parameter(&"tail_z", box.end.z)
 	body.position = Vector3(0.0, 0.0, _front - _long * 0.5)
 	_look = body
+	_forget_sent()
 	_beat = 0.0
+	_has_swim = false
+	_has_sway = false
+	_has_wings = false
+	_has_walk = false
+	_has_gape = false
+	_has_low = false
 	_body.add_child(body)

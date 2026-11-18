@@ -134,6 +134,9 @@ func _reef_count() -> Array:
 	var kinds := 0
 	var placed := 0
 	var reef := _wreck.get_node_or_null(^"Reef")
+	if reef is LodField:
+		var count: Vector2i = (reef as LodField).placed()
+		return [count.x, count.y]
 	if reef:
 		for many: Node in reef.get_children():
 			if many is MultiMeshInstance3D:

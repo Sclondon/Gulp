@@ -44,7 +44,21 @@ var blips: Array[Vector3] = []
 var landmarks: Array = []
 var heading := 0.0
 
-var _face: Face
+
+# The flat picture is drawn in five layers, bottom to top, each redrawn only when what it shows
+# has changed (tools/PERF.md: drawn whole every frame it cost about 0.7 ms of a frame): the rings
+# (never), the sweep and the fish's arrow (every frame), the landmarks (when new ones come, a few
+# times a second), the blips (every other frame: they brighten as the sweep passes), the compass (when
+# the heading turns).
+var _rings: Layer
+var _sweep: Layer
+var _marks: Layer
+var _blips: Layer
+var _compass: Layer
+var _marks_of: Array = []
+var _compass_at := INF
+var _blips_of: Array[Vector3] = []
+var _frame := 0
 
 
 ## How far above (or below) the fish a thing is, folded into a blip's z: a quarter at TALL metres
@@ -61,10 +75,11 @@ func _init() -> void:
 	tube.disable_3d = true
 	tube.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(tube)
-	_face = Face.new()
-	_face.scope = self
-	_face.size = Vector2(SIZE, SIZE)
-	tube.add_child(_face)
+	_rings = _layer(tube, _draw_rings)
+	_sweep = _layer(tube, _draw_sweep)
+	_marks = _layer(tube, _draw_marks)
+	_blips = _layer(tube, _draw_blips)
+	_compass = _layer(tube, _draw_compass)
 	texture = tube.get_texture()
 	expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	stretch_mode = TextureRect.STRETCH_SCALE
@@ -74,88 +89,141 @@ func _init() -> void:
 	material = glass
 
 
+func _layer(tube: SubViewport, painter: Callable) -> Layer:
+	var made := Layer.new()
+	made.painter = painter
+	made.size = Vector2(SIZE, SIZE)
+	made.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tube.add_child(made)
+	return made
+
+
+func _process(_delta: float) -> void:
+	_sweep.queue_redraw()
+	# (the blips every other frame: they move only when Main sounds out again, a few times a
+	# second, and their brightening as the sweep passes moves on by under 1% a frame)
+	_frame += 1
+	if _frame % 2 == 0 or not is_same(blips, _blips_of):
+		_blips_of = blips
+		_blips.queue_redraw()
+	if not is_same(landmarks, _marks_of):
+		_marks_of = landmarks
+		_marks.queue_redraw()
+	if absf(angle_difference(heading, _compass_at)) > 0.003 or is_inf(_compass_at):
+		_compass_at = heading
+		_compass.queue_redraw()
+
+
 ## Puts it over a scope whose middle and radius are given on the screen.
 func fit(middle: Vector2, radius: float) -> void:
 	position = middle - Vector2(radius, radius)
 	size = Vector2(radius, radius) * 2.0
 
 
-## The flat picture the tube shows.
-class Face:
+## One layer of the flat picture the tube shows.
+class Layer:
 	extends Control
-	var scope: Sonar
-
-	func _process(_delta: float) -> void:
-		queue_redraw()
+	var painter: Callable
 
 	func _draw() -> void:
-		var middle := size * 0.5
-		var r := size.x * 0.5
-		var font := get_theme_default_font()
-		var green := Color(0.4, 1.0, 0.45)
-		# the sweep, and the rings
-		var sweep := Time.get_ticks_msec() * 0.0022
-		for k in 18:
-			var way := Vector2.from_angle(sweep - k * 0.05)
-			draw_line(middle, middle + way * r * 0.8, Color(green, 0.55 * (1.0 - k / 18.0)), 4.0, true)
-		draw_arc(middle, r * 0.4, 0.0, TAU, 40, Color(green, 0.28), 2.0, true)
-		draw_arc(middle, r * 0.8, 0.0, TAU, 56, Color(green, 0.4), 2.0, true)
-		draw_line(middle - Vector2(r * 0.8, 0.0), middle + Vector2(r * 0.8, 0.0), Color(green, 0.12), 1.5)
-		draw_line(middle - Vector2(0.0, r * 0.8), middle + Vector2(0.0, r * 0.8), Color(green, 0.12), 1.5)
-		# the fish itself: a little arrow, ahead up
-		draw_colored_polygon(PackedVector2Array([middle + Vector2(0.0, -9.0), middle + Vector2(6.0, 7.0), middle + Vector2(-6.0, 7.0)]), Color(0.7, 1.0, 0.7, 0.95))
-		# the landmarks: a sign each, held at the rim when it is further off than the scope sees
-		for mark: Array in scope.landmarks:
-			var sign: Dictionary = LANDMARKS.get(mark[0], {})
-			if sign.is_empty():
-				continue
-			var off := Vector2(mark[1].x, -mark[1].y) / RANGE
-			var far := off.length() > 0.62
-			if far:
-				off = off.normalized() * 0.62
-			var at := middle + off * r
-			var big := r * (0.085 if far else 0.11)
-			var colour := Color(sign.colour, 0.75 if far else 1.0)
-			for stroke: Array in sign.strokes:
-				var line := PackedVector2Array()
-				for point: Vector2 in stroke:
-					line.append(at + Vector2(point.x, -point.y) * big)
-				draw_polyline(line, colour, 2.5, true)
-			if far:
-				# (a tick outside it, pointing the way)
-				var way := off.normalized()
-				draw_line(middle + way * r * 0.71, middle + way * r * 0.78, colour, 2.5, true)
-		# what is about (hunters red, food green), each brightest as the sweep passes it
-		for blip in scope.blips:
-			var off := Vector2(blip.x, -blip.y) / RANGE
-			if off.length() > 0.95:
-				continue
-			var lag := fposmod(sweep - off.angle(), TAU) / TAU
-			var bright := 0.45 + 0.55 * (1.0 - lag)
-			var hunter := blip.z > 0.5
-			var colour := Color(1.0, 0.25, 0.15) if hunter else Color(0.5, 1.0, 0.5)
-			# (as on an old three-dimensional scope: a stalk stands from its place on the fish's own
-			# level up or down to the thing itself, which is an arrowhead pointing the way it lies)
-			var up := (blip.z - (1.0 if hunter else 0.0)) * 4.0
-			var foot := middle + off * r * 0.8
-			var at := foot + Vector2(0.0, -up * r * 0.11)
-			var big := 7.0 if hunter else 5.0
-			if absf(up) < 0.2:
-				draw_circle(at, big, Color(colour, bright))
-			else:
-				draw_line(foot, at, Color(colour, bright * 0.6), 2.0, true)
-				draw_circle(foot, 2.0, Color(colour, bright * 0.6))
-				var tip := -signf(up) * big * 1.3
-				draw_colored_polygon(PackedVector2Array([at + Vector2(0.0, tip), at + Vector2(big, -tip * 0.6), at + Vector2(-big, -tip * 0.6)]), Color(colour, bright))
-		# the compass: N, E, S and W round the rim, turning as the fish does; north brighter
-		for k in 4:
-			var bearing := k * PI * 0.5 - scope.heading
-			var at := middle + Vector2(sin(bearing), -cos(bearing)) * r * 0.9
-			var said := "NESW"[k]
-			var high := 26
-			var wide := font.get_string_size(said, HORIZONTAL_ALIGNMENT_LEFT, -1.0, high).x
-			draw_string(font, at + Vector2(-wide * 0.5, high * 0.36), said, HORIZONTAL_ALIGNMENT_LEFT, -1.0, high, Color(1.0, 0.9, 0.5) if k == 0 else Color(green, 0.9))
-		for k in 8:
-			var bearing := (k + 0.5) * PI * 0.25 - scope.heading
-			var way := Vector2(sin(bearing), -cos(bearing))
-			draw_line(middle + way * r * 0.84, middle + way * r * 0.95, Color(green, 0.5), 2.0, true)
+		painter.call(self)
+
+
+func _sweep_angle() -> float:
+	return Time.get_ticks_msec() * 0.0022
+
+
+const GREEN := Color(0.4, 1.0, 0.45)
+
+
+# The rings and the cross.
+func _draw_rings(on: Control) -> void:
+	var middle := on.size * 0.5
+	var r := on.size.x * 0.5
+	on.draw_arc(middle, r * 0.4, 0.0, TAU, 40, Color(GREEN, 0.28), 2.0, true)
+	on.draw_arc(middle, r * 0.8, 0.0, TAU, 56, Color(GREEN, 0.4), 2.0, true)
+	on.draw_line(middle - Vector2(r * 0.8, 0.0), middle + Vector2(r * 0.8, 0.0), Color(GREEN, 0.12), 1.5)
+	on.draw_line(middle - Vector2(0.0, r * 0.8), middle + Vector2(0.0, r * 0.8), Color(GREEN, 0.12), 1.5)
+
+
+# The sweep, and the fish itself: a little arrow, ahead up.
+func _draw_sweep(on: Control) -> void:
+	var middle := on.size * 0.5
+	var r := on.size.x * 0.5
+	var sweep := _sweep_angle()
+	for k in 18:
+		var way := Vector2.from_angle(sweep - k * 0.05)
+		on.draw_line(middle, middle + way * r * 0.8, Color(GREEN, 0.55 * (1.0 - k / 18.0)), 4.0, true)
+	on.draw_colored_polygon(PackedVector2Array([middle + Vector2(0.0, -9.0), middle + Vector2(6.0, 7.0), middle + Vector2(-6.0, 7.0)]), Color(0.7, 1.0, 0.7, 0.95))
+
+
+# The landmarks: a sign each, held at the rim when it is further off than the scope sees.
+func _draw_marks(on: Control) -> void:
+	var middle := on.size * 0.5
+	var r := on.size.x * 0.5
+	for mark: Array in landmarks:
+		var sign: Dictionary = LANDMARKS.get(mark[0], {})
+		if sign.is_empty():
+			continue
+		var off := Vector2(mark[1].x, -mark[1].y) / RANGE
+		var far := off.length() > 0.62
+		if far:
+			off = off.normalized() * 0.62
+		var at := middle + off * r
+		var big := r * (0.085 if far else 0.11)
+		var colour := Color(sign.colour, 0.75 if far else 1.0)
+		for stroke: Array in sign.strokes:
+			var line := PackedVector2Array()
+			for point: Vector2 in stroke:
+				line.append(at + Vector2(point.x, -point.y) * big)
+			on.draw_polyline(line, colour, 2.5, true)
+		if far:
+			# (a tick outside it, pointing the way)
+			var way := off.normalized()
+			on.draw_line(middle + way * r * 0.71, middle + way * r * 0.78, colour, 2.5, true)
+
+
+# What is about (hunters red, food green), each brightest as the sweep passes it.
+func _draw_blips(on: Control) -> void:
+	var middle := on.size * 0.5
+	var r := on.size.x * 0.5
+	var sweep := _sweep_angle()
+	for blip in blips:
+		var off := Vector2(blip.x, -blip.y) / RANGE
+		if off.length() > 0.95:
+			continue
+		var lag := fposmod(sweep - off.angle(), TAU) / TAU
+		var bright := 0.45 + 0.55 * (1.0 - lag)
+		var hunter := blip.z > 0.5
+		var colour := Color(1.0, 0.25, 0.15) if hunter else Color(0.5, 1.0, 0.5)
+		# (as on an old three-dimensional scope: a stalk stands from its place on the fish's own
+		# level up or down to the thing itself, which is an arrowhead pointing the way it lies)
+		var up := (blip.z - (1.0 if hunter else 0.0)) * 4.0
+		var foot := middle + off * r * 0.8
+		var at := foot + Vector2(0.0, -up * r * 0.11)
+		var big := 7.0 if hunter else 5.0
+		if absf(up) < 0.2:
+			on.draw_circle(at, big, Color(colour, bright))
+		else:
+			on.draw_line(foot, at, Color(colour, bright * 0.6), 2.0, true)
+			on.draw_circle(foot, 2.0, Color(colour, bright * 0.6))
+			var tip := -signf(up) * big * 1.3
+			on.draw_colored_polygon(PackedVector2Array([at + Vector2(0.0, tip), at + Vector2(big, -tip * 0.6), at + Vector2(-big, -tip * 0.6)]), Color(colour, bright))
+
+
+# The compass: N, E, S and W round the rim, turning as the fish does; north brighter.
+func _draw_compass(on: Control) -> void:
+	var middle := on.size * 0.5
+	var r := on.size.x * 0.5
+	var font := on.get_theme_default_font()
+	for k in 4:
+		var bearing := k * PI * 0.5 - heading
+		var at := middle + Vector2(sin(bearing), -cos(bearing)) * r * 0.9
+		var said := "NESW"[k]
+		var tall := 26
+		var wide := font.get_string_size(said, HORIZONTAL_ALIGNMENT_LEFT, -1.0, tall).x
+		on.draw_string(font, at + Vector2(-wide * 0.5, tall * 0.36), said, HORIZONTAL_ALIGNMENT_LEFT, -1.0, tall, Color(1.0, 0.9, 0.5) if k == 0 else Color(GREEN, 0.9))
+	for k in 8:
+		var bearing := (k + 0.5) * PI * 0.25 - heading
+		var way := Vector2(sin(bearing), -cos(bearing))
+		on.draw_line(middle + way * r * 0.84, middle + way * r * 0.95, Color(GREEN, 0.5), 2.0, true)

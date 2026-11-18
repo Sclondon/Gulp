@@ -51,7 +51,12 @@ const NETTLE_LENGTH := 1.6
 const SARDINES_SEEN := 32.0
 const KRILL_SEEN := 18.0
 const JELLY_SEEN := 32.0
+## Beyond this a jelly is not drawn (m).
+const JELLY_DRAWN := 48.0
 const FISH_SEEN := 55.0
+## Nearer than this (m, and two of its own lengths more) a fish is stepped every frame; further,
+## every other frame.
+const STEP_NEAR := 20.0
 ## How many steps apart kinds new to the run are given their models.
 const NEW_EVERY := 3
 ## The swarms (tools/SCHOOLING.md): each a Flock of a few dozen guides that are not drawn, with
@@ -492,7 +497,12 @@ func _step_creatures(delta: float) -> void:
 				continue
 			each.step(delta * 8.0, player, hunting)
 			continue
-		each.step(delta, player, hunting)
+		# (beyond STEP_NEAR, half of them a frame, each with two frames' time: a fish that far off
+		# moves less than a pixel of the half-size picture in a frame. tools/PERF.md)
+		if apart < STEP_NEAR + each.length * 2.0:
+			each.step(delta, player, hunting)
+		elif (steps + each.get_index()) % 2 == 0:
+			each.step(delta * 2.0, player, hunting)
 		each.detail(apart < 5.0 + each.length * 4.0)
 		# A pack hunter or a filter feeder at a swarm or a cloud: the swarm balls up and flees it,
 		# and what its open mouth passes is taken.
@@ -693,8 +703,13 @@ func _step_jellies(delta: float) -> void:
 			if _jelly_away[i] <= 0.0:
 				_place_jelly(i, Sea.open_water(_rng, 1.0, player.global_position, 24.0))
 			continue
-		# (too far off to be seen beating, it hangs where it is)
-		if jelly.global_position.distance_to(player.global_position) > JELLY_SEEN:
+		# (too far off to be seen beating, it hangs where it is; further still, the water hides it,
+		# and it is not drawn: a jelly is 18,000 triangles and a lamp, tools/PERF.md)
+		var far := jelly.global_position.distance_to(player.global_position)
+		var drawn := far < JELLY_DRAWN
+		if jelly.visible != drawn:
+			jelly.visible = drawn
+		if far > JELLY_SEEN:
 			continue
 		_jelly_time[i] -= delta
 		if _jelly_time[i] <= 0.0 or jelly.global_position.distance_to(jelly.goal) < 1.0:
@@ -741,6 +756,9 @@ func _step_nettles(delta: float) -> void:
 				_place_nettle(i, Sea.place(_rng, "open", 3.0, player.global_position, 24.0))
 			continue
 		var far := nettle.global_position.distance_to(player.global_position)
+		var drawn := far < JELLY_DRAWN
+		if nettle.visible != drawn:
+			nettle.visible = drawn
 		if far > JELLY_SEEN:
 			continue
 		if nettle.global_position.distance_to(_nettle_goal[i]) < 1.5:

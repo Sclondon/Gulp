@@ -266,16 +266,45 @@ func _schooling() -> void:
 	var gone_before := prey.riders_gone()
 	var most_gone := 0
 	var balled := false
+	# (Two parts, so that it does not hang on chance. A dash takes a fish only when a fish is at the
+	# hunter's mouth at one of its few tries a second, and the swarm flees the hunters, so left to
+	# itself the first fish went after 3 to 47 s or more of game time (it failed about one run in
+	# three in 10 s, and sometimes in 60): first the pack is left to find the swarm and ball it up;
+	# then one of them, dashing, has its open mouth put on one of the swarm's fish each frame, and
+	# Life's own feeding must take it.)
+	var took_at := -1
+	var biter: Creature = null
 	for n in 600:
 		player.global_position = prey.middle() + Vector3(0.0, 4.0, 9.0)
 		for k in pack.size():
 			if n == 0:
 				pack[k].place(prey.middle() + Vector3(4.0 + k, 0.0, 0.0))
 		await _frames(1)
-		most_gone = maxi(most_gone, prey.riders_gone())
 		balled = balled or prey.rules.orbit > 0.0
+		for each in pack:
+			if biter == null and each.prey is Dictionary and each.prey.flock == prey:
+				biter = each
+		if balled and biter:
+			break
+	if biter:
+		for n in 300:
+			player.global_position = prey.middle() + Vector3(0.0, 4.0, 9.0)
+			biter._dash = true
+			biter._pack_t = 1.0
+			var fish := -1
+			for i in prey.rider_count():
+				if not prey.rider_gone(i):
+					fish = i
+					break
+			if fish >= 0:
+				biter.global_position = prey.rider_position(fish) - biter.heading * biter.length * 0.42
+			await _frames(1)
+			most_gone = maxi(most_gone, prey.riders_gone())
+			if most_gone > gone_before:
+				took_at = n
+				break
 	_check("pack hunters at a swarm take from it and ball it up", most_gone > gone_before and balled,
-			"%d barracuda, at most %d gone, balled %s" % [pack.size(), most_gone, balled])
+			"%d barracuda, %s at it, balled %s, a fish taken %s (%.1f s with its mouth among them)" % [pack.size(), biter != null, balled, most_gone > gone_before, took_at / 60.0])
 	main.restart()
 	await _frames(3)
 

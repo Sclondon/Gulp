@@ -50,6 +50,12 @@ All silent (`--audio-driver Dummy`), each prints PASSED or FAILED.
 
 `godot --path . --audio-driver Dummy --disable-vsync -- --bot --seconds=12` prints what a frame costs (`GULP COST`, `GULP RAN`).
 
+What a frame costs place by place (a window; `tests/perf.gd`, `tools/PERF.md`): `godot --path . --audio-driver Dummy
+--disable-vsync --resolution 390x844 --position 2600,60 -- --perf=start,kelp,reef,pirate,ruins,docks,ball` prints a
+`PERF ROW` a place (frame, scripts, draws, triangles), the heaviest things in view and what each really draws;
+`--perf=title` the title and the start-up times; `--perf-shots=<folder>` saves a picture of each place.
+`godot --headless --path . --audio-driver Dummy -s res://tests/rocks_bench.gd` times `Sea.clear_of_rocks`.
+
 ## What is in it
 
 | | |

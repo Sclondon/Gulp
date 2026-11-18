@@ -42,6 +42,10 @@ const EEL_BACK := 25.0
 ## Beyond this the water hides plants (m), and docks and moored boats.
 const SEEN := 60.0
 const DOCKS_SEEN := 80.0
+## The kit's pieces (rocks, cliffs, the reef's life): full models within PIECES_NEAR of the eye,
+## light ones out to PIECES_SEEN, none beyond (m, to the nearest edge of the piece's cube).
+const PIECES_NEAR := 8.0
+const PIECES_SEEN := 70.0
 ## The clear lanes kept for the wrecks' hulls (long, wide: m, along their headings).
 const WRECK_LANE := Vector2(64.0, 14.0)
 const PIRATE_LANE := Vector2(34.0, 12.0)
@@ -101,6 +105,12 @@ func _process(delta: float) -> void:
 		return
 	if _grass:
 		_grass.set(&"pushers", PackedVector3Array([player.global_position]))
+	if _eels:
+		# (one draw of all of them, which nothing hid however far off: tools/PERF.md)
+		var eye := get_viewport().get_camera_3d()
+		if eye:
+			var sand: Dictionary = Sea.ZONES.sand
+			_eels.visible = Vector2(eye.global_position.x, eye.global_position.z).distance_to(sand.at) < float(sand.radius) + SEEN
 	if _eels and player.alive:
 		var zone: Dictionary = Sea.ZONES.sand
 		var at := player.global_position
@@ -270,24 +280,20 @@ func _place_breakwater() -> void:
 
 # Everything placed, drawn: one MultiMesh a piece. (Cliffs are drawn with their light model: there
 # are many and they are seen from a little way off.)
+#
+# (Drawn by a LodField, tools/PERF.md: the full models near the eye, the light ones further off,
+# none beyond PIECES_SEEN, where the water has long hidden them. Cliffs are light everywhere.)
 func _draw_pieces() -> void:
+	var field := LodField.new()
+	field.name = "Pieces"
+	field.near = PIECES_NEAR
+	field.far = PIECES_SEEN
 	for piece: String in _placed:
-		var wheres: Array = _placed[piece][0]
-		var tints: Array = _placed[piece][1]
-		var many := MultiMesh.new()
-		many.transform_format = MultiMesh.TRANSFORM_3D
-		many.use_colors = true
-		many.mesh = _props.call(&"mesh_of", piece, piece.begins_with("cliff"))
-		many.instance_count = wheres.size()
-		for i in wheres.size():
-			many.set_instance_transform(i, wheres[i])
-			many.set_instance_color(i, tints[i])
-		var drawn := MultiMeshInstance3D.new()
-		drawn.name = piece
-		drawn.multimesh = many
-		drawn.material_override = _props.call(&"material_of", piece)
-		drawn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(drawn)
+		var light: Mesh = _props.call(&"mesh_of", piece, true)
+		var full: Mesh = light if piece.begins_with("cliff") else _props.call(&"mesh_of", piece, false)
+		field.add(piece, full, light, _props.call(&"material_of", piece), _placed[piece][0], _placed[piece][1],
+				(_props.call(&"size_of", piece) as Vector3).length() * 0.5)
+	add_child(field)
 
 
 # The kelp forests: plants standing in clumps with clear lanes between, each reaching for the

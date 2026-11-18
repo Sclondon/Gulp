@@ -78,6 +78,24 @@ const ALL := {
 	"flying": {"script": "flying_fish/flying_fish", "zones": ["open"], "band": [0.85, 1.0], "count": 6, "size": [0.24, 0.32], "social": "school", "group": [3, 3], "leaps": true},
 	"bonito": {"script": "pacific_bonito/pacific_bonito", "zones": ["open", "kelp"], "band": [0.5, 0.95], "count": 4, "size": [0.6, 0.85], "social": "school", "group": [4, 4], "habit": "pack"},
 	"mahi": {"script": "mahi_mahi/mahi_mahi", "zones": ["open"], "band": [0.8, 0.98], "count": 3, "size": [1.0, 1.4], "social": "school", "group": [3, 3], "habit": "pack", "leaps": true},
+	# (the user, 2026-11-18: "there should also be a submarine", "and remoras". The submarine cruises as a
+	# harmless giant does; the remoras only swim so far: riding a shark, ray or whale, `Remora.riding_transform`,
+	# is not written.)
+	"submarine": {"script": "submarine/submarine", "curls": false, "how": "giant", "zones": ["trench", "open"], "band": [0.3, 0.7], "count": 1, "size": [9.0, 9.0]},
+	"remora": {"script": "remora/remora", "zones": ["open", "reef", "kelp"], "band": [0.3, 0.9], "count": 4, "size": [0.45, 0.7]},
+	# (the user, 2026-11-18: "ther eshould be mermaids, kelpies/ hippocampus, old ones fish spawn creatues of the
+	# deep": places, numbers and habits are Claude's and their builder's picks; the kelpie is the hippocampus's
+	# dark weed-draped look, a stalker in the river as in the folklore.)
+	"mermaid": {"script": "mermaid/mermaid", "zones": ["pirate", "ruins"], "band": [0.15, 0.8], "count": 3, "size": [1.7, 2.0], "hunts": false, "habit": "shy", "social": "pair", "group": [2, 2]},
+	"hippocampus": {"script": "hippocampus/hippocampus", "zones": ["kelp", "open"], "band": [0.3, 0.9], "count": 4, "size": [3.0, 3.6], "hunts": false, "habit": "graze", "social": "shoal", "group": [3, 4]},
+	"kelpie": {"script": "hippocampus/hippocampus", "set": {"kelpie": true}, "zones": ["river"], "band": [0.15, 0.8], "count": 2, "size": [2.6, 3.2], "habit": "stalk"},
+	"deep_spawn": {"script": "deep_spawn/deep_spawn", "set": {"glow": 1.0}, "zones": ["trench", "ruins"], "band": [0.05, 0.6], "count": 6, "size": [1.3, 1.7], "social": "school", "group": [3, 3], "habit": "pack"},
+	# (the user, 2026-11-18: "skeleton ghost whales and other ghost fish", "and spinosaurus", and a furry
+	# crocodile-headed river beast of our own design. The ghost whale drifts in the canyon and at Atlantis; its
+	# `fade` by night, the ghost fish as a school, the spinosaurus's `wade` and the beast's `stand` are not driven yet.)
+	"ghost_whale": {"script": "ghost_whale/ghost_whale", "how": "giant", "zones": ["trench", "ruins"], "band": [0.3, 0.9], "count": 1, "size": [13.0, 14.0], "habit": "drift"},
+	"spinosaurus": {"script": "spinosaurus/spinosaurus", "zones": ["river", "beach"], "band": [0.4, 0.95], "count": 1, "size": [12.0, 14.0], "habit": "stalk"},
+	"river_beast": {"script": "river_beast/river_beast", "breathes": true, "zones": ["river"], "band": [0.75, 1.0], "count": 1, "size": [3.6, 3.9], "habit": "ambush"},
 	"wahoo": {"script": "wahoo/wahoo", "zones": ["open"], "band": [0.6, 0.95], "count": 2, "size": [1.6, 2.0]},
 	"bigeye": {"script": "bigeye_tuna/bigeye_tuna", "zones": ["open"], "band": [0.3, 0.7], "count": 2, "size": [1.6, 2.0], "social": "school", "group": [3, 5], "mix": "tunas", "habit": "pack"},
 	"bluefin": {"script": "bluefin_tuna/bluefin_tuna", "zones": ["open"], "band": [0.4, 0.9], "count": 2, "size": [2.2, 2.8], "social": "school", "group": [2, 2], "habit": "pack"},

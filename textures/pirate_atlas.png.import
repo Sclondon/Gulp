@@ -3,20 +3,19 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dpy3peovkq7sq"
-path.s3tc="res://.godot/imported/pirate_atlas.png-d5d24321be9cffb50b6a2c6cc88b6583.s3tc.ctex"
+path="res://.godot/imported/pirate_atlas.png-d5d24321be9cffb50b6a2c6cc88b6583.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
 source_file="res://textures/pirate_atlas.png"
-dest_files=["res://.godot/imported/pirate_atlas.png-d5d24321be9cffb50b6a2c6cc88b6583.s3tc.ctex"]
+dest_files=["res://.godot/imported/pirate_atlas.png-d5d24321be9cffb50b6a2c6cc88b6583.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=1
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

@@ -76,6 +76,9 @@ var _warm_first := 0
 var _warm_view: SubViewport
 var _warm_now: Node3D
 var _warm_wait := 0
+# The sea's other materials to be shown once behind the title: each [mesh, material, a MultiMesh
+# to copy the format of (or null)].
+var _warm_things: Array = []
 ## Paused from the panel's button (or P, Escape): the sea stands still.
 var paused := false
 var bot: Bot
@@ -119,6 +122,10 @@ var _grazed := 0.0
 # Where a run starts (x and z): by the kelp, or (from the title) under the boat.
 var _start := Sea.START
 var _near := ""
+# For tests/perf.gd: the places to measure (--perf=), and the animal to swim as (--perf-as=).
+var _perf := ""
+var _perf_as := ""
+var _perf_shots := ""
 
 
 func _ready() -> void:
@@ -165,8 +172,18 @@ func _ready() -> void:
 			calm = true
 		elif arg.begins_with("--out="):
 			_shot_out = arg.get_slice("=", 1)
+		elif arg.begins_with("--perf="):
+			_perf = arg.get_slice("=", 1)
+			calm = true
+			# (the sand as fine as a web build or a phone draws it, not a desktop's)
+			Sand.quality = 1
+			_titled = _perf.split(",").has("title")
+		elif arg.begins_with("--perf-shots="):
+			_perf_shots = arg.get_slice("=", 1)
+		elif arg.begins_with("--perf-as="):
+			_perf_as = arg.get_slice("=", 1)
 	# (a test's runs are not kept as the player's best)
-	_saves = not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0 or _role != "")
+	_saves = not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0 or _role != "" or _perf != "")
 	var container := SubViewportContainer.new()
 	container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	container.stretch = true
@@ -257,7 +274,7 @@ func _ready() -> void:
 	shop.dive.connect(_dive_again)
 	# The game opens on the boat, unless something is driving it (a test, a bot, a picture): then
 	# the boat lies hove-to by where the fish starts.
-	var opening := _titled or not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0 or _role != "" or _near != "" or _end_now)
+	var opening := _titled or not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0 or _role != "" or _near != "" or _end_now or _perf != "")
 	if not opening:
 		title = Title.new()
 		title.hove = true
@@ -267,6 +284,13 @@ func _ready() -> void:
 	restart()
 	if opening:
 		_open_title()
+	if _perf != "":
+		var perf: Node = (load("res://tests/perf.gd") as GDScript).new()
+		perf.set(&"main", self)
+		perf.set(&"places", _perf.split(","))
+		perf.set(&"as_kind", _perf_as)
+		perf.set(&"shots", _perf_shots)
+		add_child(perf)
 	if _checking or _touching:
 		var checks: Node = (load("res://tests/checks.gd") as GDScript).new()
 		checks.set(&"main", self)
@@ -494,7 +518,14 @@ func _begin_warm() -> void:
 		for zone: String in Species.of(kind).get("zones", []):
 			by_start = by_start or zone in near
 		(first if by_start else rest).append(kind)
-	_warming = first + rest
+	# (and, after the starting waters' kinds, every other material of the sea once: the wrecks,
+	# Atlantis, the reef's pieces, the plants, the docks... each a program a browser compiles when
+	# it is first drawn, which froze the game for a second as each set piece came into sight)
+	_warm_things = _materials_to_warm()
+	var things: Array[String] = []
+	for i in _warm_things.size():
+		things.append("#%d" % i)
+	_warming = first + things + rest
 	_warm_all = _warming.size()
 	_warm_first = first.size()
 	_warm_view = SubViewport.new()
@@ -522,6 +553,9 @@ func _warm() -> void:
 		print("GULP WARM the near kinds are ready at %.1f s" % _clock)
 	elif _warming.is_empty():
 		print("GULP WARM every kind is ready at %.1f s" % _clock)
+	if kind.begins_with("#"):
+		_warm_thing(_warm_things[int(kind.substr(1))])
+		return
 	var look := Species.make(kind)
 	if look == null:
 		return
@@ -537,6 +571,85 @@ func _warm() -> void:
 	_warm_wait = 2
 	life.mark_dressed(kind)
 
+
+
+# Every material drawn in the sea but the animals' (Species' kinds are warmed by kind), once each
+# by its shader and the way it is drawn (alone, or many in a MultiMesh of a format), with a mesh
+# it is drawn on: [mesh, material, MultiMesh or null].
+func _materials_to_warm() -> Array:
+	var seen := {}
+	var out := []
+	for node in _viewport.find_children("*", "GeometryInstance3D", true, false):
+		var up := node.get_parent()
+		var animal := false
+		while up and up != _viewport:
+			if up is Creature:
+				animal = true
+				break
+			up = up.get_parent()
+		if animal:
+			continue
+		var mesh: Mesh = null
+		var many: MultiMesh = null
+		if node is MeshInstance3D:
+			mesh = (node as MeshInstance3D).mesh
+		elif node is MultiMeshInstance3D and (node as MultiMeshInstance3D).multimesh:
+			many = (node as MultiMeshInstance3D).multimesh
+			mesh = many.mesh
+		elif node is CPUParticles3D:
+			mesh = (node as CPUParticles3D).mesh
+		if mesh == null:
+			continue
+		var geometry := node as GeometryInstance3D
+		for s in mesh.get_surface_count():
+			var material: Material = geometry.material_override
+			if material == null and node is MeshInstance3D:
+				material = (node as MeshInstance3D).get_active_material(s)
+			if material == null:
+				material = mesh.surface_get_material(s)
+			if material == null:
+				continue
+			var what: Object = (material as ShaderMaterial).shader if material is ShaderMaterial and (material as ShaderMaterial).shader else material
+			var key := "%d %s" % [what.get_instance_id(), "" if many == null else "%d%d%d" % [many.transform_format, int(many.use_colors), int(many.use_custom_data)]]
+			if seen.has(key):
+				continue
+			seen[key] = true
+			out.append([mesh, material, many])
+	return out
+
+
+# One of them drawn once in the little view.
+func _warm_thing(thing: Array) -> void:
+	var mesh: Mesh = thing[0]
+	var material: Material = thing[1]
+	var like: MultiMesh = thing[2]
+	_warm_now = Node3D.new()
+	var drawn: GeometryInstance3D
+	if like:
+		var many := MultiMesh.new()
+		many.transform_format = like.transform_format
+		many.use_colors = like.use_colors
+		many.use_custom_data = like.use_custom_data
+		many.mesh = mesh
+		many.instance_count = 1
+		many.set_instance_transform(0, Transform3D.IDENTITY)
+		if like.use_colors:
+			many.set_instance_color(0, Color.WHITE)
+		var holder := MultiMeshInstance3D.new()
+		holder.multimesh = many
+		drawn = holder
+	else:
+		var one := MeshInstance3D.new()
+		one.mesh = mesh
+		drawn = one
+	drawn.material_override = material
+	drawn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_warm_now.add_child(drawn)
+	var box := mesh.get_aabb()
+	_warm_now.scale = Vector3.ONE / maxf(box.size.length(), 0.05)
+	_viewport.add_child(_warm_now)
+	_warm_now.global_position = Vector3(0.0, -800.0, 0.0) - box.get_center() * _warm_now.scale.x
+	_warm_wait = 2
 
 # A frame of the title: the eye astern of the boat, or on its way down through the surface to
 # the fish. The fish waits; the sea goes on only once the eye is on its way.

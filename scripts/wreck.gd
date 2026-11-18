@@ -22,6 +22,8 @@ const ATLAS := {"WreckBow": "res://textures/wreck_atlas_bow.png", "WreckStern": 
 const PROPS := "res://scenery/sea_floor_props/sea_floor_props.gd"
 ## Beyond this the water hides it (m, to the nearest point of a half), as Scenery's plants.
 const SEEN := 60.0
+## Reef pieces nearer than this are drawn as their full models, further off as their light ones (m).
+const REEF_NEAR := 8.0
 ## How many reef pieces at a ReefSpot, and how far round it they spread (m).
 const CLUMP := Vector2i(9, 15)
 const SPREAD := 1.5
@@ -229,26 +231,16 @@ func _grow_reef() -> void:
 		# (a table coral or two on its shoulder)
 		for j in 2:
 			_put(props, placed, "table_coral", Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * _rng.randf_range(1.0, 1.8)), where * Vector3(_rng.randf_range(-0.8, 0.8), (props.call(&"size_of", piece) as Vector3).y * 0.8, _rng.randf_range(-0.8, 0.8))))
-	_reef = Node3D.new()
-	_reef.name = "Reef"
+	# (drawn full near the eye and as the kit's light models further off: LodField, tools/PERF.md)
+	var field := LodField.new()
+	field.name = "Reef"
+	field.near = REEF_NEAR
+	field.far = SEEN
+	_reef = field
 	add_child(_reef)
 	for piece: String in placed:
-		var wheres: Array = placed[piece][0]
-		var colours: Array = placed[piece][1]
-		var many := MultiMesh.new()
-		many.transform_format = MultiMesh.TRANSFORM_3D
-		many.use_colors = true
-		many.mesh = props.call(&"mesh_of", piece, false)
-		many.instance_count = wheres.size()
-		for i in wheres.size():
-			many.set_instance_transform(i, wheres[i])
-			many.set_instance_color(i, colours[i])
-		var drawn := MultiMeshInstance3D.new()
-		drawn.name = piece
-		drawn.multimesh = many
-		drawn.material_override = props.call(&"material_of", piece)
-		drawn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		_reef.add_child(drawn)
+		field.add(piece, props.call(&"mesh_of", piece, false), props.call(&"mesh_of", piece, true), props.call(&"material_of", piece),
+				placed[piece][0], placed[piece][1], (props.call(&"size_of", piece) as Vector3).length() * 0.5)
 	if ResourceLoader.exists(WEED) and not weed_at.is_empty():
 		var bed: Node3D = (load(WEED) as GDScript).new()
 		bed.name = "Weed"
