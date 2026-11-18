@@ -54,6 +54,13 @@ uniform float root_dark = 0.0;
 //   print's hard cuts to soft painted shading: the light and shadow, the ink between clumps and the flicks ramp
 //   smoothly instead of stepping, so a big clump reads lighter on top and shaded underneath, as a painted beard does.
 uniform float soft = 0.0;
+// - locks (added 2026-11-18 for the captain's one-shell beard; 0 keeps every other hair as it was): on a smooth shell
+//   the locks are only painted light: broad soft bands of lighter and darker running along the hair (UV.x), lock_width
+//   across and changing slowly over lock_length along (metres with UV2), as a painter's broad strokes suggest locks on
+//   a beard drawn as one mass. With it on, the per-strand tone steps are kept off (they read as fine scratches).
+uniform float locks = 0.0;
+uniform float lock_width = 0.018;
+uniform float lock_length = 0.09;
 
 varying float strand_phase;
 varying float strand;
@@ -77,7 +84,18 @@ void fragment() {
 	float run = metres > 0.5 ? UV2.x * 55.0 : UV.x * 6.0;
 	float dash = step(0.45, ink_noise(vec2(floor(strand_phase) * 3.1, run + strand * 5.0)));
 	float lines = mix(1.0, hatch(strand_phase, lit_lines * (0.6 + strand)), dash);
-	vec3 colour = mix(albedo, pale, lighten) * (0.92 + 0.16 * strand);
+	// (with the painted locks and no strand lines asked for, none at all: hatch() at no cover still draws a hairline)
+	lines = locks > 0.0 && lit_lines <= 0.0 ? 1.0 : lines;
+	vec3 colour = mix(albedo, pale, lighten) * (0.92 + 0.16 * mix(strand, 0.5, step(0.001, locks)));
+	if (locks > 0.0) {
+		vec2 at = metres > 0.5 ? vec2(UV2.y / lock_width, UV2.x / lock_length) : vec2(UV.y * strands_round * 0.5, UV.x * 1.5);
+		// (each lock's middle wanders a little across as it runs down, so the bands are strokes, not stripes)
+		at.x += 0.6 * ink_noise(vec2(at.x * 0.5, at.y * 1.3) + 11.0);
+		float broad = ink_noise(at);
+		float finer = ink_noise(at * vec2(2.2, 1.6) + vec2(3.7, 8.1));
+		float tone = broad * 0.68 + finer * 0.32;
+		colour *= 1.0 + locks * (tone - 0.5) * 1.8;
+	}
 	colour *= mix(1.0, COLOR.r, layer_shade) * mix(1.0 - root_dark, 1.0, smoothstep(0.0, 0.75, along));
 	colour = mix(colour, ink, (1.0 - lines) * 0.75);
 	// (the root is inked: a jagged dark tongue up each strand)
@@ -100,7 +118,7 @@ void light() {
 	float strength = mix(reach, 1.0, flatness);
 	// In the shadow the strand lines close up.
 	float deep = clamp(-amount * 1.5 + 0.35, 0.0, 1.0);
-	float lines = hatch(strand_phase + 0.5, deep * shadow_lines);
+	float lines = locks > 0.0 && shadow_lines <= 0.0 ? 1.0 : hatch(strand_phase + 0.5, deep * shadow_lines);
 	float fill = LIGHT_IS_DIRECTIONAL ? shadow_fill * lines : 0.0;
 	DIFFUSE_LIGHT += (lit + (1.0 - lit) * fill) * strength * LIGHT_COLOR / PI;
 	// Kajiya-Kay across the lock, each strand tipped its own way, cut hard into flicks.

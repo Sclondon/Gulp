@@ -11,8 +11,12 @@ const HAIR_SHADER := "res://shaders/ink/hair_ink.gdshader"
 ## Hair colours by mesh name: albedo, pale, ink, flicks, and the beard's look (see _hair).
 const HAIR := {
 	# (white-grey as the head sheet paints it; the ink a soft grey shadow between the clumps, not black)
-	"captain_beard": [Color(0.64, 0.62, 0.57), Color(0.72, 0.7, 0.65), Color(0.36, 0.34, 0.31), Color(0.82, 0.8, 0.75)],
-	"captain_headhair": [Color(0.5, 0.5, 0.49), Color(0.6, 0.6, 0.59), Color(0.28, 0.28, 0.28), Color(0.74, 0.74, 0.72)],
+	# (a warm grey, as the sheets paint it: lit, it came out nearly white)
+	"captain_beard": [Color(0.57, 0.55, 0.5), Color(0.66, 0.64, 0.59), Color(0.34, 0.32, 0.29), Color(0.8, 0.78, 0.73)],
+	# (the moustache: the beard's colours, its ends broken into strands)
+	"captain_tips_beard": [Color(0.6, 0.58, 0.53), Color(0.68, 0.66, 0.61), Color(0.34, 0.32, 0.29), Color(0.8, 0.78, 0.73)],
+	# (the same grey as the beard: the sideburns run into it)
+	"captain_headhair": [Color(0.57, 0.55, 0.5), Color(0.66, 0.64, 0.59), Color(0.34, 0.32, 0.29), Color(0.8, 0.78, 0.73)],
 	"captain_chesthair": [Color(0.56, 0.54, 0.5), Color(0.64, 0.62, 0.58), Color(0.38, 0.36, 0.33), Color(0.78, 0.77, 0.74)],
 }
 
@@ -75,19 +79,33 @@ func _hair(key: String) -> ShaderMaterial:
 	m.set_shader_parameter(&"ink", c[2])
 	m.set_shader_parameter(&"flicks", c[3])
 	m.set_shader_parameter(&"metres", 1.0)
-	# (big soft clumps: few broad strand lines, faint; soft grey between the clumps; no ragged tips)
-	m.set_shader_parameter(&"strand_gap", 0.009)
-	m.set_shader_parameter(&"lit_lines", 0.012)
-	m.set_shader_parameter(&"shadow_lines", 0.08)
+	# (one smooth shell: the locks are the shader's broad soft bands along the hair; faint strand lines; soft grey
+	# where the shell turns away)
+	m.set_shader_parameter(&"locks", 0.7)
+	m.set_shader_parameter(&"lock_width", 0.016)
+	m.set_shader_parameter(&"lock_length", 0.08)
+	m.set_shader_parameter(&"strand_gap", 0.006)
+	m.set_shader_parameter(&"lit_lines", 0.0)
+	m.set_shader_parameter(&"shadow_lines", 0.0)
 	m.set_shader_parameter(&"wrap", 0.35)
 	m.set_shader_parameter(&"shadow_fill", 0.55)
-	m.set_shader_parameter(&"root_ink", 0.12)
+	m.set_shader_parameter(&"root_ink", 0.04)
 	m.set_shader_parameter(&"gap_ink", 0.3)
 	m.set_shader_parameter(&"flick_gain", 0.1)
 	m.set_shader_parameter(&"flick_gloss", 14.0)
 	m.set_shader_parameter(&"lighten", 0.0)
 	m.set_shader_parameter(&"print_grain", 0.03)
-	m.set_shader_parameter(&"tip_ragged", 0.0)
+	# (ragged ends only where an end can open without showing into a shell: the tips and moustache, and the hair under
+	# the cap, whose skin under it is painted grey)
+	# (not on the hair under the cap: its ends opened onto the darker grey painted under it, a row of dark teeth)
+	m.set_shader_parameter(&"tip_ragged", 0.35 if key == "captain_tips_beard" else 0.0)
+	m.set_shader_parameter(&"strand_cover", 0.75)
+	if key == "captain_headhair":
+		# (short, combed close: fainter, wider locks, and only a short fringe of strand ends at the nape)
+		m.set_shader_parameter(&"strand_gap", 0.008)
+		m.set_shader_parameter(&"locks", 0.55)
+		m.set_shader_parameter(&"lock_width", 0.011)
+		m.set_shader_parameter(&"lock_length", 0.035)
 	m.set_shader_parameter(&"layer_shade", 1.0)
 	m.set_shader_parameter(&"root_dark", 0.25)
 	m.set_shader_parameter(&"soft", 1.0)

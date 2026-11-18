@@ -1916,7 +1916,7 @@ def is_boxers(c):
     return white | red
 
 
-def paint(M, face_uv, picture, sh, views, tris_for_depth, clean_skin=False, extra_reject=None):
+def paint(M, face_uv, picture, sh, views, tris_for_depth, clean_skin=False, extra_reject=None, extend_up=None):
     """views: list of (view name, picture array, mask, mirrored) to paint from."""
     P = np.array(M.P)
     tris = M.tris()
@@ -1955,6 +1955,32 @@ def paint(M, face_uv, picture, sh, views, tris_for_depth, clean_skin=False, extr
         ink = ink | np.roll(ink, 1, 0) | np.roll(ink, -1, 0) | np.roll(ink, 1, 1) | np.roll(ink, -1, 1)
         good &= ~ink & ~is_boxers(rgb)
         print("CAPTAIN paint %s: %d texels of ink painted out" % (picture, int(ink.sum())))
+    if extend_up is not None:
+        # The cloth above the highest texel painted in each column (the garment reaches higher than the sheet's drawn
+        # waistband) takes that column's waistband colour, instead of the pull-push fill's grey average of the whole
+        # garment, which showed as a grey-brown strip over the waistband.
+        z = pos[..., 2]
+        n = 0
+        cols, wants, colours = [], [], []
+        for c in range(size):
+            ok = good[:, c] & hit[:, c]
+            if not ok.any():
+                continue
+            zmax = z[ok, c].max()
+            if zmax < extend_up:
+                continue
+            near = ok & (z[:, c] >= zmax - 0.008)
+            cols.append(c)
+            wants.append(hit[:, c] & ~good[:, c] & (z[:, c] > zmax - 0.002))
+            colours.append(rgb[near, c].mean(0))
+        # (smoothed across the columns, so the waistband's ribs are not drawn up the strip as streaks)
+        colours = np.array(colours)
+        for k, (c, want) in enumerate(zip(cols, wants)):
+            near_k = [i for i in range(max(0, k - 12), min(len(cols), k + 13)) if abs(cols[i] - c) <= 12]
+            rgb[want, c] = colours[near_k].mean(0)
+            good[want, c] = True
+            n += int(want.sum())
+        print("CAPTAIN paint %s: %d texels above the waistband given its colour" % (picture, n))
     rgb = fill_out(rgb, good, 200)
     # a soft pass where texels were filled, so filled patches carry no streaks
     soft = blur(rgb, 3)
@@ -2055,6 +2081,37 @@ class Locks:
         for k in range(sides):
             self.F.append([c, rings[0] + k + 1, rings[0] + k])
         self.count += 1
+
+    def grid(self, G, A, A2, X, X2, shade):
+        """A smooth shell as one grid of points G[i][j] (i along the hair, root to tip and on round the fold, j
+        across), quads between them; A, A2: UV.x and UV2.x (along, 0..1 and metres) per point; X, X2: UV.y and UV2.y
+        (across) per column; shade: the vertex colour per point. Gives the first face's index (for orient)."""
+        n, m = len(G), len(G[0])
+        base = len(self.P)
+        f0 = len(self.F)
+        for i in range(n):
+            for j in range(m):
+                self.P.append(np.asarray(G[i][j], float))
+                self.UV.append((A[i][j], X[j]))
+                self.UV2.append((A2[i][j], X2[j]))
+                self.C.append(shade[i][j])
+        for i in range(n - 1):
+            for j in range(m - 1):
+                a = base + i * m + j
+                self.F.append([a, a + 1, a + m + 1, a + m])
+        self.count += 1
+        return f0
+
+    def orient(self, f0, probe, outward):
+        """Turns every face from f0 on if the face `probe` (an index from f0) does not face `outward`."""
+        f = self.F[f0 + probe]
+        p = [self.P[k] for k in f]
+        nrm = np.cross(p[1] - p[0], p[2] - p[0])
+        if np.dot(nrm, outward) < 0:
+            for k in range(f0, len(self.F)):
+                self.F[k] = self.F[k][::-1]
+            return True
+        return False
 
     def tris(self):
         return sum(len(f) - 2 for f in self.F)
@@ -2163,7 +2220,8 @@ def build_hair(M, sh, rng):
     # the sideburns from the temples.
     def root_row(phi):
         a = abs(math.degrees(phi))
-        return float(np.interp(a, [0, 18, 40, 62, 80, 98], [655, 640, 610, 560, 470, 452]))
+        # (high up the cheeks and the whole sideburn, so none of the sheet's beard painted on his face is left showing)
+        return float(np.interp(a, [0, 18, 30, 45, 60, 72, 84, 98], [655, 638, 612, 585, 545, 490, 458, 450]))
 
     bottom = 845
 
@@ -2220,150 +2278,234 @@ def build_hair(M, sh, rng):
             p[1] += (1 - f) * 0.02 * hang
         return p, d
 
-    # The beard as CLUMPS (stage one's thousand thin locks read as scratches): a few dozen big, soft, tapered locks,
-    # each a closed lens-shaped tube (`Locks.clump`), laid in three layers from the skin out, the outer layer making the
-    # silhouette the head sheet draws, the under layers darker; their tips converge to the beard's rounded bottom and
-    # the front ones curl a little forward (the wedge in profile). As stylised game beards are built: big clump shapes
-    # varied in width, length and flow, overlapped, the shader giving them their strand sheen.
-    def beard_clump(phi0, f, shade, w0, length=1.0, curl=0.0):
-        r0 = root_row(phi0) + rng.uniform(-6, 6)
-        a = abs(math.degrees(phi0))
-        end = float(np.interp(a, [0, 25, 50, 75, 100], [bottom, 838, 805, 745, 640]))
-        end = r0 + (end - r0) * length
-        n = 7
-        path, outs = [], []
-        for i in range(n):
-            t = i / (n - 1)
-            row = r0 + (end - r0) * t
-            # the tips converge toward the middle of the beard's bottom
-            phi = phi0 * (1.0 - 0.5 * t ** 1.6)
-            ff = f * (0.35 + 0.65 * min(1.0, t * 2.2))
-            q, d = beard_point(row, phi, ff)
-            if q is None:
-                break
-            if i == n - 1:
-                q = q + np.array((0.0, -curl, 0.004))
-            path.append(q)
-            outs.append(d * 0.85 + np.array((0.0, 0.0, -0.15)) * t)
-        if len(path) < 4:
-            return
-        m = len(path)
-        widths = [w0 * (0.72 + 0.45 * math.sin(math.pi * min(i / (m - 1) * 1.5, 1.0))) * (1.0 - 0.88 * (i / (m - 1)) ** 2.4)
-                  for i in range(m)]
-        widths[-1] = 0.0018
-        B.lock(path, outs, widths, thick=0.5, shade=shade, under=0.45, sides=6)
-
-    # three layers, outermost last (lightest); angles jittered so no two layers line up
-    for f, shade, count, w0 in ((0.45, 0.5, 10, 0.03), (0.72, 0.74, 15, 0.026), (0.92, 1.0, 21, 0.022)):
-        for i in range(count):
-            phi = math.radians(-98 + 196 * (i + 0.5) / count + rng.uniform(-4, 4))
-            front = math.cos(phi) ** 2
-            B_w = w0 * rng.uniform(0.85, 1.25)
-            beard_clump(phi, f, shade * rng.uniform(0.93, 1.0), B_w, length=rng.uniform(0.9, 1.04),
-                        curl=0.012 * front * f)
-    # The moustache: two big drooping clumps from under the nose, out over the mouth's corners and down into the
-    # beard, with a smaller one above each; lighter than the beard.
-    nose_row, mouth_row = 598.0, 640.0
-    for s in (1, -1):
-        for j, (w0, reach, drop, lift) in enumerate(((0.019, 1.0, 1.0, 0.0), (0.013, 0.75, 0.7, 0.004))):
-            pts, outs = [], []
-            for i, t in enumerate(np.linspace(0, 1, 6)):
-                row = nose_row + 4 + (mouth_row + 55 * drop - nose_row - 4) * (t ** 1.35)
-                phi = s * math.radians(4 + 40 * reach * t ** 0.8)
-                q, d = beard_point(row, phi, 1.0)
-                if q is None:
-                    break
-                pts.append(q + d * (0.008 + lift + 0.006 * math.sin(math.pi * t)))
-                outs.append(d * 0.7 + np.array((0, 0, 0.7)))
-            if len(pts) >= 4:
-                m = len(pts)
-                widths = [w0 * (0.85 + 0.35 * math.sin(math.pi * min(i / (m - 1) * 1.6, 1.0))) * (1.0 - 0.88 * (i / (m - 1)) ** 2.2)
-                          for i in range(m)]
-                widths[-1] = 0.0018
-                B.lock(pts, outs, widths, thick=0.6, shade=1.0 if j == 0 else 0.92, under=0.5, sides=6)
-    out["captain_beard"] = B
-    print("CAPTAIN hair: beard and moustache %d clumps, %d triangles" % (B.count, B.tris()))
-
-    # The grey hair under his cap: short clumps close to the skull from under the band, longest at the back (to the
-    # nape's top, not a curtain), short over the ears with a tuft hanging over each ear's top.
-    Hh = Locks()
-    band_row = 420.0
+    # The beard as ONE SMOOTH SHELL (the fourth way; clumps, strands and cards all read as shingles from the side and
+    # below). A grid of columns round the face (PHI: from the right sideburn round the chin to the left one) by points
+    # down each column: the root just inside the skin on the cheek or jaw, down the outline the head sheet draws (the
+    # front view's width, the side view's forward wedge) to the beard's rounded bottom, round the fold there, and back up
+    # its underside to the throat, where it goes into the neck. The hair is the shader's: UV.x along the growth (0 at
+    # the roots, 1 at the tips, back to 0 at the throat's roots underneath), UV.y across; UV2 the same in metres.
+    BEARD_PHI = 92.0              # degrees round from the front to each sideburn's back edge
+    BEARD_COLS = 15
+    BEARD_OUT = 9                 # points down the outside
+    BEARD_UNDER = 4               # points back up the underside
 
     def end_row(phi):
         a = abs(math.degrees(phi))
-        return float(np.interp(a, [78, 95, 110, 130, 155, 180], [462, 468, 500, 540, 578, 590]))
+        # (a rounded bottom, as the front view draws it: no corners at the jaw)
+        # (and at the sides down the jaw to the neck, the back edge falling straight from the ear lobe as the side view
+        # draws it)
+        return float(np.interp(a, [0, 20, 40, 55, 70, 82, 92], [bottom, 842, 828, 808, 780, 752, 715]))
 
-    for f, shade, count in ((0.4, 0.7, 11), (1.0, 0.98, 14)):
-        for i in range(count):
-            phi = math.radians(80 + 200 * (i + 0.5) / count + rng.uniform(-4, 4))
-            if phi > math.pi:
-                phi -= 2 * math.pi
-            r1 = end_row(phi) + rng.uniform(-8, 8)
-            rows = np.linspace(band_row - 6, r1, 5)
-            path, outs = [], []
-            for k, row in enumerate(rows):
-                z = float(head_z(row))
-                c = head_centre(M, z)
-                d = np.array((math.sin(phi), -math.cos(phi), 0.0))
-                hit = skin_hit(c, d, 0.3)
-                if hit is None:
-                    break
-                t = k / 4.0
-                lift = 0.002 + 0.003 * f * math.sin(math.pi * min(t * 1.3, 1.0))
-                path.append(hit + d * lift)
-                outs.append(d)
-            if len(path) >= 3:
-                n = len(path)
-                w0 = 0.03 * rng.uniform(0.9, 1.2)
-                widths = [w0 * (1.0 - 0.85 * (k / (n - 1)) ** 2) for k in range(n)]
-                widths[-1] = 0.002
-                Hh.lock(path, outs, widths, thick=0.4, shade=shade, under=0.4, sides=6)
-    # tufts over the ears: from above and behind each ear, curling down over its top
+    cols_phi = [math.radians(BEARD_PHI) * (2.0 * j / (BEARD_COLS - 1) - 1.0) for j in range(BEARD_COLS)]
+    G, A, A2, SH = [], [], [], []
+    for j, phi in enumerate(cols_phi):
+        r0, r1 = root_row(phi), end_row(phi)
+        # (every other column a little longer round the bottom and lower sides: a soft scalloped edge, the locks'
+        # ends suggested in the silhouette itself, with no separate pieces to show as shards from below)
+        # (tried: every other column a little longer, a scalloped edge; it twisted the fold and opened a notch at the
+        # middle of the bottom from below, so the edge is left smooth)
+        col, shade = [], []
+        for i in range(BEARD_OUT):
+            t = i / (BEARD_OUT - 1)
+            row = r0 + (r1 - r0) * t ** 0.9
+            # (rising off the skin quickly from the root, so the beard's top edge on the cheek is soft, not a step)
+            # (and thinning to the skin at the sideburns' back edge, the grid's open side, so no cut edge shows there)
+            f = float(smooth01(0.0, 0.3, t)) * (1.0 - 0.8 * float(smooth01(68.0, 92.0, abs(math.degrees(phi))))) if i else 0.0
+            q, d = beard_point(row, phi, f)
+            # (never closer to the skin than 2.5 mm, where the sideburns are thin: closer, the skin showed through in
+            # a saw-tooth)
+            q = q - d * 0.004 if i == 0 else q + d * 0.0025 * float(smooth01(0.0, 0.15, t))
+            col.append(q)
+            shade.append(0.82 + 0.18 * float(smooth01(0.0, 0.35, t)))
+        # the fold: round under the bottom, between the outside's last point and the underside's first
+        q_out, d = beard_point(r1, phi, 1.0)
+        q_in, _ = beard_point(r1, phi, 0.0)
+        hang = float(smooth01(CHIN - 10, CHIN + 40, r1))
+        tip = (q_out * 0.6 + q_in * 0.4) + np.array((0.0, 0.0, -0.007 * hang))
+        col.append(tip)
+        shade.append(0.8)
+        # the underside, from the bottom back up to the throat (where the beard hangs below the chin), or back up
+        # under the skin to the root (on the cheeks, where it lies on him)
+        rb = r0 + (CHIN - r0) * hang
+        for k in range(BEARD_UNDER):
+            u = (k + 1) / BEARD_UNDER
+            row = r1 + (rb - r1) * u
+            q, d = beard_point(row, phi, 0.0)
+            inset = 0.004 * (1.0 - float(smooth01(CHIN - 5, CHIN + 25, row)))
+            if k == BEARD_UNDER - 1:
+                inset = 0.008
+            col.append(q - d * inset)
+            shade.append(0.5 + 0.12 * (1.0 - u))
+        G.append(col)
+        SH.append(shade)
+    # along: the outside's length 0..1 to the tip, the underside's back down to 0 at its roots; metres the same
+    for col in G:
+        seg = [float(np.linalg.norm(col[i + 1] - col[i])) for i in range(len(col) - 1)]
+        out_len = sum(seg[:BEARD_OUT])
+        under_len = max(sum(seg[BEARD_OUT:]), 1e-6)
+        a, a2, run = [0.0], [0.0], 0.0
+        for i, s_ in enumerate(seg):
+            run += s_
+            if i < BEARD_OUT:
+                a.append(run / out_len)
+                a2.append(run)
+            else:
+                left = out_len + under_len - run
+                a.append(left / under_len)
+                a2.append(left / under_len * out_len)
+        A.append(a)
+        A2.append(a2)
+    # (to grid order: along, then across)
+    T_ = lambda arr: [[arr[j][i] for j in range(len(arr))] for i in range(len(arr[0]))]  # noqa: E731
+    X = [j / (BEARD_COLS - 1) for j in range(BEARD_COLS)]
+    X2 = [phi * 0.1 for phi in cols_phi]
+    B = Locks()
+    f0 = B.grid(T_(G), T_(A), T_(A2), X, X2, T_(SH))
+    # (the face halfway down the middle column must face forward, -Y)
+    B.orient(f0, (BEARD_OUT // 2) * (BEARD_COLS - 1) + BEARD_COLS // 2, np.array((0.0, -1.0, 0.0)))
+    shell_tris = B.tris()
+
+    # The moustache: two smooth drooping lobes from under the nose, out over the mouth's corners and down into the
+    # beard, overlapping in the middle; each a closed tube, rounder on top, flatter underneath.
+    # (their own mesh with the tips below, captain_tips_beard, so the shader can break their ends into strands, which
+    # it cannot do on the shell without opening a hole into it)
+    Tp = Locks()
+    nose_row, mouth_row = 598.0, 640.0
     for s in (1, -1):
-        for j in range(3):
-            phi = s * math.radians(92 + 9 * j)
-            path, outs = [], []
-            for k, row in enumerate(np.linspace(band_row + 2, 478 + 10 * j, 4)):
-                z = float(head_z(row))
-                c = head_centre(M, z)
-                d = np.array((math.sin(phi), -math.cos(phi), 0.0))
-                hit = skin_hit(c, d, 0.3)
-                if hit is None:
-                    break
-                path.append(hit + d * (0.006 + 0.012 * k / 3.0) + np.array((0, -0.004 * k, 0)))
-                outs.append(d)
-            if len(path) >= 3:
-                widths = [0.016, 0.017, 0.011, 0.002][:len(path)]
-                Hh.lock(path, outs, widths, thick=0.45, shade=0.95, under=0.4, sides=6)
-    out["captain_headhair"] = Hh
-    print("CAPTAIN hair: under the cap %d clumps, %d triangles" % (Hh.count, Hh.tris()))
+        pts, outs = [], []
+        for t in np.linspace(0, 1, 7):
+            row = nose_row + 6 + (mouth_row + 36 - nose_row - 6) * (t ** 1.3)
+            phi = s * math.radians(-3 + 36 * t ** 0.85)
+            q, d = beard_point(row, phi, 1.0)
+            pts.append(q + d * (0.006 + 0.008 * math.sin(math.pi * min(t * 1.2, 1.0))))
+            outs.append(d * 0.7 + np.array((0, 0, 0.7)))
+        m = len(pts)
+        widths = [0.02 * (0.8 + 0.4 * math.sin(math.pi * min(i / (m - 1) * 1.5, 1.0))) * (1.0 - 0.8 * (i / (m - 1)) ** 2.0)
+                  for i in range(m)]
+        widths[-1] = 0.003
+        Tp.clump(pts, outs, widths, 0.6, 1.0, 0.45, 8)
+    moustache_tris = Tp.tris()
 
-    # Chest hair (Claude's pick): the sheet's painted bush stays on the skin (it is the broad soft grey mat the sheet
-    # draws), and a few dozen broad, flat, soft clumps lie over the thickest of it, the middle of the chest and the
-    # trail down the belly, so it has relief; grey as painted, never black.
-    C = Locks()
-    for i in range(46):
-        if i < 34:
-            z = rng.uniform(1.0, 1.2)
-            reach = 0.07 + 0.09 * (z - 1.0) / 0.2
-        else:
-            z = rng.uniform(0.84, 1.0)
-            reach = 0.02
-        x = rng.uniform(-reach, reach)
-        h = bvh_trunk.ray_cast(Vector((x, -0.6, z)), Vector((0.0, 1.0, 0.0)), 1.0)
-        if h[0] is None:
-            continue
-        hit = np.array(h[0])
-        n_ = face_normal_at(bvh_trunk, hit)
-        flow = np.array((0.5 * np.sign(x) * (1 if z > 1.08 else -0.4), 0.0, -1.0 if z < 1.14 else 0.3))
-        flow = flow - n_ * np.dot(flow, n_)
+    # Tips past the beard's edge (BEARD_TIPS of them, none now): tried in round four as a row of small tapered pieces
+    # rooted in the shell and running past its bottom edge. From the front they broke the outline well; from below
+    # they read as a crown of flat shards, which is the fault this round set out to remove. The edge is scalloped in the
+    # shell instead (above) and the moustache's ends are broken by the shader.
+    tips = 0
+    NT = BEARD_TIPS = 0
+    for k in range(NT):
+        phi = math.radians(-74 + 148 * (k + 0.5) / NT + rng.uniform(-3, 3))
+        r0, r1 = root_row(phi), end_row(phi)
+        p0, d = beard_point(r0 + (r1 - r0) * 0.8, phi, 0.6)
+        p1, _ = beard_point(r0 + (r1 - r0) * 0.93, phi, 1.0)
+        q_out, _ = beard_point(r1, phi, 1.0)
+        q_in, _ = beard_point(r1, phi, 0.0)
+        hang = float(smooth01(CHIN - 10, CHIN + 40, r1))
+        p2 = (q_out * 0.75 + q_in * 0.25) + np.array((0.0, 0.0, -0.006 * hang))
+        flow = p2 - p1
         flow /= max(np.linalg.norm(flow), 1e-9)
-        L = rng.uniform(0.035, 0.055)
-        pts = [hit - n_ * 0.001, hit + flow * L * 0.5 + n_ * 0.004, hit + flow * L + n_ * 0.002]
-        w = rng.uniform(0.011, 0.016)
-        C.lock(pts, [n_] * 3, [w, w * 0.85, 0.0015], thick=0.3, shade=rng.uniform(0.75, 1.0), under=0.3, sides=6)
-    out["captain_chesthair"] = C
-    print("CAPTAIN hair: chest %d tufts, %d triangles" % (C.count, C.tris()))
+        flow = flow + np.array((-0.3 * math.sin(phi), 0.0, -0.5))
+        flow /= np.linalg.norm(flow)
+        L = rng.uniform(0.014, 0.022) * (0.75 + 0.25 * math.cos(phi))
+        path = [p0, p1 + d * 0.0015, p2, p2 + flow * L * 0.5, p2 + flow * L]
+        w = rng.uniform(0.012, 0.015)
+        # (Locks.clump, wound outward; Locks.lock's flat cards are wound the other way)
+        Tp.clump(path, [d] * 5, [w * 0.7, w, w * 0.95, w * 0.6, 0.002], 0.4, 0.92, 0.5, 6)
+        tips += 1
+    out["captain_beard"] = B
+    out["captain_tips_beard"] = Tp
+
+    def shell_winding(L, f0, rows, cols, name):
+        """The shells are open (their edges lie inside him), so the winding test's volume means nothing for them: here
+        every face of the outside (rows above the fold) must face away from the head's middle at its height."""
+        good = 0
+        for i in range(rows):
+            for j in range(cols):
+                f = L.F[f0 + i * cols + j]
+                p = [L.P[k] for k in f]
+                nrm = np.cross(p[1] - p[0], p[2] - p[0])
+                c = np.mean(p, axis=0)
+                axis = head_centre(M, float(c[2]))
+                good += np.dot(nrm[:2], (c - axis)[:2]) > 0
+        print("CAPTAIN WINDING %s: %d of %d outside faces face outward" % (name, good, rows * cols))
+    shell_winding(B, f0, BEARD_OUT - 1, BEARD_COLS - 1, "beard shell")
+    print("CAPTAIN hair: beard shell %d triangles, moustache %d, %d tips %d; all %d"
+          % (shell_tris, moustache_tris, tips, Tp.tris() - moustache_tris, B.tris() + Tp.tris()))
+
+    # The grey hair under his cap: one thin smooth shell hugging the skull from temple to temple round the back, from
+    # inside the cap's band down to the nape's top (longest at the back, short over the ears), with a small swell over
+    # each ear; its lower edge folds back under into the skull, so it has a soft thick edge and no gap. UV.x from the
+    # band (0) down to the edge (1).
+    Hh = Locks()
+    band_row = 420.0
+    HAIR_COLS = 17
+    HAIR_DOWN = 6
+
+    def nape_row(phi):
+        a = abs(math.degrees(phi))
+        # (low enough to cover all the grey the head sheet's back view paints onto his skin there)
+        # (and behind the ears falling to the neck's top, as the back and side views draw it)
+        # (short over the ear, which stands clear of it: the ear runs from about 90 to 112 degrees round)
+        return float(np.interp(a, [82, 96, 110, 124, 140, 160, 180], [468, 474, 482, 545, 595, 620, 632]))
+
+    def on_skull(row, phi, lift):
+        z = float(head_z(row))
+        c = head_centre(M, z)
+        d = np.array((math.sin(phi), -math.cos(phi), 0.0))
+        hit = skin_hit(c, d, 0.3)
+        if hit is None:
+            t = ray_out(section(z), c[:2], d[:2]) or 0.08
+            hit = c + d * t
+        return hit + d * lift, d
+
+    G, A, A2, SH = [], [], [], []
+    # (from 82 degrees, where the beard's sideburns come up to meet it: further forward its front edge stood as a
+    # pale plate on the temple)
+    hcols = [math.radians(82.0 + (360.0 - 164.0) * j / (HAIR_COLS - 1)) for j in range(HAIR_COLS)]
+    for phi in hcols:
+        a = abs(math.degrees(math.atan2(math.sin(phi), math.cos(phi))))
+        r1 = nape_row(math.atan2(math.sin(phi), math.cos(phi)))
+        col, shade = [], []
+        for i in range(HAIR_DOWN):
+            t = i / (HAIR_DOWN - 1)
+            row = band_row - 8 + (r1 - band_row + 8) * t
+            # (inside the band at the top; then out to its thickness; over each ear a swell)
+            ear_ = float(smooth01(80, 92, a) * (1 - smooth01(108, 122, a))) * math.sin(math.pi * min(t * 1.25, 1.0))
+            # (thinning to almost nothing at its lower edge, so the edge melts into the grey painted under it rather
+            # than standing as a slab's cut)
+            # (and to the skin at its two ends by the temples, the grid's open sides, so no cut edge shows there)
+            ends_ = 0.2 + 0.8 * float(smooth01(82.0, 96.0, a))
+            lift = -0.003 if i == 0 else (0.0022 + 0.0065 * math.sin(math.pi * min(0.2 + 0.8 * t, 1.0)) ** 0.8) * ends_ + 0.007 * ear_
+            q, d = on_skull(row, phi, lift)
+            col.append(q)
+            shade.append((0.85 + 0.15 * float(smooth01(0.0, 0.4, t))) * (1.0 - 0.22 * float(smooth01(0.6, 1.0, t))))
+        q, d = on_skull(r1 + 3, phi, 0.0016)
+        col.append(q)
+        shade.append(0.7)
+        q, d = on_skull(r1 - 10, phi, -0.004)
+        col.append(q)
+        shade.append(0.6)
+        seg = [float(np.linalg.norm(col[i + 1] - col[i])) for i in range(len(col) - 1)]
+        tot = sum(seg[:HAIR_DOWN])
+        a_, a2, run = [0.0], [0.0], 0.0
+        for s_ in seg:
+            run += s_
+            a_.append(min(run / tot, 1.0))
+            a2.append(min(run, tot))
+        G.append(col)
+        SH.append(shade)
+        A.append(a_)
+        A2.append(a2)
+    X = [j / (HAIR_COLS - 1) for j in range(HAIR_COLS)]
+    X2 = [phi * 0.1 for phi in hcols]
+    f0 = Hh.grid(T_(G), T_(A), T_(A2), X, X2, T_(SH))
+    # (the face halfway down the middle column, at the back of his head, must face backward, +Y)
+    Hh.orient(f0, (HAIR_DOWN // 2) * (HAIR_COLS - 1) + HAIR_COLS // 2, np.array((0.0, 1.0, 0.0)))
+    out["captain_headhair"] = Hh
+    shell_winding(Hh, f0, HAIR_DOWN - 1, HAIR_COLS - 1, "hair under the cap")
+    print("CAPTAIN hair: under the cap one shell, %d triangles" % Hh.tris())
+
+    # Chest and body hair (Claude's pick, fourth round): no raised tufts (they read as a column of chips). The sheet's
+    # painted bush stays on the skin, in his skin picture, as the sheet paints it.
     return out
 
 
@@ -2736,11 +2878,24 @@ def build_boxers(M, T, sh, weights, under, armature):
     # (not his skin, where the sheet's outline of the boxers lets some through: filled from the cloth round it)
     # (and above the sheet's waistband, where the garment reaches higher than the drawn boxers, so its top edge does
     # not carry a strip of belly)
-    reject = lambda view, c, rows, cols: ((c[..., 0] - c[..., 2] > 0.08) & ~red(c)) | (rows < BOXERS[0] + 3)  # noqa: E731
+    # The sheet's waistband is not level: it dips about 35 rows at his middle, under the belly, so a flat cut at row
+    # BOXERS[0] let the belly's grey hair (which the skin test above does not catch: grey, not pink) be painted onto
+    # the cloth, and the fill carried it up the garment's top as a grey-brown strip. The cut is taken per column instead,
+    # at the first white cloth in that column of the sheet (three white pixels in a row).
+    pix = sh.body_pix
+    mx_, mn_ = pix.max(-1), pix.min(-1)
+    white = (mn_ > 0.66) & (mx_ - mn_ < 0.12)
+    band = white[BOXERS[0] - 30:BOXERS[0] + 90]
+    three = band[:-2] & band[1:-1] & band[2:]
+    top = np.where(three.any(0), three.argmax(0) + BOXERS[0] - 30, BOXERS[0]).astype(float)
+    top = np.maximum(top, BOXERS[0]) + 3
+    print("CAPTAIN boxers: the drawn waistband's top, front view, middle and 6 cm either side: rows %s"
+          % [int(top[int(MID["front"] + dx / S)]) for dx in (-0.06, 0.0, 0.06)])
+    reject = lambda view, c, rows, cols: ((c[..., 0] - c[..., 2] > 0.08) & ~red(c)) | (rows < top[cols])  # noqa: E731
     depth = [tuple(t) for t in Bx.tris()] + [t for t, f in zip(M.tris(), M.tri_fams()) if f in ("arm", "hand")]
     views = [("front", sh.body_pix, sh.body_mask, False), ("back", sh.body_pix, sh.body_mask, False),
              ("side", sh.body_pix, sh.body_mask, False), ("side", sh.body_pix, sh.body_mask, True)]
-    rgb, hit = paint(Bx, face_uv, "boxers", sh, views, depth, extra_reject=reject)
+    rgb, hit = paint(Bx, face_uv, "boxers", sh, views, depth, extra_reject=reject, extend_up=float(body_z(BOXERS[0] + 60)))
     path = os.path.join(TEX, "captain_boxers.png")
     save_rgb(path, rgb[::-1])
     w = [weights[v] for v in range(len(P))] + [weights[v] for v in used]
@@ -2825,8 +2980,14 @@ def paint_skin(M, face_uv, sh, tris_all, Pc, no_arms_c, reject):
     local = blur(fill_out(rgb, good & ~box & ~beard & skinlike, 16), 10)
     rb, lrb = rgb[..., 0] - rgb[..., 2], local[..., 0] - local[..., 2]
     ink = good & (rb < lrb - 0.06) & (rb < 0.05)
+    # (on the arms the tattoos' soft painted edges are only a little bluer than the skin and were left as faint traces;
+    # there, where no grey chest hair can be mistaken for ink, the margin is looser and the cut wider)
+    arms = np.isin(tex_fam, ("arm", "hand"))
+    ink |= good & arms & (rb < lrb - 0.03) & (rb < 0.075)
     for _ in range(2):
         ink = ink | np.roll(ink, 1, 0) | np.roll(ink, -1, 0) | np.roll(ink, 1, 1) | np.roll(ink, -1, 1)
+    for _ in range(2):
+        ink = ink | (arms & (np.roll(ink, 1, 0) | np.roll(ink, -1, 0) | np.roll(ink, 1, 1) | np.roll(ink, -1, 1)))
     good &= ~ink & ~box & ~beard
     print("CAPTAIN paint skin: %d texels of tattoo ink painted out, %d of boxers" % (int(ink.sum()), int(box.sum())))
     rgb = fill_out(rgb, good, 300)

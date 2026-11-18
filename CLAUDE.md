@@ -622,3 +622,10 @@ Claude's.
   `tools/build_<name>.py` over `tools/kit_build.py`; placed by rule in `scripts/biomes.gd`. See tools/BIOMES.md,
   "Phase two, second pass" for what is built, the budget table and what is next (pile sleeves, a big plumose
   anemone for the cold wrecks, the whale fall, Carmel's fish shed).
+- The captain's hair, fourth method (2026-11-18): many separate pieces (cards, strands, clumps) all read as shingles from
+  the side; what works better is ONE smooth shell per mass (beard, moustache lobes, a shell under the cap) with its UVs
+  laid along the growth, and the hair shader (`shaders/ink/hair_ink.gdshader`, new `locks`, `lock_width`,
+  `lock_length`, off at 0 so the boy's hair is unchanged) drawing broad soft light and dark bands along it. Chest hair
+  is the sheet's painting on the skin, no raised tufts. Still wrong: the shell over the ear reads as a slab from the
+  side, the beard is greyer and flatter than the painting, the skin is paler than the sheet. `models/captain.glb`
+  (tools/build_captain.py, tests/captain_view.gd) is NOT in the game yet; the title still uses `title_captain.glb`.
