@@ -486,3 +486,7 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   the boys are his biological grandkids, the captain and his buddy didnt truly didnt get together until later after
   captains wife dies". STORY.md is being rewritten to this; its first version (Teo the inventor, the baby from the
   liner, a loss in 1898) is superseded.
+- Faces (the user, 2026-11-18): "I like the face concept art but can the models look that good? remember twilight
+  princess"; told it could reach that standard by a painted face texture projected from the concept, and offered a
+  test on one head: "lets try it". The captain's rebuild includes a painted-face head beside the mask-with-slits head
+  (`concept_faces_trial.jpg`); the brothers wait on the user's verdict.
