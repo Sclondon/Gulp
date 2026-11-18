@@ -21,7 +21,8 @@ const K := 1.0
 const GRID := 2.0
 ## The world's bounds (world metres): the bake's.
 const WEST := -122.0
-const EAST := 122.0
+## (162 since 2026-11-18, was 122: 40 m more land east of Moss Landing, so that the river can run inland)
+const EAST := 162.0
 const NORTH := -160.0
 const SOUTH := 160.0
 ## Deeper than this (m), the floor is past the shelf's edge: `edge_at` finds where.
@@ -35,9 +36,10 @@ const BEACH_DEEP := 5.0
 
 const DATA := "res://data/monterey.bin"
 
-## Elkhorn Slough: a channel winding inland from Moss Landing, half this wide, this deep. Wider, and winding north
-## further inland, as the real slough does (the user, 2026-11-18: "The river should be wider and go further inland").
-const SLOUGH := [Vector2(98.0, -40.0), Vector2(105.0, -42.0), Vector2(110.0, -50.0), Vector2(107.0, -60.0), Vector2(111.0, -70.0), Vector2(108.0, -82.0), Vector2(110.0, -90.0)]
+## Elkhorn Slough: a channel winding inland from Moss Landing, half this wide, this deep. Wider, and running
+## straight east further inland (the user, 2026-11-18: "The river should be wider and go further inland", then
+## "The river shouldnt turn up just extend further east"; the map was widened east for it).
+const SLOUGH := [Vector2(98.0, -40.0), Vector2(108.0, -42.0), Vector2(118.0, -38.0), Vector2(128.0, -42.0), Vector2(138.0, -37.0), Vector2(148.0, -41.0), Vector2(154.0, -39.0)]
 const SLOUGH_HALF := 9.0
 const SLOUGH_DEEP := 5.0
 ## Harbours dredged level behind their walls: middle, radius, depth.

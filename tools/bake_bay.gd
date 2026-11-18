@@ -20,7 +20,7 @@ const SCALE := 180.0
 const CENTRE := Vector2(-122.0, 36.74)
 ## The world's bounds (game m): Bay.WEST..EAST, NORTH..SOUTH.
 const WEST := -122.0
-const EAST := 122.0
+const EAST := 162.0
 const NORTH := -160.0
 const SOUTH := 160.0
 const CELL := 1.0
