@@ -47,6 +47,9 @@ func become(of_kind: String) -> void:
 	giant = entry.get("how", "swim") == "giant"
 	hunts = bool(entry.get("hunts", true)) and not giant
 	set_kind(of_kind)
+	# (each koi, guppy or other patterned fish its own pattern)
+	if _look and &"pattern_seed" in _look:
+		_look.set(&"pattern_seed", _rng.randi() % 1000)
 
 
 ## Puts it somewhere, wandering.
