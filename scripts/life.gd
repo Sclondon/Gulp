@@ -95,6 +95,12 @@ func _ready() -> void:
 			rules.cruise_speed = 1.1
 			rules.bounds_size = Vector3(3.5, 3.0, 3.5)
 			_school(rules, Fish.school_mesh("anchovy"), 0.14, ["sand", "grass", "kelp"][i], 0.4, 0.85, 300 + i)
+	if Species.has("piranha"):
+		var pack := _sardine_rules()
+		pack.size = 1.0
+		pack.count = 22
+		pack.bounds_size = Vector3(3.0, 2.0, 3.0)
+		_school(pack, Fish.school_mesh("piranha"), 0.3, "river", 0.3, 0.8, 400)
 	if Species.has("mackerel"):
 		for i in 2:
 			var rules := _sardine_rules()
