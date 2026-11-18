@@ -4,8 +4,9 @@ Run from the game's root:
     blender --background --factory-startup --python creatures/giant_squid/tools/build_giant_squid.py
     blender --background --factory-startup --python creatures/giant_squid/tools/build_giant_squid.py -- <folder for pictures>
 
-Writes creatures/giant_squid/models/giant_squid.glb (the full model) and giant_squid_lo.glb (far off: no sucker
-cups, fewer rings), and the editable creatures/giant_squid/tools/giant_squid.blend (this folder has a .gdignore).
+Writes creatures/giant_squid/models/giant_squid.glb (the full model), giant_squid_lo.glb (far off: no sucker
+cups, fewer rings) and giant_squid_game.glb (the game model, at Twilight Princess weight: rings placed for the
+outline, the eyes and the clubs, its cups painted by the shader: UV2.y is 2 more than the phase on its strands), and the editable creatures/giant_squid/tools/giant_squid.blend (this folder has a .gdignore).
 Each is one static mesh: the shader (giant_squid.gdshaderinc) pulses the mantle, ripples the fins and lays every arm
 and tentacle along its rope. It prints a WINDING line: the check that nothing is inside out.
 
@@ -51,6 +52,12 @@ OUT = os.path.join(HERE, "..", "models")
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 PREVIEW = ARGS[0] if ARGS else ""
 TAU = math.tau
+
+
+def pick(q, full, game, low):
+    """A number for the model `q` being built: the full one, the game one or the low one."""
+    return {"full": full, "game": game, "low": low}[q]
+
 
 # Kept in step with giant_squid.gd and the shader.
 MANTLE_FROM = -0.22
@@ -152,9 +159,9 @@ def mantle_point(t, a, r_scale=1.0):
     return Vector((math.cos(a) * r, y, z))
 
 
-def mantle(m, low):
-    around = 20 if low else 44
-    rings_n = 20 if low else 52
+def mantle(m, q):
+    around = pick(q, 44, 24, 20)
+    rings_n = pick(q, 52, 18, 20)
     colour = (0.0, 0.0, 0.0, 1.0)
     rings = []
     # (the lip of the collar: turned in, so that the edge has a thickness)
@@ -180,9 +187,9 @@ def mantle(m, low):
         m.face((a[c], b[c], b[d], a[d]), BODY, "lip", (m.verts[a[c]] + m.verts[b[d]]) * 0.5 - Vector((0.0, 0.0, 1.0)))
 
 
-def fins(m, low):
-    along_n = 10 if low else 22
-    across_n = 3 if low else 7
+def fins(m, q):
+    along_n = pick(q, 22, 14, 10)
+    across_n = pick(q, 7, 4, 3)
     for side in (1.0, -1.0):
         rows = []
         for i in range(along_n + 1):
@@ -208,8 +215,8 @@ def fins(m, low):
                 m.face(quad, FINS, "fins", m.verts[rows[i][j]] + Vector((0.0, -10.0, 0.0)))
 
 
-def head(m, low):
-    around = 14 if low else 28
+def head(m, q):
+    around = pick(q, 28, 16, 14)
     colour = (0.4, 0.0, 0.0, 1.0)
     # (z, radius across, radius up and down): the neck inside the mantle, the swell at the eyes, the crown the arms leave
     shape = [(-0.42, 0.13, 0.13), (-0.3, 0.165, 0.16), (-0.18, 0.195, 0.185), (-0.06, 0.21, 0.195), (0.05, 0.21, 0.195),
@@ -225,7 +232,7 @@ def head(m, low):
             d = (c + 1) % around
             m.face((a[c], a[d], b[d], b[c]), BODY, "head", middle)
     # The siphon: a tapered tube under the head, from inside the mantle forward, its mouth open.
-    n = 8 if low else 14
+    n = pick(q, 14, 8, 8)
     rings = []
     for z, r, y in ((-0.5, 0.1, -0.13), (-0.3, 0.1, -0.17), (-0.12, 0.085, -0.2), (0.02, 0.066, -0.215), (0.1, 0.054, -0.222), (0.1, 0.04, -0.222), (0.0, 0.036, -0.215)):
         r *= THICK_HEAD
@@ -239,9 +246,9 @@ def head(m, low):
             m.face((a[c], a[d], b[d], b[c]), BODY, "siphon", middle if i < 4 else None)
 
 
-def eyes(m, low):
-    around = 10 if low else 20
-    rings_n = 6 if low else 12
+def eyes(m, q):
+    around = pick(q, 20, 20, 10)
+    rings_n = pick(q, 12, 6, 6)
     for side in (1.0, -1.0):
         centre = Vector((side * 0.14 * THICK_HEAD, 0.03, -0.02))
         rings = []
@@ -285,22 +292,38 @@ def strand_point(k, s, around_at, extra=0.0):
     return root + Vector((0.0, 0.0, s * long)) + (out * math.cos(a) * flat + side * math.sin(a)) * (r + extra)
 
 
-def strand_skin(m, k, low):
+def game_fat(k, s, at):
+    """How much fatter the game model's strands are built, to cover the full model's outline: an arm a little all
+    round (it has fewer sides); a club on its inner face, by the height of the cups it has no more."""
+    if k < ARMS:
+        return strand_radius(k, s) * 0.035
+    club = smooth(0.87, 0.91, s) * (1.0 - smooth(0.95, 1.0, s))
+    return 0.008 * club * max(-math.cos(at * TAU), 0.0)
+
+
+def strand_skin(m, k, q):
     root, long, phase, _out = strand(k)
     tentacle = k >= ARMS
-    steps = (40 if tentacle else 22) if low else (110 if tentacle else 56)
-    around = 6 if low else 10
+    steps = pick(q, 110, 30, 40) if tentacle else pick(q, 56, 14, 22)
+    around = pick(q, 10, 6 if tentacle else 8, 6)
     colour = (0.8, 1.0 if tentacle else 0.0, (k + 0.5) / 16.0, 1.0)
+    if q == "game":
+        # (the game model: UV2.y is 2 more than its phase, and the shader paints the sucker cups where the full
+        # model has them)
+        phase += 2.0
     rings = []
     # (it starts inside the head: these rings are all at s = 0, so they stay with it)
     for back, thin in ((0.16, 0.55), (0.08, 0.9)):
         rings.append([m.add(strand_point(k, 0.0, c / around, strand_radius(k, 0.0) * (thin - 1.0)) - Vector((0.0, 0.0, back)), (c / around, 1.0), (long, 1.0 - phase), colour) for c in range(around + 1)])
     for i in range(steps + 1):
         s = i / steps
-        if tentacle:
+        if tentacle and q != "game":
             # (more rings in the club)
             s = s * 0.8 if s < 0.75 else 0.6 + (s - 0.75) * 1.6
-        rings.append([m.add(strand_point(k, s, c / around), (c / around, 1.0 - s), (long, 1.0 - phase), colour) for c in range(around + 1)])
+        elif tentacle:
+            # (the game model: two thirds of its rings along the stalk, a third in the club)
+            s = s * 1.3 if s < 0.66 else 0.858 + (s - 0.66) / 0.34 * 0.142
+        rings.append([m.add(strand_point(k, s, c / around, game_fat(k, s, c / around) if q == "game" else 0.0), (c / around, 1.0 - s), (long, 1.0 - phase), colour) for c in range(around + 1)])
     for a, b in zip(rings, rings[1:]):
         middle = (sum((m.verts[i] for i in a[:around]), Vector()) + sum((m.verts[i] for i in b[:around]), Vector())) / (2 * around)
         for c in range(around):
@@ -361,15 +384,16 @@ def suckers(m):
             sucker(m, k, 0.5 + 0.035 * i, 0.5 + (0.05 if i % 2 else -0.05), 0.005)
 
 
-def make(name, low):
+def make(name, q):
+    """The model `q`: "full", "game" or "low"."""
     m = Mesh()
-    mantle(m, low)
-    fins(m, low)
-    head(m, low)
-    eyes(m, low)
+    mantle(m, q)
+    fins(m, q)
+    head(m, q)
+    eyes(m, q)
     for k in range(ARMS + TENTACLES):
-        strand_skin(m, k, low)
-    if not low:
+        strand_skin(m, k, q)
+    if q == "full":
         suckers(m)
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([to_b(p) for p in m.verts], [], m.faces)
@@ -439,7 +463,7 @@ def render(folder, made):
              ("below", (0, 0.001, -1), body, 5.0), ("front", (0, 1, 0.0), (0, 0, 0), 1.4), ("back", (0, -1, 0.0), (0, 0, 0), 1.4),
              ("head", (0.7, -0.5, 0.35), (0, -0.1, 0), 1.6), ("crown", (0.5, -0.8, -0.3), (0, -0.5, 0), 1.3),
              ("club", (0.6, 0.0, -0.8), (0.05, -7.2, -0.03), 1.3), ("whole", (1, 0, 0.3), (0, -2.8, 0), 11.5), ("fins", (0.3, 0.5, 0.8), (0, 1.9, 0), 1.6)]
-    for low, obj in ((False, made[0]), (True, made[1])):
+    for low, obj in ((False, made[0]), (True, made[1]), ("game", made[2])):
         for other in made:
             other.hide_render = other is not obj
         for view, direction, target, frame in views:
@@ -449,24 +473,28 @@ def render(folder, made):
             camera.data.ortho_scale = frame
             camera.location = Vector(target) + offset
             camera.rotation_euler = (-offset).to_track_quat("-Z", "X" if view in ("above", "below") else "Y").to_euler()
-            scene.render.filepath = os.path.join(folder, "%s%s.png" % ("lo_" if low else "", view))
+            scene.render.filepath = os.path.join(folder, "%s%s.png" % ("game_" if low == "game" else "lo_" if low else "", view))
             bpy.ops.render.render(write_still=True)
 
 
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.preferences.filepaths.save_version = 0
-    full = make("giant_squid", False)
-    low = make("giant_squid_lo", True)
+    full = make("giant_squid", "full")
+    low = make("giant_squid_lo", "low")
+    game = make("giant_squid_game", "game")
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, "giant_squid.glb"))
     export_one(low, os.path.join(OUT, "giant_squid_lo.glb"))
+    export_one(game, os.path.join(OUT, "giant_squid_game.glb"))
     low.location.x = 2.0
+    game.location.x = -2.0
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "giant_squid.blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low])
+        render(PREVIEW, [full, low, game])
 
 
 if __name__ == "__main__":

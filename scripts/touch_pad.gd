@@ -1,62 +1,84 @@
 class_name TouchPad
 extends Control
-## The on-screen controls, as the brass fittings of an old submarine (the user, 2026-11-18: "the
-## contols UI should be old timey submarine themed, and there needs to be a lever to control
-## speed around the boost button instead of just swimming same speed all the time"):
-##
-## - The helm (bottom left): a riveted brass plate with a ball-topped stick that steers.
-## - The burst (bottom right): a round brass plunger, held for a burst of speed, with a pressure
-##   gauge round it showing how much burst is left.
-## - The speed lever: an engine-order arc round the burst button, from dead slow (at its left
-##   end) to full ahead (at its top), with a brass handle that stays where it is put.
-##
-## They are pictures (textures/controls/*.png), rendered from brass models built in Blender by
-## tools/build_controls.py, and drawn see-through (`SEE`) so the sea shows behind them (the user:
-## "The controls should still be see through", "can you generate images for the controls ? Rather
-## than shapes"). Only what changes is drawn here: the gauge's level and the lit orders.
-##
-## They sit in a panel across the bottom of the screen (the user, 2026-11-18: "There should be a
+## The on-screen controls: a rusted mad-science console across the bottom of the screen, in
+## three housings (the user, 2026-11-18: "the contols UI should be old timey submarine themed,
+## and there needs to be a lever to control speed around the boost button", "There should be a
 ## whole control panel on the bottom part, that also shows speed and your evolution level and
 ## maybe any special ability buttons, with and old rusted and e gad frankenstein technology
-## aesthetic"): rusted riveted iron, humped up round the helm and round the engine fittings and
-## low between them, with a speed gauge, a rack of vacuum tubes that light one for each time the
-## fish has become something bigger, a copper coil, a pair of electrodes that sparks climb while
-## it bursts, and (where the screen is wide enough) two sockets bolted shut, kept for special
-## abilities that do not exist yet.
+## aesthetic", and of the first panel: "too much wasted space and also just kinda meh and plain
+## needs an overhaul").
 ##
-## All are always drawn. A touch anywhere in the lower left takes the helm (it moves under the
-## thumb); a touch on the arc takes the lever; a touch anywhere else in the lower right holds the
-## burst. A mouse works as a finger (the project turns mouse presses into touches).
+## - The helm housing (bottom left): a brass socket with a ball-topped stick that steers, under
+##   a pair of electrodes that a spark jumps between while the fish bursts.
+## - The engine housing (bottom right): a glowing plunger, held for a burst of speed, and over
+##   it a curved slot with a brass lever that sets how fast the fish swims, from dead slow (the
+##   slot's lower left end) to full ahead (its upper right end). The lever stays where it is put.
+## - The instrument housing (between them): a sonar scope (what hunts the fish in red, what it
+##   can eat in green, ahead of it up the screen), dials for speed, depth and how much burst is
+##   left, a rack of vacuum tubes that light one for each time the fish has become something
+##   bigger, and two knife switches kept for special abilities that do not exist yet.
+##
+## The pictures (textures/panel/*.png) were generated with ChatGPT's image generation, at the
+## user's request ("What ai image tool would be best for this job? Use rhat"), as three housings
+## with their moving parts taken out and a sheet of the moving parts, and cut apart by
+## tools/cut_art.gd; the originals are in tools/art_src. Everything that moves is drawn here over
+## them. The numbers below that say where things are in each picture were read off the pictures.
+##
+## A touch anywhere in the lower left takes the helm (it moves under the thumb); a touch on the
+## lever's slot takes the lever; a touch anywhere else in the lower right holds the burst. A
+## mouse works as a finger (the project turns mouse presses into touches).
 
+const ART := "res://textures/panel/%s.png"
 const BRASS := Color(0.80, 0.62, 0.26)
 const BRASS_LIGHT := Color(1.0, 0.88, 0.55)
 const BRASS_DARK := Color(0.33, 0.23, 0.09)
 const IRON := Color(0.10, 0.12, 0.14)
-const GLASS := Color(0.75, 0.95, 0.9)
-const ART := "res://textures/controls/%s.png"
-## How solid the fittings are drawn: at rest, and the part under a finger.
-const SEE := 0.58
-const SEE_HELD := 0.9
-## The lever's arc round the burst button: where dead slow and full ahead are (radians, as the
-## screen has them: 0 to the right, a quarter turn back is straight up).
-const SLOW_AT := PI * 1.03
-const FULL_AT := PI * 1.52
+## How solid the housings are drawn (the sea shows through them a little).
+const SEE := 0.86
+## Each housing's picture: its size, and how many layout units a pixel of it is.
+const HELM_SIZE := Vector2(385.0, 650.0)
+const GAUGE_SIZE := Vector2(727.0, 671.0)
+const ENGINE_SIZE := Vector2(373.0, 639.0)
+const SIDE_SCALE := 0.6
+const GAUGE_SCALE := 0.5
+## How much of each side housing's foot hangs off the bottom of the screen (pixels of its picture).
+const HELM_SUNK := 95.0
+const ENGINE_SUNK := 66.0
+## Where things are in the helm housing's picture: the socket's middle, and the electrodes' gap.
+const HELM_WELL := Vector2(190.0, 405.0)
+const HELM_SPARK := Vector2(193.0, 72.0)
+## In the engine housing's picture: the plunger's recess, and the lever's slot as a curve from
+## dead slow through a bend to full ahead.
+const ENGINE_WELL := Vector2(196.0, 438.0)
+const SLOT := [Vector2(56.0, 286.0), Vector2(96.0, 192.0), Vector2(258.0, 181.0)]
+## In the instrument housing's picture: the scope, the three dials, the tubes.
+const SCOPE := Vector2(311.0, 128.0)
+const SCOPE_RADIUS := 90.0
+const DIAL_SPEED := Vector2(107.0, 165.0)
+const DIAL_DEPTH := Vector2(508.0, 160.0)
+const DIAL_BURST := Vector2(640.0, 165.0)
+const TUBE_XS := [146.0, 211.0, 277.0, 343.0, 409.0, 476.0, 542.0, 609.0]
+const TUBE_Y := 338.0
+## How many tubes the panel has.
+const TUBES := 8
+## How far the sonar sees (m).
+const SONAR_RANGE := 30.0
 
 ## What the player is asking for: the stick (x right, y up, each -1..1), the burst, and the
 ## speed (0 dead slow to 1 full ahead).
 var stick := Vector2.ZERO
 var boost := false
 var throttle := 0.7
-## Shown on the gauge round the burst button (0..1).
+## Shown on the panel: how much burst is left (0..1), how fast the fish is going (0 still to 1
+## flat out, bursting), how deep it is (0 at the surface to 1 at the bottom of the trench), how
+## many times it has become something bigger, and what the sonar sees: each a Vector3 of where it
+## is from the fish (x to its right, y ahead of it, both in metres) and what it is (z: 0 food,
+## 1 a hunter).
 var stamina := 1.0
-## Shown on the panel: how fast the fish is going (0 still to 1 flat out, bursting), and how many
-## times it has become something bigger (a vacuum tube lights for each).
 var speed := 0.0
+var depth := 0.0
 var level := 0
-## How many tubes the panel has.
-const TUBES := 7
-## How solid the rusted panel itself is drawn (the sea shows through it).
-const PANEL_SEE := 0.5
+var blips: Array[Vector3] = []
 
 var _stick_touch := -1
 var _boost_touch := -1
@@ -68,8 +90,6 @@ var _art := {}
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# (the rust picture is laid over the panel again and again)
-	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 
 
 ## Lets go of everything (the run is over, or the pad is hidden). The lever stays where it is.
@@ -92,28 +112,50 @@ func unit() -> float:
 	return minf(size.x, size.y) / 720.0
 
 
+## Whether the screen is wide enough to stand the three housings side by side; if not (a phone
+## held upright) the instruments stand behind and above the gap between the other two.
+func is_wide() -> bool:
+	return size.x > 1150.0 * unit()
+
+
+# Where each housing's picture is drawn: its top left corner.
+func _helm_at() -> Vector2:
+	return Vector2(0.0, size.y - (HELM_SIZE.y - HELM_SUNK) * SIDE_SCALE * unit())
+
+
+func _engine_at() -> Vector2:
+	return Vector2(size.x - ENGINE_SIZE.x * SIDE_SCALE * unit(), size.y - (ENGINE_SIZE.y - ENGINE_SUNK) * SIDE_SCALE * unit())
+
+
+func _gauge_at() -> Vector2:
+	var u := unit()
+	var across := (size.x - GAUGE_SIZE.x * GAUGE_SCALE * u) * 0.5
+	# (side by side: sunk until only its instruments stand above the screen's edge; upright: raised
+	# so that they clear the two housings in front of it)
+	return Vector2(across, size.y - (455.0 if is_wide() else 910.0) * GAUGE_SCALE * u)
+
+
 func stick_home() -> Vector2:
-	return Vector2(165.0 * unit(), size.y - 190.0 * unit())
+	return _helm_at() + HELM_WELL * SIDE_SCALE * unit()
 
 
 func boost_home() -> Vector2:
-	return Vector2(size.x - 150.0 * unit(), size.y - 175.0 * unit())
+	return _engine_at() + ENGINE_WELL * SIDE_SCALE * unit()
 
 
-## How far from the burst button's middle the lever's arc runs.
-func lever_radius() -> float:
-	return 150.0 * unit()
-
-
-## Where the lever's handle is for a speed (0..1).
-func lever_at(speed: float) -> Vector2:
-	return boost_home() + Vector2.from_angle(lerpf(SLOW_AT, FULL_AT, speed)) * lever_radius()
+## Where the lever's handle is for a speed (0..1): a point along its slot.
+func lever_at(at_speed: float) -> Vector2:
+	var t := clampf(at_speed, 0.0, 1.0)
+	var a: Vector2 = SLOT[0]
+	var b: Vector2 = SLOT[1]
+	var c: Vector2 = SLOT[2]
+	return _engine_at() + a.lerp(b, t).lerp(b.lerp(c, t), t) * SIDE_SCALE * unit()
 
 
 func _input(event: InputEvent) -> void:
 	if not visible:
 		return
-	var reach := 105.0 * unit()
+	var reach := 100.0 * unit()
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch
 		if touch.pressed:
@@ -125,7 +167,7 @@ func _input(event: InputEvent) -> void:
 				_stick_from = stick_home() if touch.position.distance_to(stick_home()) < reach * 1.3 else touch.position
 				_push(touch.position)
 			elif touch.position.x >= size.x * 0.5:
-				if _on_lever(touch.position) and _lever_touch == -1:
+				if _lever_near(touch.position) < 46.0 * unit() and _lever_touch == -1:
 					_lever_touch = touch.index
 					_pull(touch.position)
 				elif _boost_touch == -1:
@@ -148,155 +190,131 @@ func _input(event: InputEvent) -> void:
 
 
 func _push(at: Vector2) -> void:
-	var pushed := (at - _stick_from) / (105.0 * unit())
+	var pushed := (at - _stick_from) / (100.0 * unit())
 	stick = Vector2(pushed.x, -pushed.y).limit_length(1.0)
 
 
-# Whether a touch is on the lever's arc (the band round the burst button, between its ends and
-# a thumb's width past each).
-func _on_lever(at: Vector2) -> bool:
-	var from := at - boost_home()
-	var far := from.length()
-	if far < lever_radius() - 38.0 * unit() or far > lever_radius() + 46.0 * unit():
-		return false
-	var turn := fposmod(from.angle(), TAU)
-	return turn > SLOW_AT - 0.3 and turn < FULL_AT + 0.3
+# How far a place is from the lever's slot.
+func _lever_near(at: Vector2) -> float:
+	var near := INF
+	for k in 25:
+		near = minf(near, at.distance_to(lever_at(k / 24.0)))
+	return near
 
 
+# Puts the lever at the point of its slot nearest a place.
 func _pull(at: Vector2) -> void:
-	var turn := fposmod((at - boost_home()).angle(), TAU)
-	throttle = clampf(inverse_lerp(SLOW_AT, FULL_AT, turn), 0.0, 1.0)
+	var best := 0.0
+	var near := INF
+	for k in 49:
+		var far := at.distance_to(lever_at(k / 48.0))
+		if far < near:
+			near = far
+			best = k / 48.0
+	throttle = best
 
 
 func _draw() -> void:
 	var u := unit()
-	_draw_panel(u)
-	# The helm: its plate, and the stick's brass ball where the thumb has pushed it.
-	var home := _stick_from if _stick_touch != -1 else stick_home()
-	_stamp("helm_plate", home, 240.0 * u, SEE)
-	var knob := home + Vector2(stick.x, -stick.y) * 105.0 * u * 0.58
-	draw_line(home, knob, Color(BRASS_DARK, SEE), 14.0 * u, true)
-	_stamp("helm_knob", knob, 90.0 * u, SEE_HELD if _stick_touch != -1 else SEE + 0.15)
-	# The speed lever: its track round the burst button, the orders lit up to where the handle is,
-	# and the handle, turned to reach in to the hub.
-	var at := boost_home()
-	_stamp("lever_arc", at, 420.0 * u, SEE)
-	for k in 5:
-		var share := k / 4.0
-		if throttle >= share - 0.02:
-			var way := Vector2.from_angle(lerpf(SLOW_AT, FULL_AT, share))
-			var near := lever_radius() + 23.0 * u
-			draw_line(at + way * near, at + way * (near + (9.0 + 5.0 * k) * u), Color(BRASS_LIGHT, 0.9), (3.2 + 0.8 * k) * u, true)
-	var grip := lever_at(throttle)
-	_stamp("lever_handle", grip, 200.0 * u, SEE_HELD if _lever_touch != -1 else SEE + 0.2, (grip - at).angle())
-	# The burst: its plate, the gauge's level in the plate's channel, and the plunger's cap (sunk
-	# and lit while it is held).
-	_stamp("burst_plate", at, 200.0 * u, SEE)
-	if stamina > 0.01:
-		draw_arc(at, 70.0 * u, -PI * 0.5, -PI * 0.5 + TAU * stamina, 64, Color(0.45, 0.95, 0.7, 0.85), 9.0 * u, true)
-	_stamp("burst_cap", at, (124.0 if boost else 130.0) * u, SEE_HELD if boost else SEE + 0.12)
-	if boost:
-		draw_circle(at, 58.0 * u, Color(GLASS, 0.18))
+	_draw_gauges(u)
+	_draw_helm(u)
+	_draw_engine(u)
 
 
-# Where the panel's instruments go: between the helm's hump and the engine's.
-func gauge_home() -> Vector2:
-	var u := unit()
-	return Vector2(lerpf(stick_home().x + 118.0 * u, boost_home().x - 178.0 * u, 0.5), size.y - (84.0 if is_wide() else 146.0) * u)
+# The instrument housing, and what moves on it.
+func _draw_gauges(u: float) -> void:
+	var at := _gauge_at()
+	var s := GAUGE_SCALE * u
+	draw_texture_rect(_picture("gauge_module"), Rect2(at, GAUGE_SIZE * s), false, Color(1.0, 1.0, 1.0, SEE))
+	# The tubes: lit one for each time the fish has grown into something new.
+	for k in mini(level, TUBES):
+		var where := at + Vector2(TUBE_XS[k], TUBE_Y) * s
+		var flicker := 0.8 + 0.2 * sin(Time.get_ticks_msec() * 0.011 + k * 1.7)
+		draw_circle(where, 42.0 * s, Color(1.0, 0.5, 0.12, 0.2 * flicker))
+		_stamp("tube_lit", where, Vector2(62.0, 141.0) * s, 0.75 + 0.25 * flicker)
+	# The sonar: a sweep going round, a ring, and what is about (hunters red, food green).
+	var scope := at + SCOPE * s
+	var r := SCOPE_RADIUS * s
+	var sweep := Time.get_ticks_msec() * 0.0022
+	for k in 14:
+		var way := Vector2.from_angle(sweep - k * 0.06)
+		draw_line(scope, scope + way * r * 0.95, Color(0.4, 1.0, 0.45, 0.5 * (1.0 - k / 14.0)), 2.5 * u, true)
+	draw_arc(scope, r * 0.5, 0.0, TAU, 32, Color(0.4, 1.0, 0.45, 0.22), 1.5 * u, true)
+	draw_circle(scope, 3.0 * u, Color(0.6, 1.0, 0.6, 0.9))
+	for blip in blips:
+		var off := Vector2(blip.x, -blip.y) / SONAR_RANGE
+		if off.length() > 0.95:
+			continue
+		# (each brightens as the sweep passes it, and fades)
+		var lag := fposmod(sweep - off.angle(), TAU) / TAU
+		var bright := 0.45 + 0.55 * (1.0 - lag)
+		var colour := Color(1.0, 0.25, 0.15) if blip.z > 0.5 else Color(0.5, 1.0, 0.5)
+		draw_circle(scope + off * r, (5.0 if blip.z > 0.5 else 3.5) * u, Color(colour, bright))
+	# The dials' needles: speed, depth, and how much burst is left.
+	_needle(at + DIAL_SPEED * s, speed, s, true)
+	_needle(at + DIAL_DEPTH * s, depth, s, false)
+	_needle(at + DIAL_BURST * s, stamina, s, false)
 
 
-## Whether there is room between the helm and the engine fittings to lay the instruments side by
-## side (a landscape screen): the panel is then lower in the middle, to leave the fish in view.
-func is_wide() -> bool:
-	return boost_home().x - stick_home().x > 620.0 * unit()
+# A dial's needle, from its lower left stop (0) round over the top to its lower right stop (1).
+func _needle(hub: Vector2, value: float, s: float, trembles: bool) -> void:
+	var turn := lerpf(-2.2, 2.2, clampf(value, 0.0, 1.0))
+	if trembles:
+		turn += sin(Time.get_ticks_msec() * 0.03) * 0.015
+	# (the needle's picture, 95 by 332, points straight up, its hub 290 pixels down it)
+	var long := 58.0 * s
+	var wide := long * 95.0 / 290.0
+	draw_set_transform(hub, turn)
+	draw_texture_rect(_picture("needle"), Rect2(Vector2(-wide * 0.5, -long), Vector2(wide, long * 332.0 / 290.0)), false)
+	draw_set_transform(Vector2.ZERO)
 
 
-# How high the panel's top edge is at a place along the screen (a y): a hump round the helm, a
-# bigger one round the burst button and its lever, and a low run between and beyond.
-func panel_top(x: float) -> float:
-	var u := unit()
-	var top := size.y - (158.0 if is_wide() else 205.0) * u
-	var helm := stick_home()
-	var across := absf(x - helm.x)
-	if across < 150.0 * u:
-		top = minf(top, helm.y - sqrt(pow(150.0 * u, 2.0) - across * across))
-	var engine := boost_home()
-	across = absf(x - engine.x)
-	if across < 222.0 * u:
-		top = minf(top, engine.y - sqrt(pow(222.0 * u, 2.0) - across * across))
-	return top
-
-
-# The panel: the rusted plate (see-through), its riveted rim, and the instruments on it.
-func _draw_panel(u: float) -> void:
-	var rust: Texture2D = _picture("rust_plate")
-	var points := PackedVector2Array()
-	var uvs := PackedVector2Array()
-	var steps := 72
-	for k in steps + 1:
-		var x := size.x * k / steps
-		points.append(Vector2(x, panel_top(x)))
-	points.append(Vector2(size.x, size.y))
-	points.append(Vector2(0.0, size.y))
-	for p in points:
-		uvs.append(p / (400.0 * u))
-	draw_colored_polygon(points, Color(1.0, 1.0, 1.0, PANEL_SEE), uvs, rust)
-	# its rim: a dark line and a worn bright one, and a rivet every so often under it
-	var rim := points.slice(0, steps + 1)
-	draw_polyline(rim, Color(IRON, 0.85), 7.0 * u, true)
-	draw_polyline(rim, Color(0.55, 0.3, 0.12, 0.8), 2.5 * u, true)
-	var along := 0.0
-	for k in range(1, rim.size()):
-		along += rim[k].distance_to(rim[k - 1])
-		if along > 58.0 * u:
-			along = 0.0
-			var inward := (rim[k] - rim[k - 1]).orthogonal().normalized()
-			if inward.y < 0.0:
-				inward = -inward
-			_stamp("rivet", rim[k] + inward * 15.0 * u, 26.0 * u, 0.9)
-	# The speed gauge, and its needle: from dead still at the lower left round to flat out.
-	var at := gauge_home()
-	var wide := is_wide()
-	var big := 1.0
-	_stamp("gauge_face", at, 130.0 * u * big, 0.92)
-	var turn := lerpf(deg_to_rad(135.0), deg_to_rad(405.0), clampf(speed, 0.0, 1.0)) + sin(Time.get_ticks_msec() * 0.03) * 0.012
-	var way := Vector2.from_angle(turn)
-	draw_line(at - way * 9.0 * u * big, at + way * 43.0 * u * big, Color(0.5, 0.05, 0.03, 0.95), 3.5 * u * big, true)
-	draw_circle(at, 6.0 * u * big, Color(BRASS_DARK, 1.0))
-	# The tubes: a rack under the gauge, lit one for each time it has grown into something new.
-	var rack := 18.0 * u * big
-	for k in TUBES:
-		var where := at + (Vector2(-175.0 * u + (k - (TUBES - 1) * 0.5) * rack, 6.0 * u) if wide else Vector2((k - (TUBES - 1) * 0.5) * rack, 78.0 * u))
-		var lit := k < level
-		if lit:
-			var flicker := 0.75 + 0.25 * sin(Time.get_ticks_msec() * 0.011 + k * 1.7)
-			draw_circle(where, 15.0 * u * big, Color(1.0, 0.5, 0.12, 0.22 * flicker))
-		_stamp("tube_on" if lit else "tube_off", where, 44.0 * u * big, 0.95)
-	# Mad-science furniture: a coil by the helm, and electrodes over the engine that sparks climb
-	# while it bursts.
-	_stamp("coil", Vector2(44.0 * u, size.y - 42.0 * u), 70.0 * u, 0.85)
-	var poles := Vector2(boost_home().x + 96.0 * u, boost_home().y - 152.0 * u)
-	_stamp("electrodes", poles, 110.0 * u, 0.9)
+# The helm housing, the spark over it while the fish bursts, and the stick.
+func _draw_helm(u: float) -> void:
+	var at := _helm_at()
+	var s := SIDE_SCALE * u
+	draw_texture_rect(_picture("helm_module"), Rect2(at, HELM_SIZE * s), false, Color(1.0, 1.0, 1.0, SEE))
 	if boost and stamina > 0.0:
-		_spark(poles, u)
-	# Where special abilities will go: two sockets bolted shut, if there is room for them.
-	if wide:
-		for k in 2:
-			_stamp("socket", at + Vector2((125.0 + 88.0 * k) * u, 4.0 * u), 80.0 * u, 0.85)
+		_spark(at + HELM_SPARK * s, 110.0 * s)
+	var home := _stick_from if _stick_touch != -1 else stick_home()
+	var knob := home + Vector2(stick.x, -stick.y) * 62.0 * u
+	# (the shaft, from the boot in the socket up to the ball)
+	draw_line(home, knob, Color(IRON, 0.95), 22.0 * u, true)
+	draw_line(home, knob, Color(BRASS_DARK, 0.95), 13.0 * u, true)
+	# (the ball's picture: its middle is 125 pixels down a picture 278 by 345)
+	var ball := 150.0 * s
+	draw_texture_rect(_picture("knob"), Rect2(knob - Vector2(ball * 0.5, ball * 125.0 / 278.0), Vector2(ball, ball * 345.0 / 278.0)), false,
+			Color(1.0, 1.0, 1.0, 1.0 if _stick_touch != -1 else 0.92))
 
 
-# A spark between the electrodes, climbing: a jagged blue-white line that is never the same twice.
-func _spark(poles: Vector2, u: float) -> void:
-	var climb := fmod(Time.get_ticks_msec() * 0.0016, 1.0)
-	var y := lerpf(22.0, -42.0, climb) * u
-	var half := lerpf(15.0, 33.0, climb) * u
+# The engine housing, the plunger in its recess, and the lever in its slot.
+func _draw_engine(u: float) -> void:
+	var at := _engine_at()
+	var s := SIDE_SCALE * u
+	draw_texture_rect(_picture("engine_module"), Rect2(at, ENGINE_SIZE * s), false, Color(1.0, 1.0, 1.0, SEE))
+	# The plunger: dim at rest, sunk and glowing while it is held.
+	var well := boost_home()
+	var wide := (222.0 if boost else 232.0) * s
+	_stamp("plunger_lit" if boost else "plunger", well, Vector2(wide, wide * 342.0 / 351.0), 1.0)
+	if boost:
+		draw_circle(well, 120.0 * s, Color(1.0, 0.55, 0.15, 0.16))
+	# The lever: its picture's pivot boss (58, 310 in a picture 298 by 371) rides in the slot, the
+	# grip standing up and out of it.
+	var grip := lever_at(throttle)
+	var big := 0.62 * s
+	draw_texture_rect(_picture("lever"), Rect2(grip - Vector2(58.0, 310.0) * big, Vector2(298.0, 371.0) * big), false,
+			Color(1.0, 1.0, 1.0, 1.0 if _lever_touch != -1 else 0.95))
+
+
+# A spark between the electrodes: a jagged blue-white line that is never the same twice.
+func _spark(at: Vector2, wide: float) -> void:
+	var lift := (fmod(Time.get_ticks_msec() * 0.004, 1.0) - 0.5) * wide * 0.5
 	var line := PackedVector2Array()
 	for k in 9:
 		var share := k / 8.0
-		var jag := Vector2(0.0, randf_range(-7.0, 7.0) * u * sin(share * PI))
-		line.append(poles + Vector2(lerpf(-half, half, share), y) + jag)
-	draw_polyline(line, Color(0.55, 0.75, 1.0, 0.5), 6.0 * u, true)
-	draw_polyline(line, Color(0.92, 0.97, 1.0, 0.95), 2.0 * u, true)
+		line.append(at + Vector2(lerpf(-wide, wide, share) * 0.5, lift + randf_range(-0.09, 0.09) * wide * sin(share * PI)))
+	draw_polyline(line, Color(0.45, 0.7, 1.0, 0.5), wide * 0.07, true)
+	draw_polyline(line, Color(0.9, 0.97, 1.0, 0.95), wide * 0.025, true)
 
 
 func _picture(named: String) -> Texture2D:
@@ -305,8 +323,6 @@ func _picture(named: String) -> Texture2D:
 	return _art[named]
 
 
-# One of the pictures, its middle at a place, `wide` across, so solid, turned.
-func _stamp(named: String, at: Vector2, wide: float, solid: float, turn := 0.0) -> void:
-	draw_set_transform(at, turn)
-	draw_texture_rect(_picture(named), Rect2(Vector2(-wide, -wide) * 0.5, Vector2(wide, wide)), false, Color(1.0, 1.0, 1.0, solid))
-	draw_set_transform(Vector2.ZERO)
+# One of the pictures, its middle at a place, of a size, so solid.
+func _stamp(named: String, at: Vector2, of_size: Vector2, solid: float) -> void:
+	draw_texture_rect(_picture(named), Rect2(at - of_size * 0.5, of_size), false, Color(1.0, 1.0, 1.0, solid))

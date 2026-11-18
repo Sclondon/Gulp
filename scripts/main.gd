@@ -280,6 +280,9 @@ func _process(delta: float) -> void:
 	pad.stamina = player.stamina
 	pad.speed = lerpf(pad.speed, player.velocity.length() / (Fish.pace(player.length) * 1.15 * Player.BOOST), 1.0 - exp(-8.0 * delta)) if player.alive else 0.0
 	pad.level = player.stage
+	pad.depth = clampf((Sea.SURFACE - player.global_position.y) / 100.0, 0.0, 1.0)
+	if _frames % 6 == 0:
+		_sound_out()
 	if over:
 		_over_for += delta
 		if bot and _over_for > 1.0:
@@ -332,6 +335,31 @@ func _play_role() -> void:
 		if not _role_done:
 			print("ARENA FAIL %s: online %s, rivals %d, log %s" % [_role, arena.online, arena.rivals.size(), arena.log_lines])
 		get_tree().quit()
+
+
+## What the sonar on the panel sees: whatever is after the fish, and what it could eat, within
+## the scope's range, each as where it is from the fish (to its right, ahead of it).
+func _sound_out() -> void:
+	var seen: Array[Vector3] = []
+	if player.alive:
+		var ahead := Vector3(player.heading.x, 0.0, player.heading.z)
+		ahead = ahead.normalized() if ahead.length() > 0.01 else Vector3.FORWARD
+		var right := ahead.cross(Vector3.UP)
+		for threat: Array in life.threats():
+			var off: Vector3 = threat[0] - player.global_position
+			if off.length() < TouchPad.SONAR_RANGE:
+				seen.append(Vector3(off.dot(right), off.dot(ahead), 1.0))
+		for each in life.creatures:
+			if seen.size() > 40:
+				break
+			if each.visible and each.away <= 0.0 and not each.giant:
+				var off := each.global_position - player.global_position
+				if off.length() < TouchPad.SONAR_RANGE:
+					if Life.is_food(player.length, each.length):
+						seen.append(Vector3(off.dot(right), off.dot(ahead), 0.0))
+					elif each.hunts and Life.can_eat(each.length, player.length) and player.length >= each.length * Life.TOO_SMALL:
+						seen.append(Vector3(off.dot(right), off.dot(ahead), 1.0))
+	pad.blips = seen
 
 
 ## Reads the controls into the player's stick and burst: the bot's if it is playing, or the

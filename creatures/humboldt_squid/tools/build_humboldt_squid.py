@@ -4,8 +4,10 @@ Run from the game's root:
     blender --background --factory-startup --python creatures/humboldt_squid/tools/build_humboldt_squid.py
     blender --background --factory-startup --python creatures/humboldt_squid/tools/build_humboldt_squid.py -- <folder for pictures>
 
-Writes creatures/humboldt_squid/models/humboldt_squid.glb (the full model) and humboldt_squid_lo.glb (far off: no
-sucker cups, fewer rings), and the editable creatures/humboldt_squid/tools/humboldt_squid.blend (this folder has a
+Writes creatures/humboldt_squid/models/humboldt_squid.glb (the full model), humboldt_squid_lo.glb (far off: no
+sucker cups, fewer rings) and humboldt_squid_game.glb (the game model, at Twilight Princess weight: rings placed for
+the outline, the flanges and the clubs, its cups painted by the shader: UV2.y is 2 more than the phase on its
+strands), and the editable creatures/humboldt_squid/tools/humboldt_squid.blend (this folder has a
 .gdignore). Each is one static mesh: the shader (humboldt_squid.gdshaderinc) pulses the mantle, flaps the fins, lays
 every arm and tentacle along its rope, and draws the skin and its changing colour. It prints a WINDING line: the
 check that nothing is inside out.
@@ -56,6 +58,12 @@ OUT = os.path.join(HERE, "..", "models")
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 PREVIEW = ARGS[0] if ARGS else ""
 TAU = math.tau
+
+
+def pick(q, full, game, low):
+    """A number for the model `q` being built: the full one, the game one or the low one."""
+    return {"full": full, "game": game, "low": low}[q]
+
 
 # Kept in step with humboldt_squid.gd and the shader.
 MANTLE_FROM = -0.1
@@ -141,9 +149,9 @@ def mantle_point(t, a, r_scale=1.0):
     return Vector((math.cos(a) * r, y, z))
 
 
-def mantle(m, low):
-    around = 20 if low else 44
-    rings_n = 18 if low else 46
+def mantle(m, q):
+    around = pick(q, 44, 22, 20)
+    rings_n = pick(q, 46, 14, 18)
     colour = (0.0, 0.0, 0.0, 1.0)
     rings = []
     # (the lip of the collar: turned in, so that the edge has a thickness)
@@ -174,9 +182,9 @@ def fin_wide(u):
     return 0.4 * min(u / 0.42, (1.0 - u) / 0.58, 0.94) ** 0.92
 
 
-def fins(m, low):
-    along_n = 10 if low else 26
-    across_n = 3 if low else 8
+def fins(m, q):
+    along_n = pick(q, 26, 12, 10)
+    across_n = pick(q, 8, 3, 3)
     for side in (1.0, -1.0):
         rows = []
         for i in range(along_n + 1):
@@ -202,8 +210,8 @@ def fins(m, low):
                 m.face(quad, FINS, "fins", m.verts[rows[i][j]] + Vector((0.0, -10.0, 0.0)))
 
 
-def head(m, low):
-    around = 14 if low else 28
+def head(m, q):
+    around = pick(q, 28, 14, 14)
     colour = (0.4, 0.0, 0.0, 1.0)
     # (z, radius across, radius up and down): the neck inside the mantle, the swell at the eyes, the crown the arms leave
     shape = [(-0.24, 0.1, 0.1), (-0.15, 0.135, 0.13), (-0.07, 0.155, 0.145), (0.0, 0.16, 0.148), (0.07, 0.156, 0.145),
@@ -217,7 +225,7 @@ def head(m, low):
             d = (c + 1) % around
             m.face((a[c], a[d], b[d], b[c]), BODY, "head", middle)
     # The siphon: a tapered tube under the head, from inside the mantle forward, its mouth open.
-    n = 8 if low else 14
+    n = pick(q, 14, 8, 8)
     rings = []
     for z, r, y in ((-0.3, 0.07, -0.085), (-0.18, 0.07, -0.115), (-0.07, 0.06, -0.14), (0.02, 0.046, -0.152), (0.075, 0.038, -0.157), (0.075, 0.028, -0.157), (0.01, 0.025, -0.152)):
         rings.append([m.add(Vector((math.cos(c / n * TAU) * r, y + math.sin(c / n * TAU) * r * 0.8, z)), (c / n, 0.5), (0.0, 1.0), colour) for c in range(n)])
@@ -228,7 +236,7 @@ def head(m, low):
             # (the last rings turn back inside its mouth: any way will do there)
             m.face((a[c], a[d], b[d], b[c]), BODY, "siphon", middle if i < 4 else None)
     # The mouth: a pale bulb in the middle of the ring of arms, the dark tip of the beak in the middle of it.
-    n = 8 if low else 16
+    n = pick(q, 16, 10, 8)
     mouth = (0.4, 1.0, 0.0, 1.0)
     rings = []
     for out, z in ((1.0, 0.0), (0.92, 0.022), (0.7, 0.04), (0.42, 0.05), (0.2, 0.058)):
@@ -244,9 +252,9 @@ def head(m, low):
         m.face((last[c], last[(c + 1) % n], tip), BODY, "mouth", inside)
 
 
-def eyes(m, low):
-    around = 10 if low else 20
-    rings_n = 6 if low else 12
+def eyes(m, q):
+    around = pick(q, 20, 16, 10)
+    rings_n = pick(q, 12, 5, 6)
     for side in (1.0, -1.0):
         centre = Vector((side * 0.112, 0.012, -0.005))
         rings = []
@@ -294,19 +302,38 @@ def strand_point(k, s, around_at, extra=0.0):
     return root + Vector((0.0, 0.0, s * long)) + (out * math.cos(a) * flat + side * math.sin(a)) * (r * flange + extra)
 
 
-def strand_skin(m, k, low):
+def game_fat(k, s, at):
+    """How much fatter the game model's strands are built, to cover the full model's outline: an arm a little all
+    round (it has fewer sides); a club on its inner face, by the height of the cups it has no more."""
+    if k < ARMS:
+        return strand_radius(k, s) * 0.04
+    club = smooth(CLUB_FROM, CLUB_FROM + 0.12, s) * (1.0 - smooth(0.84, 1.0, s))
+    return 0.007 * club * max(-math.cos(at * TAU), 0.0)
+
+
+def strand_skin(m, k, q):
     root, long, phase, _out = strand(k)
     tentacle = k >= ARMS
-    steps = (22 if tentacle else 16) if low else (60 if tentacle else 44)
-    around = 8 if low else 20
     colour = (0.8, 1.0 if tentacle else 0.0, (k + 0.5) / 16.0, 1.0)
+    if q == "game":
+        # The game model: its points round an arm bunched at the flanges (0.3 and 0.7 round), which are its
+        # outline from the front; a tentacle's rings bunched in its club. UV2.y is 2 more than its phase: the
+        # shader paints the sucker cups where the full model has them.
+        ats = [0.0, 0.14, 0.26, 0.3, 0.37, 0.5, 0.63, 0.7, 0.74, 0.86, 1.0] if not tentacle else [c / 8 for c in range(9)]
+        ss = [i / 10 for i in range(11)] if not tentacle else [0.0, 0.15, 0.3, 0.45, 0.56, 0.62, 0.67, 0.72, 0.77, 0.82, 0.86, 0.9, 0.94, 0.97, 1.0]
+        phase += 2.0
+    else:
+        steps = (22 if tentacle else 16) if q == "low" else (60 if tentacle else 44)
+        around = 8 if q == "low" else 20
+        ats = [c / around for c in range(around + 1)]
+        ss = [i / steps for i in range(steps + 1)]
+    around = len(ats) - 1
     rings = []
     # (it starts inside the head: these rings are all at s = 0, so they stay with it)
     for back, thin in ((0.1, 0.55), (0.05, 0.9)):
-        rings.append([m.add(strand_point(k, 0.0, c / around, strand_radius(k, 0.0) * (thin - 1.0)) - Vector((0.0, 0.0, back)), (c / around, 1.0), (long, 1.0 - phase), colour) for c in range(around + 1)])
-    for i in range(steps + 1):
-        s = i / steps
-        rings.append([m.add(strand_point(k, s, c / around), (c / around, 1.0 - s), (long, 1.0 - phase), colour) for c in range(around + 1)])
+        rings.append([m.add(strand_point(k, 0.0, at, strand_radius(k, 0.0) * (thin - 1.0)) - Vector((0.0, 0.0, back)), (at, 1.0), (long, 1.0 - phase), colour) for at in ats])
+    for s in ss:
+        rings.append([m.add(strand_point(k, s, at, game_fat(k, s, at) if q == "game" else 0.0), (at, 1.0 - s), (long, 1.0 - phase), colour) for at in ats])
     for a, b in zip(rings, rings[1:]):
         middle = (sum((m.verts[i] for i in a[:around]), Vector()) + sum((m.verts[i] for i in b[:around]), Vector())) / (2 * around)
         for c in range(around):
@@ -365,15 +392,16 @@ def suckers(m):
                 sucker(m, k, s, at, 0.0105 * big * (0.5 + 0.5 * swell))
 
 
-def make(name, low):
+def make(name, q):
+    """The model `q`: "full", "game" or "low"."""
     m = Mesh()
-    mantle(m, low)
-    fins(m, low)
-    head(m, low)
-    eyes(m, low)
+    mantle(m, q)
+    fins(m, q)
+    head(m, q)
+    eyes(m, q)
     for k in range(ARMS + TENTACLES):
-        strand_skin(m, k, low)
-    if not low:
+        strand_skin(m, k, q)
+    if q == "full":
         suckers(m)
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([to_b(p) for p in m.verts], [], m.faces)
@@ -442,7 +470,7 @@ def render(folder, made):
     views = [("side", (1, 0, 0), body, 2.9), ("other_side", (-1, 0, 0), body, 2.9), ("above", (0, 0.001, 1), body, 2.9),
              ("below", (0, 0.001, -1), body, 2.9), ("front", (0, 1, 0.0), (0, 0, 0), 1.3), ("back", (0, -1, 0.0), (0, 0, 0), 1.3),
              ("head", (0.7, -0.5, 0.35), (0, -0.1, 0), 0.9), ("crown", (0.25, -1.0, 0.2), (0, -0.2, 0), 0.5)]
-    for low, obj in ((False, made[0]), (True, made[1])):
+    for low, obj in ((False, made[0]), (True, made[1]), ("game", made[2])):
         for other in made:
             other.hide_render = other is not obj
         for view, direction, target, frame in views:
@@ -452,24 +480,28 @@ def render(folder, made):
             camera.data.ortho_scale = frame
             camera.location = Vector(target) + offset
             camera.rotation_euler = (-offset).to_track_quat("-Z", "X" if view in ("above", "below") else "Y").to_euler()
-            scene.render.filepath = os.path.join(folder, "%s%s.png" % ("lo_" if low else "", view))
+            scene.render.filepath = os.path.join(folder, "%s%s.png" % ("game_" if low == "game" else "lo_" if low else "", view))
             bpy.ops.render.render(write_still=True)
 
 
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.preferences.filepaths.save_version = 0
-    full = make("humboldt_squid", False)
-    low = make("humboldt_squid_lo", True)
+    full = make("humboldt_squid", "full")
+    low = make("humboldt_squid_lo", "low")
+    game = make("humboldt_squid_game", "game")
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, "humboldt_squid.glb"))
     export_one(low, os.path.join(OUT, "humboldt_squid_lo.glb"))
+    export_one(game, os.path.join(OUT, "humboldt_squid_game.glb"))
     low.location.x = 1.5
+    game.location.x = -1.5
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "humboldt_squid.blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low])
+        render(PREVIEW, [full, low, game])
 
 
 if __name__ == "__main__":

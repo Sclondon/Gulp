@@ -6,7 +6,9 @@
 // What each point is comes from the model (tools/build_giant_squid.py): COLOR.r the part (0 the
 // mantle, 0.2 a fin, 0.4 the head and siphon, 0.6 an eye, 0.8 the skin of a strand, 1 a sucker
 // cup); COLOR.g 1 on a tentacle; COLOR.b which strand ((n + 0.5) / 16: arms 0 to 7, tentacles
-// 8 and 9); UV.x round it, UV.y along it; UV2.x a strand's length, UV2.y its phase.
+// 8 and 9); UV.x round it, UV.y along it; UV2.x a strand's length, UV2.y its phase. On the game
+// model (giant_squid_game.glb) UV2.y is 2 more than the phase on its strands: it has no sucker cups
+// of its own, and they are painted here where the full model has them.
 //
 // Its skin is drawn here (no texture files): deep red to maroon above, paler beneath, mottled
 // and speckled with its colour cells, a faint silver where it turns from the eye. Nothing here
@@ -43,10 +45,19 @@ uniform vec3 cup : source_color = vec3(0.97, 0.86, 0.82);
 uniform vec3 silver : source_color = vec3(0.85, 0.84, 0.8);
 // How clear the fins are at their edges (the fins' shader only).
 uniform float fin_alpha = 0.72;
-// Cartoon eyes (the user, 2026-11-17: "His eyes should be cartoonish and bigger too"): 1 draws each
-// eye as a white ball with a big round black pupil and a white glint, 0 the black-and-silver eye
-// of the real animal.
+// Cartoon eyes (the user, 2026-11-17: "His eyes should be cartoonish and bigger too"; and 2026-11-18:
+// "the eyes for most of them should be more cartoony and personalized"): 0 the black-and-silver eye
+// of the real animal; 1 bigger still, a white ball, a deep blue iris round a huge round pupil, two
+// glints, a dark outline, and no lid in sight: a wide, awed stare, a gentle giant. Where they look
+// (x towards its arms, y up its back, -1..1), and how shut its lids are (0 open, 1 shut).
 uniform float cartoon_eyes = 0.0;
+uniform vec2 eye_look = vec2(0.0);
+uniform float blink = 0.0;
+uniform vec3 cartoon_iris : source_color = vec3(0.12, 0.3, 0.62);
+// The eye's middle (+X side), its radius across its face, and how much bigger the cartoon eye is.
+const vec3 EYE = vec3(0.175, 0.03, -0.02);
+const float EYE_R = 0.2686;
+const float CARTOON_EYE = 1.3;
 
 varying float part;
 varying float flag;
@@ -54,6 +65,8 @@ varying vec2 at;
 varying float long_is;
 varying vec3 rest;
 varying vec3 rest_normal;
+varying float painted;
+varying float row_is;
 
 // How full of water the mantle is, through a jet (0..1): filling slowly, emptied quickly.
 float fullness(float x) {
@@ -117,6 +130,8 @@ void vertex() {
 	long_is = uv2.x;
 	rest = vertex;
 	rest_normal = normal;
+	painted = uv2.y > 1.5 ? 1.0 : 0.0;
+	row_is = floor(colour.b * 16.0);
 	if (part < 0.1) {
 		// The mantle: breathing.
 		vertex.xy *= swell(uv.y);
@@ -167,12 +182,54 @@ void vertex() {
 		offset += (cross(w, offset) + cross(w, cross(w, offset)) / (1.0 + c)) * follows;
 		normal = normalize(normal + (cross(w, normal) + cross(w, cross(w, normal)) / (1.0 + c)) * follows);
 		vertex = on_line + offset;
+	} else if (part > 0.5) {
+		// An eye: bigger, about its own middle, as it turns cartoon.
+		vec3 centre = vec3(vertex.x < 0.0 ? -EYE.x : EYE.x, EYE.y, EYE.z);
+		vertex = centre + (vertex - centre) * mix(1.0, CARTOON_EYE, cartoon_eyes);
 	}
 	if (part < 0.7) {
 		curl_bend(vertex, normal);
 	}
 	VERTEX = vertex;
 	NORMAL = normal;
+}
+
+// The game model's sucker cups, painted where the full model has them (suckers() in the build
+// script): how far the point `s` along strand `row` and `around` round it is from the middle of the
+// nearest cup, in that cup's radii (more than 1: no cup here).
+float painted_cup(int row, float s, float around) {
+	float best = 9.0;
+	if (row < ARMS) {
+		// (two rows of 30 down an arm)
+		float r_arm = (0.074 * pow(max(1.0 - s, 0.0), 0.8) + 0.005) * 1.4;
+		float size = max(0.4 * r_arm, 0.004);
+		float x = pow(clamp((s - 0.05) / 0.9, 0.0, 1.0), 1.0 / 0.85) * 30.0;
+		for (int k = 0; k < 2; k++) {
+			float i = clamp(round(x - 0.5 * float(k)), 0.0, 29.0);
+			float si = 0.05 + 0.9 * pow((i + 0.5 * float(k)) / 30.0, 0.85);
+			float across = (around - 0.5 - (k == 1 ? 0.085 : -0.085)) * 6.2831853 * r_arm;
+			best = min(best, length(vec2(across, (s - si) * long_is)) / size);
+		}
+		return best;
+	}
+	float club = smoothstep(0.87, 0.91, s) * (1.0 - smoothstep(0.95, 1.0, s));
+	float r_t = (0.021 - 0.006 * s + 0.02 * club - 0.012 * smoothstep(0.97, 1.0, s)) * 1.4;
+	// (a few small ones up the stalk, alternating sides)
+	float j = clamp(round((s - 0.5) / 0.035), 0.0, 9.0);
+	float side = mod(j, 2.0) > 0.5 ? 0.05 : -0.05;
+	best = length(vec2((around - 0.5 - side) * 6.2831853 * r_t, (s - 0.5 - 0.035 * j) * long_is)) / 0.005;
+	// (the club: four rows of 12, the middle two the biggest)
+	for (int k = 0; k < 4; k++) {
+		float odd = float(k % 2);
+		float where = k == 0 ? 0.36 : (k == 1 ? 0.455 : (k == 2 ? 0.545 : 0.64));
+		float big = (k == 0 || k == 3) ? 0.6 : 1.0;
+		float i = clamp(round((s - 0.885) / 0.085 * 12.0 - 0.5 * odd), 0.0, 11.0);
+		float si = 0.885 + 0.085 * (i + 0.5 * odd) / 12.0;
+		float size = 0.0135 * big * (0.55 + 0.45 * pow(sin(3.14159 * (i + 0.5) / 12.0), 0.6));
+		float across = (around - where) * 6.2831853 * r_t;
+		best = min(best, length(vec2(across, (s - si) * long_is)) / size);
+	}
+	return best;
 }
 
 // The colour cells of its skin at `p` (a point of it at rest): how dark (0..1). Blotches a
@@ -211,16 +268,45 @@ void fragment() {
 		c = mix(c, deep, dark * (0.3 + 0.45 * above));
 	} else if (part < 0.7) {
 		// An eye: a great black pupil, a ring of silver, the red lid closing round it.
-		float out_from = at.x;
+		// (the eye's own frame: x towards its arms, y up its back; `pos` the point in it, 1 about
+		// where the cartoon eye's white ends)
+		vec2 e = vec2(rest.z - EYE.z, rest.y - EYE.y) / EYE_R;
+		vec2 way = length(e) > 1e-5 ? normalize(e) : vec2(0.0);
+		// (measured from its place, not its UV, so that its rings are round however few its points;
+		// past the side of the ball, where that fails, it is far out)
+		vec2 pos = way * (at.x < 0.45 ? asin(min(length(e), 1.0)) / 3.14159 : 0.8) / 0.4;
+		// (`eye_look` slides its pupil that way)
+		vec2 seen = e - eye_look * 0.12;
+		float out_from = at.x + (asin(min(length(seen), 1.0)) - asin(min(length(e), 1.0))) / 3.14159 * (1.0 - smoothstep(0.3, 0.45, at.x));
 		c = mix(vec3(0.004, 0.005, 0.008), silver * 0.75, smoothstep(0.18, 0.205, out_from));
 		c = mix(c, silver * vec3(0.9, 0.55, 0.45), smoothstep(0.22, 0.3, out_from));
-		c = mix(c, mix(skin, deep, 0.4 + 0.4 * dark), smoothstep(0.29, 0.34, out_from));
-		rough = mix(0.08, 0.38, smoothstep(0.26, 0.34, out_from));
-		if (cartoon_eyes > 0.5) {
-			c = mix(vec3(0.01, 0.01, 0.015), vec3(0.96, 0.97, 1.0), smoothstep(0.13, 0.15, out_from));
-			c = mix(c, mix(skin, deep, 0.5), smoothstep(0.33, 0.36, out_from));
-			rough = 0.12;
+		c = mix(c, mix(skin, deep, 0.4 + 0.4 * dark), smoothstep(0.29, 0.34, at.x));
+		rough = mix(0.08, 0.38, smoothstep(0.26, 0.34, at.x));
+		if (cartoon_eyes > 0.0) {
+			// The cartoon eye: a white ball, a deep blue iris round a huge round pupil, two glints
+			// up and towards its arms that stay put, a dark outline, no lid: a wide, awed stare.
+			vec2 ei = pos - eye_look * 0.28;
+			float ir = length(ei);
+			float er = length(pos);
+			vec3 k = vec3(0.96, 0.97, 1.0);
+			k = mix(k, mix(cartoon_iris * 1.25, cartoon_iris * 0.6, smoothstep(0.36, 0.56, ir)), 1.0 - smoothstep(0.54, 0.58, ir));
+			k = mix(k, vec3(0.03, 0.06, 0.14), (1.0 - smoothstep(0.015, 0.035, abs(ir - 0.56))) * 0.8);
+			k = mix(vec3(0.01, 0.01, 0.015), k, smoothstep(0.35, 0.38, ir));
+			float shine = 1.0 - smoothstep(0.08, 0.11, length(pos - vec2(0.22, 0.28)));
+			shine = max(shine, 1.0 - smoothstep(0.035, 0.055, length(pos - vec2(0.37, 0.12))));
+			k = mix(k, vec3(1.0), shine);
+			k = mix(k, vec3(0.1, 0.02, 0.03), smoothstep(0.76, 0.8, er));
+			k = mix(k, mix(skin, deep, 0.5), smoothstep(0.84, 0.88, er));
+			c = mix(c, k, cartoon_eyes);
+			rough = mix(rough, mix(0.1, 0.38, smoothstep(0.76, 0.88, er)), cartoon_eyes);
 		}
+		// The lids (none to be seen open): `blink` brings the upper one down to meet the lower.
+		float open_at = blink > 0.0 ? 0.95 : 2.5;
+		float lid_at = mix(open_at, -0.15, blink);
+		float low_at = mix(-open_at, -0.15, blink);
+		float lids = max(smoothstep(lid_at - 0.02, lid_at + 0.02, pos.y), 1.0 - smoothstep(low_at - 0.02, low_at + 0.02, pos.y));
+		c = mix(c, mix(skin, deep, 0.4 + 0.4 * dark), lids);
+		rough = mix(rough, 0.38, lids);
 	} else if (part < 0.9) {
 		// A strand's skin: red on its outer face, pale down its inner, suckered face.
 		float inner = 1.0 - smoothstep(0.1, 0.3, abs(at.x - 0.5));
@@ -228,6 +314,15 @@ void fragment() {
 		c = mix(c, deep, dark * (0.55 - 0.4 * inner));
 		// (a tentacle's stalk is paler than an arm)
 		c = mix(c, belly, 0.25 * flag * (1.0 - inner));
+		if (painted > 0.5) {
+			// The game model's cups (as a cup of the full model, below): pale, the rim a little
+			// red, the hollow dark; a little shadow round each.
+			float n = painted_cup(int(row_is), at.y, at.x);
+			vec3 k = mix(cup, skin, 0.35 * smoothstep(0.85, 0.95, n));
+			k = mix(deep * 0.6, k, smoothstep(0.35, 0.5, n));
+			c = mix(c * 0.72, c, smoothstep(1.0, 1.25, n));
+			c = mix(c, k, 1.0 - smoothstep(0.92, 1.0, n));
+		}
 	} else {
 		// A sucker cup: pale, its rim a little red, its hollow dark.
 		c = mix(cup, skin, 0.35 * smoothstep(0.5, 0.62, at.x) * (1.0 - smoothstep(0.62, 0.7, at.x)));

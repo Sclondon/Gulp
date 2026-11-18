@@ -4,8 +4,11 @@ Run from the game's root:
     blender --background --factory-startup --python creatures/giant_pacific_octopus/tools/build_giant_pacific_octopus.py
     blender --background --factory-startup --python creatures/giant_pacific_octopus/tools/build_giant_pacific_octopus.py -- <folder for pictures>
 
-Writes creatures/giant_pacific_octopus/models/giant_pacific_octopus.glb (the full model) and
-giant_pacific_octopus_lo.glb (far off: no suckers, no papillae, fewer rings), and the editable
+Writes creatures/giant_pacific_octopus/models/giant_pacific_octopus.glb (the full model),
+giant_pacific_octopus_lo.glb (far off: no suckers, no papillae, fewer rings) and giant_pacific_octopus_game.glb (the
+game model, about 4,400 triangles at Twilight Princess weight: rings placed where the outline and the eye need them,
+the biggest papillae only, and no sucker geometry: green 1 on its arms' skin tells the shader to paint the suckers
+where the full model has them), and the editable
 creatures/giant_pacific_octopus/tools/giant_pacific_octopus.blend (this folder has a .gdignore). Each is one static
 mesh with one surface: the shader (giant_pacific_octopus.gdshader) pulses the mantle, lays every arm along its
 rope, hangs the web between the arms, and draws the skin. It prints a WINDING line: the check that nothing is
@@ -54,6 +57,12 @@ OUT = os.path.join(HERE, "..", "models")
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 PREVIEW = ARGS[0] if ARGS else ""
 TAU = math.tau
+
+
+def pick(q, full, game, low):
+    """A number for the model `q` being built: the full one, the game one or the low one."""
+    return {"full": full, "game": game, "low": low}[q]
+
 
 # Kept in step with giant_pacific_octopus.gd and the shader.
 MANTLE_FROM = -0.03
@@ -164,9 +173,9 @@ def mantle_normal(t, a):
     return n if n.dot(Vector((math.cos(a), math.sin(a), 0.0))) > 0.0 else -n
 
 
-def mantle(m, low):
-    around = 16 if low else 56
-    rings_n = 12 if low else 52
+def mantle(m, q):
+    around = pick(q, 56, 20, 16)
+    rings_n = pick(q, 52, 22, 12)
     colour = (0.0, 0.0, 0.0, 1.0)
     rings = []
     # (the lip of the collar: turned in, so that the edge has a thickness and the head's neck goes inside it)
@@ -201,21 +210,22 @@ def mantle(m, low):
         m.face((a[c], b[c], b[d], a[d]), "lip", (m.verts[a[c]] + m.verts[b[d]]) * 0.5 - Vector((0.0, 0.0, 1.0)))
 
 
-def papilla(m, p, n, wide, high, along, part, kind="papillae"):
+def papilla(m, p, n, wide, high, along, part, kind="papillae", sides=5):
     """A pointed papilla standing on the skin at `p`, which looks along `n`."""
     side = n.cross(Vector((0.0, 0.0, 1.0)))
     if side.length < 0.01:
         side = n.cross(Vector((1.0, 0.0, 0.0)))
     side.normalize()
     other = n.cross(side)
-    sides = 5
     ring = [m.add(p - n * 0.004 + (side * math.cos(c / sides * TAU) + other * math.sin(c / sides * TAU)) * wide, (0.0, along), (0.0, 0.0), (part, 0.0, 0.0, 1.0)) for c in range(sides)]
     top = m.add(p + n * high, (0.0, along), (0.0, 0.0), (part, 0.0, 1.0, 1.0))
     for c in range(sides):
         m.face((ring[c], ring[(c + 1) % sides], top), kind, p - n * 0.01)
 
 
-def papillae(m):
+def papillae(m, q):
+    """The full model: 230 on the mantle and 26 on the head. The game model: only the same mantle's biggest, with
+    four sides (they break its outline)."""
     rng = random.Random(7)
     made = 0
     while made < 230:
@@ -226,8 +236,13 @@ def papillae(m):
             continue
         big = rng.random() ** 2.5
         # (low, soft flaps of skin, a few of them taller: not spines)
-        papilla(m, mantle_point(t, a), mantle_normal(t, a), 0.006 + 0.007 * big, 0.004 + 0.011 * big, t, 0.0)
+        if q == "full":
+            papilla(m, mantle_point(t, a), mantle_normal(t, a), 0.006 + 0.007 * big, 0.004 + 0.011 * big, t, 0.0)
+        elif big > 0.6:
+            papilla(m, mantle_point(t, a), mantle_normal(t, a), 0.006 + 0.007 * big, 0.004 + 0.011 * big, t, 0.0, sides=4)
         made += 1
+    if q != "full":
+        return
     for i in range(26):
         z = rng.uniform(-0.04, 0.13)
         a = rng.uniform(0.35, math.pi - 0.35)
@@ -256,8 +271,8 @@ def eye_at(side):
     return Vector((side * 0.074, 0.092, 0.0)), Vector((side * 0.75, 0.66, 0.0)).normalized()
 
 
-def head(m, low):
-    around = 10 if low else 28
+def head(m, q):
+    around = pick(q, 28, 16, 10)
     colour = (0.4, 0.0, 0.0, 1.0)
     rings = []
     for i, (z, rx, ry) in enumerate(HEAD):
@@ -268,8 +283,8 @@ def head(m, low):
             d = (c + 1) % around
             m.face((a[c], a[d], b[d], b[c]), "head", middle)
     # The turrets the eyes sit in, and a horn of skin over each eye.
-    n = 7 if low else 14
-    rows = 4 if low else 9
+    n = pick(q, 14, 10, 7)
+    rows = pick(q, 9, 5, 4)
     for side in (1.0, -1.0):
         centre, out = eye_at(side)
         centre = centre - out * 0.03
@@ -287,12 +302,12 @@ def head(m, low):
             d = (c + 1) % n
             m.face((rings[0][d], rings[0][c], top), "turrets", centre)
             m.face((rings[-1][c], rings[-1][d], bottom), "turrets", centre)
-        if not low:
+        if q != "low":
             for lean, wide, high in ((Vector((side * 0.25, 1.0, -0.3)), 0.011, 0.034), (Vector((side * 0.1, 1.0, 0.45)), 0.008, 0.018), (Vector((side * 0.9, 0.5, -0.55)), 0.007, 0.014)):
                 lean = lean.normalized()
-                papilla(m, centre + Vector((lean.x * 0.058, lean.y * 0.058, lean.z * 0.07)), lean, wide, high, 0.0, 0.4, "horns")
+                papilla(m, centre + Vector((lean.x * 0.058, lean.y * 0.058, lean.z * 0.07)), lean, wide, high, 0.0, 0.4, "horns", pick(q, 5, 4, 5))
     # The siphon: a tapered tube out from under the mantle's collar on its +X side, its mouth open towards the arms.
-    n = 7 if low else 14
+    n = pick(q, 14, 10, 7)
     rings = []
     for x, y, z, r in ((0.045, -0.07, -0.13, 0.05), (0.065, -0.105, -0.04, 0.046), (0.082, -0.128, 0.03, 0.036), (0.094, -0.14, 0.085, 0.028),
                        (0.094, -0.14, 0.087, 0.02), (0.088, -0.134, 0.04, 0.017)):
@@ -305,7 +320,7 @@ def head(m, low):
             away = middle if i < 3 else (middle - Vector((0.0, 0.0, 1.0)) if i == 3 else Vector((m.verts[a[c]].x * 3.0 - middle.x * 2.0, m.verts[a[c]].y * 3.0 - middle.y * 2.0, middle.z)))
             m.face((a[c], a[d], b[d], b[c]), "siphon", away)
     # The mouth: a pale disc in the middle of the ring of arms.
-    n = 8 if low else 16
+    n = pick(q, 16, 10, 8)
     mouth = (0.4, 1.0, 0.0, 1.0)
     rings = []
     for out, z in ((1.0, 0.0), (0.9, 0.016), (0.6, 0.026), (0.3, 0.03)):
@@ -321,9 +336,9 @@ def head(m, low):
         m.face((last[c], last[(c + 1) % n], tip), "mouth", inside)
 
 
-def eyes(m, low):
-    around = 8 if low else 20
-    rings_n = 4 if low else 10
+def eyes(m, q):
+    around = pick(q, 20, 16, 8)
+    rings_n = pick(q, 10, 5, 4)
     for side in (1.0, -1.0):
         centre, out = eye_at(side)
         along = Vector((0.0, 0.0, 1.0))
@@ -364,19 +379,22 @@ def arm_point(k, s, around_at, extra=0.0):
     return root + Vector((0.0, 0.0, s * long)) + (out * math.cos(a) * flat + side * math.sin(a)) * (r + extra)
 
 
-def arm_skin(m, k, low):
+def arm_skin(m, k, q):
     root, long, phase, _out = strand(k)
-    steps = 22 if low else 64
-    around = 7 if low else 16
-    colour = (0.8, 0.0, (k + 0.5) / 16.0, 1.0)
+    steps = pick(q, 64, 14, 22)
+    around = pick(q, 16, 8, 7)
+    # (green 1: the game model, whose suckers the shader paints on the inner face)
+    colour = (0.8, 1.0 if q == "game" else 0.0, (k + 0.5) / 16.0, 1.0)
     rings = []
     # (it starts inside the head: these rings are all at s = 0)
     for back, thin in ((0.1, 0.55), (0.05, 0.9)):
         rings.append([m.add(arm_point(k, 0.0, c / around, arm_radius(0.0) * (thin - 1.0)) - Vector((0.0, 0.0, back)), (c / around, 0.0), (long, phase), colour) for c in range(around + 1)])
     for i in range(steps + 1):
         # (more rings towards the tip, where it curls tightest)
-        s = 1.0 - (1.0 - i / steps) ** 1.25
-        rings.append([m.add(arm_point(k, s, c / around), (c / around, s), (long, phase), colour) for c in range(around + 1)])
+        s = 1.0 - (1.0 - i / steps) ** (1.7 if q == "game" else 1.25)
+        # (the game model's eight-sided arm built a little fatter, to cover the round one's outline and its suckers)
+        fat = arm_radius(s) * 0.07 if q == "game" else 0.0
+        rings.append([m.add(arm_point(k, s, c / around, fat), (c / around, s), (long, phase), colour) for c in range(around + 1)])
     for a, b in zip(rings, rings[1:]):
         middle = (sum((m.verts[i] for i in a[:around]), Vector()) + sum((m.verts[i] for i in b[:around]), Vector())) / (2 * around)
         for c in range(around):
@@ -431,9 +449,9 @@ def web_reach(w):
     return WEB * (1.0 - 0.3 * math.sin(math.pi * w))
 
 
-def web(m, low):
-    across_n = 2 if low else 6
-    along_n = 3 if low else 8
+def web(m, q):
+    across_n = pick(q, 6, 3, 2)
+    along_n = pick(q, 8, 3, 3)
     for k in range(ARMS):
         root_a, long_a, phase, _out = strand(k)
         root_b, long_b, _phase, _out = strand((k + 1) % ARMS)
@@ -459,16 +477,18 @@ def web(m, low):
                         m.face(quad, "web", axis)
 
 
-def make(name, low):
+def make(name, q):
+    """The model `q`: "full", "game" or "low"."""
     m = Mesh()
-    mantle(m, low)
-    head(m, low)
-    eyes(m, low)
+    mantle(m, q)
+    head(m, q)
+    eyes(m, q)
     for k in range(ARMS):
-        arm_skin(m, k, low)
-    web(m, low)
-    if not low:
-        papillae(m)
+        arm_skin(m, k, q)
+    web(m, q)
+    if q != "low":
+        papillae(m, q)
+    if q == "full":
         suckers(m)
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([to_b(p) for p in m.verts], [], m.faces)
@@ -535,7 +555,7 @@ def render(folder, made):
              ("below", (0, 0.001, -1), body, 2.6), ("front", (0, 1, 0.0), (0, 0, 0), 0.9), ("back", (0, -1, 0.0), (0, 0, 0), 0.9),
              ("head", (0.7, 0.35, 0.4), (0, 0.15, 0), 1.1), ("head_other", (-0.6, -0.5, 0.5), (0, 0.1, 0), 1.1),
              ("under", (0.5, -0.3, -0.7), (0, -0.1, 0), 1.0)]
-    for low, obj in ((False, made[0]), (True, made[1])):
+    for low, obj in ((False, made[0]), (True, made[1]), ("game", made[2])):
         for other in made:
             other.hide_render = other is not obj
         for view, direction, target, frame in views:
@@ -545,24 +565,28 @@ def render(folder, made):
             camera.data.ortho_scale = frame
             camera.location = Vector(target) + offset
             camera.rotation_euler = (-offset).to_track_quat("-Z", "X" if view in ("above", "below") else "Y").to_euler()
-            scene.render.filepath = os.path.join(folder, "%s%s.png" % ("lo_" if low else "", view))
+            scene.render.filepath = os.path.join(folder, "%s%s.png" % (("game_" if low == "game" else "lo_" if low else "", view)))
             bpy.ops.render.render(write_still=True)
 
 
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.preferences.filepaths.save_version = 0
-    full = make(NAME, False)
-    low = make(NAME + "_lo", True)
+    full = make(NAME, "full")
+    low = make(NAME + "_lo", "low")
+    game = make(NAME + "_game", "game")
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, NAME + ".glb"))
     export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
+    export_one(game, os.path.join(OUT, NAME + "_game.glb"))
     low.location.x = 1.5
+    game.location.x = -1.5
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low])
+        render(PREVIEW, [full, low, game])
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ extends Node3D
 ## Its mouth opens: `gape` 0 shut to 1 wide, as when it bites (the lower jaw swings down about
 ## its hinge, the snout lifts a little, the dark inside of the mouth shows).
 ##
-## The model is creatures/surfperch/models/surfperch.glb (and _lo), built by
+## The model is creatures/surfperch/models/surfperch.glb (and _lo, far off, and _game, the game model), built by
 ## tools/build_surfperch.py; surfperch.gdshader draws its markings and moves it (no bones).
 
 const MODEL := "res://creatures/surfperch/models/surfperch%s.glb"
@@ -65,6 +65,29 @@ const WIDTH := 0.034
 	set(value):
 		low = value
 		_show()
+## The game model (Twilight Princess weight: a few thousand triangles, spent on its outline, eye,
+## lips and fin edges) in place of the full one. `low` still shows the low model. With it on the
+## full model is never loaded.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye: 0 its eye as it is, 1 bigger, with a white, a big pupil, a highlight and a lid
+## line of its own (see the README for its character).
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = value
+		_send(&"cartoon_eyes", value)
+## Where the cartoon eye looks, -1..1 each way: x towards its snout (+) or its tail (-), y up or down.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		_send(&"eye_look", value)
+## The cartoon eye's blink: 0 open, 1 shut.
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = value
+		_send(&"blink", value)
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set
 ## it yourself.
 var phase := 0.0:
@@ -77,6 +100,7 @@ static var _meshes := {}
 var _material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
 
 
 ## The full model's mesh, or the low one's (each one surface, to wear `new_material()`): for
@@ -89,6 +113,27 @@ static func mesh_of(low_wanted := false) -> Mesh:
 		_meshes[path] = found.mesh
 		made.free()
 	return _meshes[path]
+
+
+## The game model's mesh (one surface, to wear `new_material()`), without the thinned copies
+## Godot's importer makes for far off (a body bent in the vertex shader would bend in straight
+## pieces): for drawing one without this node.
+static func game_mesh() -> Mesh:
+	var path := MODEL % "_game"
+	if not _meshes.has(path):
+		var made := (load(path) as PackedScene).instantiate()
+		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+		_meshes[path] = without_lods(found.mesh)
+		made.free()
+	return _meshes[path]
+
+
+## A copy of `mesh` without its level-of-detail meshes.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return plain
 
 
 ## A new material for `mesh_of()`'s meshes. Its shader settings are the game's to set: `phase`
@@ -105,11 +150,11 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
-	_show()
+	# (deferred: what is set just after it enters the tree, `game` and `low` among them, comes
+	# first, so that a model it will not show is never loaded)
+	_show.call_deferred()
 	_send_phase()
-	for setting: StringName in [&"sway", &"scull", &"gape", &"dorsal"]:
+	for setting: StringName in [&"sway", &"scull", &"gape", &"dorsal", &"cartoon_eyes", &"eye_look", &"blink"]:
 		_send(setting, get(setting))
 
 
@@ -128,7 +173,7 @@ func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)
 
 
-## Its one material (both models wear it).
+## Its one material (every model wears it).
 func material() -> ShaderMaterial:
 	return _material
 
@@ -143,18 +188,29 @@ func _send_phase() -> void:
 	_send(&"phase", fposmod(phase * tail_beats, 1.0))
 
 
+# (each model is loaded only when it is first shown: a game showing only the game model never
+# loads the full one)
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if not is_inside_tree():
+		return
+	var which := "_lo" if low else ("_game" if game else "")
+	if which == "" and _full == null:
+		_full = _instance_of(which)
+	elif which == "_lo" and _low == null:
+		_low = _instance_of(which)
+	elif which == "_game" and _game == null:
+		_game = _instance_of(which)
+	for shown: MeshInstance3D in [_full, _low, _game]:
+		if shown:
+			shown.visible = shown == (_low if low else (_game if game else _full))
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of(which: String) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
+	mesh.mesh = game_mesh() if which == "_game" else mesh_of(which == "_lo")
 	mesh.material_override = _material
 	# (its tail and fins swing out past where the still model ends)
 	mesh.extra_cull_margin = LENGTH * 0.25
-	mesh.name = "SurfperchLo" if low_wanted else "Surfperch"
+	mesh.name = "Surfperch" + {"": "", "_lo": "Lo", "_game": "Game"}[which]
 	add_child(mesh)
 	return mesh

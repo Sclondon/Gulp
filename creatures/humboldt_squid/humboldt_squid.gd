@@ -39,7 +39,7 @@ extends Node3D
 ## This is the giant squid's code (godot/giant-squid), copied and changed: components here
 ## stand alone, each game owning its copy, so nothing is shared between the two.
 ##
-## The model is creatures/humboldt_squid/models/humboldt_squid.glb (and _lo), built by
+## The model is creatures/humboldt_squid/models/humboldt_squid.glb (and _lo, and _game), built by
 ## tools/build_humboldt_squid.py; humboldt_squid.gdshaderinc pulses the mantle, lays the strands
 ## along their ropes and draws the skin and its colour.
 
@@ -91,9 +91,10 @@ const SQUEEZE_AT := 0.62
 ## Swims like a jellyfish: how far its arms spread out into a bell as the mantle fills (0 not at
 ## all: the tight cone only; 1 wide open, like an umbrella), to be swept shut behind it as it jets.
 @export var bell := 0.0
-## Cartoon eyes: each eye a white ball with a big round black pupil (off: the dark eye with its
-## silver ring of the real animal).
-@export var cartoon_eyes := false
+## Cartoon eyes (0 the dark eye with its silver ring of the real animal; 1 the cartoon eye: bigger,
+## a white, a fiery amber iris, a big round pupil, a highlight, a dark outline, and a lid slanted
+## down towards its arms in a scowl: the "red devil"). Sent to the shader every step.
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0
 ## How much the ropes are stirred about as they trail, for 1 as it hangs in open water. The
 ## stirring comes round with each jet.
 @export var wander := 1.0
@@ -109,6 +110,25 @@ const SQUEEZE_AT := 0.62
 @export var fin_ripples := 2
 ## Full detail within this of the camera; the low model (no sucker cups) further off.
 @export var detail_range := 18.0
+## The game model (about 4,100 triangles, its sucker cups painted by the shader) near, in place of
+## the full one (54,900); the low one still far off. With it the full model is never loaded: each
+## model is loaded only when it is first shown.
+@export var game := false:
+	set(value):
+		game = value
+		if not _models.is_empty():
+			_show(not _models.has("_lo") or not (_models["_lo"] as MeshInstance3D).visible)
+## Where its eyes look (-1..1 each way, in each eye's own plane): x towards its arms (+1) or its
+## mantle (-1), y up its back. Both eyes look the same way.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		set_shader_parameter(&"eye_look", value)
+## Its eyes' lids: 0 open, 1 shut.
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = value
+		set_shader_parameter(&"blink", value)
 ## A light of its own (0 none): for dark water.
 var glow := 0.0
 ## A round tank it is kept inside (the user, 2026-11-17, of a tube of water it swam in: "make sure
@@ -125,8 +145,8 @@ var colour_phase := 0.0
 var fullness := 0.0
 var thrust := 0.0
 
-var _full: MeshInstance3D
-var _low: MeshInstance3D
+# Its models, by suffix ("", "_game", "_lo"), each made when it is first shown.
+var _models := {}
 var _materials: Array[ShaderMaterial] = []
 # A flash of its own (`flash()`): how far through it (0..1; 1 none), and how long it takes.
 var _flash_at := 1.0
@@ -142,6 +162,7 @@ var _laid := false
 var _was_at := Vector3.ZERO
 
 static var _strands := []
+static var _game_cache: Mesh
 
 
 func _ready() -> void:
@@ -150,17 +171,53 @@ func _ready() -> void:
 		material.shader = shader
 		_materials.append(material)
 	_materials[1].render_priority = 1
-	_full = _mesh_of("")
-	_low = _mesh_of("_lo")
-	_low.visible = false
+	for setting in [&"cartoon_eyes", &"eye_look", &"blink"]:
+		set_shader_parameter(setting, get(setting))
+	# (the first model is put off to the end of the frame, so that `game` set just after it is added
+	# is heeded before any model is loaded)
+	_first_show.call_deferred()
+
+
+func _first_show() -> void:
+	if _models.is_empty():
+		_show(true)
+
+
+## Shows the model it should wear (near: the full one, or the game one with `game`; else the low
+## one), loading it the first time.
+func _show(near: bool) -> void:
+	var wear := "_lo" if not near else ("_game" if game else "")
+	if not _models.has(wear):
+		_models[wear] = _mesh_of(wear)
+	for suffix: String in _models:
+		(_models[suffix] as MeshInstance3D).visible = suffix == wear
+
+
+## The game model's mesh, as imported, without the thinned LOD meshes Godot's importer makes (its
+## mantle and strands are bent in the shader: a thinned one would bend in straight pieces). Two
+## surfaces: the body, and the fins (their material's resource_name is "squid_fins").
+static func game_mesh() -> Mesh:
+	if _game_cache == null:
+		var made := (load(MODEL % "_game") as PackedScene).instantiate()
+		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+		var plain := ArrayMesh.new()
+		for surface in found.mesh.get_surface_count():
+			plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, found.mesh.surface_get_arrays(surface))
+			plain.surface_set_material(surface, found.mesh.surface_get_material(surface))
+		made.free()
+		_game_cache = plain
+	return _game_cache
 
 
 func _mesh_of(suffix: String) -> MeshInstance3D:
-	var scene := load(MODEL % suffix) as PackedScene
-	var made := scene.instantiate()
-	var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+	var made: Node = null
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = found.mesh
+	if suffix == "_game":
+		mesh.mesh = game_mesh()
+	else:
+		made = (load(MODEL % suffix) as PackedScene).instantiate()
+		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+		mesh.mesh = found.mesh
 	for surface in mesh.mesh.get_surface_count():
 		var named := mesh.mesh.surface_get_material(surface)
 		var fins := named != null and named.resource_name == "squid_fins"
@@ -168,7 +225,8 @@ func _mesh_of(suffix: String) -> MeshInstance3D:
 	# (its ropes may swing anywhere within their length of it)
 	mesh.extra_cull_margin = TENTACLE_LONG * 1.1
 	mesh.name = "Squid" + suffix
-	made.free()
+	if made:
+		made.free()
 	add_child(mesh)
 	return mesh
 
@@ -219,7 +277,7 @@ func step(velocity: Vector3, delta: float) -> void:
 	set_shader_parameter(&"flicker", flicker)
 	set_shader_parameter(&"flicker_rounds", float(flicker_rounds))
 	set_shader_parameter(&"flash_now", pow(sin(PI * _flash_at), 2.0))
-	set_shader_parameter(&"cartoon_eyes", 1.0 if cartoon_eyes else 0.0)
+	set_shader_parameter(&"cartoon_eyes", cartoon_eyes)
 	if is_inside_tree():
 		if not is_visible_in_tree():
 			# (unseen, its ropes are not worked out: they are hung afresh when it is next seen)
@@ -231,9 +289,7 @@ func step(velocity: Vector3, delta: float) -> void:
 			_send_ropes()
 	var camera := get_viewport().get_camera_3d() if is_inside_tree() else null
 	if camera:
-		var near := camera.global_position.distance_to(global_position) < detail_range
-		_full.visible = near
-		_low.visible = not near
+		_show(camera.global_position.distance_to(global_position) < detail_range)
 
 
 ## Sets one of the shader's settings (its colours: `skin`, `deep`, `pale`, `cup`, `silver`; how

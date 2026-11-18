@@ -18,11 +18,12 @@ extends Node3D
 ## yourself for a picture that must loop. Its arms, fin, tentacles and mantle are bent by the shader
 ## (no bones, no ropes), so many can share one mesh (`mesh_of()`) and material (`new_material()`).
 ##
-## The model is creatures/cuttlefish/models/cuttlefish.glb (and _lo), built by
+## The model is creatures/cuttlefish/models/cuttlefish.glb (and _lo, and _game: `game`), built by
 ## tools/build_cuttlefish.py; cuttlefish.gdshader moves it and draws its skin.
 
 const MODEL := "res://creatures/cuttlefish/models/cuttlefish%s.glb"
 const SHADER := preload("res://creatures/cuttlefish/cuttlefish.gdshader")
+static var _game_cache: Mesh
 ## As the model is built: from the arms' tips to the mantle's end, how deep its body is and how
 ## wide with its fin (metres, at scale 1). Struck, its tentacles reach 0.2 m past its arms.
 const LENGTH := 0.4
@@ -81,6 +82,31 @@ const WIDTH := 0.152
 	set(value):
 		low = value
 		_show()
+## The game model (about 1,800 triangles, an eighth of the full one's) in place of the full one;
+## `low` still shows the low one. With it the full model is never loaded: each model is loaded
+## only when it is first shown.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## Cartoon eyes (0 its own eye; 1 the cartoon eye: bigger, a white, a green-gold iris, its W of a
+## pupil, a highlight, a dark outline, and a low, scheming upper lid with the lower lid pushed up:
+## a sly look).
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = value
+		_send(&"cartoon_eyes", value)
+## Where its eyes look (-1..1 each way, in each eye's own plane): x towards its arms (+1) or its
+## mantle's end (-1), y up its back. Both eyes look the same way.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		_send(&"eye_look", value)
+## Its eyes' lids: 0 open, 1 shut.
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = value
+		_send(&"blink", value)
 ## How far through a beat (0..1). `step` moves it on; or set it yourself.
 var phase := 0.0:
 	set(value):
@@ -95,8 +121,9 @@ var colour_phase := 0.0:
 		_send(&"colour_phase", colour_phase)
 
 var _material: ShaderMaterial
-var _full: MeshInstance3D
-var _low: MeshInstance3D
+# Its models, by suffix ("", "_game", "_lo"), each made when it is first shown.
+var _models := {}
+var _ready_yet := false
 var _flash_at := 1.0
 var _flash_takes := 0.8
 
@@ -106,23 +133,48 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance(mesh_of(false), "")
-	_low = _instance(mesh_of(true), "_lo")
-	_show()
+	# (the first model is put off to the end of the frame, so that `game` or `low` set just after it
+	# is added is heeded before any model is loaded)
+	_first_show.call_deferred()
 	for setting in [&"fin_ripples", &"cloud_rounds"]:
 		_send(setting, float(get(setting)))
-	for setting in [&"spread", &"strike", &"curl", &"zebra", &"cloud", &"blanch", &"phase", &"colour_phase"]:
+	for setting in [&"spread", &"strike", &"curl", &"zebra", &"cloud", &"blanch", &"phase", &"colour_phase", &"cartoon_eyes", &"eye_look", &"blink"]:
 		_send(setting, get(setting))
 
 
 ## The model's mesh (the full one, or the low one), as imported: for a MultiMesh of many.
 static func mesh_of(low_model := false) -> Mesh:
-	var scene := load(MODEL % ("_lo" if low_model else "")) as PackedScene
+	return _load_mesh("_lo" if low_model else "")
+
+
+## The game model's mesh, as imported, without the thinned LOD meshes Godot's importer makes (it is
+## bent in the shader: a thinned one would bend in straight pieces): for a MultiMesh of many.
+static func game_mesh() -> Mesh:
+	return _load_mesh("_game")
+
+
+static func _load_mesh(suffix: String) -> Mesh:
+	if suffix == "_game" and _game_cache != null:
+		return _game_cache
+	var scene := load(MODEL % suffix) as PackedScene
 	var made := scene.instantiate()
 	var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
 	var mesh := found.mesh
 	made.free()
+	if suffix == "_game":
+		# (made once, shared by every cuttlefish)
+		_game_cache = _without_lods(mesh)
+		mesh = _game_cache
 	return mesh
+
+
+## `mesh` built again from its own arrays, without its LOD meshes.
+static func _without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+		plain.surface_set_material(surface, mesh.surface_get_material(surface))
+	return plain
 
 
 ## A new material of its shader, with its settings at their defaults.
@@ -132,7 +184,7 @@ static func new_material() -> ShaderMaterial:
 	return material
 
 
-## Its one material (both models wear it).
+## Its one material (every model wears it).
 func material() -> ShaderMaterial:
 	return _material
 
@@ -168,10 +220,21 @@ func _send(setting: StringName, value: Variant) -> void:
 		_material.set_shader_parameter(setting, value)
 
 
+func _first_show() -> void:
+	_ready_yet = true
+	_show()
+
+
+## Shows the model it should wear (the full one, the game one with `game`, the low one with `low`),
+## loading it the first time.
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if not _ready_yet:
+		return
+	var wear := "_lo" if low else ("_game" if game else "")
+	if not _models.has(wear):
+		_models[wear] = _instance(_load_mesh(wear), wear)
+	for suffix: String in _models:
+		(_models[suffix] as MeshInstance3D).visible = suffix == wear
 
 
 func _instance(mesh: Mesh, suffix: String) -> MeshInstance3D:

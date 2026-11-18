@@ -4,8 +4,9 @@ Run from the game's root:
     blender --background --factory-startup --python creatures/cuttlefish/tools/build_cuttlefish.py
     blender --background --factory-startup --python creatures/cuttlefish/tools/build_cuttlefish.py -- <folder for pictures>
 
-Writes creatures/cuttlefish/models/cuttlefish.glb (the full model) and cuttlefish_lo.glb (far off, or many: fewer
-rings), and the editable creatures/cuttlefish/tools/cuttlefish.blend (this folder has a .gdignore). Each is one static
+Writes creatures/cuttlefish/models/cuttlefish.glb (the full model), cuttlefish_lo.glb (far off, or many: fewer
+rings) and cuttlefish_game.glb (the game model, at Twilight Princess weight: fewer rings, placed for the outline
+and the eyes), and the editable creatures/cuttlefish/tools/cuttlefish.blend (this folder has a .gdignore). Each is one static
 mesh with one surface: the shader (cuttlefish.gdshader) ripples the fin, bends the mantle (`curl`), bends and
 spreads the arms, shoots out the tentacles and draws the skin. It prints a WINDING line: the check that nothing is
 inside out (every face is given a point it must look away from; a face that does not is counted).
@@ -47,6 +48,12 @@ OUT = os.path.join(HERE, "..", "models")
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 PREVIEW = ARGS[0] if ARGS else ""
 TAU = math.tau
+
+
+def pick(q, full, game, low):
+    """A number for the model `q` being built: the full one, the game one or the low one."""
+    return {"full": full, "game": game, "low": low}[q]
+
 NAME = "cuttlefish"
 
 # Kept in step with cuttlefish.gd and the shader.
@@ -124,9 +131,9 @@ def mantle_point(t, a, shrink=1.0):
     return Vector((math.cos(a) * w, y, z))
 
 
-def mantle(m, low):
-    around = 14 if low else 48
-    rings_n = 8 if low else 40
+def mantle(m, q):
+    around = pick(q, 48, 18, 14)
+    rings_n = pick(q, 40, 10, 8)
     colour = (0.0, 0.0, 0.0, 1.0)
     rings = []
     # (the lip of the collar: turned in, so that its edge has a thickness and the head's neck goes inside it)
@@ -154,9 +161,9 @@ def mantle(m, low):
             m.face((a[c], a[d], b[d], b[c]), "lip", away)
 
 
-def fin(m, low):
-    along_n = 10 if low else 56
-    across_n = 1 if low else 6
+def fin(m, q):
+    along_n = pick(q, 56, 20, 10)
+    across_n = pick(q, 6, 1, 1)
     for side in (1.0, -1.0):
         for sheet in (0.0, 1.0):
             rows = []
@@ -186,8 +193,8 @@ HEAD = [(-0.03, 0.04, 0.021), (-0.05, 0.046, 0.026), (-0.07, 0.049, 0.029), (-0.
         (-0.118, 0.038, 0.025), (-0.128, 0.028, 0.02), (-0.135, 0.015, 0.012)]
 
 
-def head(m, low):
-    around = 10 if low else 32
+def head(m, q):
+    around = pick(q, 32, 12, 10)
     colour = (0.4, 0.0, 0.0, 1.0)
     rings = []
     for z, rx, ry in HEAD:
@@ -201,7 +208,7 @@ def head(m, low):
     for c in range(around):
         m.face((rings[-1][c], front, rings[-1][(c + 1) % around]), "head", Vector((0.0, 0.0, -0.12)))
     # The siphon: a short funnel under the head, out from under the collar, its mouth open forwards.
-    n = 8 if low else 14
+    n = pick(q, 14, 8, 8)
     rings = []
     for z, r, y in ((-0.035, 0.012, -0.022), (-0.06, 0.009, -0.029), (-0.078, 0.0065, -0.031), (-0.078, 0.0045, -0.031), (-0.066, 0.004, -0.03)):
         rings.append([m.add(Vector((math.cos(c / n * TAU) * r, y + math.sin(c / n * TAU) * r * 0.8, z)), (0.0, 0.0), (0.0, 0.0), colour) for c in range(n)])
@@ -213,9 +220,9 @@ def head(m, low):
             m.face((a[c], b[c], b[d], a[d]), "siphon", away)
 
 
-def eyes(m, low):
-    around = 8 if low else 24
-    rings_n = 3 if low else 10
+def eyes(m, q):
+    around = pick(q, 24, 20, 8)
+    rings_n = pick(q, 10, 4, 3)
     for side in (1.0, -1.0):
         centre = Vector((EYE.x * side, EYE.y, EYE.z))
         out = Vector((EYE_OUT.x * side, EYE_OUT.y, EYE_OUT.z))
@@ -269,9 +276,9 @@ def arm_point(k, s, around_at):
     return root + way * long * s + (e_out * math.cos(a) * flat + e_side * math.sin(a)) * r
 
 
-def arms(m, low):
-    steps = 5 if low else 22
-    around = 5 if low else 12
+def arms(m, q):
+    steps = pick(q, 22, 5, 5)
+    around = pick(q, 12, 5, 5)
     for k in range(ARMS):
         root, _out, rest, long = arm(k)
         way = arm_way(k)
@@ -297,9 +304,9 @@ def tentacle_radius(s):
     return 0.0024 - 0.0006 * s + 0.0034 * club
 
 
-def tentacles(m, low):
-    steps = 8 if low else 40
-    around = 4 if low else 10
+def tentacles(m, q):
+    steps = pick(q, 40, 10, 8)
+    around = pick(q, 10, 4, 4)
     for k in (ARMS, ARMS + 1):
         side = 1.0 if k == ARMS else -1.0
         root = Vector((side * TENTACLE_X, TENTACLE_Y, TENTACLE_Z))
@@ -330,14 +337,15 @@ def tentacles(m, low):
                 m.face(tri, "tentacles", centre)
 
 
-def make(name, low):
+def make(name, q):
+    """The model `q`: "full", "game" or "low"."""
     m = Mesh()
-    mantle(m, low)
-    fin(m, low)
-    head(m, low)
-    eyes(m, low)
-    arms(m, low)
-    tentacles(m, low)
+    mantle(m, q)
+    fin(m, q)
+    head(m, q)
+    eyes(m, q)
+    arms(m, q)
+    tentacles(m, q)
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([to_b(p) for p in m.verts], [], m.faces)
     # (every layer made first, then each looked up by name: making one moves the others)
@@ -402,7 +410,7 @@ def render(folder, made):
     views = [("side", (1, 0, 0), body, 0.5), ("other_side", (-1, 0, 0), body, 0.5), ("above", (0, 0.001, 1), body, 0.5),
              ("below", (0, 0.001, -1), body, 0.5), ("front", (0, 1, 0.0), body, 0.25), ("back", (0, -1, 0.0), body, 0.25),
              ("head", (0.7, 0.6, 0.4), (0, 0.11, 0), 0.18), ("quarter", (-0.6, -0.5, 0.5), body, 0.5)]
-    for low, obj in ((False, made[0]), (True, made[1])):
+    for low, obj in ((False, made[0]), (True, made[1]), ("game", made[2])):
         for other in made:
             other.hide_render = other is not obj
         for view, direction, target, frame in views:
@@ -412,24 +420,28 @@ def render(folder, made):
             camera.data.ortho_scale = frame
             camera.location = Vector(target) + offset
             camera.rotation_euler = (-offset).to_track_quat("-Z", "X" if view in ("above", "below") else "Y").to_euler()
-            scene.render.filepath = os.path.join(folder, "%s%s.png" % ("lo_" if low else "", view))
+            scene.render.filepath = os.path.join(folder, "%s%s.png" % ("game_" if low == "game" else "lo_" if low else "", view))
             bpy.ops.render.render(write_still=True)
 
 
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.preferences.filepaths.save_version = 0
-    full = make(NAME, False)
-    low = make(NAME + "_lo", True)
+    full = make(NAME, "full")
+    low = make(NAME + "_lo", "low")
+    game = make(NAME + "_game", "game")
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, NAME + ".glb"))
     export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
+    export_one(game, os.path.join(OUT, NAME + "_game.glb"))
     low.location.x = 0.3
+    game.location.x = -0.3
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low])
+        render(PREVIEW, [full, low, game])
 
 
 if __name__ == "__main__":

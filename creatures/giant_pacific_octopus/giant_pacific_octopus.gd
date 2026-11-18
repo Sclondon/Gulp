@@ -28,7 +28,8 @@ extends Node3D
 ## Nothing in it runs on a clock that only grows: the jet and the stirring of the arms go by
 ## `phase`. `step` moves `phase` on by delta / beat (set `beat` to 0 and `phase` yourself).
 ##
-## The model is creatures/giant_pacific_octopus/models/giant_pacific_octopus.glb (and _lo), built
+## The model is creatures/giant_pacific_octopus/models/giant_pacific_octopus.glb (and _lo, and
+## _game: `game`), built
 ## by tools/build_giant_pacific_octopus.py; giant_pacific_octopus.gdshader pulses the mantle,
 ## lays the arms and the web along the ropes and draws the skin.
 
@@ -76,6 +77,31 @@ const SQUEEZE_AT := 0.6
 @export var detail_range := 14.0
 ## The low model always, wherever the camera is (for many of them, or far off).
 @export var low := false
+## The game model (about 4,500 triangles, its suckers painted by the shader) near, in place of the
+## full one (52,900); the low one still far off. With it the full model is never loaded: each model
+## is loaded only when it is first shown.
+@export var game := false:
+	set(value):
+		game = value
+		if not _models.is_empty():
+			_show(not _models.has("_lo") or not (_models["_lo"] as MeshInstance3D).visible)
+## Cartoon eyes (0 its own gold eye with the level slit, 1 the cartoon eye: bigger, a cream white,
+## a gold iris, a level bar of a pupil, a highlight, a dark outline, and a heavy, knowing upper lid).
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = value
+		_material.set_shader_parameter(&"cartoon_eyes", value)
+## Where its eyes look (-1..1 each way, in each eye's own plane): x towards its arms (+1) or its
+## mantle (-1), y up its back. Both eyes look the same way.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		_material.set_shader_parameter(&"eye_look", value)
+## Its eyes' lids: 0 open, 1 shut.
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = value
+		_material.set_shader_parameter(&"blink", value)
 ## A round tank it is kept inside (as the squids'): its radius (world metres; 0 none) about the
 ## upright line through `tank_at`. Its arms are put back inside the wall.
 var tank := 0.0
@@ -88,8 +114,8 @@ var fullness := 0.0
 var thrust := 0.0
 
 var _material: ShaderMaterial
-var _full: MeshInstance3D
-var _low: MeshInstance3D
+# Its models, by suffix ("", "_game", "_lo"), each made when it is first shown.
+var _models := {}
 var _flash_at := 1.0
 var _flash_takes := 0.6
 var _ropes := PackedVector3Array()
@@ -100,6 +126,7 @@ var _laid := false
 var _was_at := Vector3.ZERO
 
 static var _strands := []
+static var _game_cache: Mesh
 
 
 func _init() -> void:
@@ -107,19 +134,50 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance(mesh_of(false), "")
-	_low = _instance(mesh_of(true), "_lo")
-	_low.visible = false
+	# (put off to the end of the frame, so that `game` or `low` set just after it is added is heeded
+	# before any model is loaded)
+	_first_show.call_deferred()
+
+
+func _first_show() -> void:
+	if _models.is_empty():
+		_show(true)
 
 
 ## The model's mesh (the full one, or the low one), as imported.
 static func mesh_of(low_model := false) -> Mesh:
-	var scene := load(MODEL % ("_lo" if low_model else "")) as PackedScene
+	return _load_mesh("_lo" if low_model else "")
+
+
+## The game model's mesh, as imported, without the thinned LOD meshes Godot's importer makes (its
+## arms are bent in the shader: a thinned one would bend in straight pieces).
+static func game_mesh() -> Mesh:
+	return _load_mesh("_game")
+
+
+static func _load_mesh(suffix: String) -> Mesh:
+	if suffix == "_game" and _game_cache != null:
+		return _game_cache
+	var scene := load(MODEL % suffix) as PackedScene
 	var made := scene.instantiate()
 	var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
 	var mesh := found.mesh
 	made.free()
+	if suffix == "_game":
+		# (made once, shared by every octopus)
+		if _game_cache == null:
+			_game_cache = _without_lods(mesh)
+		mesh = _game_cache
 	return mesh
+
+
+## `mesh` built again from its own arrays, without its LOD meshes.
+static func _without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+		plain.surface_set_material(surface, mesh.surface_get_material(surface))
+	return plain
 
 
 ## A new material of its shader (each octopus needs its own: its arms' ropes are in it).
@@ -140,7 +198,7 @@ func _instance(mesh: Mesh, suffix: String) -> MeshInstance3D:
 	return made
 
 
-## Its one material (both models wear it).
+## Its one material (every model wears it).
 func material() -> ShaderMaterial:
 	return _material
 
@@ -199,8 +257,17 @@ func step(velocity: Vector3, delta: float) -> void:
 	var camera := get_viewport().get_camera_3d() if is_inside_tree() else null
 	if camera and near:
 		near = camera.global_position.distance_to(global_position) < detail_range * _size()
-	_full.visible = near
-	_low.visible = not near
+	_show(near)
+
+
+## Shows the model it should wear (near: the full one, or the game one with `game`; else the low
+## one), loading it the first time.
+func _show(near: bool) -> void:
+	var wear := "_lo" if low or not near else ("_game" if game else "")
+	if not _models.has(wear):
+		_models[wear] = _instance(_load_mesh(wear), wear)
+	for suffix: String in _models:
+		(_models[suffix] as MeshInstance3D).visible = suffix == wear
 
 
 ## Its arms as built: [root (its own space), length, phase 0..1, which arm, the way out from its

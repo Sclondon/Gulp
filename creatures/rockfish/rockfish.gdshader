@@ -43,6 +43,24 @@ const float SPINE_SHARE = 0.64;
 const vec3 GILL = vec3(0.34, -0.01, 3.5);
 const vec2 EYE_AT = vec2(0.128, 0.04);
 const float PUPIL = 0.5;
+// The eye as the model has it (the build script's SHADER line): its middle on the skin (to the
+// side, up, along), the way the skin faces there, its radius, and how far the skin under its rim
+// falls away behind its middle (in radii).
+const vec3 EYE_MID = vec3(0.0637, 0.04, 0.128);
+const vec3 EYE_FACING = vec3(0.9038, 0.3196, -0.2846);
+const float EYE_R = 0.031;
+const float EYE_SAG = -0.1043;
+// The cartoon eye (`cartoon_eyes`), the rockfish's own: a grumpy, goggle-eyed old grouch. Its
+// size against the real eye; the iris's and pupil's radii (in eye radii); the pupil's shape (0
+// round, 1 a cat's slit, 2 a bar, 3 a keyhole); the upper lid's line (its height in the middle,
+// how it tilts: less than 0 lower towards the snout) and the lower lid's height.
+const float EYE_GROW = 1.85;
+const float IRIS_R = 0.64;
+const float PUPIL_R = 0.36;
+const int PUPIL_KIND = 3;
+const float LID_H = 0.2;
+const float LID_TILT = -0.14;
+const float LOW_LID = -0.72;
 
 // How long the wave along its body is, in body lengths.
 uniform float wave = 1.0;
@@ -60,6 +78,9 @@ uniform vec3 fin_edge : source_color = vec3(0.07, 0.03, 0.03);
 // The eye: its iris and the ring round its pupil.
 uniform vec3 iris : source_color = vec3(0.85, 0.42, 0.1);
 uniform vec3 iris_ring : source_color = vec3(1.0, 0.8, 0.4);
+// The cartoon eye's white and its iris.
+uniform vec3 sclera : source_color = vec3(0.95, 0.92, 0.82);
+uniform vec3 toon_iris : source_color = vec3(0.98, 0.6, 0.12);
 
 // ---------------------------------------------------------------------------------------------
 // From here to the fragment function the shader is the same for GameCommon's snapper, rockfish,
@@ -88,11 +109,22 @@ uniform float gape = 0.0;
 uniform float dorsal = 1.0;
 // The inside of the mouth.
 uniform vec3 mouth : source_color = vec3(0.16, 0.03, 0.035);
+// The cartoon eye: 0 the eye as it is (nothing below changes), 1 the cartoon eye (bigger, a white,
+// an iris, a big pupil, a highlight towards the light, a lid line of its own). Between, between.
+uniform float cartoon_eyes : hint_range(0.0, 1.0) = 0.0;
+// Where the cartoon eye looks (-1..1 each way): x towards its snout (+) or its tail (-), y up (+)
+// or down (-), in the eye's own plane.
+uniform vec2 eye_look = vec2(0.0);
+// The cartoon eye's blink: 0 open, 1 shut (a lid the colour of its skin closes over it).
+uniform float blink : hint_range(0.0, 1.0) = 0.0;
 
 varying vec3 rest;
 varying vec3 rest_normal;
 varying float part;
 varying float inside;
+// The eye's own way forward (towards the snout) and up, in view space (for its highlight).
+varying vec3 eye_fwd;
+varying vec3 eye_up;
 
 float hash2(vec2 p) {
 	vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
@@ -141,6 +173,16 @@ void curl_bend(inout vec3 v, inout vec3 n) {
 	v = vec3(r + (v.x - r) * c, v.y, from + (r - v.x) * sn);
 }
 
+// The eye on the side `sg` (1 its left, -1 its right): its middle, the way it faces, and its own
+// forward (towards the snout) and up, in its plane.
+void eye_frame(float sg, out vec3 mid, out vec3 nrm, out vec3 fwd, out vec3 up) {
+	mid = vec3(sg * EYE_MID.x, EYE_MID.y, EYE_MID.z - 0.5);
+	nrm = normalize(vec3(sg * EYE_FACING.x, EYE_FACING.y, EYE_FACING.z));
+	fwd = normalize(vec3(0.0, 0.0, -1.0) + nrm * nrm.z);
+	up = vec3(0.0, 1.0, 0.0) - nrm * nrm.y;
+	up = normalize(up - fwd * dot(up, fwd));
+}
+
 void vertex() {
 	part = UV2.y;
 	int p = int(part + 0.5);
@@ -149,6 +191,28 @@ void vertex() {
 	rest = v;
 	rest_normal = n;
 	inside = p <= 1 ? UV2.x : 0.0;
+	eye_fwd = vec3(0.0, 0.0, -1.0);
+	eye_up = vec3(0.0, 1.0, 0.0);
+	if (p == 7) {
+		vec3 mid;
+		vec3 nrm;
+		vec3 fwd;
+		vec3 up;
+		eye_frame(sign(v.x), mid, nrm, fwd, up);
+		if (cartoon_eyes > 0.0) {
+			// The cartoon eye: the dome grown about its middle, its rim kept down on the skin (which
+			// falls away under it), squashed a little as it blinks.
+			float g = mix(1.0, EYE_GROW, clamp(cartoon_eyes, 0.0, 1.0));
+			float r = UV.x;
+			vec3 d = v - mid;
+			float h = dot(d, nrm);
+			float dome = h - EYE_SAG * EYE_R * r * r;
+			float shut = 1.0 - 0.4 * clamp(blink, 0.0, 1.0);
+			v = mid + (d - nrm * h) * g + nrm * (dome * g * shut + EYE_SAG * EYE_R * g * g * r * r - 0.02 * EYE_R * (g - 1.0));
+		}
+		eye_fwd = (MODELVIEW_MATRIX * vec4(fwd, 0.0)).xyz;
+		eye_up = (MODELVIEW_MATRIX * vec4(up, 0.0)).xyz;
+	}
 	float open = clamp(gape, 0.0, 1.0);
 	if (p == 1) {
 		// The lower jaw swings down about its hinge; the throat behind it stays.
@@ -236,12 +300,70 @@ vec3 eye_colour(float r, vec3 tint, vec3 ring) {
 	return mix(c, tint * 0.25, smoothstep(0.86, 1.0, r) * 0.85);
 }
 
+// The cartoon eye's pupil: 1 on its edge, less inside (`q` in pupil radii, x towards the snout).
+float pupil_shape(vec2 q) {
+	if (PUPIL_KIND == 1) {
+		return length(q * vec2(2.6, 1.0));
+	} else if (PUPIL_KIND == 2) {
+		return length(q * vec2(1.0, 2.6));
+	} else if (PUPIL_KIND == 3) {
+		return min(length(q), length((q - vec2(0.8, -0.05)) * vec2(1.6, 2.4)));
+	}
+	return length(q);
+}
+
+// The cartoon eye (see `cartoon_eyes`): a white, an iris ringed darker, a big dark pupil, a
+// highlight that stays towards the light (from above, by the viewer), lids of `skin` that give it
+// its character and close as it blinks, a dark rim. Its colour, and how much of it is highlight.
+vec4 cartoon_eye(vec3 skin, mat4 view_matrix) {
+	vec3 mid;
+	vec3 nrm;
+	vec3 fwd;
+	vec3 up;
+	eye_frame(sign(rest.x), mid, nrm, fwd, up);
+	vec3 d = rest - mid;
+	vec2 e = vec2(dot(d, fwd), dot(d, up)) / EYE_R;
+	float px = max(fwidth(e.x), fwidth(e.y)) * 0.75 + 0.004;
+	float reach = max(0.18, 0.92 - IRIS_R);
+	vec2 q = e - clamp(eye_look, vec2(-1.0), vec2(1.0)) * reach;
+	float di = length(q);
+	vec3 c = sclera * (1.0 - 0.18 * smoothstep(0.1, 0.9, e.y));
+	vec3 ic = toon_iris * mix(1.25, 0.7, smoothstep(0.15 * IRIS_R, IRIS_R, di));
+	ic = mix(ic, toon_iris * 0.3, smoothstep(0.8 * IRIS_R, IRIS_R, di));
+	c = mix(c, ic, 1.0 - smoothstep(IRIS_R - px, IRIS_R + px, di));
+	float pd = pupil_shape(q / PUPIL_R);
+	c = mix(c, vec3(0.012, 0.012, 0.02), 1.0 - smoothstep(1.0 - px / PUPIL_R, 1.0 + px / PUPIL_R, pd));
+	// the highlight: where the light from above the viewer glances off it
+	vec3 toward_light = normalize((view_matrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz + vec3(-0.3, 0.0, 1.0));
+	vec3 half_way = normalize(toward_light + vec3(0.0, 0.0, 1.0));
+	vec2 hl = vec2(dot(half_way, normalize(eye_fwd)), dot(half_way, normalize(eye_up))) * 0.8;
+	hl *= min(1.0, 0.5 / max(length(hl), 0.001));
+	float spot = 1.0 - smoothstep(0.17 - px, 0.17 + px, length(e - hl));
+	spot = max(spot, 1.0 - smoothstep(0.07 - px, 0.07 + px, length(e - hl * 0.15 + vec2(0.18, 0.2))));
+	c = mix(c, vec3(1.0), spot);
+	// the lids: the upper one's line gives it its character; both close as it blinks
+	float b = clamp(blink, 0.0, 1.0);
+	float meet = mix(LID_H, LOW_LID, 0.7);
+	float top = mix(LID_H + LID_TILT * e.x, meet, b);
+	float low = mix(LOW_LID, meet - 0.03, b);
+	float lid = clamp(smoothstep(top - px, top + px, e.y) + 1.0 - smoothstep(low - px, low + px, e.y), 0.0, 1.0);
+	c = mix(c, skin * (0.8 + 0.2 * smoothstep(top, 1.0, e.y)), lid);
+	spot *= 1.0 - lid;
+	vec3 ink = vec3(0.02, 0.015, 0.02);
+	c = mix(c, ink, 1.0 - smoothstep(0.05, 0.05 + px, abs(e.y - top)));
+	c = mix(c, ink, 0.7 * (1.0 - smoothstep(0.035, 0.035 + px, abs(e.y - low))));
+	// the dark rim
+	c = mix(c, ink, smoothstep(0.88 - px, 0.88 + px, length(e)));
+	return vec4(c, spot);
+}
+
 void fragment() {
 	int p = int(part + 0.5);
 	float glance = 1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0);
 	vec3 c;
 	float rough = 0.5;
 	float spec = 0.4;
+	float glow = 0.0;
 	if (p <= 1) {
 		float s = rest.z + 0.5;
 		float y = rest.y;
@@ -302,8 +424,14 @@ void fragment() {
 		c = eye_colour(UV.x, iris, iris_ring);
 		rough = 0.14;
 		spec = 0.6;
+		if (cartoon_eyes > 0.0) {
+			vec4 toon = cartoon_eye(mix(back, vermilion, 0.5), VIEW_MATRIX);
+			c = mix(c, toon.rgb, clamp(cartoon_eyes, 0.0, 1.0));
+			glow = toon.a * 0.35 * clamp(cartoon_eyes, 0.0, 1.0);
+		}
 	}
 	ALBEDO = c;
 	ROUGHNESS = rough;
 	SPECULAR = spec;
+	EMISSION = c * glow;
 }

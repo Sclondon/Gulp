@@ -8,7 +8,9 @@
 // the mantle, 0.2 a fin, 0.4 the head and siphon, 0.6 an eye, 0.8 the skin of a strand, 1 a
 // sucker cup); COLOR.g 1 on a tentacle, and on the head 1 for the bulb of the mouth; COLOR.b
 // which strand ((n + 0.5) / 16: arms 0 to 7, tentacles 8 and 9); UV.x round it, UV.y along it;
-// UV2.x a strand's length, UV2.y its phase.
+// UV2.x a strand's length, UV2.y its phase. On the game model (humboldt_squid_game.glb) UV2.y is 2
+// more than the phase on its strands: it has no sucker cups of its own, and they are painted here
+// where the full model has them.
 //
 // THE COLOUR CHANGE. A Humboldt squid's skin is pale (white to pink, with a sheen) under a
 // sheet of red-brown colour cells (chromatophores), each a dot that its muscles pull wide open
@@ -79,9 +81,18 @@ uniform vec3 silver : source_color = vec3(0.85, 0.86, 0.9);
 uniform float fin_alpha = 0.93;
 // How big its colour cells are (metres across a cell's place, at size 1).
 uniform float cell = 0.016;
-// Cartoon eyes: 1 draws each eye as a white ball with a big round black pupil, 0 the dark eye
-// with its silver ring of the real animal.
+// Cartoon eyes (0 the dark eye with its silver ring of the real animal; 1 bigger, a white, a fiery
+// amber iris, a big round pupil, a highlight, a dark outline, and a lid slanting down towards its
+// arms in a scowl: the "red devil"), where they look (x towards its arms, y up its back, -1..1),
+// and how shut its lids are (0 open, 1 shut).
 uniform float cartoon_eyes = 0.0;
+uniform vec2 eye_look = vec2(0.0);
+uniform float blink = 0.0;
+uniform vec3 cartoon_iris : source_color = vec3(1.0, 0.52, 0.08);
+// The eye's middle (+X side), its radius across its face, and how much bigger the cartoon eye is.
+const vec3 EYE = vec3(0.112, 0.012, -0.005);
+const float EYE_R = 0.082;
+const float CARTOON_EYE = 1.35;
 
 varying float part;
 varying float flag;
@@ -89,6 +100,8 @@ varying vec2 at;
 varying float long_is;
 varying vec3 rest;
 varying vec3 rest_normal;
+varying float painted;
+varying float row_is;
 
 // How full of water the mantle is, through a jet (0..1): filling slowly, emptied quickly.
 float fullness(float x) {
@@ -152,6 +165,8 @@ void vertex() {
 	long_is = uv2.x;
 	rest = vertex;
 	rest_normal = normal;
+	painted = uv2.y > 1.5 ? 1.0 : 0.0;
+	row_is = floor(colour.b * 16.0);
 	if (part < 0.1) {
 		// The mantle: breathing.
 		vertex.xy *= swell(uv.y);
@@ -202,12 +217,50 @@ void vertex() {
 		offset += (cross(w, offset) + cross(w, cross(w, offset)) / (1.0 + c)) * follows;
 		normal = normalize(normal + (cross(w, normal) + cross(w, cross(w, normal)) / (1.0 + c)) * follows);
 		vertex = on_line + offset;
+	} else if (part > 0.5) {
+		// An eye: bigger, about its own middle, as it turns cartoon.
+		vec3 centre = vec3(vertex.x < 0.0 ? -EYE.x : EYE.x, EYE.y, EYE.z);
+		vertex = centre + (vertex - centre) * mix(1.0, CARTOON_EYE, cartoon_eyes);
 	}
 	if (part < 0.7) {
 		curl_bend(vertex, normal);
 	}
 	VERTEX = vertex;
 	NORMAL = normal;
+}
+
+// The game model's sucker cups, painted where the full model has them (suckers() in the build
+// script): how far the point `s` along strand `row` and `around` round it is from the middle of the
+// nearest cup, in that cup's radii (more than 1: no cup here).
+float painted_cup(int row, float s, float around) {
+	float best = 9.0;
+	if (row < ARMS) {
+		// (two rows of 24 down an arm)
+		float r_arm = 0.043 * pow(max(1.0 - s, 0.0), 0.75) + 0.004;
+		float size = max(0.3 * r_arm, 0.003);
+		float x = pow(clamp((s - 0.04) / 0.9, 0.0, 1.0), 1.0 / 0.9) * 24.0;
+		for (int k = 0; k < 2; k++) {
+			float i = clamp(round(x - 0.5 * float(k)), 0.0, 23.0);
+			float si = 0.04 + 0.9 * pow((i + 0.5 * float(k)) / 24.0, 0.9);
+			float across = (around - 0.5 - (k == 1 ? 0.07 : -0.07)) * 6.2831853 * r_arm;
+			best = min(best, length(vec2(across, (s - si) * long_is)) / size);
+		}
+		return best;
+	}
+	// (a club: four rows of 15, the middle two the biggest)
+	float club = smoothstep(0.6, 0.72, s) * (1.0 - smoothstep(0.84, 1.0, s));
+	float r_t = 0.017 - 0.004 * s + 0.021 * club - 0.009 * smoothstep(0.93, 1.0, s);
+	for (int k = 0; k < 4; k++) {
+		float odd = float(k % 2);
+		float where = k == 0 ? 0.33 : (k == 1 ? 0.445 : (k == 2 ? 0.555 : 0.67));
+		float big = (k == 0 || k == 3) ? 0.5 : 1.0;
+		float i = clamp(round((s - 0.65) / 0.33 * 15.0 - 0.5 * odd), 0.0, 14.0);
+		float si = 0.65 + 0.33 * (i + 0.5 * odd) / 15.0;
+		float size = 0.0105 * big * (0.5 + 0.5 * pow(sin(3.14159 * (i + 0.5) / 15.0), 0.6));
+		float across = (around - where) * 6.2831853 * r_t;
+		best = min(best, length(vec2(across, (s - si) * long_is)) / size);
+	}
+	return best;
 }
 
 // How pale a flash makes the skin (0..1) at `x` through a flash's turn: red, quickly white,
@@ -284,20 +337,61 @@ void fragment() {
 		}
 	} else if (part < 0.7) {
 		// An eye: a black pupil, a ring of silver, the lid of skin closing round it.
-		float out_from = at.x;
+		// (the eye's own frame: x towards its arms, y up its back; `pos` the point in it, 1 about
+		// where the cartoon eye's white ends)
+		vec2 e = vec2(rest.z - EYE.z, rest.y - EYE.y) / EYE_R;
+		vec2 way = length(e) > 1e-5 ? normalize(e) : vec2(0.0);
+		// (measured from its place, not its UV, so that its rings are round however few its points;
+		// past the side of the ball, where that fails, it is far out)
+		vec2 pos = way * (at.x < 0.45 ? asin(min(length(e), 1.0)) / 3.14159 : 0.8) / 0.4;
+		// (`eye_look` slides its pupil that way)
+		vec2 seen = e - eye_look * 0.12;
+		float out_from = at.x + (asin(min(length(seen), 1.0)) - asin(min(length(e), 1.0))) / 3.14159 * (1.0 - smoothstep(0.3, 0.45, at.x));
 		c = mix(vec3(0.004, 0.005, 0.008), silver * 0.8, smoothstep(0.15, 0.175, out_from));
 		c = mix(c, silver * 0.45, smoothstep(0.2, 0.28, out_from));
-		c = mix(c, skin_of(rest, open), smoothstep(0.28, 0.33, out_from));
-		rough = mix(0.08, 0.34, smoothstep(0.26, 0.34, out_from));
-		if (cartoon_eyes > 0.5) {
-			c = mix(vec3(0.01, 0.01, 0.015), vec3(0.96, 0.97, 1.0), smoothstep(0.13, 0.15, out_from));
-			c = mix(c, skin_of(rest, open), smoothstep(0.33, 0.36, out_from));
-			rough = 0.12;
+		c = mix(c, skin_of(rest, open), smoothstep(0.28, 0.33, at.x));
+		rough = mix(0.08, 0.34, smoothstep(0.26, 0.34, at.x));
+		if (cartoon_eyes > 0.0) {
+			// The cartoon eye: a white, a fiery amber iris, a big round pupil, a highlight up and
+			// towards its arms that stays put, a dark outline; its scowling lid is below.
+			vec2 ei = pos - eye_look * 0.3;
+			float ir = length(ei);
+			float er = length(pos);
+			vec3 k = vec3(0.96, 0.95, 0.92);
+			k = mix(k, mix(cartoon_iris * 1.1, cartoon_iris * 0.55, smoothstep(0.2, 0.5, ir)), 1.0 - smoothstep(0.49, 0.53, ir));
+			k = mix(k, vec3(0.25, 0.06, 0.02), (1.0 - smoothstep(0.015, 0.035, abs(ir - 0.51))) * 0.8);
+			k = mix(vec3(0.01, 0.01, 0.015), k, smoothstep(0.26, 0.29, ir));
+			float shine = 1.0 - smoothstep(0.08, 0.11, length(pos - vec2(0.2, 0.26)));
+			shine = max(shine, 1.0 - smoothstep(0.035, 0.055, length(pos - vec2(0.35, 0.1))));
+			k = mix(k, vec3(1.0), shine);
+			k = mix(k, vec3(0.12, 0.02, 0.02), smoothstep(0.72, 0.76, er));
+			k = mix(k, skin_of(rest, open), smoothstep(0.82, 0.86, er));
+			c = mix(c, k, cartoon_eyes);
+			rough = mix(rough, mix(0.08, 0.34, smoothstep(0.72, 0.86, er)), cartoon_eyes);
 		}
+		// The lids: the cartoon eye's upper lid slants down towards its arms (a scowl), its edge
+		// drawn dark; `blink` brings it down to meet the lower one.
+		float open_at = blink > 0.0 ? 0.95 : 2.5;
+		float lid_at = mix(mix(open_at, 0.42 - 0.32 * pos.x, cartoon_eyes), -0.15, blink);
+		float low_at = mix(mix(-open_at, -0.78, cartoon_eyes), -0.15, blink);
+		float lids = max(smoothstep(lid_at - 0.02, lid_at + 0.02, pos.y), 1.0 - smoothstep(low_at - 0.02, low_at + 0.02, pos.y));
+		float lash = cartoon_eyes * (1.0 - smoothstep(0.04, 0.09, abs(pos.y - lid_at))) * (1.0 - smoothstep(0.78, 0.84, length(pos)));
+		c = mix(c, vec3(0.12, 0.02, 0.02), lash * 0.9);
+		c = mix(c, skin_of(rest, open), lids);
+		rough = mix(rough, 0.34, lids);
 	} else if (part < 0.9) {
 		// A strand's skin: its back as the body; its inner, suckered face always pale.
 		float inner = 1.0 - smoothstep(0.12, 0.26, abs(at.x - 0.5));
 		c = skin_of(rest, open * (1.0 - 0.9 * inner) * (1.0 - 0.3 * flag));
+		if (painted > 0.5) {
+			// The game model's cups (as a cup of the full model, below): pale, the toothed ring
+			// paler, the hollow dark; a little shadow round each.
+			float n = painted_cup(int(row_is), at.y, at.x);
+			vec3 k = mix(cup, vec3(0.98, 0.96, 0.94), smoothstep(0.5, 0.6, n) * (1.0 - smoothstep(0.85, 0.95, n)));
+			k = mix(vec3(0.2, 0.1, 0.16), k, smoothstep(0.38, 0.5, n));
+			c = mix(c * 0.72, c, smoothstep(1.0, 1.25, n));
+			c = mix(c, k, 1.0 - smoothstep(0.92, 1.0, n));
+		}
 	} else {
 		// A sucker cup: pale and a little purple, its toothed ring pale, its hollow dark.
 		c = mix(cup, vec3(0.98, 0.96, 0.94), smoothstep(0.5, 0.6, at.x) * (1.0 - smoothstep(0.62, 0.7, at.x)));

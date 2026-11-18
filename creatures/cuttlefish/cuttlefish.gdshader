@@ -66,6 +66,16 @@ uniform vec3 black : source_color = vec3(0.06, 0.05, 0.05);
 uniform vec3 belly : source_color = vec3(0.9, 0.88, 0.83);
 uniform vec3 iris : source_color = vec3(0.8, 0.72, 0.5);
 
+// Cartoon eyes (0 its own eye; 1 bigger, a white, a green-gold iris round its W of a pupil, a
+// highlight, a dark outline, a low upper lid and the lower lid pushed up: a sly look), where they
+// look (x towards its arms, y up its back, -1..1), and how shut its lids are (0 open, 1 shut).
+uniform float cartoon_eyes = 0.0;
+uniform vec2 eye_look = vec2(0.0);
+uniform float blink = 0.0;
+uniform vec3 cartoon_iris : source_color = vec3(0.6, 0.72, 0.3);
+// How much bigger the cartoon eye is than its own.
+const float CARTOON_EYE = 1.6;
+
 varying float part;
 varying float flag;
 varying float row_is;
@@ -177,6 +187,10 @@ void vertex() {
 		float reach = mix(0.05, 1.0, strike);
 		float thick = mix(0.6, 1.0, strike);
 		vertex = root + vec3(side * 0.012 * strike * s, 0.0, 0.006 * (1.0 - strike) - long_is * s * reach) + offset * thick;
+	} else if (part > 0.5 && part < 0.7) {
+		// An eye: bigger, about its own middle, as it turns cartoon.
+		vec3 centre = vec3(vertex.x < 0.0 ? -EYE.x : EYE.x, EYE.y, EYE.z);
+		vertex = centre + (vertex - centre) * mix(1.0, CARTOON_EYE, cartoon_eyes);
 	}
 	if (part < 0.3) {
 		curl_bend(vertex, normal);
@@ -250,8 +264,10 @@ void fragment() {
 		vec3 d = rest - centre;
 		vec3 u = normalize(vec3(0.0, 1.0, 0.0) - o * o.y);
 		vec3 h = normalize(cross(o, u)) * sign(rest.x);
-		float x = dot(d, h) / 0.012;
-		float y = dot(d, u) / 0.012;
+		// (`eye_look` slides the pupil: x towards its arms, which is -h, y up its back)
+		vec3 dl = d - (-h * eye_look.x + u * eye_look.y) * 0.003;
+		float x = dot(dl, h) / 0.012;
+		float y = dot(dl, u) / 0.012;
 		float r = length(vec2(x, y * 1.15));
 		c = mix(iris, iris * 0.6, smoothstep(0.55, 0.95, r));
 		// the W: a band that dips twice
@@ -263,6 +279,42 @@ void fragment() {
 		float lid = smoothstep(0.86, 1.0, length(d - o * dot(d, o)) / EYE_R);
 		c = mix(c, skin_at(rest, back, 0.0), lid);
 		rough = mix(0.08, 0.45, lid);
+		// (in its own measure, 1 its edge: x towards its arms, y up its back)
+		vec2 e = vec2(dot(d, -h), dot(d, u)) / EYE_R;
+		if (cartoon_eyes > 0.0) {
+			// The cartoon eye: a white, a green-gold iris round its W, a highlight up and towards
+			// its arms that stays put, a dark outline; its sly lids are below.
+			vec2 ei = e - eye_look * 0.28;
+			float er = length(e);
+			float ir = length(ei);
+			vec3 k = vec3(0.95, 0.95, 0.9);
+			k = mix(k, mix(cartoon_iris * 1.15, cartoon_iris * 0.55, smoothstep(0.1, 0.48, ir)), 1.0 - smoothstep(0.47, 0.51, ir));
+			k = mix(k, vec3(0.1, 0.14, 0.04), (1.0 - smoothstep(0.015, 0.035, abs(ir - 0.49))) * 0.8);
+			// (the W, a band that dips twice, across the iris)
+			float wx = ei.x / 0.4;
+			float wy = ei.y / 0.4;
+			float wmid = -0.24 + 0.52 * pow(abs(abs(wx) - 0.42) / 0.42, 1.4);
+			float wband = abs(wy - wmid) - 0.24 * (1.0 - smoothstep(0.55, 0.95, abs(wx)));
+			float w = (1.0 - smoothstep(-0.02, 0.05, wband)) * (1.0 - smoothstep(0.88, 0.98, abs(wx)));
+			k = mix(k, vec3(0.01), w);
+			float shine = 1.0 - smoothstep(0.08, 0.11, length(e - vec2(0.22, 0.3)));
+			shine = max(shine, 1.0 - smoothstep(0.035, 0.055, length(e - vec2(0.36, 0.14))));
+			k = mix(k, vec3(1.0), shine);
+			k = mix(k, vec3(0.06, 0.05, 0.04), smoothstep(0.7, 0.74, er));
+			k = mix(k, skin_at(rest, back, 0.0), smoothstep(0.82, 0.86, er));
+			c = mix(c, k, cartoon_eyes);
+			rough = mix(rough, mix(0.06, 0.45, smoothstep(0.7, 0.86, er)), cartoon_eyes);
+		}
+		// The lids: the cartoon eye's upper lid low and level, its lower lid pushed up (a sly
+		// squint); `blink` brings them together.
+		float lid_at = mix(mix(1.4, 0.36 + 0.06 * e.x, cartoon_eyes), -0.12, blink);
+		float low_at = mix(mix(-1.4, -0.5 + 0.08 * e.x, cartoon_eyes), -0.12, blink);
+		float lids = max(smoothstep(lid_at - 0.02, lid_at + 0.02, e.y), 1.0 - smoothstep(low_at - 0.02, low_at + 0.02, e.y));
+		float lash = cartoon_eyes * (1.0 - smoothstep(0.03, 0.08, min(abs(e.y - lid_at), abs(e.y - low_at)))) * (1.0 - smoothstep(0.78, 0.84, length(e)));
+		c = mix(c, vec3(0.08, 0.06, 0.04), lash * 0.9);
+		// (its lids the sandy skin of its back, not its pale belly)
+		c = mix(c, skin_at(rest, 1.0, 0.0) * 0.92, lids);
+		rough = mix(rough, 0.45, lids);
 	} else {
 		// An arm or tentacle: its back as the body, its inner face pale with little suckers.
 		float inner = 1.0 - smoothstep(0.12, 0.28, abs(at.x - 0.5));

@@ -12,7 +12,9 @@
 // mouth; COLOR.b on an arm, a sucker or the web which arm ((n + 0.5) / 16), on the mantle and head
 // 1 at a papilla's point. UV.x round it (the web: 0 at its own arm to 1 at the next; an arm: 0.5
 // down the middle of its suckered face); UV.y along it (the mantle: collar 0 to tip 1; an arm or
-// the web: root 0 to tip 1); UV2.x an arm's length, UV2.y its phase.
+// the web: root 0 to tip 1); UV2.x an arm's length, UV2.y its phase. On the game model
+// (giant_pacific_octopus_game.glb) COLOR.g is 1 on an arm's skin: it has no suckers of its own, and
+// they are painted here where the full model has them.
 shader_type spatial;
 render_mode cull_back;
 
@@ -49,6 +51,17 @@ uniform vec3 under : source_color = vec3(0.86, 0.68, 0.6);
 uniform vec3 sucker : source_color = vec3(0.95, 0.86, 0.78);
 uniform vec3 iris : source_color = vec3(0.78, 0.56, 0.2);
 
+// Cartoon eyes (0 its own eye; 1 bigger, a cream white, a gold iris, a level bar of a pupil, a
+// highlight, a dark outline and a heavy, knowing upper lid), where they look (x towards its arms,
+// y up its back, -1..1), and how shut its lids are (0 open, 1 shut).
+uniform float cartoon_eyes = 0.0;
+uniform vec2 eye_look = vec2(0.0);
+uniform float blink = 0.0;
+uniform vec3 eye_white : source_color = vec3(0.96, 0.92, 0.8);
+// How much bigger the cartoon eye is than its own.
+const float CARTOON_EYE = 1.45;
+const float EYE_R = 0.036;
+
 varying float part;
 varying float flag;
 varying float tip;
@@ -56,6 +69,7 @@ varying vec2 at;
 varying vec3 rest;
 varying vec3 rest_normal;
 varying vec3 up_here;
+varying float long_is;
 
 float fullness(float x) {
 	x = fract(x);
@@ -118,6 +132,7 @@ void vertex() {
 	flag = COLOR.g;
 	tip = COLOR.b;
 	at = UV;
+	long_is = UV2.x;
 	rest = vertex;
 	rest_normal = normal;
 	// (the world's up, in its own space: for the eyes' level pupils)
@@ -162,6 +177,10 @@ void vertex() {
 		offset = mix(offset, turn_to(offset, way), follows);
 		normal = normalize(mix(normal, turn_to(normal, way), follows));
 		vertex = on_line + offset;
+	} else if (part > 0.5) {
+		// An eye: bigger, about its own middle, as it turns cartoon.
+		vec3 centre = vec3(vertex.x < 0.0 ? -EYE.x : EYE.x, EYE.y, EYE.z);
+		vertex = centre + (vertex - centre) * mix(1.0, CARTOON_EYE, cartoon_eyes);
 	}
 	VERTEX = vertex;
 	NORMAL = normal;
@@ -212,19 +231,80 @@ void fragment() {
 		vec3 u = up_here - o * dot(up_here, o);
 		u = length(u) > 0.05 ? normalize(u) : normalize(cross(o, vec3(0.0, 0.0, 1.0)));
 		vec3 h = cross(o, u);
-		float x = dot(d, h);
-		float y = dot(d, u);
+		// (the eye's own frame, with the body: x towards its arms, y up its back; `eye_look` slides
+		// the iris and pupil that way)
+		vec3 ub = normalize(vec3(0.0, 1.0, 0.0) - o * o.y);
+		vec3 hb = cross(o, ub);
+		hb *= sign(hb.z);
+		vec3 dl = d - (hb * eye_look.x + ub * eye_look.y) * 0.006;
+		float x = dot(dl, h);
+		float y = dot(dl, u);
 		float r = length(vec2(x, y));
 		c = mix(iris, iris * 0.55, smoothstep(0.014, 0.026, r));
 		c = mix(c, vec3(0.92, 0.84, 0.6), smoothstep(0.004, 0.0, abs(r - 0.012)) * 0.3);
 		float slit = pow(abs(x) / 0.019, 4.0) + pow(abs(y) / 0.0048, 2.0);
 		c = mix(vec3(0.01, 0.008, 0.008), c, smoothstep(0.85, 1.15, slit));
-		c = mix(c, skin_at(rest, 0.0), smoothstep(0.029, 0.034, r));
-		rough = mix(0.08, 0.42, smoothstep(0.028, 0.034, r));
+		float r0 = length(vec2(dot(d, h), dot(d, u)));
+		c = mix(c, skin_at(rest, 0.0), smoothstep(0.029, 0.034, r0));
+		rough = mix(0.08, 0.42, smoothstep(0.028, 0.034, r0));
+		if (cartoon_eyes > 0.0) {
+			// The cartoon eye (in its own measure, 1 its edge): a cream white, a gold iris, a level
+			// bar of a pupil (level with the world, as its own is), a highlight up and towards its
+			// arms that stays put, a dark outline; a heavy, knowing upper lid (below).
+			vec2 e = vec2(dot(d, hb), dot(d, ub)) / EYE_R;
+			vec2 ei = e - eye_look * 0.3;
+			float er = length(e);
+			float ir = length(ei);
+			vec3 k = eye_white;
+			k = mix(k, mix(iris * 1.2, iris * 0.62, smoothstep(0.08, 0.42, ir)), 1.0 - smoothstep(0.41, 0.45, ir));
+			k = mix(k, vec3(0.22, 0.1, 0.03), (1.0 - smoothstep(0.015, 0.035, abs(ir - 0.43))) * 0.8);
+			vec3 ev = (hb * ei.x + ub * ei.y);
+			vec2 bar = vec2(dot(ev, h), dot(ev, u));
+			float bar_in = length(max(abs(bar) - vec2(0.2, 0.025), 0.0)) - 0.07;
+			k = mix(k, vec3(0.01, 0.008, 0.008), 1.0 - smoothstep(-0.01, 0.015, bar_in));
+			float shine = 1.0 - smoothstep(0.07, 0.095, length(e - vec2(0.2, 0.26)));
+			shine = max(shine, 1.0 - smoothstep(0.03, 0.05, length(e - vec2(0.33, 0.1))));
+			k = mix(k, vec3(1.0), shine);
+			k = mix(k, vec3(0.12, 0.03, 0.02), smoothstep(0.68, 0.72, er));
+			k = mix(k, skin_at(rest, 0.0), smoothstep(0.8, 0.84, er));
+			c = mix(c, k, cartoon_eyes);
+			rough = mix(rough, mix(0.06, 0.42, smoothstep(0.68, 0.84, er)), cartoon_eyes);
+		}
+		// The lids: the upper one sits over the cartoon eye's top third (sloping down towards its
+		// arms), its edge drawn dark; `blink` brings it down to meet the lower one.
+		vec2 e = vec2(dot(d, hb), dot(d, ub)) / EYE_R;
+		float lid_at = mix(mix(1.4, 0.34 - 0.14 * e.x, cartoon_eyes), -0.2, blink);
+		float low_at = mix(-1.4, -0.2, blink);
+		float lid = max(smoothstep(lid_at - 0.02, lid_at + 0.02, e.y), 1.0 - smoothstep(low_at - 0.02, low_at + 0.02, e.y));
+		float lash = cartoon_eyes * (1.0 - smoothstep(0.03, 0.08, abs(e.y - lid_at))) * (1.0 - smoothstep(0.78, 0.84, length(e)));
+		c = mix(c, vec3(0.12, 0.025, 0.02), lash * 0.9);
+		c = mix(c, skin_at(rest + vec3(0.0, 0.02, 0.0), 0.0), lid);
+		rough = mix(rough, 0.42, lid);
 	} else if (part < 0.9) {
 		// An arm's skin: its back as the body, its suckered face pale.
 		float inner = 1.0 - smoothstep(0.1, 0.26, abs(at.x - 0.5));
 		c = skin_at(rest, inner * 0.85);
+		if (flag > 0.5) {
+			// The game model: its suckers painted where the full model has them, two rows of 52
+			// down each arm (suckers() in the build script), each a cream rim round a pinker cup.
+			float s = at.y;
+			float x_at = 1.0 - sqrt(max(1.0 - clamp((s - 0.015) / 0.97, 0.0, 1.0), 0.0));
+			float r_arm = 0.05 * pow(max(1.0 - s, 0.0), 0.85) + 0.0035;
+			float size = max(0.4 * r_arm, 0.0022);
+			float best = 9.0;
+			for (int row = 0; row < 2; row++) {
+				float f = clamp(round(x_at * 52.0 - 0.25 - 0.5 * float(row)), 0.0, 51.0);
+				float xi = (f + 0.25 + 0.5 * float(row)) / 52.0;
+				float si = 0.015 + 0.97 * (1.0 - (1.0 - xi) * (1.0 - xi));
+				float across = (at.x - 0.5 - (row == 1 ? 0.085 : -0.085)) * 6.2831853 * r_arm;
+				best = min(best, length(vec2(across, (s - si) * long_is)) / size);
+			}
+			vec3 cup = mix(sucker * 0.92, sucker, smoothstep(0.45, 0.6, best));
+			cup = mix(vec3(0.78, 0.55, 0.5), cup, smoothstep(0.42, 0.55, best));
+			cup = mix(cup, dark, blush * 0.25);
+			c = mix(c * 0.75, c, smoothstep(1.0, 1.2, best));
+			c = mix(c, cup, 1.0 - smoothstep(0.9, 1.0, best));
+		}
 	} else {
 		// A sucker: a cream rim, its cup a little darker and pinker.
 		c = mix(sucker * 0.92, sucker, smoothstep(0.35, 0.5, at.x));
