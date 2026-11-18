@@ -75,6 +75,9 @@ const REEF_BACK_LOOP := Vector3(-138.0, -62.0, 15.0)
 const REEF_BACK_PACE := 0.45
 ## Beyond this the two giants are their light models (m).
 const GIANT_LOW := 60.0
+## The old one and the reef-back are put in the sea (off: they wait for the special conditions that
+## call the sea monsters up; Species `monster` holds the swimming ones back the same way).
+const MONSTERS := false
 
 ## Who lays the grass aside and frightens the eels (the player).
 var player: Player
@@ -898,6 +901,10 @@ func _add_landmarks() -> void:
 # ones beyond GIANT_LOW. The old one's body and head stop a swimmer; the reef back walks, so it
 # does not (spheres are fixed).
 func _add_giants() -> void:
+	# (the user, 2026-11-18: "The giant monsters should not just spawn, those will need special
+	# conditions": until those are made, neither is put in the sea)
+	if not MONSTERS:
+		return
 	if ResourceLoader.exists(OLD_ONE):
 		_old_one = (load(OLD_ONE) as GDScript).new()
 		_old_one.set(&"game", true)

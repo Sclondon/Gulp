@@ -232,7 +232,7 @@ func _ready() -> void:
 	var pools := {}
 	for kind: String in Species.ALL:
 		var entry := Species.of(kind)
-		if int(entry.count) == 0 or not Species.has(kind):
+		if int(entry.count) == 0 or not Species.has(kind) or entry.get("monster", false):
 			continue
 		for i in int(entry.count):
 			var made := Creature.new()
@@ -614,6 +614,18 @@ func _wake_or_sleep(unit: Variant) -> void:
 		for m: Creature in members:
 			m.asleep = false
 			awake.append(m)
+		# (it wakes out of sight, so a group that went to sleep straggling, or was never let gather
+		# since the sea was stocked, closes up round its leader now)
+		if unit is Creature.Group:
+			var group: Creature.Group = unit
+			for m: Creature in members:
+				var room := maxf(m.length * group.space, 0.3)
+				if m != first and m.away <= 0.0 and m.global_position.distance_to(first.global_position) > room * 3.0:
+					var off := Vector3(_rng.randf_range(-1.0, 1.0), _rng.randf_range(-0.4, 0.4), _rng.randf_range(-1.0, 1.0)) * room * 1.5
+					var keep := maxf(m.length * 0.5, 0.3)
+					m.place(Sea.clear_of_rocks(Sea.keep_in(first.global_position + off, keep), keep))
+					m.heading = first.heading
+					m.visible = false
 	elif not first.asleep and far > SLEEP:
 		for m: Creature in members:
 			_sleep(m)

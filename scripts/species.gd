@@ -17,6 +17,8 @@ class_name Species
 ## - curls: its shader has `curl` (left out: it has).
 ## - how: "swim" (the default), "floor" (it keeps to the bottom, on it or just over it), or
 ##   "giant" (it cruises, takes no notice of anything, and nothing eats it).
+## - monster: a sea monster: never stocked with the rest (the user, 2026-11-18: "The giant monsters
+##   should not just spawn, those will need special conditions"); its count is what it would be.
 ## - slow: how fast it goes beside a fish of its length (left out: 1; a starfish creeps, 0 stays put).
 ## - hunts: it goes for the player when it is big enough to eat it (left out: it does).
 ## - breathes: it comes down from the surface and goes back up to it (seals, whales).
@@ -95,7 +97,7 @@ const ALL := {
 	# (the user, 2026-11-18: "skeleton ghost whales and other ghost fish", "and spinosaurus", and a furry
 	# crocodile-headed river beast of our own design. The ghost whale drifts in the canyon and at Atlantis; its
 	# `fade` by night, the ghost fish as a school, the spinosaurus's `wade` and the beast's `stand` are not driven yet.)
-	"ghost_whale": {"script": "ghost_whale/ghost_whale", "how": "giant", "zones": ["trench", "ruins"], "band": [0.3, 0.9], "count": 1, "size": [13.0, 14.0], "habit": "drift"},
+	"ghost_whale": {"script": "ghost_whale/ghost_whale", "monster": true, "how": "giant", "zones": ["trench", "ruins"], "band": [0.3, 0.9], "count": 1, "size": [13.0, 14.0], "habit": "drift"},
 	"spinosaurus": {"script": "spinosaurus/spinosaurus", "zones": ["river", "beach"], "band": [0.4, 0.95], "count": 1, "size": [12.0, 14.0], "habit": "stalk"},
 	"river_beast": {"script": "river_beast/river_beast", "breathes": true, "zones": ["river"], "band": [0.75, 1.0], "count": 1, "size": [3.6, 3.9], "habit": "ambush"},
 	"wahoo": {"script": "wahoo/wahoo", "zones": ["open"], "band": [0.6, 0.95], "count": 2, "size": [1.6, 2.0]},
@@ -202,8 +204,8 @@ const ALL := {
 	# Sea monsters (the user, 2026-11-18: "leviathan, sea monster, cthulu old one, and godzilla like designs"):
 	# the leviathan a harmless giant of the deep, the sea serpent a stalker along the shelf's edge (Claude's
 	# places, numbers and sizes).
-	"leviathan": {"script": "leviathan/leviathan", "how": "giant", "zones": ["open", "trench"], "band": [0.2, 0.7], "count": 1, "size": [36.0, 40.0], "habit": "filter"},
-	"sea_serpent": {"script": "sea_serpent/sea_serpent", "zones": ["open"], "band": [0.3, 0.9], "count": 1, "size": [22.0, 25.0], "habit": "stalk"},
+	"leviathan": {"script": "leviathan/leviathan", "monster": true, "how": "giant", "zones": ["open", "trench"], "band": [0.2, 0.7], "count": 1, "size": [36.0, 40.0], "habit": "filter"},
+	"sea_serpent": {"script": "sea_serpent/sea_serpent", "monster": true, "zones": ["open"], "band": [0.3, 0.9], "count": 1, "size": [22.0, 25.0], "habit": "stalk"},
 	"blue_whale": {"script": "blue_whale/blue_whale", "how": "giant", "breathes": true, "zones": ["open"], "band": [0.5, 0.95], "count": 1, "size": [24.0, 25.0], "habit": "filter"},
 	"sperm_whale": {"script": "sperm_whale/sperm_whale", "how": "giant", "breathes": true, "zones": ["open"], "band": [0.05, 0.9], "count": 1, "size": [14.0, 15.0]},
 }

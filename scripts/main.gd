@@ -519,7 +519,8 @@ func _begin_warm() -> void:
 	var first: Array[String] = []
 	var rest: Array[String] = []
 	for kind: String in Species.ALL:
-		if not Species.has(kind):
+		# (the sea monsters are not in the sea until something calls them up: Species `monster`)
+		if not Species.has(kind) or Species.of(kind).get("monster", false):
 			continue
 		var by_start := Player.GROWTH.has(kind) and float(Player.GROWTH[kind].from) < 0.5
 		for zone: String in Species.of(kind).get("zones", []):
