@@ -11,6 +11,62 @@ That sentence is all the user has said about this game. It was read as: an origi
 the genre idea is taken from Odell Down Under: none of its name, species list, numbers, screens, text, art or sound.
 Keep it that way.
 
+## The second brief (the user's words, 2026-11-17, evening, one after another while work went on)
+
+- "Lets work on gulp- theres several new fish models we need to add the that gif agent has been working on so
+  we'll need all those" (GameCommon's creatures made for the Diorama GIFs), "as well as sardines and sword fish and
+  sail fish"
+- "blue fin tuna, blue marlin, mahi mahi, wahoo, barracuda, sea bass, mackerel, big eye tuna, grouper, snapper,
+  rockfish, perch, pacific bonito, blue shark, leopard shark, kelp bass, garibaldi, halibut, anchovy, rays, lobsters,
+  shrimp, crabs"
+- "and we need to add a kelp forest and rocky area, a open ocean shelf, and then a sea grass bed area, a nudibranch,
+  also probalby a smaller reef area, and a sandy open area with garden eels"
+- "the fish should be able to open their mouths"
+- "And you should be able to jump above the waters surface ala salmon run"
+- "we need sharks whales dolphins otters and seals and sea lions as well", "octopus", "humbolt squid", "humpback,
+  gray, sperm, and blue whales", "and orcas", "and fin whales", "whale shark"
+- "devil rays, manta rays, cuttlefish, spotted eagle rays, butterflyfish, lionfish, parrotfish, wrasse, surgeon fish,
+  clownfish, blue tang, multiple buttflyshi types, angelfish,"
+- "there should also be a mangrove / river entrance area for fresh water fish as well, arowana, pirahna, cat fish,
+  trout, pike, perch, walleye, carp, koi, gar, lampray,"
+- "There should be branching paths as you evolve in size with choices"
+- "tetras, guppys, bettas, and other commmon small aquarium fish as well", "plankton, and krill also", "ammonites",
+  "horseshoe craps"
+- "there should also bea trench area", "with trench fish, angler fish, and other types"
+- "and it should be an online arena like the other \",.io\" style games on the arcade", "with a high schore"
+
+### What is done of it (2026-11-17)
+
+- The creatures are GameCommon components in `creatures/` (installed with `kit.sh`); `scripts/species.gd` is the one
+  table of every kind (what draws it, where it lives, how many, how it behaves). **A kind whose creature is not
+  installed is left out of the sea by itself**, so installing a finished component and running `--import` is all it
+  takes for a kind already in the table (check its script path and class there).
+- In and drawing: sardine (with a school mesh), sockeye salmon (smolt, ocean), yellowfin tuna, flying fish, trout
+  (two looks), loach, catfish, moray eel, Humboldt squid, giant squid, sea nettle, sailfish, swordfish. The shark is
+  still Salmon Run 2's code-built mesh until `white-shark` is installed.
+- The sea is a coast (`Sea.ZONES`, `Sea.ground`): river mouth, sea grass, sand flats, kelp, reef, the shelf's edge,
+  open ocean, a trench. **Only the floor's shape and who lives where exist: no kelp, grass, rocks, coral, mangroves
+  or garden eels are placed yet** (the old rock outcrops are retired: `models/sea_floor.glb` is unused).
+- Branching growth (`Player.GROWTH`, the cards in `Hud.ChoiceCard`), the leap (`Player.in_air`), mouths (`Fish.bite`).
+- Not started: the online arena and high score (read the `online-rooms` skill and how Liquid Metal's arena and the
+  other .io carts keep scores), trench fish (GameCommon has an `anglerfish`, a monster made for Warren: look before
+  using), sound, the plants and rocks in the zones, anything above the water (shore, mangrove trees, sky).
+
+### Model builders (agents) and what is still to start
+
+The first wave of builders was cut off by the account's usage limit and restarted on another model; each owns
+its folder in `C:\Projects\GameCommon\godot`. The shared brief they follow is kept at `tools/CREATURE_BRIEF.md`,
+and the list of what had not been started at `tools/PENDING_BUILDERS.md`. A component is finished when it has a
+README and a check script beside it; a folder without a README is a half-built one.
+
+### Claude's picks in this round (change freely)
+
+The Californian species where the user's word was loose (kelp bass, garibaldi, leopard shark and bonito pointed
+that way); the coast's layout and depths; which kind lives in which zone, how many and how big; that whales and
+the whale shark are harmless giants; the growth tree itself; that the sea stands still while a choice is made;
+leaping by swimming up fast through the surface (no button); far animals hidden beyond 55 m; `.blend` files of the
+creatures not kept in this repo (GitHub Pages serves it; they are in GameCommon).
+
 ## Whose calls
 
 The user's: the sentence above (the genre, 3D, starting small, Moon Jellies and Salmon Run 2 as the asset base).
