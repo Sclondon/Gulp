@@ -432,6 +432,20 @@ choices below are Claude's.
   (`peninsula_source`: inside an ellipse, blended out to 1.4 times it, so the trench, the liner and Monterey's
   docks barely move). What was placed by its coast moved by `peninsula_target`: Carmel's pier, harbour, market,
   white beach and reef, the south kelp and its arch.
+- **Art style brief** (the user, 2026-11-18: "The cover art of the nick of time by ted bell should be mentioned (or
+  that style) in the art style brief"). Gulp's look: stylized low-poly with hand-painted baked textures (Twilight
+  Princess / Abzu) painted in the manner of a classic boys' sea-adventure novel cover like the cover of Ted Bell's
+  Nick of Time: rich warm painterly colour, dramatic light, old-fashioned nautical adventure. Style and mood only:
+  never copy that cover's picture, characters or text. Every concept prompt says it (in words; the image generator
+  is not shown the cover).
+- **Biome concepts** (2026-11-18, made in the set-pieces Gemini conversation, in that style):
+  `tools/art_src/concept_biome_kelp.png` (golden giant kelp groves to a canopy with a sea otter, sand channels
+  between rock ridges, garibaldi, rockfish, urchins; `_kelp_v1.png` is the first try before the style brief,
+  retired), `concept_biome_dunes.png` (rolling rippled dunes with sand streaming off the crests, caustics, garden
+  eels, sea pens, a half-buried anchor and chain, sardines overhead, a shark in the blue: open and exposed),
+  `concept_biome_grass.png` (eelgrass meadows leaning in the current, sandy paths through them, seahorses, bat rays,
+  a leopard shark, crabs), `concept_biome_crags.png` (leaning pinnacles and sea stacks under a rock island, pink
+  coralline, white plumose anemones, sea stars, urchins, a moray, a seal, the pirate ship among the rocks).
 - **Biomes the user drew** (2026-11-18): "We need to make proper biomes, with concept art for each considering our
   needs. Green is kelp forest, yellow is sand dune sea, red is sea grassy fields, purple is rocky crags" (coloured
   outlines over the overhead chart, kept as `tools/art_src/user_biome_lines.png`); then "This trench needs to be
