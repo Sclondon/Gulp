@@ -412,7 +412,7 @@ func _look() -> void:
 	shafts.colour = lit.lerp(Color.WHITE, 0.3)
 	_shaft_strength = 0.2 * lerpf(0.3, 1.0, day)
 	if _sand_look:
-		_sand_look.set_shader_parameter(&"caustics", 2.2 * lerpf(0.35, 1.0, day))
+		_sand_look.set_shader_parameter(&"caustics", 0.85 * lerpf(0.35, 1.0, day))
 
 
 ## Caustics: the rippling net of light the surface throws on the sea bed in the shallows. They
@@ -430,10 +430,12 @@ func _caustics() -> void:
 		if code.count(anchor) != 1:
 			push_warning("Sea: the sand's shader has changed; no caustics")
 			return
-	code = code.replace(anchors[0], anchors[0] + "\nvarying float caustic_k;\nuniform float caustics = 0.0;\nuniform float caustic_surface = 40.0;\nglobal uniform float water_clock;")
+	code = code.replace(anchors[0], anchors[0] + "\nvarying vec3 caustic_k;\nuniform float caustics = 0.0;\nuniform float caustic_surface = 40.0;\nuniform sampler2D caustic_tex : repeat_enable, filter_linear_mipmap;\nglobal uniform float water_clock;")
 	code = code.replace(anchors[1], CAUSTIC_NET + anchors[1])
-	code = code.replace(anchors[2], "	caustic_k = caustics * caustic_net(at) * (1.0 - smoothstep(5.0, 12.0, caustic_surface - at.y)) * (1.0 - smoothstep(16.0, 34.0, length(VERTEX)));\n" + anchors[2])
-	code = code.replace(anchors[3], "	DIFFUSE_LIGHT += lit * sun * (LIGHT_IS_DIRECTIONAL ? 1.0 + caustic_k : 1.0) + (LIGHT_IS_DIRECTIONAL ? sky : vec3(0.0));")
+	# (strongest in the shallows, a quarter of it at 30 m, none below 45 m; on what faces up; fading off
+	# beyond 40 m of the eye)
+	code = code.replace(anchors[2], "	float caustic_deep = caustic_surface - at.y;\n	caustic_k = mix(vec3(1.0), vec3(0.55) + caustic_net(at) * 1.0, caustics * mix(1.0, 0.3, smoothstep(3.0, 30.0, caustic_deep)) * (1.0 - smoothstep(30.0, 45.0, caustic_deep)) * smoothstep(0.35, 0.85, unrippled.y) * (1.0 - smoothstep(25.0, 40.0, length(VERTEX))));\n	colour *= mix(vec3(1.0), caustic_k, 0.5);\n" + anchors[2])
+	code = code.replace(anchors[3], "	DIFFUSE_LIGHT += lit * sun * (LIGHT_IS_DIRECTIONAL ? caustic_k : vec3(1.0)) + (LIGHT_IS_DIRECTIONAL ? sky : vec3(0.0));")
 	# (and steep ground is rock painted from the sides, not sand stretched down it: WALL_ROCK)
 	var walls := ["void fragment() {", "	float distance_off = length(VERTEX);"]
 	if code.count(walls[0]) == 1 and code.count(walls[1]) == 1:
@@ -448,6 +450,7 @@ func _caustics() -> void:
 	shader.code = code
 	material.shader = shader
 	material.set_shader_parameter(&"caustic_surface", SURFACE)
+	material.set_shader_parameter(&"caustic_tex", caustic_texture())
 	_sand_look = material
 
 
@@ -498,25 +501,80 @@ const WALL_MIX := """	float wall = smoothstep(wall_from, wall_to, 1.0 - unripple
 """
 
 
-## The net itself: two layers of wandering lines (where a smooth noise crosses its middle),
-## warped by a slower noise and drifting different ways, brightest where they cross; in patches,
-## so that some stretches of the shallows have more of it than others.
+## The net itself (the user, 2026-11-18: "We need better looking caustics as well"): the usual way
+## games draw caustics, two copies of one sharp, tileable net of light (caustic_texture: the edges of
+## a Voronoi pattern, thin bright lines round soft dark cells) panning different ways at different
+## sizes, a little warped, and combined by min, so their lines merge and split as real ones do; each
+## colour read a little apart, for the thin rainbow fringe real caustics have. In patches, so that
+## some stretches have more of it. Its brightness (`caustics`) follows the hour.
 const CAUSTIC_NET := """
-float caustic_line(vec2 p) {
-	return 1.0 - smoothstep(0.0, 0.08, abs(patches(p) - 0.5));
+vec3 caustic_layer(vec2 uv, float split) {
+	return vec3(texture(caustic_tex, uv + vec2(split, 0.0)).r, texture(caustic_tex, uv).r, texture(caustic_tex, uv - vec2(split, 0.0)).r);
 }
 
-float caustic_net(vec3 p) {
+vec3 caustic_net(vec3 p) {
 	float t = water_clock;
-	vec2 q = p.xz * 0.85;
-	vec2 warp = vec2(patches(q * 0.45 + vec2(t * 0.11, 0.0)), patches(q * 0.45 + vec2(3.7, t * 0.09))) - 0.5;
-	float a = caustic_line(q + warp * 1.7 + vec2(t * 0.13, t * 0.07));
-	float b = caustic_line(q * 1.37 + warp.yx * 1.3 + vec2(-t * 0.09, t * 0.12) + 9.1);
-	float spread = 0.35 + 0.65 * smoothstep(0.3, 0.65, patches(p.xz * 0.035 + 4.0));
-	return (max(a, b) * 0.6 + a * b * 0.9) * spread;
+	vec2 q = p.xz;
+	vec2 warp = (vec2(patches(q * 0.18 + vec2(t * 0.05, 0.0)), patches(q * 0.18 + vec2(3.7, t * 0.04))) - 0.5) * 0.12;
+	vec3 a = caustic_layer(q * 0.11 + warp + vec2(t * 0.013, t * 0.008), 0.0015);
+	vec3 b = caustic_layer(q * 0.15 - warp + vec2(-t * 0.011, t * 0.012) + 0.37, 0.0015);
+	// (each net bright along its lines, brightest where the two cross)
+	vec3 net = max(a, b) * 0.55 + a * b * 1.3;
+	net = pow(net, vec3(1.3)) * 1.6;
+	float spread = 0.5 + 0.5 * smoothstep(0.3, 0.65, patches(p.xz * 0.035 + 4.0));
+	return net * spread;
 }
 
 """
+
+
+static var _caustic_tex: ImageTexture
+
+
+## The net's picture: CAUSTIC_CELLS by CAUSTIC_CELLS jittered points over CAUSTIC_SIZE pixels, tiling,
+## bright along the edges between their cells (where the second-nearest point is about as near as the
+## nearest), fading over the cells' middles. Made once.
+static func caustic_texture() -> ImageTexture:
+	if _caustic_tex:
+		return _caustic_tex
+	var n := CAUSTIC_CELLS
+	var size := CAUSTIC_SIZE
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 41
+	var points := PackedVector2Array()
+	for j in n:
+		for i in n:
+			points.append(Vector2(i + rng.randf_range(0.15, 0.85), j + rng.randf_range(0.15, 0.85)))
+	var img := Image.create(size, size, true, Image.FORMAT_L8)
+	for y in size:
+		for x in size:
+			var p := Vector2(x + 0.5, y + 0.5) * n / size
+			var ci := int(p.x)
+			var cj := int(p.y)
+			var f1 := 9.0
+			var f2 := 9.0
+			for dj in range(-2, 3):
+				for di in range(-2, 3):
+					var ii := posmod(ci + di, n)
+					var jj := posmod(cj + dj, n)
+					var q := points[jj * n + ii] + Vector2(ci + di - ii, cj + dj - jj)
+					var d := p.distance_to(q)
+					if d < f1:
+						f2 = f1
+						f1 = d
+					elif d < f2:
+						f2 = d
+			var edge := 1.0 - smoothstep(0.02, 0.3, f2 - f1)
+			var glow := 1.0 - smoothstep(0.0, 0.7, f2 - f1)
+			var v := clampf(edge * 0.8 + glow * 0.3, 0.0, 1.0)
+			img.set_pixel(x, y, Color(v, v, v))
+	img.generate_mipmaps()
+	_caustic_tex = ImageTexture.create_from_image(img)
+	return _caustic_tex
+
+
+const CAUSTIC_CELLS := 9
+const CAUSTIC_SIZE := 256
 
 
 ## Dim blue water, lighter than Moon Jellies' (there the jellies are the only light; here a
