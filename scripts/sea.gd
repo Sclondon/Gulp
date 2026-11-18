@@ -317,13 +317,26 @@ func _make_snow() -> void:
 	speck.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	speck.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	speck.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
-	speck.albedo_color = Color(0.25, 0.38, 0.6)
+	# (the user, 2026-11-18: "the little particles that drift by shouldnt all just be squares, but
+	# little sprites of plankton": twelve kinds on one sheet, textures/plankton_sheet.png, made with
+	# an image generator; each speck is one of them, turned at random, drawn as light)
+	speck.albedo_color = Color(0.8, 0.95, 1.15)
+	speck.albedo_texture = load("res://textures/plankton_sheet.png")
+	speck.particles_anim_h_frames = 4
+	speck.particles_anim_v_frames = 3
+	speck.particles_anim_loop = false
 	var quad := QuadMesh.new()
-	quad.size = Vector2(0.025, 0.025)
+	quad.size = Vector2(0.16, 0.16)
 	quad.material = speck
 	_snow = CPUParticles3D.new()
 	_snow.name = "Snow"
-	_snow.amount = 500
+	_snow.amount = 200
+	_snow.anim_offset_min = 0.0
+	_snow.anim_offset_max = 1.0
+	_snow.angle_min = -180.0
+	_snow.angle_max = 180.0
+	_snow.angular_velocity_min = -8.0
+	_snow.angular_velocity_max = 8.0
 	_snow.lifetime = 12.0
 	_snow.preprocess = 12.0
 	_snow.local_coords = false
@@ -333,8 +346,8 @@ func _make_snow() -> void:
 	_snow.initial_velocity_min = 0.0
 	_snow.initial_velocity_max = 0.03
 	_snow.spread = 180.0
-	_snow.scale_amount_min = 0.4
-	_snow.scale_amount_max = 1.6
+	_snow.scale_amount_min = 0.5
+	_snow.scale_amount_max = 1.3
 	_snow.mesh = quad
 	_snow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_snow)
