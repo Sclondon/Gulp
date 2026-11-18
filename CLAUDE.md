@@ -422,6 +422,11 @@ choices below are Claude's.
   north-south, its ends on the rims 26 m down, about 90 m under its middle, 40 m off Carmel. And the start, circled
   by the user: `Sea.START` (-65, -42), on the shelf south-west of the pirate ship; the seal rock (`Scenery.OUTCROP`)
   moved to (-50, -86) so the title boat's circle clears it by 8 m.
+- **A bigger Monterey Peninsula** (2026-11-18, the user: "The peninsula needs to be a little bigger"): the bake moves
+  its coast `PENINSULA_GROW` (6) m out to sea from Point Pinos round to Point Lobos (`_grow_peninsula`, west of
+  x 58 and south of z 56, fading over 10 m; Monterey's harbour is outside it). Carmel's cove shrank to a shallow
+  strip: the pier (`Scenery.CARMEL_PIER` (21, 115)), its dredged harbour, the market (21, 125), the white beach and
+  the Carmel rocky reef moved onto the new shore. Which peninsula was meant is Claude's reading.
 - **Terraced trench** (2026-11-18, the user: "the trench needs to be carved out with terrace like steps, no just one
   huge cliff"): inside the drawn trench the floor may be no deeper than `_steps(distance in from its edge)`: every
   `TERRACE_WIDE` (6) m in, a `TERRACE_STEP` (14) m drop, flat for the first `TERRACE_TREAD` (0.6) of it, then a steep

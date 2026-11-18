@@ -23,7 +23,7 @@ const REEFS := [
 	 "turn": -0.5, "stretch": 0.3, "channels": [], "barrens": []},
 	{"name": "outcrop", "at": Vector2(-50.0, -86.0), "r": 20.0, "depth": [0.0, 26.0], "freq": 0.12, "seed": 23, "above": -0.5, "rise": 0.4,
 	 "turn": 0.0, "stretch": 1.0, "channels": [], "barrens": []},
-	{"name": "carmel", "at": Vector2(26.0, 128.0), "r": 12.0, "depth": [2.5, 15.0], "freq": 0.1, "seed": 24, "above": -0.25, "rise": 0.4,
+	{"name": "carmel", "at": Vector2(13.0, 126.0), "r": 10.0, "depth": [2.5, 15.0], "freq": 0.1, "seed": 24, "above": -0.25, "rise": 0.4,
 	 "turn": 0.0, "stretch": 0.6, "channels": [], "barrens": []},
 ]
 
@@ -85,7 +85,7 @@ const TABLES := {
 		 "depth": [10.0, 26.0], "density": [4.0, 1.0], "spacing": 1.3, "near_rock": 2.5, "size": [0.9, 1.6], "lift": -0.02},
 		{"what": "seaweed", "kind": 2, "on": [1], "depth": [3.0, 24.0], "density": [18.0, 6.0], "spacing": 0.9, "clump": [2, 5, 1.0], "size": [0.16, 0.28]},
 	]},
-	"carmel": {"area": [Vector2(26.0, 128.0), 12.0], "edge": 4.0, "layers": [
+	"carmel": {"area": [Vector2(13.0, 126.0), 10.0], "edge": 4.0, "layers": [
 		{"what": "prop", "pieces": ["rock_boulder", "rock_split", "rock_stack"], "on": [1], "depth": [2.5, 15.0], "density": [3.0, 1.0],
 		 "spacing": 3.0, "size": [0.8, 1.4], "lift": -0.25, "tint": Color(0.62, 0.57, 0.52)},
 		{"what": "prop", "pieces": ["reef_slab_a", "reef_slab_b", "reef_slab_c"], "on": [1], "depth": [2.5, 15.0], "slope_max": 0.6, "density": [4.0, 2.0],

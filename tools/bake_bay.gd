@@ -54,6 +54,10 @@ const TRENCH_SHORE := 12.0
 ## Terraces down the trench's walls (see _steps): every TERRACE_WIDE metres in from its edge the floor
 ## steps down TERRACE_STEP metres: flat for the first TERRACE_TREAD of each, then a steep riser.
 const TERRACE_WIDE := 6.0
+## The Monterey Peninsula grown (see _grow_peninsula): how far out (m), and the box it is in: west of x,
+## south of z (world m).
+const PENINSULA_GROW := 6.0
+const PENINSULA := Vector2(58.0, 56.0)
 const TERRACE_STEP := 14.0
 const TERRACE_TREAD := 0.6
 ## The smoothing: box blurs this many cells round, this many times (about a Gaussian).
@@ -120,6 +124,7 @@ func _initialize() -> void:
 			var ll := to_lon_lat(Vector2(WEST + c * CELL, NORTH + r * CELL))
 			var h := _height(ll.x, ll.y)
 			raw[r * cols + c] = game_depth(-h) if h < 0.0 else -clampf(h * 0.04, 0.0, 4.0)
+	raw = _grow_peninsula(raw, cols, rows)
 	# Widened: each wet point as deep as the deepest wet point within WIDEN of it.
 	var reach := int(ceil(WIDEN / CELL))
 	var wide := raw.duplicate()
@@ -201,6 +206,27 @@ func _narrow(src: PackedFloat32Array) -> PackedFloat32Array:
 		var over := src[i] - NARROW_FROM
 		if over > 0.0:
 			out[i] = NARROW_FROM + maxf(over - LIFT, 0.0) * stretch
+	return out
+
+
+# The Monterey Peninsula a little bigger (the user, 2026-11-18: "The peninsula needs to be a little bigger"):
+# its coast moved PENINSULA_GROW metres out to sea, inside PENINSULA (x from, z from: Point Pinos round to
+# Point Lobos, west of Monterey's harbour), fading to nothing over 10 m at the box's edges. The new land rises
+# gently from the old shore line; the water beyond it keeps its own floor (the near shore is eased later).
+func _grow_peninsula(src: PackedFloat32Array, cols: int, rows: int) -> PackedFloat32Array:
+	var shore := _shore_distance(src, cols, rows)
+	var out := src.duplicate()
+	for r in rows:
+		for c in cols:
+			var i := r * cols + c
+			if src[i] <= 0.0:
+				continue
+			var x := WEST + c * CELL
+			var z := NORTH + r * CELL
+			var k := (1.0 - smoothstep(PENINSULA.x - 10.0, PENINSULA.x, x)) * smoothstep(PENINSULA.y, PENINSULA.y + 10.0, z)
+			var grow := PENINSULA_GROW * k
+			if shore[i] < grow:
+				out[i] = -0.6 * (1.0 - shore[i] / maxf(grow, 0.01)) - 0.2
 	return out
 
 

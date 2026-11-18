@@ -44,7 +44,7 @@ const HARBOURS := [
 	[Vector2(66.0, 70.0), 20.0, 6.0],  # Monterey harbour (east of the wharf, off Del Monte: where the shore faces north)
 	[Vector2(-6.0, -123.0), 11.0, 5.0],  # Santa Cruz wharf
 	[Vector2(16.0, -128.0), 7.0, 4.5],  # Santa Cruz small craft harbour
-	[Vector2(27.0, 116.0), 8.0, 8.0],  # Carmel: Stillwater Cove, for the market's pier
+	[Vector2(21.0, 122.0), 7.0, 6.0],  # Carmel: Stillwater Cove (smaller since the peninsula grew), for the market's pier
 ]
 ## Shelves made level (world metres): middle, flat out to, blended out to, depth at the middle (m),
 ## and how much deeper it gets per metre (x, z); a long one also its heading (as rotation.y) and how

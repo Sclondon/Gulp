@@ -69,7 +69,7 @@ const PIRATE_HEADING := 1.57
 ## The fish markets' landings (the user: "the fish markets should be at monteray, santa cruz, and carmel";
 ## the places are Claude's): the end of Monterey's commercial wharf, the end of the Santa Cruz wharf,
 ## the end of Carmel's pier at Stillwater Cove (world x, z). Selling there is another stage's.
-const MARKETS := {"monterey": Vector2(82.0, 56.0), "santa_cruz": Vector2(-8.0, -107.0), "carmel": Vector2(27.0, 121.0)}
+const MARKETS := {"monterey": Vector2(82.0, 56.0), "santa_cruz": Vector2(-8.0, -107.0), "carmel": Vector2(21.0, 125.0)}
 ## Where a run starts (x, z): where the user circled it on the chart (2026-11-18), on the shelf south-west
 ## of the pirate ship, with room east of it for the title boat's circle (45 m round a middle 45 m east:
 ## Title.COURSE; the seal rock, Scenery.OUTCROP, was moved north-west to stay 8 m clear of it).
