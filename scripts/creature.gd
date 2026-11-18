@@ -29,6 +29,8 @@ var on_floor := false
 var giant := false
 ## How fast it goes beside a fish of its length (Species: a starfish creeps, a sea lily stays).
 var slow := 1.0
+## It has its model (see `become`).
+var dressed := true
 var hunts := true
 
 var _goal := Vector3.ZERO
@@ -39,8 +41,10 @@ var _tired := 0.0
 var _rng := RandomNumberGenerator.new()
 
 
-## Makes it one of a kind, as Species has it.
-func become(of_kind: String) -> void:
+## Makes it one of a kind, as Species has it. With `bare`, it is not given its model yet (`dress`
+## does that, when it is first near enough to be seen): making every kind's model and shader at once
+## froze a browser for minutes at the start (each shader is compiled when first made).
+func become(of_kind: String, bare := false) -> void:
 	var entry := Species.of(of_kind)
 	zones = entry.get("zones", [])
 	var depth: Array = entry.get("band", [0.0, 1.0])
@@ -49,7 +53,20 @@ func become(of_kind: String) -> void:
 	giant = entry.get("how", "swim") == "giant"
 	slow = float(entry.get("slow", 1.0))
 	hunts = bool(entry.get("hunts", true)) and not giant
-	set_kind(of_kind)
+	if bare:
+		kind = of_kind
+		dressed = false
+		if _body == null:
+			_body = Node3D.new()
+			add_child(_body)
+		return
+	dress(of_kind)
+
+
+## Gives it its model (see `become`).
+func dress(of_kind := "") -> void:
+	dressed = true
+	set_kind(of_kind if of_kind != "" else kind)
 	# (each koi, guppy or other patterned fish its own pattern)
 	if _look and &"pattern_seed" in _look:
 		_look.set(&"pattern_seed", _rng.randi() % 1000)

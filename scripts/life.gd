@@ -52,6 +52,8 @@ const SARDINES_SEEN := 32.0
 const KRILL_SEEN := 18.0
 const JELLY_SEEN := 32.0
 const FISH_SEEN := 55.0
+## How many steps apart kinds new to the run are given their models.
+const NEW_EVERY := 3
 
 var player: Player
 ## Off: nothing hunts (for trying things out: `-- --calm`).
@@ -73,6 +75,10 @@ var plankton: Array[Node3D] = []
 var schools: Array[Dictionary] = []
 
 var _rng := RandomNumberGenerator.new()
+# The kinds that have been given their models this run, and the step at which another new kind
+# may be (see _step_creatures).
+var _dressed := {}
+var _next_new := 0
 var _jelly_away: Array[float] = []
 var _jelly_time: Array[float] = []
 var _nettle_away: Array[float] = []
@@ -163,7 +169,8 @@ func _ready() -> void:
 			made._rng.seed = _rng.randi()
 			add_child(made)
 			made.length = _rng.randf_range(entry.size[0], entry.size[1])
-			made.become(kind)
+			made.become(kind, true)
+			made.visible = false
 			made.place(made.somewhere())
 			creatures.append(made)
 	for i in JELLIES:
@@ -324,6 +331,17 @@ func _step_creatures(delta: float) -> void:
 		var apart := each.global_position.distance_to(player.global_position)
 		# Too far off to be seen through the water: not drawn, and moved only now and then.
 		var seen := apart < FISH_SEEN + each.length * 2.0
+		# (it gets its model when it is first seen: kinds new to this run a few frames apart, since
+		# each one's shader is compiled then, which is slow in a browser)
+		if seen and not each.dressed:
+			if _dressed.has(each.kind):
+				each.dress()
+			elif steps >= _next_new:
+				_dressed[each.kind] = true
+				_next_new = steps + NEW_EVERY
+				each.dress()
+			else:
+				seen = false
 		if each.visible != seen:
 			each.visible = seen
 		if not seen:
