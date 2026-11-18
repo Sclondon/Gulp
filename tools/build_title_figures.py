@@ -171,13 +171,14 @@ _TREES = {}
 def nearest_weights(o, p):
     """The skin weights of the point of `o` nearest p (for a piece made to lie on it)."""
     from mathutils import kdtree
-    if o.name not in _TREES:
+    key = (o.name, len(o.data.vertices))
+    if key not in _TREES:
         tree = kdtree.KDTree(len(o.data.vertices))
         for v in o.data.vertices:
             tree.insert(G(v.co), v.index)
         tree.balance()
-        _TREES[o.name] = tree
-    _, index, _ = _TREES[o.name].find(p)
+        _TREES[key] = tree
+    _, index, _ = _TREES[key].find(p)
     names = {g.index: g.name for g in o.vertex_groups}
     return {names[g.group]: g.weight for g in o.data.vertices[index].groups if g.group in names}
 
@@ -302,8 +303,8 @@ def finish(name, joints, parts, collection, shade=None):
     body.name = name
     body.data.name = name
     mesh = body.data
-    for attribute in list(mesh.color_attributes):
-        mesh.color_attributes.remove(attribute)
+    for called in [a.name for a in mesh.color_attributes]:
+        mesh.color_attributes.remove(mesh.color_attributes[called])
     if shade:
         tint = mesh.color_attributes.new("Tint", "BYTE_COLOR", "CORNER")
         names = [s.material.name.split("_", 1)[1] for s in body.material_slots]
@@ -359,7 +360,7 @@ def import_man(keys):
 HAND_FROM = 0.445
 
 
-def hands_of(body, name, skin, size=1.0):
+def hands_of(body, name, skin, size=1.0, tris=560):
     """His hands, made `size` times bigger about the wrists (the captain's big working hands, the diver's gloves)."""
     hands = copy_of(body, name)
     keep_only(hands, lambda p: abs(p.x) > HAND_FROM)
@@ -369,7 +370,7 @@ def hands_of(body, name, skin, size=1.0):
         w = Vector((math.copysign(wrist.x, p.x), wrist.y, wrist.z))
         grow = 1.0 + (size - 1.0) * ease(HAND_FROM, wrist.x + 0.01, abs(p.x))
         v.co = B(w + (p - w) * grow)
-    decimate(hands, 560)
+    decimate(hands, tris)
     recolour(hands, {}, skin)
     smooth_shade(hands)
     return hands
@@ -445,6 +446,8 @@ def build_boy(collection):
     parts = keep + fine
     for o in parts:
         settle(o)
+        for called in [a.name for a in o.data.color_attributes]:
+            o.data.color_attributes.remove(o.data.color_attributes[called])
     for o in tp + full:
         if o not in parts:
             bpy.data.objects.remove(o, do_unlink=True)
@@ -480,10 +483,10 @@ CAPTAIN_COLOURS = {
     "skin": (0.76, 0.58, 0.48), "nose": (0.78, 0.46, 0.40), "gansey": (0.14, 0.16, 0.23), "rib": (0.14, 0.16, 0.23),
     "oilskin": (0.70, 0.57, 0.27), "rubber": (0.09, 0.09, 0.09), "beard": (0.80, 0.79, 0.76), "hair": (0.60, 0.59, 0.56),
     "cap": (0.15, 0.17, 0.23), "peak": (0.06, 0.06, 0.07), "brass": (0.66, 0.55, 0.32), "pipe": (0.34, 0.22, 0.14),
-    "braces": (0.13, 0.12, 0.11), "steel": (0.45, 0.45, 0.46),
+    "braces": (0.21, 0.19, 0.17), "steel": (0.45, 0.45, 0.46),
 }
 # Ribs round the bands: so many to a turn (each a pair of rings of points, dark then light)
-RIBS = {"hem": 96, "cuff": 40, "collar": 64}
+RIBS = {"hem": 56, "cuff": 24, "collar": 40}
 GANSEY_HEM = 0.535
 CUFF = 0.462  # the sleeves end here (|x|, T pose)
 
@@ -537,13 +540,13 @@ def build_captain(collection):
             (0.072, GANSEY_HEM + 0.012, 0.2), (0.075, 0.62, 0.2), (0.08, 0.72, 0.2), (0.088, 0.82, 0.2), (0.095, 0.90, 0.15),
             (0.10, 0.95, 0.08), (0.10, 0.985, 0.0), (0.095, 0.95, -0.08), (0.085, 0.90, -0.15), (0.06, 0.83, -0.2),
             (0.028, 0.77, -0.2), (0.004, 0.74, -0.2))]
-        laid, normals = surface_path(gansey, smooth_path(path, 2), centre_of, 0.004)
-        strap(b, laid, normals, 0.011, 0.0025)
+        laid, normals = surface_path(gansey, smooth_path(path, 1), centre_of, 0.004)
+        strap(b, laid, normals, 0.011, 0.0025, 4)
         clip_at, clip_n = laid[0], normals[0]
         clips.ellipsoid(clip_at + clip_n * 0.003 + Vector((0.0, 0.006, 0.0)), Vector((0.012, 0.014, 0.004)), None, 8, 3)
     path = [Vector((0.0, y, -0.2)) for y in (0.745, 0.70, 0.64, 0.59, GANSEY_HEM + 0.012)]
     laid, normals = surface_path(gansey, smooth_path(path, 2), centre_of, 0.004)
-    strap(b, laid, normals, 0.012, 0.0025)
+    strap(b, laid, normals, 0.012, 0.0025, 4)
     clips.ellipsoid(laid[-1] + normals[-1] * 0.003 + Vector((0.0, 0.006, 0.0)), Vector((0.013, 0.014, 0.004)), None, 8, 3)
     parts.append(from_builder("captain_braces", b, None, m["braces"], lambda p, g=gansey: nearest_weights(g, p)))
     parts.append(from_builder("captain_clips", clips, None, m["steel"], lambda p, g=gansey: nearest_weights(g, p)))
@@ -666,7 +669,7 @@ def build_captain(collection):
     parts.append(from_builder("captain_cord", b, None, m["brass"], rigid("head")))
     # (what of the head is under the cap is not kept)
     cut(head_now, Vector((0.0, top - 0.03, 0.0)), -Y)
-    decimate(head_now, 1200)
+    decimate(head_now, 1000)
     parts.append(head_now)
 
     # The roll collar of the gansey, round his neck.
@@ -674,7 +677,7 @@ def build_captain(collection):
     nx, nb, nf = span
     ncz, nrz = (nb + nf) * 0.5, (nf - nb) * 0.5
     b = kit.Builder()
-    b.tube([kit.upright(0.0, y, ncz, nx + g, nrz + g) for y, g in ((0.955, 0.03), (0.968, 0.036), (0.988, 0.036), (1.006, 0.03), (1.022, 0.022), (1.03, 0.012), (1.034, 0.004))], RIBS["collar"])
+    b.tube([kit.upright(0.0, y, ncz, nx + g, nrz + g) for y, g in ((0.955, 0.03), (0.972, 0.037), (0.998, 0.034), (1.022, 0.022), (1.034, 0.006))], RIBS["collar"])
     parts.append(from_builder("captain_collar", b, None, m["rib"],
                               lambda p: {"neck": ease(0.97, 1.02, p.y), "chest": 1.0 - ease(0.97, 1.02, p.y)}))
 
@@ -724,7 +727,7 @@ DIVER_COLOURS = {
     "brass": (0.70, 0.58, 0.34), "glass": (0.10, 0.13, 0.13), "lead": (0.38, 0.39, 0.40), "leather": (0.36, 0.23, 0.14),
     "boots": (0.30, 0.30, 0.30), "steel": (0.48, 0.48, 0.49), "glove": (0.11, 0.11, 0.11),
 }
-METAL = {"copper": (0.55, 0.42), "brass": (0.6, 0.38), "glass": (0.0, 0.15), "rubber": (0.0, 0.55), "lead": (0.0, 0.7),
+METAL = {"copper": (0.5, 0.55), "brass": (0.6, 0.38), "glass": (0.0, 0.15), "rubber": (0.0, 0.55), "lead": (0.0, 0.7),
          "steel": (0.5, 0.4), "glove": (0.0, 0.5)}
 BOOT_TOP = 0.20
 NECK_RING = 1.02
@@ -736,7 +739,7 @@ def build_diver(collection):
     bpy.data.objects.remove(legs, do_unlink=True)
     at = {name: p for name, p, _ in joints}
     # Black rubber gauntlet gloves (the concept's): his own hands, a size bigger.
-    parts = [hands_of(body, "diver_gloves", m["glove"], 1.18)]
+    parts = [hands_of(body, "diver_gloves", m["glove"], 1.18, 420)]
 
     # The dress: grown from his body, stood well off it and smoothed into baggy canvas.
     dress = copy_of(body, "diver_dress")
@@ -759,7 +762,7 @@ def build_diver(collection):
     cut(belt, Vector((0.0, 0.595, 0.0)), Y)
     cut(belt, Vector((0.0, 0.632, 0.0)), -Y)
     stand_off(belt, lambda p: 0.006, smooth=1)
-    for piece, tris, mat in ((dress, 950, "suit"), (belt, 180, "leather")):
+    for piece, tris, mat in ((dress, 850, "suit"), (belt, 180, "leather")):
         decimate(piece, tris)
         recolour(piece, {}, m[mat])
         smooth_shade(piece)
@@ -801,24 +804,34 @@ def build_diver(collection):
     for k in range(12):
         a = math.tau * (k + 0.5) / 12
         stud = lift(Vector((math.sin(a) * (edge_rx + 0.007), 0.81, ccz + math.cos(a) * (edge_rz + 0.007))))
-        b.ellipsoid(stud, Vector((0.007, 0.007, 0.007)), None, 6, 2)
+        b.ellipsoid(stud, Vector((0.007, 0.007, 0.007)), None, 4, 2)
     b.tube([kit.upright(0.0, y, cz, r, r * 0.95) for y, r in ((NECK_RING - 0.006, 0.086), (NECK_RING - 0.002, 0.096), (NECK_RING + 0.02, 0.096), (NECK_RING + 0.024, 0.088))], 20)
-    for centre, normal, radius, bars in LIGHTS(cz):
+    for centre, normal, radius, grille in LIGHTS(cz):
         u = normal.cross(Y if abs(normal.y) < 0.9 else X).normalized()
         v = normal.cross(u)
         rim = 12 if radius > 0.04 else 8
         ring = [centre + normal * 0.006 + (u * math.cos(a) + v * math.sin(a)) * (radius + 0.006) for a in (math.tau * k / rim for k in range(rim + 1))]
         b.strand(ring, [0.0072] * len(ring), 4)
-        for k in range(bars):
-            off = (k - (bars - 1) / 2) * radius * 0.55
-            b.strand([centre + normal * 0.016 + v * off + u * radius * s for s in (-1.0, 0.0, 1.0)], [0.004] * 3, 4)
+        # the guards over the glass (the concept's): a cross over the front light, bars over the sides, a grid on top
+        lines = []
+        if grille == "cross":
+            lines = [(u + v).normalized(), (u - v).normalized()]
+            spans = [(d, 0.0) for d in lines]
+        else:
+            count = 3 if grille == "bars" else 2
+            spans = [(u, (k - (count - 1) / 2) * radius * 0.6) for k in range(count)]
+            if grille == "grid":
+                spans += [(v, (k - (count - 1) / 2) * radius * 0.6) for k in range(count)]
+        for along, off in spans:
+            side = normal.cross(along).normalized()
+            reach = math.sqrt(max(radius * radius - off * off, 0.0))
+            b.strand([centre + normal * 0.014 + side * off + along * reach * s for s in (-1.0, 0.0, 1.0)], [0.0038] * 3, 3)
     valve = Vector((-0.082, NECK_RING + 0.075, cz + 0.08))
     axis = Vector((-0.75, 0.0, 0.66)).normalized()
     b.tube([(valve + axis * d, Y * r, axis.cross(Y) * r) for d, r in ((0.0, 0.016), (0.028, 0.016), (0.03, 0.02), (0.04, 0.02), (0.042, 0.011))], 10)
     goose = [Vector((0.035, NECK_RING + 0.15, cz - 0.10)), Vector((0.038, NECK_RING + 0.172, cz - 0.13)), Vector((0.04, NECK_RING + 0.168, cz - 0.16))]
     b.strand(goose, [0.015, 0.015, 0.016], 8)
     bx, bback, bfront = belt_span
-    b.ellipsoid(Vector((0.0, 0.614, bfront + 0.012)), Vector((0.022, 0.018, 0.007)), None, 8, 3)
     parts.append(from_builder("diver_brass", b, None, m["brass"], lambda p: {"hips": 1.0} if p.y < 0.75 else {"chest": 1.0}))
 
     # The knife: a brass-tipped sheath and a wooden handle on his right hip (made with the belt's leather).
@@ -838,28 +851,54 @@ def build_diver(collection):
     parts.append(from_builder("diver_helmet", b, None, m["copper"], rigid("chest")))
 
     b = kit.Builder()
-    for centre, normal, radius, _ in LIGHTS(cz):
+    for centre, normal, radius, _grille in LIGHTS(cz):
         u = normal.cross(Y if abs(normal.y) < 0.9 else X).normalized()
         v = normal.cross(u)
         b.tube([(centre + normal * h, u * r, v * r) for h, r in ((-0.01, radius * 0.98), (0.0, radius), (0.006, radius * 0.9), (0.008, radius * 0.5))], 10)
     parts.append(from_builder("diver_glass", b, None, m["glass"], rigid("chest")))
 
-    # Lead weights hung front and back of the corselet.
-    b = kit.Builder()
-    for sign, z_edge in ((1.0, ccz + edge_rz), (-1.0, ccz - edge_rz)):
+    # The concept's gear on his chest and belt: two lead weights on leather straps (up under the corselet's edge
+    # and down to the belt), a strap crossed on his back, a small brass plate on the corselet, a steel buckle,
+    # a pouch on his left hip.
+    corselet = bpy.data.objects["diver_corselet"]
+    def round_x(p):
+        return Vector((p.x * 0.6, p.y, ccz))
+    lead, straps, steel, plate = kit.Builder(), kit.Builder(), kit.Builder(), kit.Builder()
+    for s in (1.0, -1.0):
+        spot, n = surface_path(dress, [Vector((s * 0.075, 0.72, 0.3))], round_x, 0.0)
+        spot, n = spot[0], n[0]
         rings = []
-        for x in (-0.10, -0.08, -0.04, 0.0, 0.04, 0.08, 0.10):
-            h = 0.068 if abs(x) < 0.09 else 0.05
-            bow = 0.012 * (1.0 - (x / 0.1) ** 2)
-            rings.append((Vector((x, 0.80, z_edge + sign * (0.006 + bow * 0.5))), Y * h, Z * 0.016))
-        b.tube(rings, 6)
-    parts.append(from_builder("diver_lead", b, None, m["lead"], rigid("chest")))
+        for dy, w in ((-0.05, 0.026), (-0.046, 0.032), (0.046, 0.032), (0.05, 0.026)):
+            rings.append((spot + n * 0.019 + Y * dy, n.cross(Y).normalized() * w, n * 0.017))
+        lead.tube(rings, 6)
+        up_path = [Vector((s * 0.075, y, 0.3)) for y in (0.84, 0.80, 0.77, 0.74)]
+        down_path = [Vector((s * 0.075, y, 0.3)) for y in (0.70, 0.67, 0.64, 0.615)]
+        for path in (up_path, down_path):
+            laid, normals = surface_path(dress, path, round_x, 0.004)
+            strap(straps, laid, normals, 0.012, 0.003, 4)
+        back = [Vector((s * x, y, -0.3)) for x, y in ((0.13, 0.835), (0.09, 0.77), (0.03, 0.70), (-0.04, 0.645), (-0.07, 0.615))]
+        laid, normals = surface_path(dress, smooth_path(back, 2), round_x, 0.004)
+        strap(straps, laid, normals, 0.012, 0.003, 4)
+    spot, n = surface_path(corselet, [Vector((0.0, 0.952, 0.4))], lambda p: Vector((0.0, 0.93, ccz)), 0.001)
+    side = n[0].cross(Y).normalized() * -1.0
+    up = n[0].cross(side).normalized() * -1.0
+    plate.tube([(spot[0] + n[0] * h, side * w, up * w * 0.42) for h, w in ((-0.002, 0.032), (0.002, 0.034), (0.004, 0.03))], 12)
+    bx, bback, bfront = belt_span
+    steel.tube([(Vector((0.0, 0.614, bfront + 0.012 + h)), X * w, Y * w * 0.75) for h, w in ((-0.004, 0.022), (0.0, 0.026), (0.004, 0.024))], 4)
+    parts.append(from_builder("diver_lead", lead, None, m["lead"], rigid("chest")))
+    parts.append(from_builder("diver_straps", straps, None, m["leather"], lambda p, g=dress: nearest_weights(g, p)))
+    parts.append(from_builder("diver_plate", plate, None, m["brass"], rigid("chest")))
+    parts.append(from_builder("diver_buckle", steel, None, m["steel"], rigid("hips")))
+    b = kit.Builder()
+    pouch_at = Vector((bx * 0.78, 0.585, bfront * 0.7))
+    b.tube([(pouch_at + Y * y, X * 0.03, Z * 0.016) for y in (-0.035, -0.03, 0.025, 0.03)], 6)
+    parts.append(from_builder("diver_pouch", b, None, m["leather"], rigid("hips")))
 
     # The boots: canvas uppers over the dress's legs, lead soles, brass toe caps and ankle straps.
     lx, lback, lfront = leg_span
     leg_r = (lx - at["foot_l"].x) + 0.008
     leg_rz = (lfront - lback) * 0.5 + 0.01
-    up, sole, toe = kit.Builder(), kit.Builder(), kit.Builder()
+    up, sole, toe, bands = kit.Builder(), kit.Builder(), kit.Builder(), kit.Builder()
     for side in (1.0, -1.0):
         ankle = Vector((side * at["foot_l"].x, at["foot_l"].y, (lfront + lback) * 0.5))
         foot = [(-0.06, 0.0, 0.046, 0.042), (-0.03, 0.01, 0.054, 0.054), (0.02, 0.0, 0.058, 0.048),
@@ -868,8 +907,8 @@ def build_diver(collection):
         up.tube(kit.dome(rings[0], -Z, 0.016, 3)[::-1] + rings + kit.dome(rings[-1], Z, 0.02, 3), 14, 0.032)
         up.tube([kit.upright(ankle.x, y, ankle.z, r * leg_r, r * leg_rz) for y, r in ((0.05, 0.85), (0.12, 0.94), (BOOT_TOP - 0.02, 1.0), (BOOT_TOP + 0.015, 1.06), (BOOT_TOP + 0.02, 0.94))], 14)
         sole.tube([(Vector((ankle.x, 0.017, ankle.z + z)), X * w, Y * 0.017) for z, w in ((-0.075, 0.045), (-0.06, 0.056), (0.0, 0.062), (0.08, 0.064), (0.15, 0.060), (0.185, 0.045))], 10, 0.0)
-        toe.ellipsoid(ankle + Vector((0.0, -0.008, 0.15)), Vector((0.052, 0.034, 0.05)), None, 12, 4)
-        toe.tube([kit.upright(ankle.x, y, ankle.z - 0.002, r, r * 1.05) for y, r in ((0.13, 0.066), (0.132, 0.072), (0.158, 0.074), (0.16, 0.068))], 12)
+        toe.ellipsoid(ankle + Vector((0.0, -0.008, 0.15)), Vector((0.052, 0.034, 0.05)), None, 10, 3)
+        bands.tube([kit.upright(ankle.x, y, ankle.z - 0.002, r * leg_r / 0.066, r * leg_rz / 0.066) for y, r in ((0.13, 0.064), (0.132, 0.07), (0.152, 0.071), (0.154, 0.065))], 12)
 
     def boot_weights(p):
         s = "_l" if p.x > 0 else "_r"
@@ -879,34 +918,49 @@ def build_diver(collection):
     parts.append(from_builder("diver_boots", up, (0.005, 2, 380), m["boots"], boot_weights))
     parts.append(from_builder("diver_soles", sole, None, m["lead"], boot_weights))
     parts.append(from_builder("diver_toes", toe, None, m["brass"], boot_weights))
+    parts.append(from_builder("diver_bootstraps", bands, None, m["rubber"], boot_weights))
 
-    # The air hose: from the goose-neck, down his back, to the deck and away to the pump.
-    pts = [goose[-1], Vector((0.045, NECK_RING + 0.15, cz - 0.20)), Vector((0.05, 1.08, cz - 0.235)), Vector((0.06, 0.92, cz - 0.255)),
-           Vector((0.07, 0.68, cz - 0.27)), Vector((0.08, 0.40, cz - 0.30)), Vector((0.09, 0.17, cz - 0.35)),
-           Vector((0.10, 0.06, cz - 0.42)), Vector((0.11, 0.026, cz - 0.52)), Vector((0.13, 0.024, cz - 0.64))]
-    smooth = []
-    for i in range(len(pts) - 1):
-        p0, p1, p2, p3 = pts[max(i - 1, 0)], pts[i], pts[i + 1], pts[min(i + 2, len(pts) - 1)]
-        for k in range(2):
-            t = k / 2.0
-            smooth.append(0.5 * (2.0 * p1 + (p2 - p0) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t * t + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t * t * t))
-    smooth.append(pts[-1])
+    # The air hose: from the goose-neck, down his back on his right, to the deck and away to the pump; and (the
+    # concept's) a coil of spare hose hung on his back over his left shoulder.
+    pts = [goose[-1], Vector((0.02, NECK_RING + 0.15, cz - 0.20)), Vector((-0.03, 1.08, cz - 0.235)), Vector((-0.06, 0.92, cz - 0.255)),
+           Vector((-0.07, 0.68, cz - 0.27)), Vector((-0.08, 0.40, cz - 0.30)), Vector((-0.09, 0.17, cz - 0.35)),
+           Vector((-0.10, 0.06, cz - 0.42)), Vector((-0.11, 0.026, cz - 0.52)), Vector((-0.13, 0.024, cz - 0.64))]
     b = kit.Builder()
-    b.strand(smooth, [0.016] * len(smooth), 5)
-    parts.append(from_builder("diver_hose", b, None, m["rubber"], lambda p: {"chest": 1.0 - kit.blend(0.9, 0.55, p.y), "hips": kit.blend(0.9, 0.55, p.y)}))
+    b.strand(smooth_path(pts, 2), [0.016] * len(smooth_path(pts, 2)), 4)
+    back_z = min(extents(corselet, y, 0.012, lambda p: p.x > 0.0)[1] for y in (0.84, 0.88, 0.92)) - 0.004
+    for k in range(3):
+        c = Vector((0.115 + 0.014 * k, 0.765 - 0.01 * k, back_z - 0.017 - 0.012 * k))
+        loop = [c + Vector((0.07 * math.sin(a) + 0.012 * math.cos(a), 0.17 * math.cos(a), 0.0)) for a in (math.tau * i / 11 for i in range(12))]
+        b.strand(loop, [0.0145] * len(loop), 4)
+    parts.append(from_builder("diver_hose", b, None, m["rubber"], lambda p: {"chest": 1.0 - kit.blend(0.66, 0.5, p.y), "hips": kit.blend(0.66, 0.5, p.y)}))
+
+    from mathutils import noise
+
+    def shade(material, p):
+        if material == "suit":
+            # the concept's worn canvas: soft darker stains, and dirtier toward the boots
+            stain = ease(0.05, 0.5, noise.noise(p * 7.0 + Vector((3.1, 0.0, 1.7))))
+            return 1.0 - 0.3 * stain - 0.14 * ease(0.5, 0.2, p.y) + 0.05 * noise.noise(p * 23.0)
+        if material in ("copper", "brass"):
+            # old metal: darker patches of tarnish
+            return 0.84 + 0.16 * noise.noise(p * 16.0) - 0.22 * ease(0.0, 0.5, noise.noise(p * 5.0))
+        if material in ("boots", "lead"):
+            return 0.9 + 0.1 * noise.noise(p * 12.0)
+        return 1.0
 
     bpy.data.objects.remove(body, do_unlink=True)
-    return finish("diver", joints, parts, collection)
+    return finish("diver", joints, parts, collection, shade)
 
 
 def LIGHTS(cz):
-    """(centre, which way it looks out, glass radius, guard bars) of the bonnet's four lights."""
+    """(centre, which way it looks out, glass radius, its guard) of the bonnet's four lights."""
     mid = NECK_RING + 0.024 + 0.105
     return [
-        (Vector((0.0, mid, cz + 0.121)), Vector((0.0, 0.0, 1.0)), 0.048, 0),
-        (Vector((0.117, mid, cz)), Vector((1.0, 0.0, 0.0)), 0.034, 2),
-        (Vector((-0.117, mid, cz)), Vector((-1.0, 0.0, 0.0)), 0.034, 2),
-        (Vector((0.0, mid + 0.082, cz + 0.088)), Vector((0.0, 0.6, 0.8)), 0.025, 1),
+        (Vector((0.0, mid, cz + 0.121)), Vector((0.0, 0.0, 1.0)), 0.048, "cross"),
+        (Vector((0.117, mid, cz)), Vector((1.0, 0.0, 0.0)), 0.034, "bars"),
+        (Vector((-0.117, mid, cz)), Vector((-1.0, 0.0, 0.0)), 0.034, "bars"),
+        # (on the dome, tipped forward: the concept's top light with its grid)
+        (Vector((0.0, mid + 0.106, cz + 0.066)), Vector((0.0, 0.8, 0.6)).normalized(), 0.03, "grid"),
     ]
 
 
@@ -918,7 +972,7 @@ def export(collection, path):
     for o in collection.objects:
         o.select_set(True)
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_yup=True,
-                              export_animations=False, export_skins=True, export_vertex_color="NONE")
+                              export_animations=False, export_skins=True, export_vertex_color="ACTIVE")
     tris = sum(kit.triangle_count(o.data) for o in collection.objects if o.type == "MESH")
     print("EXPORTED %s tris=%d" % (os.path.basename(path), tris))
 

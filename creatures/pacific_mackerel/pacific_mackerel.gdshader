@@ -3,7 +3,7 @@ shader_type spatial;
 // swimming and its jaw. What each point is comes from the model
 // (tools/build_pacific_mackerel.py): UV2.y the part (0 body, 1 the first dorsal fin, 2 the
 // second, 3 the anal fin, 4 the tail, 5 a pectoral fin, 6 a pelvic fin, 7 an eye, 8 the inside
-// of the mouth, 9 a tooth (none on this one), 10 a finlet); UV2.x how much of the jaw's swing a
+// of the mouth, 9 a tooth (none on this one), 10 a finlet, 11 a gill arch); UV2.x how much of the jaw's swing a
 // point takes (above 0 the lower jaw, below 0 the upper head, which lifts a little). UV, on the
 // body: x how far along (0 the snout's tip, 1 the tips of the tail), y how high on its side (1 the
 // ridge of the back, 0 the keel of the belly); in the mouth: x how far inside (0 at the lips); on
@@ -63,6 +63,9 @@ uniform float blotches_show = 0.35;
 uniform vec3 fin_dusk : source_color = vec3(0.16, 0.24, 0.24);
 uniform vec3 fin : source_color = vec3(0.68, 0.7, 0.66);
 uniform vec3 mouth_inside : source_color = vec3(0.16, 0.08, 0.09);
+// The gills: the filaments' blood red, and the pale gill rakers.
+uniform vec3 gill_red : source_color = vec3(0.62, 0.05, 0.07);
+uniform vec3 gill_raker : source_color = vec3(0.72, 0.6, 0.56);
 // The cartoon eye: 0 the eye as in life, 1 a bigger cartoon eye (a white, an iris, a pupil, a
 // highlight, a dark outline and lids of its own character); where its pupils look (x forward,
 // towards the snout, y up, -1..1, in each eye's own plane); a blink (0 open, 1 shut: lids the
@@ -282,6 +285,14 @@ void fragment() {
 		c = eye_lids(c, e, mix(silver, back, 0.5));
 		rough = 0.12;
 		spec = 0.6;
+	} else if (p == 11) {
+		// A gill arch (in the roof or the floor at the back of the mouth): pale rakers along its front edge,
+		// then the bar and the fringe of blood-red filaments, darker deeper in, towards the hinge.
+		float strands = 0.75 + 0.25 * sin(UV.x * 70.0);
+		c = mix(gill_raker, gill_red * strands, smoothstep(0.06, 0.24, UV.y));
+		c *= mix(1.0, 0.55, smoothstep(HINGE_S - 0.06, HINGE_S, rest.z / LENGTH + 0.5));
+		rough = 0.35;
+		spec = 0.5;
 	} else {
 		// The inside of the mouth (and teeth, though this one has none to see): darker deeper in.
 		c = mix(mouth_inside * 1.6, mouth_inside * 0.5, smoothstep(0.0, 0.8, UV.x));

@@ -169,7 +169,9 @@ func _mesh_of(suffix: String) -> MeshInstance3D:
 		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
 		mesh.mesh = found.mesh
 		made.free()
-	mesh.set_surface_override_material(0, _material)
+	# (the full model has a second surface, the throat and gills: the same material)
+	for surface in mesh.mesh.get_surface_count():
+		mesh.set_surface_override_material(surface, _material)
 	# (its body may lie anywhere within its length of its head)
 	mesh.extra_cull_margin = LENGTH * 1.1
 	mesh.name = "Eel" + suffix

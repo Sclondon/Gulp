@@ -19,7 +19,7 @@ extends Node3D
 ## which moves `phase` on by delta / beat, or set `phase` yourself (for a picture that must loop:
 ## frame / frames in a beat).
 ##
-## Three models: the full one, the game one (`game`: about 820 triangles, the outline kept, for
+## Three models: the full one, the game one (`game`: about 980 triangles, the outline kept, for
 ## games) and the low one (`low`). Each is loaded only when first shown, so a game that sets `game`
 ## never loads the full model.
 ##
@@ -74,7 +74,7 @@ static var _meshes := {}
 	set(value):
 		low = value
 		_show()
-## The game model (about 820 triangles, spent on the outline, the eye, the mouth and the fins'
+## The game model (about 980 triangles, spent on the outline, the eye, the mouth and the fins'
 ## edges) in place of the full one: for games. With it set the full model is never loaded. `low`
 ## wins over it.
 @export var game := false:

@@ -58,6 +58,7 @@ NAME = "clownfish"
 LENGTH = 0.09
 TAU = math.tau
 BODY, JAW, EYE, DORSAL, TAIL, ANAL, PELVIC, PECTORAL = 0, 1, 2, 4, 6, 7, 8, 9
+GILL = 5    # a gill arch (2026-11-18)
 
 
 def to_b(p):
@@ -386,6 +387,8 @@ class Part:
         self.verts = []
         self.data = []
         self.faces = []
+        # (the full model's gills are a second surface)
+        self.second = False
 
     def add(self, p, uv, uv2, colour):
         self.verts.append(Vector(p))
@@ -695,6 +698,85 @@ def game_places():
                     BODY_SKIN.first, BODY_SKIN.last, fixed, most=0.07)
 
 
+# THE THROAT AND THE GILLS (2026-11-18; the user: "The fish need modeled gills as well, well for relevant fish, so like
+# when it opens its mouth wide you can see them"). Four gill arches a side, part GILL, each a thin closed blade: a
+# curved bar from the throat's roof to its floor (bowed back in the middle), its pale rakers at its front edge and
+# a fringe of red filaments reaching back and out. They stand inside the head, behind the jaw's hinge and above
+# the line of the mouth, so that with the mouth shut nothing of them shows. The throat is the roof of the mouth
+# itself: as the mouth opens the shader lifts the roof (the body's skin that is the inside of the mouth, COLOR.b,
+# and on the game and low models also what the build marked in COLOR.g) up by THROAT_LIFT, and draws its back
+# (from THROAT_BACK ahead of the hinge to the hinge) back by THROAT_DEPTH, so that the dark wall at the back of
+# the mouth becomes a short vaulted tunnel with the arches standing in it. On the full model they are a second
+# surface (its first is exactly what it was before them, so that Godot's importer thins it the same way); on the
+# game and low models they are part of the one surface.
+# Kept in step with the shader (body lengths).
+THROAT_LIFT = 0.03
+THROAT_DEPTH = 0.085
+THROAT_BACK = 0.02
+# The game and low models' roofs are few points (the game model's dark roof was kept to the bottom line): the build
+# marks in their colour's green (COLOR.g, which nothing reads on the body) the points of the rings from
+# THROAT_MARK ahead of the hinge to just behind it that lie within THROAT_ROUND of the way round from the belly
+# line (fading from half of it). The shader takes the more of the two.
+THROAT_MARK = 0.03
+THROAT_ROUND = 0.2
+# What each model's arches are made of: rays along each arch, rows across it.
+GILL_BLADES = {"full": (6, 3), "game": (2, 1), "low": (2, 1)}
+
+
+def mark_throat(body):
+    """The game and low models: marks in COLOR.g the points of the body's skin that the shader lifts into a
+    throat."""
+    for i, (p, d) in enumerate(zip(body.verts, body.data)):
+        s = p.z + 0.5
+        if HINGE_S - THROAT_MARK <= s <= HINGE_S + 0.004:
+            whole = 1.0 - d[1][1]
+            round_from_belly = 1.0 - abs(d[1][0]) / max(whole, 1e-9)
+            w = 1.0 - smooth(THROAT_ROUND * 0.5, THROAT_ROUND, round_from_belly)
+            if w > 0.0:
+                body.data[i] = (d[0], d[1], (d[2][0], max(d[2][1], w), d[2][2]))
+
+
+def gills(body, low):
+    """The +X and -X arches, in the tunnel the shader opens: from a little behind the hinge back, from just above
+    the line of the mouth up towards the lifted roof, as wide as the roof that is lifted."""
+    wide = 0.0
+    for p, d in zip(body.verts, body.data):
+        s = p.z + 0.5
+        if HINGE_S - 0.012 <= s <= HINGE_S + 0.002 and max(d[2][1], d[2][2]) > 0.5:
+            wide = max(wide, abs(p.x))
+    wide = max(wide, 0.006)
+    cols, rows = GILL_BLADES["low" if low else ("game" if GAME else "full")]
+    # (the low model's skin is cut from few points, well inside the curves it is built on: more room there)
+    inset = 2.0 if low else 1.0
+    step = (THROAT_DEPTH - 0.035) / 3.0
+    made = []
+    for k in range(4):
+        at = HINGE_S + 0.012 + step * k
+        top = min(HINGE_Y + THROAT_LIFT * 0.75, BODY_SKIN.top(at) - 0.012 * inset)
+        foot = max(HINGE_Y + 0.002, low_line(at) + 0.006 * inset)
+        if top - foot < 0.004:
+            continue
+        long = 0.012 + 0.002 * k
+
+        def base(t, at=at, top=top, foot=foot, inset=inset):
+            y = lerp(top, foot, t)
+            middle = (top + foot) * 0.5
+            half = max((top - foot) * 0.5, 1e-6)
+            x = min(wide * 0.8 * (0.55 + 0.45 * math.sqrt(max(0.0, 1.0 - ((y - middle) / half) ** 2))),
+                    body_x(at, y) - 0.004 * inset)
+            return Vector((max(x, 0.002), y, at + 0.006 * (1.0 - (2.0 * t - 1.0) ** 2) - 0.5))
+        out_way = Vector((0.45, 0.0, 1.0)).normalized()
+        down = base(1.0) - base(0.0)
+        blade = fin("gill_%d" % k, GILL, 6, cols, rows, base, lambda t: out_way,
+                    lambda t, long=long: long * (0.55 + 0.45 * math.sin(math.pi * t)), down.cross(out_way), 0.0025)
+        made += [blade, blade.mirrored("gill_%d_left" % k)]
+    if not low and not GAME:
+        for part in made:
+            part.second = True
+    print("GILLS: %d arches, %.4f wide (body lengths)" % (len(made), wide))
+    return made
+
+
 def make(name, low):
     parts = []
     body = Part("body")
@@ -712,11 +794,15 @@ def make(name, low):
     ball = eye(low)
     parts += [ball, ball.mirrored("eye_left")]
     parts += fins(low)
+    if low or GAME:
+        mark_throat(body)
+    parts += gills(body, low)
     return assemble(name, parts)
 
 
 def assemble(name, parts):
     verts, faces, corners = [], [], []
+    second = []
     told = []
     wrong_all = 0
     for part in parts:
@@ -729,6 +815,7 @@ def assemble(name, parts):
                 verts.append(co)
                 corners.append((uv, uv2, colour))
             faces.append(list(range(first, first + len(face))))
+            second.append(part.second)
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(verts, [], faces)
     # (every layer made first, then each looked up by name: making one moves the others)
@@ -752,6 +839,14 @@ def assemble(name, parts):
     bsdf.inputs["Base Color"].default_value = (0.95, 0.42, 0.06, 1.0)
     material.diffuse_color = (0.95, 0.42, 0.06, 1.0)
     mesh.materials.append(material)
+    if any(second):
+        # (the full model's gills: a second surface, with a material of its own, so that the first is exactly as
+        # it was before them)
+        gill_material = bpy.data.materials.get(NAME + "_gills") or bpy.data.materials.new(NAME + "_gills")
+        gill_material.diffuse_color = (0.55, 0.05, 0.06, 1.0)
+        mesh.materials.append(gill_material)
+        for poly, is_second in zip(mesh.polygons, second):
+            poly.material_index = 1 if is_second else 0
     for poly in mesh.polygons:
         poly.use_smooth = True
     mesh.update()

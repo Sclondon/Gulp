@@ -45,12 +45,19 @@ princess model to compare to so we can make low poly versions while maintaining 
 silhouettes"). Its rows go where the outline and the profile bend most (`greedy`), with more round the eyes, the
 mouth and the edges, and every UV, UV2 and part the shader reads, so it swims, opens its mouth and is marked as
 the full one is. The full and low models come out exactly as before (their .glb files are byte for byte the same).
+
+THE GILLS (2026-11-18): new parts 6 the gill arches (see gill_flaps / gills below). They are a second surface on
+the full and low models, so that the body's surface is the same as before; the game model has one surface.
 """
 
 NAME = "california_halibut"
 LENGTH = 1.0
 HALF = 0.5
 BODY, JAW, FRINGE, TAIL, PAIRED, EYE = range(6)
+# (the gill arches, inside the mouth)
+GILLS = 6
+# Where the gill arches stand: metres behind the snout.
+ARCHES = (0.082, 0.093, 0.104, 0.115)
 
 
 import math
@@ -354,6 +361,15 @@ def make_object(name, m, colour):
     bsdf.inputs["Base Color"].default_value = colour
     material.diffuse_color = colour
     mesh.materials.append(material)
+    if not GAME:
+        # (the full and low models: the gills a second surface, so that the body's is the same as it was, and
+        # Godot's importer thins it far off as it did; the game model is drawn without those thinned meshes)
+        inner = bpy.data.materials.get(NAME + "_gills") or bpy.data.materials.new(NAME + "_gills")
+        inner.diffuse_color = (0.5, 0.05, 0.05, 1.0)
+        mesh.materials.append(inner)
+        for poly in mesh.polygons:
+            if m.out[poly.index][1] in GILL_FACES:
+                poly.material_index = 1
     for poly in mesh.polygons:
         poly.use_smooth = True
     mesh.update()
@@ -572,6 +588,21 @@ def body(m, low):
                 a, b = roof_webs[which], webs[which]
                 for k in range(len(a) - 1):
                     m.face((a[k], a[k + 1], b[k + 1], b[k]), way, "mouth web")
+    # The gill arches (closed_sheet, below): four, inside the mouth against its roof near the hinge,
+    # each a thin closed blade standing across the roof (UV.x from its root on the roof, 0, to its edge, 1; UV.y
+    # from its lower end to its upper end), well inside the mouth while it is shut. Seen when the jaw swings out.
+    nt, nu = pick((2, 8), (1, 2), (1, 3), low)
+    for xm in ARCHES:
+        def arch_point(t, u, xm=xm):
+            cx = columns(xm)[n]
+            yt, yb = top(xm, cx), bot(xm, cx)
+            g = math.sin(math.pi * xm / HINGE) ** 0.6
+            w = 0.1 + 0.8 * u
+            f = 1.0 - abs(2.0 * w - 1.0)
+            # (from just inside the roof's wall, half way across the mouth towards the jaw's)
+            x = cx + 0.010 * g * f + 0.0004 - t * 0.5 * (0.010 + 0.008) * g * f
+            return Vector((x, yb + (yt - yb) * w, xm - HALF))
+        closed_sheet(m, GILLS, "gill arches", arch_point, nt, nu, 0.0025, Vector((0.0, 0.0, -1.0)))
 
 
 def fins(m, low):
@@ -619,6 +650,53 @@ def fins(m, low):
     pspan = Vector((-0.55, 0.0, 0.83)).normalized()
     pchord = Vector((0.83, 0.0, 0.55)).normalized()
     blade(m, PAIRED, "pelvic", paddle(0.06, 0.03), lambda p: proot + pspan * p[0] + pchord * p[1], UP, 0.004, pick(10, 10 // d, 3, low), pick(8, 8 // d, 3, low))
+
+
+# ---------------------------------------------------------------- the gills
+
+# (added 2026-11-18, the user: "The fish need modeled gills as well, well for relevant fish, so like when it opens
+# its mouth wide you can see them")
+GILL_FACES = ("gill arches", "gill flaps")
+
+
+def closed_sheet(m, part, name, grid_point, nt, nu, thick, facing, extra=0.0, uv_y=None):
+    """A thin closed blade: `grid_point(t, u)` is its middle, `facing` the way its first skin faces; `thick` at its
+    root (t 0), nothing at its edge (t 1) and at both ends (u 0, 1)."""
+    for side in (1.0, -1.0):
+        grid = []
+        for ti in range(nt + 1):
+            t = ti / nt
+            row = []
+            for ui in range(nu + 1):
+                u = ui / nu
+                swell = thick * (1.0 - t) ** 0.7 * 2.6 * math.sqrt(u) * (1.0 - u)
+                p = grid_point(t, u) + facing * (side * swell * 0.5)
+                row.append(m.add(p, (t, u if uv_y is None else uv_y), part, extra))
+            grid.append(row)
+        for ti in range(nt):
+            for ui in range(nu):
+                m.face((grid[ti][ui], grid[ti][ui + 1], grid[ti + 1][ui + 1], grid[ti + 1][ui]), facing * side, name)
+
+
+def gill_flaps(m, low, part, slit, width, sink, thick):
+    """Five a side under the head, where the shader paints the gill slits: each a thin closed blade lying just
+    inside the skin of the model as built (found by a ray up from below), from its slit (UV.x 0) back to its edge
+    (UV.x 1). The shader drops its back edge as the gills open, so that a flap of skin lifts and the red of the gills
+    shows under it. `slit(k, u)` is a point of slit k (0 to 4), u from its inner end (0) to its outer end (1), as
+    (metres to the side, metres behind the nose)."""
+    from mathutils.bvhtree import BVHTree
+    tree = BVHTree.FromPolygons(m.verts, m.faces)
+    nt, nu = pick((3, 8), (1, 2), (1, 2), low)
+    for k in range(5):
+        for sx in (1.0, -1.0):
+            def flap_point(t, u, k=k, sx=sx):
+                side, xm = slit(k, 0.04 + 0.92 * u)
+                x = sx * side
+                z = xm + t * width - HALF
+                hit = tree.ray_cast(Vector((x, -50.0, z)), Vector((0.0, 1.0, 0.0)))
+                y = hit[0].y if hit[0] is not None else bot(xm + t * width, side)
+                return Vector((x, y + sink + 0.5 * thick, z))
+            closed_sheet(m, part, "gill flaps", flap_point, nt, nu, thick, DOWN)
 
 
 # The game model's eye: (spokes, rings).

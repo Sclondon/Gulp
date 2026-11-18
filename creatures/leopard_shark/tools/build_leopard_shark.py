@@ -60,6 +60,8 @@ ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 PREVIEW = ARGS[0] if ARGS else ""
 TAU = math.tau
 BODY, JAW, EYE, UPPER, LOWER, DORSAL, DORSAL2, TAIL, ANAL, PELVIC, PECTORAL, CHEEK = range(12)
+# (added 2026-11-18: the gill arches in the throat, and the flaps of the gill slits)
+GILL, SLIT = 12, 13
 LIP = None
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -114,6 +116,10 @@ CHEEK_FROM = 0.45
 EYE_AT = (0.056, 0.017, 0.0050, 0.0014)
 # The gill slits (for the docs: the shader draws them): where each is along the fish, and from how high to how high.
 GILLS = ((0.135, 0.1435, 0.152, 0.1605, 0.169), 0.36, 0.64)
+# The same slits as the shader draws them, for their flaps (2026-11-18): the first's place, the step to the next, the
+# first's top (and how much lower each next one's is, times i squared over 4), how it leans (as h - 0.5) and bows
+# (as (h - 0.48) squared), the lowest h, and how much higher each next one starts.
+SLIT_LINE = (0.135, 0.0085, 0.64, 0.03, 0.008, 0.012, 0.365, 0.0)
 # Ridges along the flank: (how high, how far they stand out, from, to).
 RIDGES = []
 # Rings of points round the body (each side) and along it (head, the rest), full and low.
@@ -129,7 +135,7 @@ TEETH = {
 # their outlines (body lengths; every point of the outlines above is kept), where their rows are from root (0) to
 # edge (1), the tail's step, the eye's rows and points round, the share of the teeth kept, the cheeks' columns and
 # rows.
-GAME_MESH = {"rings": 30, "up": 4, "down": 5, "jaw": (3, 3), "fin_step": 0.03, "fin_rows": (0.0, 0.6, 0.93, 1.0),
+GAME_MESH = {"rings": 27, "up": 4, "down": 4, "jaw": (3, 3), "fin_step": 0.03, "fin_rows": (0.0, 0.6, 0.93, 1.0),
              "tail_step": 0.03, "eye": (4, 24), "teeth": 0.5, "cheek": (6, 2)}
 
 
@@ -371,12 +377,14 @@ def body_x(s, y):
     return BODY_SKIN.x_at(s, y) + ridge(s, height(s, y))
 
 
-def body_frame(s, y):
-    """A place on the body's right side: the point, the way out of the skin there, and the way up along it."""
+def body_frame(s, y, plain=False):
+    """A place on the body's right side: the point, the way out of the skin there, and the way up along it.
+    (`plain`: on the skin without its ridges, smoother, under them.)"""
     e = 0.002
-    x = body_x(s, y)
-    dy = (body_x(s, y + e) - body_x(s, y - e)) / (2 * e)
-    ds = (body_x(s + e, y) - body_x(s - e, y)) / (2 * e)
+    side = BODY_SKIN.x_at if plain else body_x
+    x = side(s, y)
+    dy = (side(s, y + e) - side(s, y - e)) / (2 * e)
+    ds = (side(s + e, y) - side(s - e, y)) / (2 * e)
     return Vector((x, y, s - 0.5)), Vector((1.0, -dy, -ds)).normalized(), Vector((dy, 1.0, 0.0)).normalized()
 
 
@@ -881,6 +889,149 @@ def cheeks(low, game=False):
     return [part, part.mirrored("cheek_left")]
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# The gills (added 2026-11-18). The user: "The fish need modeled gills as well, well for relevant fish, so like when
+# it opens its mouth wide you can see them".
+# How many: (points along an arch, sides round its bar, rakers on it; points up a slit's flap, across it).
+GILL_MESH = {"full": (10, 6, 5, 8, 3), "game": (4, 3, 2, 3, 1), "low": (3, 3, 0, 2, 1)}
+# The arches: how many a side, from how far and to how far between the front of the mouth (0) and the hinge (1), the
+# bar's radius, how deep the fringe of filaments behind it is, how long a raker (body lengths).
+GILL_ARCHES = (4, 0.58, 0.86, 0.0012, 0.0030, 0.0022)
+# The slits' flaps: how far under the skin they lie with the mouth shut, how thick, how far back from the slit line
+# (as a share of the step between slits).
+SLIT_FLAP = (0.0030, 0.0005, 0.55)
+
+
+def blade(part, grid, thick):
+    """A thin closed blade over a grid of places: grid[i][j] = (middle, the way its faces face, data); its two sheets
+    `thick` apart, closed round its edge."""
+    ni, nj = len(grid), len(grid[0])
+    a = [[part.add(m + n * (0.5 * thick), *d) for m, n, d in row] for row in grid]
+    b = [[part.add(m - n * (0.5 * thick), *d) for m, n, d in row] for row in grid]
+    for i in range(ni - 1):
+        for j in range(nj - 1):
+            part.faces.append((a[i][j], a[i + 1][j], a[i + 1][j + 1], a[i][j + 1]))
+            part.faces.append((b[i][j], b[i][j + 1], b[i + 1][j + 1], b[i + 1][j]))
+    ring = [(i, 0) for i in range(ni)] + [(ni - 1, j) for j in range(1, nj)] \
+        + [(i, nj - 1) for i in range(ni - 2, -1, -1)] + [(0, j) for j in range(nj - 2, 0, -1)]
+    for k in range(len(ring)):
+        p, q = ring[k], ring[(k + 1) % len(ring)]
+        part.faces.append((a[p[0]][p[1]], b[p[0]][p[1]], b[q[0]][q[1]], a[q[0]][q[1]]))
+
+
+def gills(level):
+    """The gill arches, right side and left: GILL_ARCHES[0] a side across the back of the mouth, each a curved bar
+    from the roof of the mouth down the side of the throat to the floor, a fringe of filaments behind it and pale
+    rakers in front. With the mouth shut each is folded flat inside the head and the jaw, between the roof of the mouth
+    and the jaw's lip; the shader swings its lower end down with the jaw as it does a cheek's (UV.x: 0 its top, which
+    stays with the head, 1 its foot, which goes with the jaw), so that the open mouth shows them standing across the
+    throat. What a point is: UV.y which arch (0 the front one, 1 the back one); COLOR.g as a cheek's; COLOR.b what
+    of it (1 filaments, 0.5 the bar, 0 a raker); UV2.x along the arch (0 top, 1 foot)."""
+    along, sides, rakers = GILL_MESH[level][:3]
+    count, f0, f1, radius, fringe, raker = GILL_ARCHES
+    bars, fringes, combs = Part("gill_bars"), Part("gill_filaments"), Part("gill_rakers")
+    for k in range(count):
+        s = lerp(lerp(MOUTH_S, HINGE_S, f0), lerp(MOUTH_S, HINGE_S, f1), k / max(count - 1, 1))
+        wide = JAW_SKIN.at(s)[2]
+        # (thinner where the jaw is shallow, so that the folded arch's two legs do not run into each other)
+        x_end = wide * 0.36
+        thick = min(radius, 0.12 * (BODY_SKIN.y_at(s, x_end, False) + 0.004 - lerp(BODY_SKIN.y_at(s, x_end, False), JAW_SKIN.y_at(s, x_end, False), 0.75)))
+
+        def place(w):
+            x = wide * (0.36 + 0.32 * math.sin(math.pi * w))
+            roof = BODY_SKIN.y_at(s, x, False)
+            # (from just up inside the head to well down inside the jaw: the arch's two ends are hidden in them
+            # whether the mouth is open or shut)
+            floor = roof - 0.75 * (roof - JAW_SKIN.y_at(s, x, False))
+            return Vector((x, lerp(roof + 0.004, floor, w), s - 0.5))
+
+        def data(w, kind):
+            return ((w, 1.0 - k / max(count - 1, 1)), (w, 1.0), (GILL / 20.0, upper_goes(s) * (1.0 - w), kind))
+
+        line = [(i / along, place(i / along)) for i in range(along + 1)]
+        back = Vector((0.0, 0.0, 1.0))
+        rings = []
+        grid = []
+        for i, (w, p) in enumerate(line):
+            ahead = line[min(i + 1, along)][1] - line[max(i - 1, 0)][1]
+            ahead.normalize()
+            n1 = (back - ahead * back.dot(ahead)).normalized()
+            n2 = ahead.cross(n1).normalized()
+            rings.append([bars.add(p + (n1 * math.cos(TAU * q / sides) + n2 * math.sin(TAU * q / sides)) * thick,
+                                   *data(w, 0.5)) for q in range(sides)])
+            # (the filaments: a thin fringe behind the bar, shorter at the arch's ends; the shader stripes it)
+            deep = fringe * (0.55 + 0.45 * math.sin(math.pi * w))
+            grid.append([(p + n1 * (thick * 0.6 + deep * t), n2, data(w, 1.0)) for t in (0.0, 1.0)])
+        bars.loft(rings)
+        # (closed at each end)
+        for ring_ in (rings[0], rings[-1]):
+            middle = bars.add(sum((bars.verts[v] for v in ring_), Vector()) / sides, *bars.data[ring_[0]])
+            for q in range(sides):
+                bars.faces.append((ring_[q], ring_[(q + 1) % sides], middle))
+        blade(fringes, grid, 0.0008)
+        # (the rakers: short pale points on the bar's front, pointing forward into the mouth)
+        for r in range(rakers):
+            w = (r + 0.5) / rakers
+            p = place(w)
+            ahead = (place(min(w + 0.01, 1.0)) - place(max(w - 0.01, 0.0))).normalized()
+            n1 = (back - ahead * back.dot(ahead)).normalized()
+            n2 = ahead.cross(n1).normalized()
+            root = p - n1 * (thick * 0.7)
+            base = [combs.add(root + n2 * (thick * 0.6), *data(w, 0.0)),
+                    combs.add(root + ahead * (thick * 0.7), *data(w, 0.0)),
+                    combs.add(root - ahead * (thick * 0.7), *data(w, 0.0))]
+            tip = combs.add(root - n1 * raker, *data(w, 0.0))
+            for j in range(3):
+                combs.faces.append((base[j], base[(j + 1) % 3], tip))
+            combs.faces.append(tuple(base))
+    made = [bars, fringes] + ([combs] if rakers else [])
+    return made + [p.mirrored(p.name + "_left") for p in made]
+
+
+def slits(level):
+    """The five gill slits' flaps, right side and left: a thin blade behind each slit line the shader draws, lying
+    SLIT_FLAP[0] under the skin with the mouth shut (unseen); the shader lifts its front edge out through the skin as
+    the mouth opens, so that each slit stands open a little with red showing in it. A point has the body's UV and UV2
+    (so the shader draws the skin on it as on the body there), and COLOR.b how far it lifts (1 its front edge, which
+    is red, 0 its back edge, which stays under the skin)."""
+    up, across = GILL_MESH[level][3:]
+    at0, step, top0, top_drop, lean_k, bow_k, h0, h_step = SLIT_LINE
+    under, thick, wide = SLIT_FLAP
+    made = []
+    for i in range(5):
+        # (each a part of its own, checked by itself)
+        part = Part("slit%d" % (i + 1))
+        at = at0 + step * i
+        top = top0 - top_drop * i * i / 4.0 - 0.015
+        low = h0 + h_step * i
+
+        def lean(h):
+            return at + lean_k * (h - 0.5) - bow_k * (h - 0.48) ** 2
+
+        grid = []
+        for j in range(up + 1):
+            h = lerp(low, top, j / up)
+            row = []
+            for u in range(across + 1):
+                f = u / across
+                s = lean(h) - 0.0008 + (wide * step + 0.0008) * f
+                low_s = low_line(s)
+                y = low_s + h * (BODY_SKIN.top(s) - low_s)
+                # (on the skin without its ridges, which lies under them: a flap bent over a ridge folds)
+                p, n, _ = body_frame(s, y, True)
+                side, whole = BODY_SKIN.outline_at(s, [0.0, ("h", h), 1.0], [0, 0])
+                data = ((s, 1.0 - h), (side[1][2] * LENGTH, 1.0 - whole * LENGTH), (SLIT / 20.0, 0.0, 1.0 - f))
+                row.append((p - n * under, n, data))
+            grid.append(row)
+        # (its two sheets apart along one way, the slit's mean way out: apart along each point's own way out, the
+        # sheets of a flap bent round the body cross each other where its rows are few)
+        way = sum((n for row in grid for _, n, _ in row), Vector()).normalized()
+        grid = [[(m, way, d) for m, _, d in row] for row in grid]
+        blade(part, grid, thick)
+        made += [part, part.mirrored(part.name + "_left")]
+    return made
+
+
 def make(name, low, game=False):
     parts = []
     body = Part("body")
@@ -905,6 +1056,10 @@ def make(name, low, game=False):
     parts += teeth(low, game)
     parts += cheeks(low, game)
     parts += fins(low, game)
+    # (the gills last: on the full model they are a second surface, so that the first is as it was)
+    level = "game" if game else ("low" if low else "full")
+    gill_parts = gills(level) + slits(level)
+    parts += gill_parts
 
     verts, faces, corners = [], [], []
     told = []
@@ -913,6 +1068,8 @@ def make(name, low, game=False):
         out, wrong, counted = part.done()
         told.append("%s %d/%d wrong" % (part.name, wrong, counted))
         wrong_all += wrong
+        if part is gill_parts[0]:
+            gill_from = len(faces)
         for face in out:
             first = len(verts)
             for co, uv, uv2, colour in face:
@@ -942,6 +1099,12 @@ def make(name, low, game=False):
     bsdf.inputs["Base Color"].default_value = (0.55, 0.6, 0.66, 1.0)
     material.diffuse_color = (0.55, 0.6, 0.66, 1.0)
     mesh.materials.append(material)
+    if level == "full":
+        second = bpy.data.materials.get("shark_gills") or bpy.data.materials.new("shark_gills")
+        second.diffuse_color = (0.6, 0.1, 0.1, 1.0)
+        mesh.materials.append(second)
+        for poly in mesh.polygons[gill_from:]:
+            poly.material_index = 1
     for poly in mesh.polygons:
         poly.use_smooth = True
     mesh.update()

@@ -59,6 +59,8 @@ FAMILY = "butterflyfish"
 LENGTH = 0.18
 TAU = math.tau
 BODY, JAW, EYE, SPINE, DORSAL, FILAMENT, TAIL, ANAL, PELVIC, PECTORAL = 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+# The gill arches (added 2026-11-18). The throat's lining is of the BODY part, marked by vertex colour green 1.
+GILL = 10
 
 # The wrist of the tail and the root of the tail fin, the same in every type: (s, y) of the top line and the
 # bottom line, and (s, half width).
@@ -175,8 +177,19 @@ WANTED = [name for name in ARGS[1:] if name in NAMES] or NAMES
 # rays of the dorsal and anal fins (the spines keep a place at each point and dip); places across the tail.
 GAME_BODY_RINGS = 24
 GAME_HALF = 6
-GAME_SOFT = (8, 6)
+GAME_SOFT = (7, 5)
 GAME_TAIL = 8
+# The throat and the gills (added 2026-11-18): the throat is a short tunnel from just ahead of the jaw's hinge back
+# to just ahead of the gill cover's edge, an oval at each of THROAT_KNOTS places (s, the height of its middle, its
+# half height, its half width; body lengths, straight lines between them). The shader is told the same numbers
+# (TYPES "throat" in the node script) and, while the mouth is open, cuts away whatever of the body and the jaw lies
+# inside it (they made the dark wall at the back of the mouth), so that the tunnel and the gills in it show. Each
+# model's throat has this many strips between two knots and this many points round; its gill arches this many
+# steps from the throat's floor up its side.
+THROAT_KNOTS = 5
+THROAT_STRIPS = {"full": 3, "game": 1, "low": 1}
+THROAT_ROUND = {"full": 16, "game": 6, "low": 6}
+GILL_STEPS = {"full": 10, "game": 2, "low": 1}
 
 
 # True while the GAME model is being built (see `make`): fewer points, put where they shape the outline.
@@ -410,6 +423,7 @@ def use(name):
     width = 2.0 * max(hw(i / 200.0) for i in range(20, 140))
     P["told"] = "hinge_s=%.4f hinge_y=%.4f gill_s=%.4f eye=(%.4f, %.4f) depth=%.4f m width=%.4f m" % (
         HINGE_S, HINGE_Y, GILL_S, EYE_AT[0], EYE_AT[1], depth * LENGTH, width * LENGTH)
+    P["throat"] = throat_knots()
 
 
 def gill_edge(h):
@@ -450,6 +464,9 @@ class Part:
         self.verts = []
         self.data = []
         self.faces = []
+        # (a lining, seen from inside, as the throat is: not a closed solid; its faces are wound by hand to face
+        # `lining(point)`, a point on the tunnel's middle line, and `done` checks that instead)
+        self.lining = None
 
     def add(self, p, uv, uv2, colour):
         self.verts.append(Vector(p))
@@ -468,6 +485,15 @@ class Part:
             other.add((-p.x, p.y, p.z), *flip(d))
         other.faces = list(self.faces)
         return other
+
+    def face_towards(self, face, target):
+        """Adds a face wound so that it faces the point `target` (for a lining)."""
+        a, b, c = (self.verts[i] for i in face[:3])
+        n = (b - a).cross(c - a)
+        if n.length < 1e-14 and len(face) > 3:
+            n = (c - a).cross(self.verts[face[3]] - a)
+        middle = sum((self.verts[i] for i in face), Vector()) / len(face)
+        self.faces.append(tuple(face) if n.dot(target - middle) > 0.0 else tuple(reversed(face)))
 
     @staticmethod
     def inside_out(bm):
@@ -491,7 +517,24 @@ class Part:
                     hits += 1
                     at = hit[0] + f.normal * 2e-6
                 if hits % 2:
-                    wrong += 1
+                    # (a line that grazes an edge counts it twice: ask again along two lines a little aside, out of
+                    # the same face, and go by the most of the three; added 2026-11-18 for the small gill arches)
+                    odd = 1
+                    for lean in (Vector((0.13, 0.07, 0.0)), Vector((-0.05, 0.11, 0.09))):
+                        way = (f.normal + lean - f.normal * f.normal.dot(lean)).normalized()
+                        if way.dot(f.normal) <= 0.0:
+                            continue
+                        at = f.calc_center_median() + f.normal * 2e-6
+                        n = 0
+                        while n < 40:
+                            hit = tree.ray_cast(at, way)
+                            if hit[0] is None:
+                                break
+                            n += 1
+                            at = hit[0] + way * 2e-6
+                        odd += n % 2
+                    if odd >= 2:
+                        wrong += 1
         cut.free()
         return wrong, counted
 
@@ -515,6 +558,24 @@ class Part:
                 loop[uv2].uv = d[1]
                 loop[colour] = (d[2][0], d[2][1], d[2][2], 1.0)
         bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
+        if self.lining is not None:
+            # (a lining: every face must face the tunnel's middle line, as it was wound)
+            bm.normal_update()
+            wrong = 0
+            for f in bm.faces:
+                c = f.calc_center_median()
+                g = Vector((c.x, c.z, -c.y)) / LENGTH
+                axis = self.lining(g)
+                towards = to_b(axis - g)
+                if f.normal.dot(towards) <= 0.0:
+                    wrong += 1
+            out = []
+            for f in bm.faces:
+                out.append([(loop.vert.co.copy(), tuple(loop[uv].uv), tuple(loop[uv2].uv), tuple(loop[colour]))
+                            for loop in f.loops])
+            counted = len(bm.faces)
+            bm.free()
+            return out, wrong, counted
         # (where a skin closes to a line on the middle plane, or a fin on that plane thins to nothing at its
         # leading tip, a four-cornered face has three corners in that plane: cut it from its fourth corner, or
         # whoever cuts it in two later may leave a triangle lying flat in the plane, back to back with its twin)
@@ -653,6 +714,173 @@ def cheek_spine(low):
     hub = part.add(middle, (0.0, 0.5), (0.0, 1.0), (SPINE / 10.0, 0.0, 0.0))
     for k in range(around):
         part.faces.append((rings[0][(k + 1) % around], rings[0][k], hub))
+    return part
+
+
+def reach_x(s, y):
+    """How far out the fish is at (s, y): the body's skin or the jaw's, whichever is further (0 outside both)."""
+    out = 0.0
+    if BODY_SKIN.bot(s) < y < BODY_SKIN.top(s):
+        out = body_x(s, y)
+    if JAW_SKIN.first <= s <= JAW_SKIN.last and JAW_SKIN.bot(s) < y < JAW_SKIN.top(s):
+        out = max(out, JAW_SKIN.x_at(s, y))
+    return out
+
+
+def throat_at(s):
+    """The throat's oval at s (between its knots, straight lines): (height of its middle, half height, half width)."""
+    knots = P["throat"]
+    if s <= knots[0][0]:
+        return knots[0][1:]
+    for a, b in zip(knots, knots[1:]):
+        if s <= b[0]:
+            t = (s - a[0]) / (b[0] - a[0])
+            return tuple(lerp(a[i], b[i], t) for i in (1, 2, 3))
+    return knots[-1][1:]
+
+
+def throat_margin(s, yc, h, w):
+    """The least gap (body lengths) between the throat's oval at s and the outside of the fish or an eyeball."""
+    at, out, _ = body_frame(*EYE_AT)
+    ball, stands = P["eye"][2], P["eye"][3]
+    centre = at - out * (ball - stands)
+    least = 1e9
+    for k in range(32):
+        a = TAU * k / 32
+        x, y = w * math.sin(a), yc + h * math.cos(a)
+        least = min(least, reach_x(s, y) - x)
+        if k == 0 or k == 16:
+            # (the oval's top and bottom must be inside the fish's outline at that place too)
+            least = min(least, (BODY_SKIN.top(s) - y) if k == 0 else (y - P["sil_bot"](s)))
+        least = min(least, (Vector((abs(x), y, s - 0.5)) - centre).length - ball)
+    return least
+
+
+def throat_knots():
+    """The throat's ovals: from inside the mouth a little ahead of the hinge, where its top is the closed mouth's
+    line and it reaches down into the jaw, back to just ahead of the gill cover's edge, sloping gently down: a
+    tube not much wider than the open mouth (so that the gills in it are in sight through the mouth), below the
+    eyes, made smaller where it would come near the outside."""
+    hs, hy = HINGE_S, HINGE_Y
+    s0, s1 = hs - 0.015, GILL_S - 0.01
+    top, bot = P["sil_top"], P["sil_bot"]
+    eye_lim = EYE_AT[1] - P["eye"][2] - 0.008
+    hi0 = hy + 0.003
+    lo0 = bot(s0) + 0.3 * (hi0 - bot(s0))
+    yc0, h0 = 0.5 * (hi0 + lo0), 0.5 * (hi0 - lo0)
+    w0 = 0.5 * reach_x(s0, yc0)
+    knots = []
+    for k in range(THROAT_KNOTS):
+        s = s0 + (s1 - s0) * (k / (THROAT_KNOTS - 1)) ** 1.6
+        depth = top(s) - bot(s)
+        hi_lim = min(top(s) - 0.3 * depth, eye_lim)
+        lo_lim = bot(s) + 0.25 * max(hi_lim - bot(s), 0.0)
+        h = min(1.8 * h0, 0.5 * (hi_lim - lo_lim))
+        yc = min(max(yc0 - 0.12 * (s - s0), lo_lim + h), hi_lim - h)
+        w = min(0.5 * reach_x(s, yc), 1.8 * w0)
+        for _ in range(60):
+            if throat_margin(s, yc, h, w) > 0.0025:
+                break
+            w *= 0.92
+            h *= 0.96
+        knots.append((s, yc, h, w))
+    # (and between the knots, where the straight lines run: the two knots either side of a place too close to the
+    # outside made smaller)
+    P["throat"] = knots
+    for _ in range(60):
+        tight = [s for s in (lerp(s0, s1, i / 60.0) for i in range(61)) if throat_margin(s, *throat_at(s)) < 0.0015]
+        if not tight:
+            break
+        for s in tight:
+            for i in range(THROAT_KNOTS - 1):
+                if knots[i][0] <= s <= knots[i + 1][0]:
+                    for j in (i, i + 1):
+                        k0, yc, h, w = knots[j]
+                        knots[j] = (k0, yc, h * 0.97, w * 0.94)
+        P["throat"] = knots
+    return knots
+
+
+def throat(level):
+    """The throat's lining: the tunnel's wall seen from inside (dark, `inside` 1, of the body's part, vertex
+    colour green 1), open at the front, closed at the back by a shallow dome."""
+    part = Part("throat")
+    knots = P["throat"]
+    strips = THROAT_STRIPS[level]
+    places = [knots[0][0]]
+    for a, b in zip(knots, knots[1:]):
+        places += [lerp(a[0], b[0], (i + 1) / strips) for i in range(strips)]
+    n = THROAT_ROUND[level]
+    rings = []
+    for s in places:
+        yc, h, w = throat_at(s)
+        rings.append([part.add((w * math.sin(TAU * j / n), yc + h * math.cos(TAU * j / n), s - 0.5), (s, 0.5),
+                               (0.0, 1.0), (BODY / 10.0, 1.0, 1.0)) for j in range(n)])
+    for i in range(len(rings) - 1):
+        yc = throat_at(0.5 * (places[i] + places[i + 1]))[0]
+        for j in range(n):
+            q = (rings[i][j], rings[i][(j + 1) % n], rings[i + 1][(j + 1) % n], rings[i + 1][j])
+            middle = sum((part.verts[x] for x in q), Vector()) / 4
+            part.face_towards(q, Vector((0.0, yc, middle.z)))
+    s1 = places[-1]
+    yc, h, w = throat_at(s1)
+    end = part.add((0.0, yc, s1 + 0.4 * min(h, w) - 0.5), (s1, 0.5), (0.0, 1.0), (BODY / 10.0, 1.0, 1.0))
+    for j in range(n):
+        part.face_towards((rings[-1][j], rings[-1][(j + 1) % n], end), Vector((0.0, yc, s1 - 0.5 - 1.0)))
+
+    def axis(g):
+        s = g.z + 0.5
+        if s > s1 - 1e-6:
+            return Vector((0.0, yc, g.z - 1.0))
+        return Vector((0.0, throat_at(s)[0], g.z))
+    part.lining = axis
+    return part
+
+
+def gills(level):
+    """Four gill arches a side in the throat, each a closed bar (part GILL) that follows the throat's wall from
+    low on its floor round its side and up towards its roof, its top leaning back: a bar, pale gill rakers on its
+    front, a fringe of deep red filaments behind it out to the wall (the full model's toothed, in bunches). UV.x:
+    0 the rakers along its inner edge, 0.3 the bar against the wall, 1 the filaments' tips; UV.y: the arch's number (0 the front one) plus
+    how far up it (0 to 1). Nothing of them is outside the throat."""
+    part = Part("gills")
+    knots = P["throat"]
+    s0, s1 = knots[0][0], knots[-1][0]
+    first, last = s0 + 0.35 * (s1 - s0), s1 - 0.12 * (s1 - s0)
+    gap = (last - first) / 3.0
+    steps = GILL_STEPS[level]
+    for k in range(4):
+        sa = first + gap * k
+        yc, h, w = throat_at(sa)
+        rings = []
+        for i in range(steps + 1):
+            t = i / steps
+            theta = math.pi * (0.85 - 0.65 * t)
+            z = sa + 0.25 * gap * t
+            yc, h, w = throat_at(z)
+            wall = Vector((w * math.sin(theta), yc + h * math.cos(theta), z - 0.5))
+            inward = Vector((-wall.x, yc - wall.y, 0.0)).normalized()
+            back = Vector((0.0, 0.0, 1.0))
+            # (each point: how far in from the wall, in halves of the throat's narrower size there; how far
+            # back, in gaps between two arches; and its UV.x)
+            if level == "full":
+                tip = 0.45 if i % 2 == 0 else 0.33
+                outline = [(0.08, -0.12, 0.3)]
+                outline += [(1.1 + 0.2 * math.cos(math.radians(a)), 0.12 * math.sin(math.radians(a)), u)
+                            for a, u in ((-120.0, 0.06), (-60.0, 0.0), (0.0, 0.1), (60.0, 0.3), (120.0, 0.4))]
+                outline.append((0.25, tip, 1.0))
+            else:
+                outline = [(0.08, -0.12, 0.3), (1.3, 0.0, 0.0), (0.25, 0.45, 1.0)]
+            reach = 0.5 * min(w, h)
+            rings.append([part.add(wall + inward * (a * reach) + back * (b * gap), (u, k + 0.98 * t), (0.0, 1.0),
+                                   (GILL / 10.0, 0.0, 0.0)) for a, b, u in outline])
+        part.loft(rings)
+        for ring, flip in ((rings[0], True), (rings[-1], False)):
+            middle = sum((part.verts[x] for x in ring), Vector()) / len(ring)
+            hub = part.add(middle, (0.3, k + (0.0 if flip else 0.98)), (0.0, 1.0), (GILL / 10.0, 0.0, 0.0))
+            for j in range(len(ring)):
+                face = (ring[j], ring[(j + 1) % len(ring)], hub)
+                part.faces.append(tuple(reversed(face)) if flip else face)
     return part
 
 
@@ -821,7 +1049,7 @@ def fins(low):
     pectoral = fin(
         "pectoral", PECTORAL, 14, lambda t: q0.lerp(q1, t), lambda t: turn(e0, e1, t),
         lambda t: pc_long * (0.62 + 0.38 * math.sin(math.pi * (0.12 + 0.6 * t)) ** 0.8) * (1.0 - 0.3 * t ** 2),
-        e0.cross(e1), 0.007, 6 if GAME else (3 if low else 28), 3 if GAME else (2 if low else 6), not (low or GAME))
+        e0.cross(e1), 0.007, 6 if GAME else (3 if low else 28), 2 if (low or GAME) else 6, not (low or GAME))
     made += [pectoral, pectoral.mirrored("pectoral_left", flip_side)]
     PEC_ROOT = (q0 + q1) * 0.5
     if not low:
@@ -857,13 +1085,21 @@ def make(name, low, game=False):
         spine = cheek_spine(low)
         parts += [spine, spine.mirrored("spine_left", lambda d: d)]
     parts += fins(low)
+    # The throat and the gills (2026-11-18): last, and on the full model in a second surface, so that the first
+    # (everything it had before) is exactly as it was.
+    level = "game" if game else ("low" if low else "full")
+    inner = [throat(level)]
+    arches = gills(level)
+    inner += [arches, arches.mirrored("gills_left", lambda d: d)]
 
     verts, faces, corners = [], [], []
     told = []
     wrong_all = 0
-    for part in parts:
+    second = 0
+    for part in parts + inner:
         out, wrong, counted = part.done()
-        told.append("%s %d/%d wrong" % (part.name, wrong, counted))
+        told.append("%s %d/%d %s" % (part.name, wrong, counted,
+                                     "facing away from the middle" if part.lining else "wrong"))
         wrong_all += wrong
         for face in out:
             first = len(verts)
@@ -871,6 +1107,8 @@ def make(name, low, game=False):
                 verts.append(co)
                 corners.append((uv, uv2, colour))
             faces.append(list(range(first, first + len(face))))
+        if part in inner:
+            second += len(out)
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(verts, [], faces)
     # (every layer made first, then each looked up by name: making one moves the others)
@@ -894,6 +1132,12 @@ def make(name, low, game=False):
     bsdf.inputs["Base Color"].default_value = (0.8, 0.72, 0.4, 1.0)
     material.diffuse_color = (0.8, 0.72, 0.4, 1.0)
     mesh.materials.append(material)
+    if level == "full":
+        inside = bpy.data.materials.get(FAMILY + "_throat") or bpy.data.materials.new(FAMILY + "_throat")
+        inside.diffuse_color = (0.5, 0.05, 0.06, 1.0)
+        mesh.materials.append(inside)
+        for poly in mesh.polygons[len(mesh.polygons) - second:]:
+            poly.material_index = 1
     for poly in mesh.polygons:
         poly.use_smooth = True
     mesh.update()
@@ -903,8 +1147,15 @@ def make(name, low, game=False):
     bpy.context.view_layer.objects.active = obj
     bpy.ops.object.select_all(action="DESELECT")
     obj.select_set(True)
+    # (all but the gill arches: theirs stay apart at every face, so that each face of those small sharp-edged
+    # bars has its own normals, none against it)
+    for v in mesh.vertices:
+        v.select = corners[v.index][2][0] < 0.95
+    for e in mesh.edges:
+        e.select = all(mesh.vertices[i].select for i in e.vertices)
+    for poly in mesh.polygons:
+        poly.select = all(mesh.vertices[i].select for i in poly.vertices)
     bpy.ops.object.mode_set(mode="EDIT")
-    bpy.ops.mesh.select_all(action="SELECT")
     bpy.ops.mesh.remove_doubles(threshold=1e-7)
     bpy.ops.object.mode_set(mode="OBJECT")
     tris = sum(len(p.vertices) - 2 for p in mesh.polygons)
@@ -914,6 +1165,10 @@ def make(name, low, game=False):
     print("BUILT %s verts=%d tris=%d reach (m): x %.4f..%.4f, up %.4f..%.4f, along %.4f..%.4f" % (
         name, len(mesh.vertices), tris, low_x[0], low_x[1], low_z[0], low_z[1], low_y[0], low_y[1]))
     print("WINDING %s: %s: %s" % (name, "ok" if wrong_all == 0 else "INSIDE OUT", ", ".join(told)))
+    print("THROAT %s: %d triangles of throat and gills; least gap to the outside or an eye %.2f mm" % (
+        name, sum(len(p.vertices) - 2 for p in mesh.polygons[len(mesh.polygons) - second:]),
+        1000.0 * LENGTH * min(throat_margin(s, *throat_at(s)) for s in
+                              [lerp(P["throat"][0][0], P["throat"][-1][0], i / 40.0) for i in range(41)])))
     return obj
 
 
@@ -972,6 +1227,8 @@ def main():
         game = make(name + "_game", False, True)
         print("SHAPE %s: %s pec_root=(%.4f, %.4f, %.4f) eye_skin=(%.4f, %.4f, %.4f)" % (
             kind, P["told"], PEC_ROOT.x, PEC_ROOT.y, PEC_ROOT.z + 0.5, EYE_SKIN.x, EYE_SKIN.y, EYE_SKIN.z + 0.5))
+        print("THROAT_KNOTS %s: %s" % (kind, ", ".join(
+            "Vector4(%.4f, %.4f, %.4f, %.4f)" % k for k in P["throat"])))
         if "--game-only" not in ARGS:
             export_one(full, os.path.join(OUT, name + ".glb"))
             export_one(low, os.path.join(OUT, name + "_lo.glb"))

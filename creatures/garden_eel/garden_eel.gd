@@ -15,7 +15,7 @@ extends Node3D
 ## times (a whole number), so its motion comes round again exactly every beat. Call
 ## `step(velocity, delta)` each frame, or set `phase` yourself. The same names as GameCommon's fish.
 ##
-## The model is creatures/garden_eel/models/garden_eel.glb (and _lo), built by
+## The model is creatures/garden_eel/models/garden_eel.glb (and _game, _lo), built by
 ## tools/build_garden_eel.py; garden_eel.gdshader (with garden_eel.gdshaderinc) poses and colours it.
 
 const MODEL := "res://creatures/garden_eel/models/garden_eel%s.glb"
@@ -52,6 +52,37 @@ const HOOK_LENGTH := 0.2
 	set(value):
 		low = value
 		_show()
+## The game model (Twilight Princess weight: about 1,700 triangles, spent on the head, the mouth
+## and the outline; the same shader and settings) in place of the full one; `low` still shows the
+## low model. Each model is loaded only when it is first shown, so with `game` on the full model
+## is never loaded and a game's web export may leave garden_eel.glb out.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## Its mouth: 0 shut, 1 wide open (the lower jaw turns down about the corner of the mouth; the
+## dark inside of the mouth, the throat and the red gill arches show).
+@export_range(0.0, 1.0) var gape := 0.0:
+	set(value):
+		gape = clampf(value, 0.0, 1.0)
+		_send(&"gape", gape)
+## The cartoon eye: 0 the eye as in life, 1 a bigger cartoon eye of its own character (shy and
+## wary: a big round eye with a big pupil, its lower lid pushed up in a squint). In between blends.
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send(&"cartoon_eyes", cartoon_eyes)
+## Where its pupils look, -1..1 each way: x forward (towards the snout), y up (towards its back),
+## in each eye's own plane.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value.clamp(Vector2(-1.0, -1.0), Vector2.ONE)
+		_send(&"eye_look", eye_look)
+## A blink: 0 open, 1 shut (lids the colour of its skin close over each eye).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send(&"blink", blink)
 ## How far through a beat it is, 0 to 1 (only the fraction counts).
 var phase := 0.0:
 	set(value):
@@ -63,11 +94,17 @@ static var _meshes := {}
 var _material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
 
 
 ## The full model's mesh, or the low one's (each one surface, to wear `new_material()`).
 static func mesh_of(low_wanted := false) -> Mesh:
 	return _mesh_at(MODEL % ("_lo" if low_wanted else ""))
+
+
+## The game model's mesh (see `game`), one surface, to wear `new_material()`. Loaded once and kept.
+static func game_mesh() -> Mesh:
+	return _mesh_at(MODEL % "_game")
 
 
 ## A new material for `mesh_of()`'s meshes. Its settings: `phase`, `out_of_sand`, `sway`, and those
@@ -120,12 +157,17 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
+	_full = _instance_of("GardenEel")
+	_low = _instance_of("GardenEelLo")
+	_game = _instance_of("GardenEelGame")
 	_show()
 	_send_phase()
 	_send(&"sway", sway)
 	_send(&"out_of_sand", out)
+	_send(&"gape", gape)
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 
 
 ## Each frame: moves it on through its beat. (`velocity` is taken so that it is called as the
@@ -134,7 +176,8 @@ func step(_velocity: Vector3, delta: float) -> void:
 	phase += delta / maxf(beat, 0.01)
 
 
-## Sets one of the shader's settings: `hook` (radians its top is curled over, 2.0), `lean` (radians
+## Sets one of the shader's settings (`gape`, `cartoon_eyes`, `eye_look` and `blink` have properties of
+## their own): `hook` (radians its top is curled over, 2.0), `lean` (radians
 ## its stalk leans back, 0.12), its colours (`skin`, `skin_back`, `speck`, `spot`, `eye_ring`) and
 ## `specks` (0 none to 1 many).
 func set_shader_parameter(setting: StringName, value: Variant) -> void:
@@ -156,17 +199,25 @@ func _send_phase() -> void:
 
 
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if _full == null:
+		return
+	_full.visible = not low and not game
+	_low.visible = low
+	_game.visible = game and not low
+	# (each model is loaded the first time it is shown, never before)
+	if _full.visible and _full.mesh == null:
+		_full.mesh = mesh_of(false)
+	if _low.visible and _low.mesh == null:
+		_low.mesh = mesh_of(true)
+	if _game.visible and _game.mesh == null:
+		_game.mesh = game_mesh()
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of(called: String) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
 	mesh.material_override = _material
 	# (curled over, its head reaches ahead of where the still model stands)
 	mesh.extra_cull_margin = 0.15
-	mesh.name = "GardenEelLo" if low_wanted else "GardenEel"
+	mesh.name = called
 	add_child(mesh)
 	return mesh

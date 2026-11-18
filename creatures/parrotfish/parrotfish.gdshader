@@ -71,6 +71,15 @@ uniform vec3 fin_edge : source_color = vec3(0.16, 0.5, 0.86);
 uniform vec3 iris : source_color = vec3(0.98, 0.7, 0.2);
 uniform vec3 iris_ring : source_color = vec3(0.85, 0.22, 0.15);
 
+// The gills (added 2026-11-18): four arches a side in the throat behind the mouth (part 8), seen
+// only through the open mouth: pale rakers on the inner edge, a pinker bar, a fringe of blood-red
+// filaments, all darker deeper in the throat. The throat runs from THROAT.x to THROAT.y (how far
+// along), as the model is built (the build's THROAT line).
+const vec2 THROAT = vec2(0.0965, 0.215);
+uniform vec3 gill_red : source_color = vec3(0.62, 0.04, 0.06);
+uniform vec3 gill_bar : source_color = vec3(0.82, 0.42, 0.42);
+uniform vec3 gill_raker : source_color = vec3(0.93, 0.86, 0.78);
+
 // ---------------------------------------------------------------------------------------------
 // The cartoon eye (added 2026-11-18; the user: "the eyes for most of them should be more
 // cartoony and personalized"). `cartoon_eyes` 0 is the eye as it was (the default), 1 the
@@ -416,6 +425,15 @@ void fragment() {
 		// The pelvic fins: rose, a blue leading edge.
 		c = mix(fin, fin_edge, 1.0 - smoothstep(0.1, 0.25, UV.y));
 		rough = 0.55;
+	} else if (p == 8) {
+		// The gills: rakers, the bar, then the filaments (fine rows of them), darker deeper in the
+		// throat and towards the wall.
+		float fil = 0.72 + 0.28 * sin(fract(UV.y) * 110.0);
+		c = mix(gill_raker, gill_bar, smoothstep(0.08, 0.25, UV.x));
+		c = mix(c, gill_red * fil, smoothstep(0.35, 0.5, UV.x));
+		c *= mix(1.0, 0.7, smoothstep(THROAT.x, THROAT.y, rest.z + 0.5)) * (1.0 - 0.3 * UV.x);
+		rough = 0.3;
+		spec = 0.6;
 	} else {
 		c = eye_colour(UV.x, iris, iris_ring);
 		c = eye_finish(c, UV.x);

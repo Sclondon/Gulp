@@ -66,9 +66,9 @@ const WIDTH := 0.53
 	set(value):
 		low = value
 		_show()
-## The game model (added 2026-11-18): about 3,100 triangles against the full model's 62,000, spent
+## The game model (added 2026-11-18): about 3,700 triangles (with its gills) against the full model's 62,000, spent
 ## where they show (the outline, the head, the eye, the fins' edges), for a game; it looks and works
-## as the full one does, and is lighter than the low model (5,700, an even coarse grid).
+## as the full one does, and is lighter than the low model (6,000, an even coarse grid).
 ## `low` still shows the low model. Each model is loaded only when it is first shown, so a game
 ## that sets this before the node enters the tree never loads the full one.
 @export var game := false:

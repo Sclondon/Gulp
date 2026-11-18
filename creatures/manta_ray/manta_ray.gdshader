@@ -237,6 +237,31 @@ vec3 eye_grow(vec3 v, float r) {
 	return c + flat_part + o * (dn * k - EYE_RADIUS * EYE_SINK * (k - 1.0));
 }
 
+// THE GILLS (added 2026-11-18). How far a gill flap reaches back from its slit (metres, as the builder has it).
+const float FLAP_W = 0.04576;
+// The red of the gills (filaments), and how far a flap's back edge drops when they are wide open (radians).
+const vec3 GILL_RED = vec3(0.55, 0.05, 0.06);
+const float FLAP_OPEN = 0.6;
+// How far the gills open for breathing (0 shut, the default; 1 wide). They open with `gape` too.
+uniform float gills : hint_range(0.0, 1.0) = 0.0;
+
+float gills_open() {
+	return clamp(max(gape, gills), 0.0, 1.0);
+}
+
+// The gills' colour (`uv`: x from an arch's root, or a flap's slit, 0, to its edge, 1; y along it): blood red
+// filaments, pale gill rakers along an arch's free edge on its front, a little darker towards the edge.
+vec3 gill_colour(vec2 uv, bool rakers) {
+	float comb = 0.5 + 0.5 * cos(uv.y * 6.2831853 * 14.0);
+	vec3 red = GILL_RED * (0.7 + 0.45 * comb);
+	vec3 c = red;
+	if (rakers) {
+		// (pale gill rakers: short teeth along the arch's free edge)
+		c = mix(red, vec3(0.82, 0.74, 0.66), smoothstep(0.75, 0.9, uv.x) * step(0.55, comb));
+	}
+	return c * mix(1.0, 0.75, uv.x);
+}
+
 void vertex() {
 	part = UV2.y;
 	topness = UV2.x;
@@ -246,6 +271,10 @@ void vertex() {
 	vec3 n = NORMAL;
 	if (abs(part - 6.0) < 0.5) {
 		v = eye_grow(v, UV.x);
+	}
+	if (abs(part - 8.0) < 0.5) {
+		// A gill flap: its back edge drops as the gills open (see gills_open).
+		v.y -= UV.x * FLAP_W * tan(FLAP_OPEN * gills_open());
 	}
 	if (part > 1.5 && part < 2.5) {
 		ceph_point(UV.x, UV.y, UV2.x, v.x >= 0.0 ? 1.0 : -1.0, v, n);
@@ -309,6 +338,12 @@ float patch_of(vec2 p, vec2 at, vec2 size, float turn, float edge) {
 
 void fragment() {
 	int p = int(part + 0.5);
+	// (a gill flap's outside is drawn as the skin there, its inside as the gills)
+	bool flap = p == 8;
+	if (flap) {
+		p = rest_normal.y < 0.0 ? 0 : 7;
+	}
+	float opened = gills_open();
 	float glance = 1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0);
 	// (where a point is on the animal: across, 0 the middle line to 1 a wing tip; along, 0 the
 	// mouth to 1 the back of the disc)
@@ -341,7 +376,10 @@ void fragment() {
 			float mid = 0.5 * (inner + outer);
 			float along = 0.2 + 0.052 * k + 0.9 * (at.x - mid) * (at.x - mid) / (outer - inner) - 0.05 * (at.x - mid);
 			float slit = (1.0 - smoothstep(0.003, 0.007, abs(at.y - along))) * smoothstep(inner - 0.004, inner + 0.004, at.x) * (1.0 - smoothstep(outer - 0.004, outer + 0.004, at.x));
-			below = mix(below, belly_dark, slit * 0.92);
+			below = mix(below, mix(belly_dark, GILL_RED * 0.6, opened), slit * 0.92);
+			// (behind the slit, under its flap: the red of the gills as the flap lifts)
+			float under = step(along, at.y) * (1.0 - smoothstep(0.0208 * 0.7, 0.0208, at.y - along)) * smoothstep(inner, inner + 0.006, at.x) * (1.0 - smoothstep(outer - 0.006, outer, at.x));
+			below = mix(below, GILL_RED * 0.7, under * smoothstep(0.0, 0.3, opened) * (flap ? 0.0 : 1.0));
 		}
 		vec2 cell = vec2(rest.x, rest.z) / 0.11;
 		vec2 id = floor(cell);
@@ -362,6 +400,11 @@ void fragment() {
 		// A cephalic fin: black outside, pale inside.
 		float inner = smoothstep(-0.002, 0.002, topness);
 		c = mix(back + back_sheen * glance * glance, belly * 0.8, inner * smoothstep(0.02, 0.15, UV.x));
+	} else if (p == 7) {
+		// The gills: an arch (pale rakers on its front, red filaments behind) or the inside of a flap.
+		c = gill_colour(UV, !flap && rest_normal.z < 0.0);
+		rough = 0.6;
+		spec = 0.3;
 	} else if (p == 6) {
 		// An eye: dark, a thin paler ring.
 		float r = UV.x;

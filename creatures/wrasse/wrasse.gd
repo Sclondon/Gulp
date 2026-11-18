@@ -123,8 +123,8 @@ const KINDS := {
 	set(value):
 		low = value
 		_show()
-## The game model (924 triangles for the cleaner, 1,518 for the moon wrasse, against the full
-## models' 12,602 and 12,946): the same fish, its
+## The game model (1,114 triangles for the cleaner, 1,714 for the moon wrasse, against the full
+## models' 13,884 and 14,228): the same fish, its
 ## triangles spent where they show (the outline, the eye, the mouth), for games. With `game` on
 ## (and `low` off) the full model is never loaded, so a game's export may leave its .glb out.
 @export var game := false:
@@ -155,7 +155,7 @@ var phase := 0.0:
 		_send_phase()
 
 ## Each kind's game model's triangles.
-const GAME_TRIANGLES := {Kind.CLEANER: 924, Kind.MOON: 1518}
+const GAME_TRIANGLES := {Kind.CLEANER: 1114, Kind.MOON: 1714}
 
 static var _meshes := {}
 

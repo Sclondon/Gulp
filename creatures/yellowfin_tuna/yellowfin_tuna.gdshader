@@ -2,7 +2,7 @@ shader_type spatial;
 // The yellowfin tuna (yellowfin_tuna.gd): every marking drawn here (no texture files), and its
 // swimming. What each point is comes from the model (tools/build_yellowfin_tuna.py): UV2.y the
 // part (0 body, 1 first dorsal, 2 the sickle fins, 3 a finlet, 4 the tail, 5 a pectoral fin, 6 a
-// pelvic fin, 7 an eye, 8 the lower jaw, 9 a cheek). UV, on the body and the lower jaw: x how far
+// pelvic fin, 7 an eye, 8 the lower jaw, 9 a cheek, 10 a gill: see `gills` in the build script). UV, on the body and the lower jaw: x how far
 // along, y how high on its side (1 the ridge of the back, 0 the keel of the belly); on a fin: x
 // root (0) to tip (1), y leading edge (0) to trailing edge (1); on an eye: x middle (0) to rim
 // (1); on a cheek: x how far along. UV2.x, on the first dorsal, how far the point stands above the
@@ -78,6 +78,8 @@ uniform vec2 eye_look = vec2(0.0);
 // A lid the colour of the skin closing over the cartoon eye: 0 open, 1 shut.
 uniform float blink : hint_range(0.0, 1.0) = 0.0;
 uniform vec3 eye_iris : source_color = vec3(0.95, 0.68, 0.08);
+// The gills (added 2026-11-18): the red of the gill arches and their filaments, seen through the open mouth.
+uniform vec3 gill_red : source_color = vec3(0.6, 0.05, 0.07);
 // As the model has it (its EYE line): the middle of the left eye on the skin, the way the skin faces
 // there (metres), the eye's radius.
 const vec3 EYE_MID = vec3(0.07126, 0.02400, -0.60500);
@@ -209,6 +211,15 @@ void vertex() {
 	} else if (part > 6.5 && part < 7.5) {
 		// The cartoon eye: grown about its middle.
 		eye_grow(v);
+	} else if (part > 9.5) {
+		// The gills (added 2026-11-18), laid on the cheeks: like a cheek, built as they hang with the mouth wide open
+		// and folded up along the line of the mouth as it shuts (each point as far as it is down from the upper lip,
+		// UV2.x).
+		float a = (clamp(gape, 0.0, 1.0) - 1.0) * GAPE_TURN * jaw_turn(UV.x * LENGTH) * UV2.x;
+		vec2 hinge = vec2(HINGE.y, HINGE.x - HALF);
+		vec2 d = v.yz - hinge;
+		v.yz = hinge + vec2(d.x * cos(a) + d.y * sin(a), d.y * cos(a) - d.x * sin(a));
+		n.yz = vec2(n.y * cos(a) + n.z * sin(a), n.z * cos(a) - n.y * sin(a));
 	} else if (part > 7.5) {
 		// The lower jaw swings down about its hinge: all of it ahead of the corner of the mouth, its
 		// back less and less, as the throat stretches. A cheek (part 9) hangs between the lips: the
@@ -364,6 +375,21 @@ void fragment() {
 		c = mouth_inside * (0.8 + 0.4 * UV2.x);
 		rough = 0.7;
 		spec = 0.3;
+	} else if (p == 10) {
+		// A gill arch (added 2026-11-18): the bar red, the filaments behind it a deep blood red in a fine comb,
+		// darker to their tips, the rakers before it pale; all darker further back.
+		float deep = smoothstep(0.07, 0.14, rest.z + HALF);
+		if (UV.y < 0.2) {
+			c = gill_red * 0.85;
+		} else if (UV.y < 0.8) {
+			float comb = 0.5 + 0.5 * cos(UV2.x * 70.0);
+			c = mix(gill_red, gill_red * 0.4, comb * 0.6) * mix(1.0, 0.65, smoothstep(0.4, 0.6, UV.y));
+		} else {
+			c = vec3(0.74, 0.56, 0.52);
+		}
+		c *= mix(1.0, 0.5, deep);
+		rough = 0.45;
+		spec = 0.45;
 	} else {
 		// An eye: a big black pupil, a silver and gold iris, a dark rim.
 		float r = UV.x;

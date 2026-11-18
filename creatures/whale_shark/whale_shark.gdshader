@@ -2,7 +2,8 @@ shader_type spatial;
 // The whale shark (whale_shark.gd): every marking drawn here (no texture files), its swimming
 // and its jaws. What each point is comes from the model (tools/build_whale_shark.py): COLOR.r the
 // part, as a twentieth (0 body, 1 lower jaw, 2 eye, (3 and 4, teeth, not on this model), 5 first dorsal,
-// 6 second dorsal, 7 tail, 8 anal fin, 9 pelvic fin, 10 pectoral fin, 11 cheek); COLOR.g how much
+// 6 second dorsal, 7 tail, 8 anal fin, 9 pelvic fin, 10 pectoral fin, 11 cheek, 12 gill arch, 13 gill slit's flap: see
+// the build script); COLOR.g how much
 // a point goes with the upper jaw when it pushes out; COLOR.b how much it is inside the mouth. On
 // the body and the jaw UV.x is how far along the fish (0 snout, 1 tail tip) and UV.y how high on
 // it (0 the line under the belly and chin, 1 the back line). On a fin UV.x is root (0) to edge (1)
@@ -28,6 +29,12 @@ const float PUSH_DOWN = -0.03;
 const float BOW = 0.02;
 // How wide the lower jaw is at its widest (half, body lengths), as the model has it.
 const float JAW_HALF = 0.066;
+
+// The gills (added 2026-11-18): how far the arches spread apart as the mouth opens and how far a slit's
+// flap lifts at its front edge, wide open (body lengths), and the gills' red.
+const float GILL_SPREAD = 0.004;
+const float SLIT_LIFT = 0.0085;
+const vec3 GILL_RED = vec3(0.62, 0.05, 0.07);
 
 // How far through a beat of its tail (0..1, it wraps). Set by WhaleShark.
 uniform float phase = 0.0;
@@ -148,8 +155,16 @@ void vertex() {
 		hinge_turn(v, n, open * JAW_TURN * smoothstep(HINGE_S + 0.045, HINGE_S - 0.02, s));
 	} else if (part > 3.5 && part < 4.5) {
 		hinge_turn(v, n, open * JAW_TURN);
-	} else if (part > 10.5) {
+	} else if (part > 10.5 && part < 12.5) {
+		// (a cheek; or a gill arch, which spreads from the next a little as it opens)
+		if (part > 11.5) {
+			v.z += open * GILL_SPREAD * LENGTH * (UV.y - 0.5);
+		}
 		hinge_turn(v, n, open * JAW_TURN * UV.x);
+	} else if (part > 12.5) {
+		// (a gill slit's flap: its front edge lifts out through the skin as the mouth opens)
+		vec3 outward = normalize(vec3(v.x, 0.6 * v.y, 0.0));
+		v += outward * smoothstep(0.1, 1.0, open) * SLIT_LIFT * LENGTH * COLOR.b;
 	}
 	v.z -= COLOR.g * open * PUSH * LENGTH;
 	v.y -= COLOR.g * open * PUSH_DOWN * LENGTH;
@@ -251,7 +266,7 @@ void fragment() {
 	float rough = 0.6;
 	float spec = 0.35;
 	float up = rest_normal.y;
-	if (p == 0 || p == 1) {
+	if (p == 0 || p == 1 || p == 13) {
 		float s = UV.x;
 		float h = UV.y;
 		float grain = noise2(vec2(s * 150.0, h * 24.0));
@@ -267,7 +282,7 @@ void fragment() {
 			c = mix(c, back * 0.3, gills(s, h) * 0.8);
 		}
 		// Inside the mouth.
-		float inside = smoothstep(0.3, 0.7, extra.y);
+		float inside = smoothstep(0.3, 0.7, extra.y) * float(p != 13);
 		vec3 in_mouth = mouth * mix(1.0, 0.4, smoothstep(MOUTH_S, HINGE_S + 0.01, s));
 		// (the grey filter pads at the back of the mouth, ridged across)
 		float pads = smoothstep(HINGE_S - 0.035, HINGE_S - 0.015, s) * (0.5 + 0.5 * cos(rest.x / LENGTH * 900.0));
@@ -300,6 +315,18 @@ void fragment() {
 		if (p == 8) {
 			c = mix(c, belly, 0.6);
 		}
+	}
+	// The gills: a slit's flap is skin, red at its lifted front edge; an arch is a pinkish bar, a fringe of
+	// deep red filaments behind it and pale rakers in front, darker the further back in the throat it is.
+	if (p == 13) {
+		c = mix(c, GILL_RED * 0.75, smoothstep(0.55, 0.75, extra.y));
+	} else if (p == 12) {
+		float stripe = 0.72 + 0.28 * step(0.5, fract(abs(UV2.x) * 22.0));
+		c = mix(vec3(0.86, 0.8, 0.74), vec3(0.7, 0.24, 0.26), smoothstep(0.25, 0.4, extra.y));
+		c = mix(c, GILL_RED * stripe, smoothstep(0.6, 0.8, extra.y));
+		c *= mix(1.0, 0.45, UV.y);
+		rough = 0.35;
+		spec = 0.5;
 	}
 	if (p == 2) {
 		vec4 eye = eye_face(c, UV);

@@ -75,25 +75,48 @@ const REACH := {
 ## the pupil's width (of the iris) and shape (0 round, 1 a bar across, 2 an upright slit, 3 a
 ## keyhole), where the upper lid rests (`lid`, in eye radii up from its middle: 1 or more none
 ## of it shows, 0 half shut) and how it slants (`lid_tilt`: more than 0 higher at the nose),
-## and where the lower lid rests (-1 or less none of it shows). The characters: the emperor
+## and where the lower lid rests (-1 or less none of it shows). `throat`: the throat's ovals (how
+## far along, the height of its middle, half height, half width; body lengths: the build script's
+## THROAT_KNOTS line), for the shader to open the back of the mouth into it. The characters: the emperor
 ## stern and regal behind its mask (a gold eye, a keyhole pupil, a frowning lid slanting down
 ## to the nose); the queen cool and proud (an electric-blue eye, an upright slit of a pupil,
 ## the lid a little lowered); the French bright and cheeky (a big yellow-ringed eye, a big
 ## round pupil, no upper lid, a smiling lower lid).
 const TYPES := {
 	Type.EMPEROR: {
+		"throat": [
+			Vector4(0.0210, -0.0308, 0.0164, 0.0082),
+			Vector4(0.0448, -0.0416, 0.0178, 0.0163),
+			Vector4(0.0932, -0.0485, 0.0178, 0.0185),
+			Vector4(0.1592, -0.0565, 0.0178, 0.0185),
+			Vector4(0.2400, -0.0662, 0.0178, 0.0185),
+		],
 		"kind": 0, "hinge_s": 0.036, "hinge_y": -0.033, "eye_at": Vector2(0.115, 0.058),
 		"pec_root": Vector3(0.0705, -0.0675, 0.265), "eye_skin": Vector3(0.0521, 0.058, 0.115),
 		"eye_size": 1.6, "iris": Color(0.95, 0.72, 0.18), "iris_size": 0.6, "pupil_size": 0.55,
 		"pupil_shape": 3, "lid": 0.42, "lid_tilt": -0.4, "lower_lid": -1.2,
 	},
 	Type.QUEEN: {
+		"throat": [
+			Vector4(0.0190, -0.0309, 0.0152, 0.0082),
+			Vector4(0.0430, -0.0420, 0.0165, 0.0159),
+			Vector4(0.0919, -0.0479, 0.0165, 0.0176),
+			Vector4(0.1585, -0.0559, 0.0165, 0.0176),
+			Vector4(0.2400, -0.0657, 0.0165, 0.0176),
+		],
 		"kind": 1, "hinge_s": 0.034, "hinge_y": -0.033, "eye_at": Vector2(0.115, 0.056),
 		"pec_root": Vector3(0.0703, -0.0675, 0.265), "eye_skin": Vector3(0.0524, 0.056, 0.115),
 		"eye_size": 1.6, "iris": Color(0.15, 0.55, 0.98), "iris_size": 0.6, "pupil_size": 0.7,
 		"pupil_shape": 2, "lid": 0.5, "lid_tilt": 0.1, "lower_lid": -0.85,
 	},
 	Type.FRENCH: {
+		"throat": [
+			Vector4(0.0210, -0.0308, 0.0164, 0.0082),
+			Vector4(0.0448, -0.0418, 0.0178, 0.0163),
+			Vector4(0.0932, -0.0485, 0.0178, 0.0185),
+			Vector4(0.1592, -0.0565, 0.0178, 0.0185),
+			Vector4(0.2400, -0.0662, 0.0178, 0.0185),
+		],
 		"kind": 2, "hinge_s": 0.036, "hinge_y": -0.033, "eye_at": Vector2(0.115, 0.064),
 		"pec_root": Vector3(0.0713, -0.0675, 0.265), "eye_skin": Vector3(0.0517, 0.064, 0.115),
 		"eye_size": 1.8, "iris": Color(1.0, 0.8, 0.08), "iris_size": 0.66, "pupil_size": 0.66,

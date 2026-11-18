@@ -3,7 +3,7 @@ shader_type spatial;
 // swimming and its jaw. It began as GameCommon's yellowfin tuna's shader. What each point is
 // comes from the model (tools/build_bluefin_tuna.py): UV2.y the part (0 body, 1 first dorsal,
 // 2 the second dorsal and the anal fin, 3 a finlet, 4 the tail, 5 a pectoral fin, 6 a pelvic fin,
-// 7 an eye). UV, on the body: x how far along, y how high on its side (1 the ridge of the back,
+// 7 an eye, 8 a gill: see `throat` in the build script). UV, on the body: x how far along, y how high on its side (1 the ridge of the back,
 // 0 the keel of the belly); on a fin: x root (0) to tip (1), y leading edge (0) to trailing edge
 // (1); on an eye: x middle (0) to rim (1). UV2.x, on the first dorsal, how far the point stands
 // above the fin's root (metres); on the body, what it is of the mouth (0 skin, 1 the lower jaw's
@@ -82,6 +82,8 @@ uniform vec2 eye_look = vec2(0.0);
 // A lid the colour of the skin closing over the cartoon eye: 0 open, 1 shut.
 uniform float blink : hint_range(0.0, 1.0) = 0.0;
 uniform vec3 eye_iris : source_color = vec3(0.32, 0.46, 0.62);
+// The gills (added 2026-11-18): the red of the gill arches and their filaments, seen through the open mouth.
+uniform vec3 gill_red : source_color = vec3(0.6, 0.05, 0.07);
 // As the model has it (its EYE line): the middle of the left eye on the skin, the way the skin faces
 // there (units), the eye's radius.
 const vec3 EYE_MID = vec3(0.08427, 0.02600, -0.59800);
@@ -212,6 +214,9 @@ void vertex() {
 	} else if (part > 6.5 && part < 7.5) {
 		// The cartoon eye: grown about its middle.
 		eye_grow(v);
+	} else if (part > 7.5 && part < 8.5) {
+		// The gill arches spread a little as the mouth opens.
+		v.x *= 1.0 + 0.1 * clamp(gape, 0.0, 1.0);
 	}
 	float xm = v.z + HALF;
 	if (xm < HINGE) {
@@ -254,6 +259,12 @@ void fragment() {
 	vec3 c;
 	float rough = 0.42;
 	float spec = 0.5;
+	if (p == 0 && in_mouth == 1 && gape > 0.0 && abs(rest.z + HALF - HINGE) < 0.00002) {
+		// (the wall that closed the back of the mouth at the hinge, until it opened onto the throat and its gills
+		// on 2026-11-18: still in the model, so that the body's surface stays as it was, and left out here once
+		// the mouth opens; shut, it is still the dark seen through the line of the lips)
+		discard;
+	}
 	if (p == 0 && in_mouth == 1) {
 		// The inside of the mouth: dark, darker towards the throat.
 		c = mouth * mix(1.0, 0.3, smoothstep(0.0, HINGE, rest.z + HALF));
@@ -346,6 +357,21 @@ void fragment() {
 		// A pelvic fin: pale, dusky towards its tip.
 		c = mix(belly * 0.85, fin_dusk * 1.6, smoothstep(0.1, 0.9, UV.x) * 0.7);
 		c = mix(c, fin_dusk, 0.25 * (0.5 + 0.5 * cos(UV.y * 40.0)));
+	} else if (p == 8) {
+		// A gill arch (added 2026-11-18): the bar red, the filaments behind it a deep blood red in a fine comb,
+		// darker to their tips, the rakers before it pale; all darker deeper in the throat.
+		float deep = smoothstep(HINGE, HINGE + 0.13, rest.z + HALF);
+		if (UV.y < 0.2) {
+			c = gill_red * 0.85;
+		} else if (UV.y < 0.8) {
+			float comb = 0.5 + 0.5 * cos(UV.x * 180.0);
+			c = mix(gill_red, gill_red * 0.4, comb * 0.6) * mix(1.0, 0.65, smoothstep(0.4, 0.6, UV.y));
+		} else {
+			c = vec3(0.74, 0.56, 0.52);
+		}
+		c *= mix(1.0, 0.4, deep);
+		rough = 0.45;
+		spec = 0.45;
 	} else {
 		// An eye: a big black pupil, a silver iris, a dark rim.
 		float r = UV.x;

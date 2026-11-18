@@ -126,6 +126,12 @@ static func _make(path: String, kind: Kind, size: float) -> Node3D:
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		# (the importer's automatic LODs bend a skinned body in straight pieces; seen close, never wanted)
 		mesh.lod_bias = 64.0
+		# (the adults carry a soft tint in their vertex colours: ribs, stains, tarnish; multiplied into each colour)
+		if kind != Kind.BOY:
+			for s in mesh.mesh.get_surface_count():
+				var material := mesh.mesh.surface_get_material(s) as BaseMaterial3D
+				if material:
+					material.vertex_color_use_as_albedo = true
 	var mount := BoneAttachment3D.new()
 	mount.name = "HeadMount"
 	mount.bone_name = "head"

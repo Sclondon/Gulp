@@ -30,7 +30,7 @@ extends Node3D
 ## `Surgeonfish.mesh_of(kind, low)` (or `game_mesh(kind)`) is a kind's mesh and
 ## `Surgeonfish.new_material(kind)` a material for it.
 ##
-## Three models of each kind: the full one, the game one (`game`: about 1,460 triangles, the
+## Three models of each kind: the full one, the game one (`game`: about 1,740 triangles, the
 ## outline kept, for games) and the low one (`low`). Each is loaded only when first shown, so a
 ## game that sets `game` never loads the full model.
 ##
@@ -132,7 +132,7 @@ static var _meshes := {}
 	set(value):
 		low = value
 		_show()
-## The game model (about 1,460 triangles, a ninth of the full one's, spent on the outline, the eye,
+## The game model (about 1,740 triangles, an eighth of the full one's, spent on the outline, the eye,
 ## the mouth and the fins' edges) in place of the full one: for games. With it set the full model
 ## is never loaded.
 @export var game := false:

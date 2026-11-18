@@ -5,7 +5,9 @@ Run from the game's root:
     blender --background --python creatures/gar/tools/build_gar.py -- <preview folder>   # with pictures
 
 Writes creatures/gar/models/gar.glb (the full model), gar_game.glb (the game model, see GAME) and gar_lo.glb (far off, phones), and the editable
-creatures/gar/tools/gar.blend (this folder has a .gdignore). Each model is one still mesh with one surface: the
+creatures/gar/tools/gar.blend (this folder has a .gdignore). Each model is one
+still mesh (the full and low models with a second surface, the throat and the gills, added 2026-11-18, so that
+the first is exactly as it was; the game model with one): the
 shader (gar.gdshader) draws every marking (the diamond scales too), swims it, snaps its head sideways and opens
 its beak. It prints a WINDING line: the check that nothing is inside out.
 
@@ -25,7 +27,8 @@ the tips of the tail; heights are from its middle line), and is multiplied by LE
 Godot: metres, Y up, X to its left side, its nose at -Z, its origin on its middle line half way along.
 
 What a point is, for the shader: UV2.y the part (0 body, 1 lower jaw, 2 dorsal fin, 3 anal fin, 4 tail, 5 a
-pectoral fin, 6 a pelvic fin, 7 an eye, 9 a tooth; 8, a second dorsal fin, is not used). UV, on the body and jaw:
+pectoral fin, 6 a pelvic fin, 7 an eye, 9 a tooth, 10 a gill arch, 11 the
+throat; 8, a second dorsal fin, is not used). UV, on the body and jaw:
 x how far along (s), y how high on its side (1 the ridge of the back, 0 the keel of the belly); on a fin: x from
 its root (0) to its edge (1), y from its leading edge (0) to its trailing edge (1); on an eye: x from its middle
 (0) to its rim (1); on a tooth: x root (0) to point (1). UV2.x, on the body and jaw: how much the point is inside
@@ -124,14 +127,15 @@ PELVIC_FIN = {
 # How finely each model is cut: points round the body, how much longer than the full model's its rings' steps
 # are, how much of the fins' points, the jaw (rings, points round its keel, points across its hollow), the eye,
 # a tooth's sides (0 none) and one tooth in how many.
-FULL = {"around": 56, "step": 1.0, "fin": 1.0, "jaw": (70, 22, 8), "eye": (20, 6), "tooth": 5, "teeth_every": 1}
-LOW = {"around": 14, "step": 4.0, "fin": 0.3, "jaw": (14, 8, 3), "eye": (8, 2), "tooth": 3, "teeth_every": 3}
+FULL = {"around": 56, "step": 1.0, "fin": 1.0, "jaw": (70, 22, 8), "eye": (20, 6), "tooth": 5, "teeth_every": 1, "throat": (24, 3), "gills": (16, 0), "rakers": True, "split": True}
+LOW = {"around": 14, "step": 4.0, "fin": 0.3, "jaw": (14, 8, 3), "eye": (8, 2), "tooth": 3, "teeth_every": 3, "throat": (6, 0), "gills": (2, 3), "split": True}
 # The game model (Twilight Princess weight, 1,800 to 3,000 triangles for a fish this long): its rings put by the
 # outline's bends (`tol`, body lengths; no further apart than `head` ahead of the end of the jaw, `step` behind
 # it, see game_rings), the fins' points from root to edge (`fin_t`) and along it (`fin_u`), a round eye, and
 # half the needle teeth, three-sided.
 GAME = {"around": 16, "tol": 0.0015, "head": 0.018, "step": 0.04, "fin": 0.5, "fin_t": 0.2, "fin_u": 0.5,
-        "jaw": (12, 8, 4), "eye": (24, 2), "tooth": 3, "teeth_every": 2}
+        "jaw": (12, 8, 4), "eye": (24, 2), "tooth": 3, "teeth_every": 2,
+        "throat": (6, 0), "gills": (2, 3)}
 # How much of the fish's length the pictures from the front and of the head take in.
 FRONT_FRAME = 0.25
 HEAD_FRAME = 0.4
@@ -696,6 +700,222 @@ def skin_side(s, y):
     return abs(full_point(s, angle_of(s, y))[0])
 
 
+# --- the throat and the gills (added 2026-11-18) -----------------------------------------------------------
+# The user: "The fish need modeled gills as well, well for relevant fish, so like when it opens its mouth wide you
+# can see them". The mouth used to end at a dark wall (the underside of the head rising to the roof of the
+# mouth just behind it). Now a short tunnel (the throat, part THROAT) runs back from where that wall begins to an
+# end under the gill cover, and four gill arches a side (part GILLS) stand in it. The tunnel and the arches are
+# wholly inside the head, so with the mouth shut nothing of them shows; the shader cuts away the old wall (and
+# the jaw's back) wherever it lies inside the tunnel's oval (TUBE_*, as the shader has it), so that the open
+# mouth looks down the tunnel to the arches. On the full model they are a second surface (`split`), so that the
+# body's own surface is exactly as it was.
+
+GILLS, THROAT = 10, 11
+
+
+def tube_stations():
+    """The tunnel's oval at its three stations (how far along, its middle's height, half width, half height),
+    as the shader has it (the SHADER line prints them): at the mouth's back (where the old wall began) the size
+    of the gap between the roof of the mouth and the jaw's hollow, wider a third of the way back, narrowing to
+    its end under the gill cover. Between two stations everything goes in a straight line."""
+    s0 = HINGE[0] - CORNER_B
+    s2 = GILL[0] - 0.012
+    s1 = s0 + 0.35 * (s2 - s0)
+    ym = mouth_y(s0)
+    wm = abs(full_point(s0, angle_of(s0, ym))[0])
+    apex = ym + min(roof_dome(s0), 0.8 * wm)
+    ymj, k, _ = jaw_row(s0)
+    _, bot, _, _ = outline(s0)
+    floor = ymj - 0.5 * (ymj - (ymj + (bot - ymj) * k))
+    y0 = 0.5 * (apex + floor)
+    h0 = 0.42 * (apex - floor)
+    w0 = 0.6 * wm
+    top1, bot1, wide1, _ = outline(s1)
+    w1 = min(1.25 * w0, 0.45 * wide1)
+    h1 = min(1.25 * h0, 0.22 * (top1 - bot1))
+    return [(s0, y0, w0, h0), (s1, y0, w1, h1), (s2, y0 + 0.2 * h1, 0.6 * w1, 0.6 * h1)]
+
+
+def tube_at(s):
+    """The tunnel's oval at `s`: (its middle's height, half width, half height)."""
+    st = tube_stations()
+    a, b = (st[0], st[1]) if s <= st[1][0] else (st[1], st[2])
+    t = max(0.0, min(1.0, (s - a[0]) / (b[0] - a[0])))
+    return tuple(a[i] + (b[i] - a[i]) * t for i in (1, 2, 3))
+
+
+def tube_point(s, angle, sides):
+    """A point of the tunnel's wall. (Its points stand out past the oval the shader cuts by, 1 / cos(pi /
+    sides) and a little, so that its flat sides never fall inside the cut.)"""
+    yc, w, h = tube_at(s)
+    grow = 1.02 / math.cos(math.pi / sides)
+    return Vector((w * grow * math.sin(angle), yc + h * grow * math.cos(angle), s - 0.5))
+
+
+def throat(m, detail):
+    """The tunnel: its wall faces in, dark (`inside` 1); UV.x how far along, UV.y how far down it (0 its mouth,
+    1 its end). It has rings at its three stations (and more between on the full model); its end is closed by
+    a fan."""
+    sides, between = detail["throat"]
+    st = tube_stations()
+    xs = []
+    for a, b in ((st[0][0], st[1][0]), (st[1][0], st[2][0])):
+        xs += [a + (b - a) * i / (between + 1) for i in range(between + 1)]
+    xs.append(st[2][0])
+    rows = []
+    for s in xs:
+        deep = (s - st[0][0]) / (st[2][0] - st[0][0])
+        rows.append([m.add(tube_point(s, a / sides * TAU, sides), (s, deep), THROAT, 1.0) for a in range(sides)])
+    for r in range(len(rows) - 1):
+        for c in range(sides):
+            n = (c + 1) % sides
+            quad = (rows[r][c], rows[r][n], rows[r + 1][n], rows[r + 1][c])
+            middle = sum((m.verts[q] for q in quad), Vector()) * 0.25
+            yc = tube_at(middle.z + 0.5)[0]
+            m.face(quad, Vector((-middle.x, yc - middle.y, 0.0)), "throat")
+    end = xs[-1]
+    tip = m.add(Vector((0.0, tube_at(end)[0], end - 0.5 + 0.004)), (end, 1.0), THROAT, 1.0)
+    for c in range(sides):
+        m.face((tip, rows[-1][c], rows[-1][(c + 1) % sides]), Vector((0.0, 0.0, -1.0)), "throat")
+
+
+def gill_gap():
+    """How far apart the gill arches stand (body lengths)."""
+    st = tube_stations()
+    return 0.16 * (st[2][0] - st[0][0])
+
+
+def gill_bar(m, frames, outline_, uvs):
+    """A closed bar along a line (as GameCommon's goldfish builds its arches): `frames` (place, inward, back,
+    along) at each step, `outline_` its section as (d towards inward, b towards back) points (one list, or one
+    per step), `uvs(i, j)` the UV of step i's point j. Each side a strip of its own points; each end a fan."""
+    steps = len(frames)
+    rows = [outline_[i] if isinstance(outline_[0], list) else outline_ for i in range(steps)]
+    n = len(rows[0])
+    area = sum(rows[0][j][0] * rows[0][(j + 1) % n][1] - rows[0][(j + 1) % n][0] * rows[0][j][1] for j in range(n))
+    order = list(range(n)) if area > 0.0 else list(reversed(range(n)))
+
+    def place(i, j):
+        o, inward, back, _ = frames[i]
+        d, b = rows[i][j]
+        return o + inward * d + back * b
+
+    for e in range(n):
+        j, k = order[e], order[(e + 1) % n]
+        column = [(m.add(place(i, j), uvs(i, j), GILLS, 1.0), m.add(place(i, k), uvs(i, k), GILLS, 1.0)) for i in range(steps)]
+        for i in range(steps - 1):
+            ed = rows[i][k][0] - rows[i][j][0]
+            eb = rows[i][k][1] - rows[i][j][1]
+            _, inward, back, _ = frames[i]
+            m.face((column[i][0], column[i][1], column[i + 1][1], column[i + 1][0]), inward * eb - back * ed, "gills")
+    for i, way in ((0, -1.0), (steps - 1, 1.0)):
+        loop = [m.add(place(i, j), uvs(i, j), GILLS, 1.0) for j in order]
+        if n == 3:
+            m.face(tuple(loop), frames[i][3] * way, "gill ends")
+            continue
+        middle = sum((m.verts[q] for q in loop), Vector()) / len(loop)
+        tip = m.add(middle, uvs(i, order[0]), GILLS, 1.0)
+        for e in range(n):
+            m.face((tip, loop[e], loop[(e + 1) % n]), frames[i][3] * way, "gill ends")
+
+
+def gills(m, detail):
+    """Four gill arches a side in the tunnel, each a closed bar (part GILLS) following the tunnel's wall from low
+    in the throat round its side and up under its roof, its top leaning back: the bar itself (blood red), a
+    fringe of filaments behind it out to the wall (deep red), pale rakers on its front (spikes on the full model,
+    drawn on the others). UV.x: 0 the rakers' side, about 0.35 the bar, 1 the filaments; UV.y: the arch's number
+    (0 the front one) plus how far along it (0 its lower end, 1 its upper end). The full model's section is
+    rounded with a toothed fringe; the game model's has four sides, the low model's three."""
+    steps, sides = detail["gills"]
+    st = tube_stations()
+    g = gill_gap()
+    first = st[0][0] + 0.42 * (st[2][0] - st[0][0])
+    # (an arch's section is sized to the tunnel, not to the gap between arches: the tunnel is narrow)
+    size = min(g, 0.55 * min(st[1][2], st[1][3]))
+    rb = 0.16 * size
+    bar_d = 0.38 * size
+    for sx in (1.0, -1.0):
+        for k in range(4):
+            sa = first + g * k
+            frames = []
+            for i in range(steps + 1):
+                angle = math.pi * (0.16 + 0.7 * (1.0 - i / steps))
+                s = sa + 0.25 * g * math.cos(angle)
+                yc, w, h = tube_at(s)
+                wall = Vector((sx * w * math.sin(angle), yc + h * math.cos(angle), s - 0.5))
+                inward = Vector((-wall.x, yc - wall.y, 0.0)).normalized()
+                ahead = Vector((-sx * w * math.cos(angle), h * math.sin(angle), 0.0))
+                frames.append((wall, inward, Vector((0.0, 0.0, 1.0)), ahead.normalized()))
+            if sides == 4:
+                outline_ = [(bar_d + rb, -0.4 * rb), (bar_d + 0.3 * rb, rb), (0.08 * size, 0.62 * size), (0.08 * size, -0.12 * size)]
+                pieces = (0.0, 0.35, 1.0, 0.85)
+            elif sides == 3:
+                outline_ = [(bar_d + rb, 0.0), (0.08 * size, 0.62 * size), (0.08 * size, -0.12 * size)]
+                pieces = (0.0, 1.0, 0.85)
+            else:
+                outline_ = []
+                for i in range(steps + 1):
+                    # (the fringe's back edge toothed: its filaments in bunches)
+                    tip = 0.62 * size if i % 2 == 0 else 0.44 * size
+                    ring = [(0.08 * size, -0.12 * size)]
+                    for a in (-120.0, -60.0, 0.0, 60.0, 120.0):
+                        r = math.radians(a)
+                        ring.append((bar_d + rb * math.cos(r), rb * math.sin(r)))
+                    ring.append((0.08 * size, tip))
+                    outline_.append(ring)
+                pieces = (0.85, 0.35, 0.15, 0.0, 0.15, 0.35, 1.0)
+            gill_bar(m, frames, outline_, lambda i, j: (pieces[j], k + i / steps))
+            if detail.get("rakers"):
+                rakers(m, frames, bar_d, rb, k, steps)
+
+
+def rakers(m, frames, bar_d, rb, k, steps):
+    """The full model's gill rakers: short pale spikes along the front of an arch, pointing in and forward."""
+    count = 12
+    for r in range(count):
+        t = (r + 0.5) / count
+        i = min(int(t * steps), steps - 1)
+        f = t * steps - i
+        o = frames[i][0].lerp(frames[i + 1][0], f)
+        inward = frames[i][1].lerp(frames[i + 1][1], f).normalized()
+        back = Vector((0.0, 0.0, 1.0))
+        along = frames[i][3].lerp(frames[i + 1][3], f).normalized()
+        a = math.radians(-35.0)
+        root = o + inward * (bar_d + rb * math.cos(a)) + back * (rb * math.sin(a))
+        size = rb * 0.4
+        base = [root + along * size, root - along * size * 0.5 + back * size * 0.8, root - along * size * 0.5 - back * size * 0.8]
+        apex = root + inward * (rb * 1.2) - back * (rb * 0.5)
+        pts = [m.add(p, (0.0, k + t), GILLS, 1.0) for p in base]
+        tip = m.add(apex, (0.0, k + t), GILLS, 1.0)
+        centre = (base[0] + base[1] + base[2] + apex) * 0.25
+        for p, q, s in ((pts[0], pts[1], pts[2]), (pts[0], pts[1], tip), (pts[1], pts[2], tip), (pts[2], pts[0], tip)):
+            middle = (m.verts[p] + m.verts[q] + m.verts[s]) / 3.0
+            m.face((p, q, s), middle - centre, "gill rakers")
+
+
+def inside_head(m, start):
+    """How many of the points from `start` on (the throat's and the gills') stand outside 0.8 of the room the
+    shut head has for them (the jaw's skin below and at the sides ahead of its end, the body's skin behind it):
+    none may, so that with the mouth shut nothing of them shows."""
+    jaw_end = HINGE[0] + CORNER_C + 0.03
+    out = 0
+    for p in m.verts[start:]:
+        s = p.z + 0.5
+        top, bot, _, mid = outline(s)
+        floor = bot
+        fit = 1.0
+        if s < jaw_end:
+            ymj, k, _ = jaw_row(s)
+            floor = ymj + (bot - ymj) * k
+            fit = JAW_FIT * k
+        y = max(min(p.y, top), floor)
+        side = abs(full_point(s, angle_of(s, y), gill=False)[0]) * fit
+        centre = 0.5 * (top + floor)
+        if abs(p.x) > 0.8 * side or abs(p.y - centre) > 0.8 * 0.5 * (top - floor):
+            out += 1
+    return out
+
+
 def make(name, detail):
     m = Mesh()
     body(m, detail)
@@ -715,6 +935,12 @@ def make(name, detail):
     for sx in (1.0, -1.0):
         paired_fin(m, PECTORAL, "pectorals", pectoral, sx, detail)
         paired_fin(m, PELVIC, "pelvics", pelvic, sx, detail)
+    # (the throat and the gills: on the full model a second surface, so that the first is as it was)
+    split = len(m.faces)
+    start = len(m.verts)
+    throat(m, detail)
+    gills(m, detail)
+    print("INSIDE %s: %d of %d throat and gill points outside the shut head's room" % (name, inside_head(m, start), len(m.verts) - start))
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([to_b(p * LENGTH) for p in m.verts], [], m.faces)
     # (every layer made first, then each looked up by name: making one moves the others)
@@ -733,9 +959,17 @@ def make(name, detail):
     bsdf.inputs["Base Color"].default_value = COLOUR
     material.diffuse_color = COLOUR
     mesh.materials.append(material)
+    if detail.get("split"):
+        inner = bpy.data.materials.get(NAME + "_throat") or bpy.data.materials.new(NAME + "_throat")
+        inner.diffuse_color = (0.4, 0.05, 0.05, 1.0)
+        mesh.materials.append(inner)
+        for poly in mesh.polygons:
+            if poly.index >= split:
+                poly.material_index = 1
     for poly in mesh.polygons:
-        # (the jaw's tip is a fan of slivers: drawn flat, so that no point's normal leans against them)
-        poly.use_smooth = m.out[poly.index][1] != "jaw tip"
+        # (the jaw's tip, the gill arches' ends and their rakers: fans of slivers, drawn flat, so that no point's
+        # normal leans against them)
+        poly.use_smooth = m.out[poly.index][1] not in ("jaw tip", "gill ends", "gill rakers")
     mesh.update()
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
@@ -750,6 +984,9 @@ def make(name, detail):
         here, out, sink = EYE_SHADER
         print("SHADER %s: eye on the skin (x, y, s) = (%.4f, %.4f, %.4f); its way out = (%.4f, %.4f, %.4f); rim sink = %.5f" % (
             name, here.x, here.y, here.z + 0.5, out.x, out.y, out.z, sink))
+        st = tube_stations()
+        print("SHADER %s: TUBE_S = vec3(%.4f, %.4f, %.4f); TUBE_Y = vec3(%.4f, %.4f, %.4f); TUBE_W = vec3(%.4f, %.4f, %.4f); TUBE_H = vec3(%.4f, %.4f, %.4f); GILL_GAP = %.4f" % (
+            (name,) + tuple(st[i][j] for j in range(4) for i in range(3)) + (gill_gap(),)))
     return obj
 
 

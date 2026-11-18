@@ -19,7 +19,9 @@ extends Node3D
 ## or set `phase` yourself. The same names as GameCommon's fish, so it is driven the same way.
 ## It has no `gape` and no `curl`.
 ##
-## The model is creatures/nudibranch/models/nudibranch.glb (and _lo), built by
+## It has no `cartoon_eyes`: a Spanish shawl's eyes are specks under its skin, and the model has none.
+##
+## The model is creatures/nudibranch/models/nudibranch.glb (and _game, _lo), built by
 ## tools/build_nudibranch.py; nudibranch.gdshader colours it and moves it.
 
 const MODEL := "res://creatures/nudibranch/models/nudibranch%s.glb"
@@ -52,6 +54,14 @@ const WIDTH := 0.01
 	set(value):
 		low = value
 		_show()
+## The game model (Twilight Princess weight: about 900 triangles, spent on the outline; the same
+## shader and settings) in place of the full one; `low` still shows the low model. Each model is
+## loaded only when it is first shown, so with `game` on the full model is never loaded and a
+## game's web export may leave nudibranch.glb out.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set
 ## it yourself.
 var phase := 0.0:
@@ -64,6 +74,7 @@ static var _meshes := {}
 var _material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
 
 
 ## `mesh` again without the lower levels of detail Godot's importer makes for it: they are made
@@ -78,7 +89,15 @@ static func without_lods(mesh: Mesh) -> ArrayMesh:
 ## The full model's mesh, or the low one's (each one surface, to wear `new_material()`): for
 ## drawing one without this node.
 static func mesh_of(low_wanted := false) -> Mesh:
-	var path := MODEL % ("_lo" if low_wanted else "")
+	return _mesh_at(MODEL % ("_lo" if low_wanted else ""))
+
+
+## The game model's mesh (see `game`), one surface, to wear `new_material()`. Loaded once and kept.
+static func game_mesh() -> Mesh:
+	return _mesh_at(MODEL % "_game")
+
+
+static func _mesh_at(path: String) -> Mesh:
 	if not _meshes.has(path):
 		var made := (load(path) as PackedScene).instantiate()
 		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
@@ -100,8 +119,9 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
+	_full = _instance_of("Nudibranch")
+	_low = _instance_of("NudibranchLo")
+	_game = _instance_of("NudibranchGame")
 	_show()
 	_send_phase()
 	_send(&"sway", sway)
@@ -138,17 +158,25 @@ func _send_phase() -> void:
 
 
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if _full == null:
+		return
+	_full.visible = not low and not game
+	_low.visible = low
+	_game.visible = game and not low
+	# (each model is loaded the first time it is shown, never before)
+	if _full.visible and _full.mesh == null:
+		_full.mesh = mesh_of(false)
+	if _low.visible and _low.mesh == null:
+		_low.mesh = mesh_of(true)
+	if _game.visible and _game.mesh == null:
+		_game.mesh = game_mesh()
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of(called: String) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
 	mesh.material_override = _material
 	# (swimming, its ends come round to one side past where the still model ends)
 	mesh.extra_cull_margin = 0.03
-	mesh.name = "NudibranchLo" if low_wanted else "Nudibranch"
+	mesh.name = called
 	add_child(mesh)
 	return mesh

@@ -3,7 +3,8 @@ shader_type spatial;
 // is laid here along the eel's spine, which MorayEel simulates; its lower jaw is swung about
 // its hinge, its throat swells as it breathes, its fin ripples. What each point is comes from
 // the model (tools/build_moray_eel.py): COLOR.r the part (0 skin, 0.2 inside the mouth, 0.4 a
-// tooth, 0.6 an eye, 0.8 the hole of a nostril); COLOR.g how much it swings with the jaw;
+// tooth, 0.6 an eye, 0.8 the hole of a nostril, 1 the throat and the gills: COLOR.b 0 the throat's
+// wall, 0.5 a gill arch, whose UV.x is along it and UV.y from its rakers' edge to the wall); COLOR.g how much it swings with the jaw;
 // COLOR.b how far out on the fin it is; UV.x round the body, UV.y along it (on an eye, 0 the
 // middle of the pupil to 1; on a tooth, root to point).
 //
@@ -250,6 +251,25 @@ void fragment() {
 			rough = mix(rough, 0.1, cartoon_eyes);
 		}
 		shine = 0.8;
+	} else if (part > 0.9) {
+		// The throat and the gills, darker the deeper in: the throat's wall the mouth's colour; an arch
+		// pale gill rakers like a comb on its inner edge, a pink bar, and the deep red fringe of filaments.
+		float deep = mix(1.0, 0.5, smoothstep(MOUTH, 0.26, rest.z));
+		if (fin < 0.25) {
+			c = mouth * 0.85;
+		} else {
+			float u = at.y;
+			float comb = smoothstep(0.35, 0.6, abs(fract(at.x * 14.0) - 0.5) * 2.0);
+			float fringe = smoothstep(0.2, 0.9, abs(fract(at.x * 40.0) - 0.5) * 2.0);
+			c = mix(vec3(0.86, 0.8, 0.7), mouth * 0.6, comb * 0.7);
+			c = mix(c, vec3(0.78, 0.42, 0.4), smoothstep(0.26, 0.34, u));
+			c = mix(c, mix(vec3(0.62, 0.05, 0.06), vec3(0.3, 0.01, 0.02), fringe), smoothstep(0.44, 0.52, u));
+		}
+		c *= deep;
+		// (with the jaw nearly shut, all of it in the dark of the closed mouth: only a glimpse through
+		// the corners of the mouth, which should not show red)
+		c = mix(mouth * 0.25, c, smoothstep(0.1, 0.22, jaw));
+		rough = 0.3;
 	} else {
 		c = vec3(0.02, 0.025, 0.02);
 		rough = 0.6;

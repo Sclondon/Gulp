@@ -84,6 +84,13 @@ const UNDER := 0.0293
 	set(value):
 		blink = value
 		_send(&"blink", value)
+## How far its gill slits open for breathing, 0 shut (the default) to 1 wide: a flap of skin behind each
+## of the five slits a side under its head lifts and the red of the gills shows. They open with `gape`
+## too (as far as the wider of the two).
+@export_range(0.0, 1.0) var gills := 0.0:
+	set(value):
+		gills = value
+		_send(&"gills", value)
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set
 ## it yourself.
 var phase := 0.0:
@@ -102,6 +109,8 @@ var _ready_done := false
 
 ## The mesh of the full model, or of the low one: for drawing round stingrays yourself (a
 ## MultiMesh, a MeshInstance3D of your own) with `new_material()`.
+## (The full model has two surfaces, the body and then its gills; give both the material, as
+## `material_override` does. The low and game models have one.)
 static func mesh_of(low_wanted := false) -> Mesh:
 	var path := MODEL % ("_lo" if low_wanted else "")
 	if not _meshes.has(path):
@@ -152,6 +161,7 @@ func _ready() -> void:
 	_send(&"cartoon_eyes", cartoon_eyes)
 	_send(&"eye_look", eye_look)
 	_send(&"blink", blink)
+	_send(&"gills", gills)
 	_send_phase()
 	_send(&"sway", sway)
 	_send(&"gape", gape)

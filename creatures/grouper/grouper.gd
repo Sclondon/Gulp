@@ -171,7 +171,7 @@ func step(velocity: Vector3, delta: float) -> void:
 	_send(&"sway", _effort)
 
 
-## Sets one of the shader's settings: a colour (back, side, belly, blotch, pale, fin_dark, fin_tail, fin_paired, mouth, eye_ring, iris), an amount
+## Sets one of the shader's settings: a colour (back, side, belly, blotch, pale, fin_dark, fin_tail, fin_paired, mouth, eye_ring, iris, gill_red, gill_deep, gill_raker), an amount
 ## (blotch_amount, mottle, scales, sheen), how it moves (curl, gape_breath, gill_flare, scull), or
 ## a game's effects (flash, rim).
 func set_shader_parameter(setting: StringName, value: Variant) -> void:

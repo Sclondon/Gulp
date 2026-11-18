@@ -107,6 +107,8 @@ var _ready_done := false
 
 ## The mesh of the full model, or of the low one: for drawing halibut yourself (a MultiMesh, a
 ## MeshInstance3D of your own) with `new_material()`.
+## (The full model has two surfaces, the body and then its gills; give both the material, as
+## `material_override` does. The low and game models have one.)
 static func mesh_of(low_wanted := false) -> Mesh:
 	var path := MODEL % ("_lo" if low_wanted else "")
 	if not _meshes.has(path):

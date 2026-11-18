@@ -12,6 +12,10 @@ that nothing is inside out.
 It also writes models/wahoo_game.glb, the game model (a third, at about Twilight Princess weight: the GAME table
 below says how its triangles are spent), kept in the .blend beside the others.
 
+THE GILLS (all three models but the school one): four gill arches a side (part 11) line the roof and the floor at
+the back of the mouth, ahead of the hinge, inside the shut mouth, and move with the roof or the floor: seen only as
+the mouth opens. The full model keeps them in a second surface, so that its first is exactly as it was before them.
+
 A wahoo (Acanthocybium solandri), 1.8 m from the tip of its lower jaw to the tips of its tail, built from the
 species (no picture was traced or copied):
 
@@ -31,7 +35,7 @@ lengths too) and in Godot space (Y up, X to its left side, its nose at -Z) until
 the origin is on its middle line, half way along.
 
 What a point is, for the shader: UV2.y the part (0 body, 1 the first dorsal fin, 2 the second, 3 the anal fin, 4
-the tail, 5 a pectoral fin, 6 a pelvic fin, 7 an eye, 8 the inside of the mouth, 9 a tooth, 10 a finlet); UV2.x
+the tail, 5 a pectoral fin, 6 a pelvic fin, 7 an eye, 8 the inside of the mouth, 9 a tooth, 10 a finlet, 11 a gill arch); UV2.x
 how much of the jaw's swing it takes (above 0, a point of the lower jaw; below 0, a point of the upper head,
 which lifts a little). UV, on the body: x how far along (0 to 1), y how high on its side (1 the ridge of the
 back, 0.5 its middle line, 0 the keel of the belly); in the mouth: x how far inside (0 at the lips); on a tooth:
@@ -147,6 +151,8 @@ ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 PREVIEW = ARGS[0] if ARGS else ""
 
 P_BODY, P_DORSAL1, P_DORSAL2, P_ANAL, P_TAIL, P_PECTORAL, P_PELVIC, P_EYE, P_MOUTH, P_TEETH, P_FINLET = range(11)
+# (a gill arch)
+P_GILL = 11
 TAU = math.tau
 SIDE = Vector((1.0, 0.0, 0.0))
 # Which model is being built: `low` is False for the full one, True for the low one, GAME_MODEL for the game one.
@@ -297,6 +303,8 @@ class Mesh:
         self.data = []
         # per face: the way it should face
         self.out = []
+        # per face: which surface it is in (see SURFACE)
+        self.surface = []
         self.count = {}
 
     def add(self, p, uv, part, weight=0.0):
@@ -321,6 +329,7 @@ class Mesh:
             points = tuple(reversed(points))
         self.faces.append(tuple(points))
         self.out.append((Vector(out), name))
+        self.surface.append(SURFACE[0])
         self.count[name] = self.count.get(name, 0) + 1
 
 
@@ -440,6 +449,95 @@ def fr(i, n, low, a=None):
             break
         j -= count
     return u if i <= half else 1.0 - u
+
+
+# Which surface the faces being made go in. The full model keeps its first surface exactly as it was before the
+# gills were added (so that Godot's importer makes the same thinned LOD meshes of it, and it looks the same at every
+# distance); its gills are a second surface. The low and the game models are one surface each.
+SURFACE = [0]
+# As the shader has it: the gills. This mouth closes at its hinge (the corner of the mouth, where its roof and floor
+# meet in a line), so there is no throat behind it to see into: the four gill arches a side line its roof and its
+# floor at the back of the mouth, ahead of the hinge, where the mouth is still deep, from GILLS_FROM back,
+# GILLS_STEP apart, each one's filaments reaching GILLS_REACH back.
+GILLS_FROM = HINGE_S - 1.45 * BLEND
+GILLS_STEP = 0.3 * BLEND
+GILLS_REACH = 0.4 * BLEND
+# (each model's rings, worked out once)
+RINGS = {}
+
+
+def mouth_at(s, across, lower, low):
+    """The point of this model's own roof of the mouth (or floor, `lower`) at `s` and `across` (1 the left lip, -1
+    the right), straight between its rings and its columns as the mesh is; the point under (or over) it on the plane
+    of the lips; and the jaw's weight there (as the mesh has it, straight between rings)."""
+    if low not in RINGS:
+        RINGS[low] = rings(low)
+    xs = RINGS[low]
+    i = 0
+    while i < len(xs) - 2 and s > xs[i + 1]:
+        i += 1
+    k = pick(low, 8, 2, GAME["mouth"])
+
+    def at_ring(si):
+        a = seam_angle(si)
+        lp = body_point(si, a, lower)
+        fade = 1.0 - smooth(HINGE_S - BLEND, HINGE_S, si)
+        jut = smooth(UP_FROM, UP_FROM + TAPER, si) if UP_FROM > 0.0 else 1.0
+
+        def column(c):
+            acr = 1.0 - 2.0 * c / k
+            arch = ARCH * abs(lp.x) * (1.0 - acr * acr) * fade
+            y = lp.y - arch * (2.0 * jut - 1.0) if lower else lp.y + arch
+            return Vector((lp.x * acr, y, lp.z))
+
+        col = (1.0 - across) * 0.5 * k
+        c0 = min(int(col), k - 1)
+        surface = column(c0).lerp(column(c0 + 1), col - c0)
+        plane = Vector((lp.x * across, lp.y, lp.z))
+        weight = (jaw_weight(si) if lower else upper_weight(si)) if si < HINGE_S - 1e-9 else 0.0
+        return surface, plane, weight
+
+    t = max(0.0, min(1.0, (s - xs[i]) / (xs[i + 1] - xs[i])))
+    s0, p0, w0 = at_ring(xs[i])
+    s1, p1, w1 = at_ring(xs[i + 1])
+    return s0.lerp(s1, t), p0.lerp(p1, t), lerp(w0, w1, t)
+
+
+def gills(m, low):
+    """Four gill arches a side, in the roof and in the floor at the back of the mouth: each half of an arch a thin
+    closed blade lying under the roof (over the floor), from near the middle of the mouth out towards the lip, bent
+    back towards its outer end; its front edge the pale gill rakers, hanging a little down from the roof (up from
+    the floor), its back edge the fringe of red filaments, close under the roof. They stay inside the closed mouth
+    (between the roof or the floor and the plane of the lips) and move with the roof or the floor, so they are seen
+    only as the mouth opens. UV x from the middle (0) to the outer end (1), y from the rakers (0) to the filaments'
+    tips (1); UV2.x the jaw's weight there, as the roof's or the floor's."""
+    nt = pick(low, 4, 2, 2)
+    nu = pick(low, 2, 1, 1)
+    for lower in (False, True):
+        for sx in (1.0, -1.0):
+            for k in range(4):
+                at = GILLS_FROM + GILLS_STEP * k
+                for side in (1.0, -1.0):
+                    grid = []
+                    for ti in range(nt + 1):
+                        t = ti / nt
+                        row = []
+                        for ui in range(nu + 1):
+                            u = ui / nu
+                            # (on the full model the filaments' edge is a fringe: every other point short of it)
+                            reach_u = u * (0.8 if (not low and ui == nu and ti % 2 == 1) else 1.0)
+                            si = at + GILLS_REACH * reach_u + 0.3 * GILLS_REACH * t * t
+                            surface, plane, weight = mouth_at(si, sx * (0.05 + 0.53 * t), lower, low)
+                            inset = 0.45 + 0.35 * reach_u
+                            foil = 2.6 * math.sqrt(reach_u) * (1.0 - reach_u) if ui < nu else 0.0
+                            swell = 0.2 * foil * math.sin(math.pi * t) ** 0.6
+                            p = plane.lerp(surface, inset + side * 0.5 * swell)
+                            row.append(m.add(p, (t, reach_u), P_GILL, weight))
+                        grid.append(row)
+                    way = side * (-1.0 if lower else 1.0)
+                    for ti in range(nt):
+                        for ui in range(nu):
+                            m.face((grid[ti][ui], grid[ti][ui + 1], grid[ti + 1][ui + 1], grid[ti + 1][ui]), Vector((0.0, way, 0.0)), "gills")
 
 
 def body(m, low):
@@ -730,6 +828,10 @@ def make(name, low):
     for sx in (1.0, -1.0):
         eye(m, sx, low)
     fins(m, low)
+    # the gills (in the full model, a second surface, so that its first is exactly as it was)
+    SURFACE[0] = 0 if low else 1
+    gills(m, low)
+    SURFACE[0] = 0
     mesh = bpy.data.meshes.new(name)
     # (everything above is in body lengths: here it becomes metres)
     mesh.from_pydata([to_b(p * LENGTH) for p in m.verts], [], m.faces)
@@ -744,6 +846,10 @@ def make(name, low):
             uv[poly.loop_start + corner].uv = d[0]
             uv2[poly.loop_start + corner].uv = d[1]
     mesh.materials.append(material_of(NAME, COLOUR))
+    if 1 in m.surface:
+        mesh.materials.append(material_of(NAME + "_gills", (0.5, 0.1, 0.1, 1.0)))
+        for poly in mesh.polygons:
+            poly.material_index = m.surface[poly.index]
     return finish(name, mesh, m)
 
 

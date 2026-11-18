@@ -60,6 +60,13 @@ uniform vec3 fin_low : source_color = vec3(0.72, 0.55, 0.30);
 // The teeth, and the inside of the mouth.
 uniform vec3 tooth : source_color = vec3(0.92, 0.90, 0.84);
 uniform vec3 mouth_inside : source_color = vec3(0.55, 0.42, 0.38);
+// The gills (seen through the wide-open mouth): the red of their filaments and the pale of their rakers.
+uniform vec3 gill_red : source_color = vec3(0.62, 0.05, 0.06);
+uniform vec3 gill_raker : source_color = vec3(0.86, 0.80, 0.72);
+// As the model has it (tools/build_northern_pike.py, its THROAT_Q line): the point at the back of the throat, where the
+// old wall across the back of the mouth is drawn to so that it becomes the throat's floor; and the gills' part.
+const vec3 THROAT_Q = vec3(0.0, -0.01961, -0.29303);
+const float GILL_PART = 10.0;
 
 // The cartoon eye: 0 the eye as it is in life (the default), 1 the cartoon eye: bigger, a pale white round
 // a coloured iris, a big dark pupil, a highlight that stays put up and forward (towards the light from the
@@ -151,6 +158,22 @@ void vertex() {
 	rest = VERTEX;
 	inside = UV2.x;
 	vec3 v = VERTEX;
+	if (part < 0.5 && UV2.x > 0.99 && abs(UV.x - JAW_TO / LENGTH) < 0.0001) {
+		// The top edge of the old wall across the back of the mouth, drawn back to the end of the throat as the
+		// mouth opens: the wall becomes the floor of a short tunnel (its roof and the gills in it are in the
+		// model). Shut, it is where it always was.
+		v = mix(v, THROAT_Q, smoothstep(0.0, 0.35, clamp(gape, 0.0, 1.0)));
+		rest = v;
+	}
+	if (gape <= 0.0001 && ((part < 0.5 && UV2.x > 0.99 && UV.x > JAW_TO / LENGTH + 0.0001) || abs(part - GILL_PART) < 0.5)) {
+		// Shut, the throat's roof and the gills are folded away into the end of the throat, so that nothing of
+		// them shows through the hairline seams of the closed mouth.
+		v = THROAT_Q;
+	}
+	if (abs(part - GILL_PART) < 0.5) {
+		// the gill arches spread a little as the mouth opens
+		v.x *= 1.0 + 0.12 * clamp(gape, 0.0, 1.0);
+	}
 	if (part > 5.5 && part < 6.5 && (cartoon_eyes > 0.0 || blink > 0.0)) {
 		// The eye grown about its middle, its rim kept on the skin; and squashed for a blink.
 		float side = v.x < 0.0 ? -1.0 : 1.0;
@@ -328,6 +351,15 @@ void fragment() {
 		c = mix(tooth * 0.7, tooth, smoothstep(0.0, 0.5, UV.x));
 		rough = 0.25;
 		spec = 0.6;
+	} else if (p == int(GILL_PART)) {
+		// A gill arch: pale rakers along its front, a deep red fringe of filaments behind, darker deeper in
+		// the throat (UV2.x, here how deep it stands).
+		float fringe = 0.72 + 0.28 * cos(UV.x * 150.0);
+		vec3 gill_r = gill_red * mix(1.0, fringe, smoothstep(0.3, 0.55, UV.y));
+		c = mix(gill_raker, gill_r, smoothstep(0.02, 0.07, UV.y));
+		c *= mix(1.0, 0.4, inside);
+		rough = 0.4;
+		spec = 0.5;
 	} else {
 		// An eye: a black pupil, a bright golden-yellow iris, a dark rim.
 		float r = UV.x;

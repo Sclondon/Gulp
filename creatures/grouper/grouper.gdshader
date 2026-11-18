@@ -45,6 +45,17 @@ const float WAVE = 1.0;
 // the maxillae swing down (radians).
 const float PROTRUDE = 0.018;
 const float MAXILLA_SWING = 0.2;
+// THE THROAT AND THE GILLS (added 2026-11-18). The model has a short tunnel, the throat, running
+// back from the back of the mouth to the gill arches (the body's code, COLOR.b 1, UV2.y 0), and
+// four gill arches a side in it (COLOR.r 0.04: part 11). As the mouth opens, the middle of the
+// back of the roof of the mouth rises (ROOF_LIFT), the middle of its floor (the lower jaw's top
+// about its hinge) drops (FLOOR_DROP), and the skin at the back of the mouth parts along its
+// middle line out to THROAT_WIDE each way, so that the throat shows through the open mouth; shut,
+// all of it lies inside the head and the lower jaw. The build script's THROAT line (body lengths).
+const float THROAT_END = 0.2700;
+const float THROAT_WIDE = 0.0376;
+const float ROOF_LIFT = 0.0209;
+const float FLOOR_DROP = 0.0251;
 // The right eye where it stands on the skin (metres) and the way out of the skin there: the build
 // script's EYE line (the left eye is its mirror picture).
 const vec3 EYE_AT = vec3(0.0579, 0.0456, -0.4800);
@@ -93,6 +104,10 @@ uniform float cartoon_eyes = 0.0;
 uniform vec2 eye_look = vec2(0.0);
 uniform float blink = 0.0;
 uniform vec3 iris : source_color = vec3(0.72, 0.55, 0.16);
+// The gill arches: the bar, the filaments behind it, the rakers in front.
+uniform vec3 gill_red : source_color = vec3(0.6, 0.07, 0.06);
+uniform vec3 gill_deep : source_color = vec3(0.36, 0.02, 0.04);
+uniform vec3 gill_raker : source_color = vec3(0.66, 0.5, 0.46);
 
 // The colours.
 // Greenish brown, darker on the back and paler on the belly, mottled pale, with darker oval
@@ -117,6 +132,7 @@ uniform float sheen = 0.18;
 varying vec3 rest;
 varying float part;
 varying vec2 extra;
+varying float throat_dark;
 
 
 float gill_edge(float h) {
@@ -209,6 +225,11 @@ void curl_bend(inout vec3 v, inout vec3 n) {
 void vertex() {
 	rest = VERTEX;
 	part = floor(COLOR.r * 10.0 + 0.5);
+	// (the gill arches: a code a little off the tenths, read as part 11)
+	if (COLOR.r * 10.0 - part > 0.25) {
+		part = 11.0;
+	}
+	throat_dark = 0.0;
 	extra = COLOR.gb;
 	vec3 v = VERTEX;
 	vec3 n = NORMAL;
@@ -223,6 +244,12 @@ void vertex() {
 	if (part == 1.0) {
 		// The lower jaw, built open: swung shut about its hinge as far as the mouth is not open.
 		swing(v, n, hinge, -shut * jaw_weight(UV.x));
+		// The middle of its top about the hinge, the floor of the back of the mouth, drops as the
+		// mouth opens, into the throat.
+		float drop = smoothstep(HINGE_S - 0.05, HINGE_S - 0.015, UV.x) * (1.0 - smoothstep(HINGE_S + 0.05, HINGE_S + 0.075, UV.x));
+		drop *= (1.0 - smoothstep(0.7, 1.05, abs(rest.x) / (THROAT_WIDE * LENGTH))) * smoothstep(0.5, 0.85, UV.y) * open;
+		v.y -= FLOOR_DROP * LENGTH * drop;
+		throat_dark = drop;
 	} else if (part == 10.0) {
 		// The side skin of the mouth: its lower edge goes with the jaw's lip, its upper edge with
 		// the upper lip and the maxilla; shut, it lies flat between the lips.
@@ -258,6 +285,22 @@ void vertex() {
 		v.z -= push * lw;
 		v.y -= 0.3 * push * lw;
 		v.x += side_is * COLOR.g * gill_flare * (0.5 - 0.5 * cos(breath - 1.3) + 1.5 * open);
+		// The middle of the back of the roof of the mouth rises as it opens, and the skin at the
+		// back of the mouth parts along its middle line, to show the throat (whose UV2.y is 0: it
+		// stays as it is).
+		if (UV2.y > 0.0001) {
+			float across = 1.0 - smoothstep(0.7, 1.05, abs(rest.x) / (THROAT_WIDE * LENGTH));
+			float lift = smoothstep(HINGE_S - 0.045, HINGE_S - 0.012, UV.x) * (1.0 - smoothstep(HINGE_S + 0.005, HINGE_S + 0.02, UV.x));
+			lift *= smoothstep(0.2, 0.6, COLOR.b) * across * open;
+			v.y += ROOF_LIFT * LENGTH * lift;
+			float parted = smoothstep(HINGE_S - 0.022, HINGE_S - 0.006, UV.x) * (1.0 - smoothstep(HINGE_S + 0.012, HINGE_S + 0.025, UV.x));
+			parted *= across * open;
+			v.x = mix(v.x, (UV2.x >= 0.0 ? 1.0 : -1.0) * THROAT_WIDE * LENGTH, parted);
+			throat_dark = max(lift, parted);
+		}
+	} else if (part == 11.0) {
+		// The gill arches spread a little as the mouth opens.
+		v.x *= 1.0 + 0.08 * open;
 	} else if (part >= 4.0) {
 		// A fin waves the way its flat side faces, more towards its edge.
 		vec3 flat_way = normalize(vec3(UV2.x, UV2.y, COLOR.b * 2.0 - 1.0));
@@ -366,6 +409,7 @@ void fragment() {
 	vec3 c = vec3(0.5);
 	float rough = 0.45;
 	float glint = sheen;
+	float spec = 0.45;
 	float seen = clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0);
 	if (part < 0.5) {
 		float s = UV.x;
@@ -399,6 +443,14 @@ void fragment() {
 		// The roof of the mouth.
 		c = mix(c, mouth, extra.y);
 		glint *= smoothstep(0.1, 0.3, h) * (1.0 - extra.y);
+		// (the throat darker the deeper it goes; the skin moved out of its way dark)
+		c *= 1.0 - 0.75 * (1.0 - step(0.0001, UV2.y)) * smoothstep(HINGE_S - 0.03, THROAT_END, s);
+		c = mix(c, mouth * 0.4, throat_dark);
+		if (UV2.y < 0.0001) {
+			// (the throat itself: soft and matt)
+			rough = 0.9;
+			spec = 0.1;
+		}
 	} else if (part < 1.5) {
 		// The lower jaw: the throat's colour, darker along the lip; dark inside.
 		float s = UV.x;
@@ -406,6 +458,7 @@ void fragment() {
 		c = mix(skin(s, 0.04, vec2(s, 0.0)), skin(s, 0.25, vec2(s, 0.0)) * 0.8, smoothstep(0.55, 0.95, h));
 		c = mix(c, mouth, extra.y);
 		glint *= 0.3;
+		c = mix(c, mouth * 0.4, throat_dark);
 	} else if (part < 2.5) {
 		// An eye: a dark pupil in a ring, dark at the rim.
 		vec2 on_eye = UV * 2.0 - 1.0;
@@ -431,6 +484,17 @@ void fragment() {
 		// A maxilla: the head's colour, darker along its lower edge.
 		c = skin(UV.x, 0.4, vec2(UV.x, 0.0)) * mix(0.7, 0.95, smoothstep(0.2, 0.7, UV.y));
 		glint *= 0.5;
+	} else if (part > 10.5) {
+		// A gill arch: pale rakers in front, the blood-red bar, the deep red filaments behind (fine
+		// lines), darker the deeper in the throat it stands.
+		float u = UV.x;
+		c = mix(gill_raker, gill_red, smoothstep(0.03, 0.16, u));
+		c = mix(c, gill_deep, smoothstep(0.45, 0.95, u));
+		c *= 1.0 - 0.3 * smoothstep(0.5, 1.0, u) * (0.5 + 0.5 * sin(UV.y * 120.0));
+		c *= 1.0 - 0.45 * smoothstep(HINGE_S, THROAT_END, rest.z / LENGTH + 0.5);
+		rough = 0.6;
+		spec = 0.2;
+		glint = 0.0;
 	} else if (part > 9.5) {
 		// The side skin of the mouth: the throat's colour outside, the mouth's inside.
 		c = mix(skin(UV.x, 0.3, vec2(UV.x, 0.0)) * 0.8, mouth, max(extra.y, 0.35 * smoothstep(0.0, 0.5, UV.y)));
@@ -451,6 +515,6 @@ void fragment() {
 	c += vec3(0.8, 0.85, 0.8) * glint * aslant;
 	ALBEDO = c;
 	ROUGHNESS = rough;
-	SPECULAR = 0.45;
+	SPECULAR = spec;
 	EMISSION = c * (rim * 0.8 * aslant) + vec3(flash);
 }

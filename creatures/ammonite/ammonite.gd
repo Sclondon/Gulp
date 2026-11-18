@@ -17,7 +17,7 @@ extends Node3D
 ## over the opening. Either call `step(velocity, delta)` each frame, which moves `phase` on by
 ## delta / beat, or set `phase` yourself.
 ##
-## The models are creatures/ammonite/models/ammonite.glb (and _lo), built by
+## The models are creatures/ammonite/models/ammonite.glb (and _game, _lo), built by
 ## tools/build_ammonite.py; ammonite.gdshader draws the markings and moves it.
 
 const MODEL := "res://creatures/ammonite/models/ammonite%s.glb"
@@ -48,6 +48,31 @@ const TENTACLE_REACH := Vector2(0.174, 0.257)
 	set(value):
 		low = value
 		_show()
+## The game model (Twilight Princess weight: about 1,800 triangles, spent on the outline; the same
+## shader and settings) in place of the full one; `low` still shows the low model. Each model is
+## loaded only when it is first shown, so with `game` on the full model is never loaded and a
+## game's web export may leave ammonite.glb out.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye: 0 the eye as in life, 1 a bigger cartoon eye of its own character (old, slow
+## and kindly: a heavy drooping lid over an amber eye with a bar of a pupil). In between blends.
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send(&"cartoon_eyes", cartoon_eyes)
+## Where its pupils look, -1..1 each way: x towards its front (where its tentacles reach), y up,
+## in each eye's own plane.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value.clamp(Vector2(-1.0, -1.0), Vector2.ONE)
+		_send(&"eye_look", eye_look)
+## A blink: 0 open, 1 shut (lids the colour of its skin close over each eye).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send(&"blink", blink)
 ## How far through a beat it is, 0 to 1 (only the fraction counts).
 var phase := 0.0:
 	set(value):
@@ -59,17 +84,37 @@ static var _meshes := {}
 var _material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
 
 
-## The full model's mesh, or the low one's (each one surface, to wear `new_material()`).
+## The full model's mesh, or the low one's (each one surface, to wear `new_material()`). Loaded
+## once and kept.
 static func mesh_of(low_wanted := false) -> Mesh:
-	var path := MODEL % ("_lo" if low_wanted else "")
+	return _mesh_at(MODEL % ("_lo" if low_wanted else ""))
+
+
+## The game model's mesh (see `game`), one surface, to wear `new_material()`. Loaded once and kept.
+## (Without the lower levels of detail Godot's importer makes: thinned from the still model, its
+## curling tentacles would bend in straight pieces far off.)
+static func game_mesh() -> Mesh:
+	return _mesh_at(MODEL % "_game", true)
+
+
+static func _mesh_at(path: String, plain := false) -> Mesh:
 	if not _meshes.has(path):
 		var made := (load(path) as PackedScene).instantiate()
 		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
-		_meshes[path] = found.mesh
+		_meshes[path] = without_lods(found.mesh) if plain else found.mesh
 		made.free()
 	return _meshes[path]
+
+
+## `mesh` again without the lower levels of detail Godot's importer makes for it.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var bare := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		bare.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return bare
 
 
 ## A new material for `mesh_of()`'s meshes. Its shader settings are the game's to set: `phase`
@@ -85,12 +130,16 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
+	_full = _instance_of("Ammonite")
+	_low = _instance_of("AmmoniteLo")
+	_game = _instance_of("AmmoniteGame")
 	_show()
 	_send(&"phase", phase)
 	_send(&"sway", sway)
 	_send(&"withdraw", withdraw)
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 
 
 ## Each frame, for one that is not having its `phase` set for it: moves it on through its beat.
@@ -117,17 +166,25 @@ func _send(setting: StringName, value: Variant) -> void:
 
 
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if _full == null:
+		return
+	_full.visible = not low and not game
+	_low.visible = low
+	_game.visible = game and not low
+	# (each model is loaded the first time it is shown, never before)
+	if _full.visible and _full.mesh == null:
+		_full.mesh = mesh_of(false)
+	if _low.visible and _low.mesh == null:
+		_low.mesh = mesh_of(true)
+	if _game.visible and _game.mesh == null:
+		_game.mesh = game_mesh()
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of(called: String) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
 	mesh.material_override = _material
 	# (it rocks and bobs, and its tentacles swing, past where the still model ends)
 	mesh.extra_cull_margin = 0.05
-	mesh.name = "AmmoniteLo" if low_wanted else "Ammonite"
+	mesh.name = called
 	add_child(mesh)
 	return mesh

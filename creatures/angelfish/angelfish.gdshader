@@ -83,9 +83,19 @@ uniform float lid = 0.8;
 uniform float lid_tilt = 0.0;
 uniform float lower_lid = -1.2;
 
+// The throat (added 2026-11-18): a short tunnel back from the jaw's hinge, four gill arches a side in it
+// (part 10). Its ovals, THROAT_KNOTS of them: (how far along, the height of its middle, half height, half
+// width; body lengths), as the model is built (Angelfish.TYPES "throat"). While the mouth is open, what
+// of the body and the jaw lies inside it (the dark wall at the back of the mouth) is cut away, so that the
+// throat shows. `gill_red`: the gills' colour.
+const int THROAT_KNOTS = 5;
+uniform vec4 throat[5];
+uniform vec3 gill_red : source_color = vec3(0.66, 0.06, 0.08);
+
 varying vec3 rest;
 varying float part;
 varying float inside;
+varying float lining;
 
 
 // The body behind the head laid round an arc (see `curl`).
@@ -124,6 +134,7 @@ void vertex() {
 	rest = VERTEX;
 	part = floor(COLOR.r * 10.0 + 0.5);
 	inside = part < 1.5 ? COLOR.b : 0.0;
+	lining = part < 0.5 ? COLOR.g : 0.0;
 	vec3 v = VERTEX;
 	vec3 n = NORMAL;
 	float s = v.z / LENGTH + 0.5;
@@ -139,14 +150,19 @@ void vertex() {
 		v = at + d * mix(1.0, eye_size, cartoon_eyes);
 	} else if (part == 1.0 || part == 0.0) {
 		// The lower jaw swings down about its hinge (the throat behind it stays); the upper snout
-		// lifts a little.
-		float a = part == 1.0
+		// lifts a little. (The throat's lining goes with the jaw below the hinge's height and with the
+		// snout above it: its front is the inside of the mouth.)
+		bool with_jaw = part == 1.0 || (COLOR.g > 0.5 && VERTEX.y < hinge_y * LENGTH);
+		float a = with_jaw
 			? gape * GAPE_ANGLE * smoothstep(hinge_s + 0.02, hinge_s - 0.008, s)
 			: -gape * GAPE_LIFT * smoothstep(hinge_s + 0.04, hinge_s - 0.01, s);
 		vec2 hinge = vec2(hinge_y, hinge_s - 0.5) * LENGTH;
 		vec2 d = v.yz - hinge;
 		v.yz = hinge + vec2(d.x * cos(a) + d.y * sin(a), d.y * cos(a) - d.x * sin(a));
 		n.yz = vec2(n.y * cos(a) + n.z * sin(a), n.z * cos(a) - n.y * sin(a));
+	} else if (part > 9.5) {
+		// The gill arches spread a little as the mouth opens.
+		v.z += gape * LENGTH * 0.005 * (floor(UV.y) - 1.5);
 	} else if (part >= 4.0) {
 		// A fin waves the way its flat side faces, more towards its edge.
 		vec3 flat_way = normalize(vec3(UV2.x, UV2.y, COLOR.b * 2.0 - 1.0));
@@ -281,7 +297,29 @@ vec3 cartoon_eye(vec2 uv, vec3 skin) {
 }
 
 
+// Whether a point of the body or the jaw as it is built lies inside the throat (well inside its ovals).
+bool in_throat(vec3 at) {
+	float s = at.z / LENGTH + 0.5;
+	if (s <= throat[0].x + 0.001 || s >= throat[THROAT_KNOTS - 1].x) {
+		return false;
+	}
+	for (int i = 0; i < THROAT_KNOTS - 1; i++) {
+		if (s <= throat[i + 1].x) {
+			float t = (s - throat[i].x) / max(throat[i + 1].x - throat[i].x, 1e-6);
+			vec3 o = mix(throat[i].yzw, throat[i + 1].yzw, t);
+			vec2 e = vec2(at.x / LENGTH / o.z, (at.y / LENGTH - o.x) / o.y);
+			return dot(e, e) < 0.72;
+		}
+	}
+	return false;
+}
+
+
 void fragment() {
+	// (the back of the mouth cut away while it is open: the throat shows)
+	if (gape > 0.0 && part < 1.5 && lining < 0.5 && in_throat(rest)) {
+		discard;
+	}
 	vec3 c = vec3(1.0);
 	float rough = 0.4;
 	float glint = sheen;
@@ -290,7 +328,7 @@ void fragment() {
 	vec2 q = vec2(rest.z / LENGTH + 0.5, rest.y / LENGTH);
 	float s = q.x;
 	float y = q.y;
-	bool is_fin = part > 3.5;
+	bool is_fin = part > 3.5 && part < 9.5;
 	float r = is_fin ? UV.x : 0.0;
 	bool skin_part = part < 1.5;
 	float h = skin_part ? UV.y : 0.5;
@@ -438,6 +476,16 @@ void fragment() {
 		}
 		rough = 0.08;
 		glint = 0.0;
+	} else if (part > 9.5) {
+		// A gill arch: pale rakers along its inner edge, the bar, a fringe of deep red filaments behind (fine lines
+		// across it); darker than out in the light: it is deep in the throat.
+		float u = UV.x;
+		c = mix(gill_red, gill_red * vec3(0.55, 0.35, 0.45), smoothstep(0.4, 0.95, u));
+		float strands = step(0.5, fract(UV.y * 22.0)) * (1.0 - smoothstep(0.3, 0.8, fwidth(UV.y * 22.0)));
+		c *= 1.0 - 0.3 * strands * smoothstep(0.45, 0.8, u);
+		c = mix(c, vec3(0.86, 0.8, 0.72), 1.0 - smoothstep(0.04, 0.1, u));
+		rough = 0.35;
+		glint = 0.1;
 	} else if (is_fin) {
 		// A fin: its rays as fine lines.
 		float between = abs(fract(UV.y) - 0.5) * 2.0;
@@ -448,7 +496,9 @@ void fragment() {
 		glint *= 0.4;
 	}
 	// The inside of the mouth.
-	c = mix(c, mouth, inside);
+	c = mix(c, mouth * (1.0 + 0.8 * lining), inside);
+	// (the throat darker the deeper it goes)
+	c *= 1.0 - 0.3 * lining * smoothstep(throat[0].x, throat[THROAT_KNOTS - 1].x, s);
 	glint *= 1.0 - inside;
 	c *= tint;
 	// The sheen: the skin's shine where it is seen aslant.

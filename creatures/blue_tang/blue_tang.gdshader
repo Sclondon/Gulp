@@ -82,8 +82,24 @@ uniform vec3 lid : source_color = vec3(0.1, 0.32, 0.86);
 uniform float lid_low = 0.1;
 uniform float lid_slant = 0.3;
 
+// THE THROAT AND THE GILLS (part 5: four gill arches a side, inside the head behind the jaw's hinge and above the
+// line of the mouth). As the mouth opens, the roof of the mouth (the body's skin that is the inside of the mouth,
+// COLOR.b; on the game and low models also what the build marked in COLOR.g) is lifted THROAT_LIFT (body lengths
+// at gape 1) into a vault, and its back (from THROAT_BACK ahead of the hinge to the hinge) drawn back THROAT_DEPTH,
+// so that the old dark wall at the back of the mouth becomes a short tunnel with the arches standing in it,
+// darker deeper in. Shut, nothing of them shows. Kept in step with the build script's THROAT_* numbers.
+const float THROAT_LIFT = 0.03;
+const float THROAT_DEPTH = 0.085;
+const float THROAT_BACK = 0.02;
+// The gill arches: their filaments and their pale rakers.
+uniform vec3 gill_red : source_color = vec3(0.6, 0.05, 0.07);
+uniform vec3 gill_raker : source_color = vec3(0.9, 0.8, 0.74);
+
 varying float part;
 varying float inside;
+// how far the throat's skin has been pushed back here (0..1), and where a point was along the fish at rest
+varying float throat_deep;
+varying float throat_s;
 
 
 // The body behind the gills laid round an arc (see `curl`).
@@ -161,6 +177,8 @@ void vertex() {
 	part = floor(COLOR.r * 10.0 + 0.5);
 	inside = COLOR.b;
 	vec3 v = VERTEX;
+	throat_deep = 0.0;
+	throat_s = VERTEX.z / LENGTH + 0.5;
 	vec3 n = NORMAL;
 	float s = v.z / LENGTH + 0.5;
 	float side_is = v.x >= 0.0 ? 1.0 : -1.0;
@@ -173,8 +191,19 @@ void vertex() {
 	} else if (part == 0.0) {
 		// The snout's tip lifts a little as the mouth opens.
 		about_hinge(v, n, -open * lip_lift * smoothstep(HINGE_S + 0.012, HINGE_S - 0.02, s));
+		// The roof of the mouth is lifted into a vault and drawn back into a throat as it opens (the
+		// tip of the snout stays where it is).
+		if (open > 0.0) {
+			float w = max(COLOR.b, COLOR.g) * smoothstep(HINGE_S * 0.35, HINGE_S, s);
+			throat_deep = w * open;
+			v.y += LENGTH * THROAT_LIFT * throat_deep;
+			v.z += LENGTH * THROAT_DEPTH * throat_deep * smoothstep(HINGE_S - THROAT_BACK, HINGE_S, s);
+		}
 	} else if (part == 2.0) {
 		eye_shape(v, n, side_is);
+	} else if (part == 5.0) {
+		// The gill arches spread a little as the mouth opens.
+		v.x *= 1.0 + 0.12 * open;
 	} else if (part >= 4.0) {
 		vec3 flat_way = normalize(vec3(UV2.x, UV2.y, COLOR.b * 2.0 - 1.0));
 		float r = UV.x;
@@ -261,6 +290,11 @@ void fragment() {
 		c = mix(c, yellow, smoothstep(0.835, 0.85, s));
 		c = mix(c, mouth, inside);
 		glint *= 1.0 - inside;
+		if (throat_deep > 0.0) {
+			// (the throat, darker deeper in)
+			c = mix(c, mouth * 0.45, smoothstep(0.0, 0.7, throat_deep));
+			glint *= 1.0 - throat_deep;
+		}
 	} else if (part < 2.5) {
 		// An eye: a black pupil in a dark ring.
 		vec2 on_eye = UV * 2.0 - 1.0;
@@ -276,6 +310,16 @@ void fragment() {
 	} else if (part < 3.5) {
 		c = spine_colour;
 		rough = 0.3;
+	} else if (part > 4.5 && part < 5.5) {
+		// A gill arch: its pale rakers at the front edge, then the red bar, then the fringe of blood-red
+		// filaments (fine lines along them), darker deeper in the shadow of the throat.
+		float u = UV.x;
+		c = mix(gill_raker, gill_red * 1.3, smoothstep(0.04, 0.18, u));
+		c = mix(c, gill_red * 0.8, smoothstep(0.3, 0.5, u));
+		c *= 1.0 - 0.3 * smoothstep(0.5, 1.0, abs(fract(UV.y * 2.0) - 0.5) * 2.0) * smoothstep(0.3, 0.5, u);
+		c *= mix(1.0, 0.45, smoothstep(HINGE_S + 0.03, HINGE_S + THROAT_DEPTH, throat_s));
+		rough = 0.35;
+		glint = 0.0;
 	} else {
 		// A fin: its rays as fine lines.
 		float r = UV.x;

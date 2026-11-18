@@ -38,6 +38,15 @@ var _card: Title.Card
 var _dive := -1.0
 var _dive_from := Transform3D()
 var _titled := false
+# The kinds whose models are still to be shown once behind the title (see _warm), how many there
+# were, how many of those must be done before the game may start, and the little view they are
+# shown in.
+var _warming: Array[String] = []
+var _warm_all := 0
+var _warm_first := 0
+var _warm_view: SubViewport
+var _warm_now: Node3D
+var _warm_wait := 0
 ## Paused from the panel's button (or P, Escape): the sea stands still.
 var paused := false
 var bot: Bot
@@ -358,7 +367,7 @@ func _open_title() -> void:
 	_card = Title.Card.new()
 	add_child(_card)
 	_card.go.connect(func() -> void:
-		if _dive < 0.0:
+		if _dive < 0.0 and _card.primed >= 1.0:
 			# (the fish is put in the water under the boat, wherever that has got to)
 			_start = Vector2(title.global_position.x, title.global_position.z)
 			restart()
@@ -369,6 +378,75 @@ func _open_title() -> void:
 	hud.visible = false
 	pad.visible = false
 	_dive = -1.0
+	_begin_warm()
+
+
+# A browser compiles each animal's shader the first time the animal is drawn, and on Windows that
+# takes a second or two each: the game froze again and again as new kinds swam into view (the
+# user, 2026-11-18: "its either really choppy on my pc with long freezes"). So behind the title
+# each kind is shown once, a kind every few frames, to a tiny view of the same world far under
+# the sea: first the kinds of the waters the fish starts in (the game may start when those are
+# done), then the rest for as long as the title is up.
+func _begin_warm() -> void:
+	# (the waters it starts in: the part of the sea nearest the start)
+	var near: Array[String] = []
+	var nearest := INF
+	for zone: String in Sea.ZONES:
+		var far := (Sea.ZONES[zone].at as Vector2).distance_to(_start) - float(Sea.ZONES[zone].radius)
+		if far < nearest:
+			nearest = far
+			near = [zone]
+	var first: Array[String] = []
+	var rest: Array[String] = []
+	for kind: String in Species.ALL:
+		if not Species.has(kind):
+			continue
+		var by_start := Player.GROWTH.has(kind) and float(Player.GROWTH[kind].from) < 0.5
+		for zone: String in Species.of(kind).get("zones", []):
+			by_start = by_start or zone in near
+		(first if by_start else rest).append(kind)
+	_warming = first + rest
+	_warm_all = _warming.size()
+	_warm_first = first.size()
+	_warm_view = SubViewport.new()
+	_warm_view.size = Vector2i(32, 32)
+	_warm_view.world_3d = _viewport.find_world_3d()
+	_warm_view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(_warm_view)
+	var eye := Camera3D.new()
+	eye.position = Vector3(0.0, -800.0, 3.0)
+	eye.far = 12.0
+	_warm_view.add_child(eye)
+
+
+func _warm() -> void:
+	_warm_wait -= 1
+	if _warm_wait > 0:
+		return
+	if _warm_now:
+		_warm_now.queue_free()
+		_warm_now = null
+	if _warming.is_empty():
+		return
+	var kind: String = _warming.pop_front()
+	if _warming.size() == _warm_all - _warm_first:
+		print("GULP WARM the near kinds are ready at %.1f s" % _clock)
+	elif _warming.is_empty():
+		print("GULP WARM every kind is ready at %.1f s" % _clock)
+	var look := Species.make(kind)
+	if look == null:
+		return
+	if &"game" in look:
+		look.set(&"game", true)
+	if &"cartoon_eyes" in look:
+		look.set(&"cartoon_eyes", 1.0)
+	_warm_now = Node3D.new()
+	_warm_now.add_child(look)
+	_warm_now.scale = Vector3.ONE / maxf(Species.long_of(kind, look), 0.05)
+	_viewport.add_child(_warm_now)
+	_warm_now.global_position = Vector3(0.0, -800.0, 0.0)
+	_warm_wait = 2
+	life.mark_dressed(kind)
 
 
 # A frame of the title: the eye astern of the boat, or on its way down through the surface to
@@ -376,6 +454,8 @@ func _open_title() -> void:
 func _title_step(delta: float) -> void:
 	if _dive < 0.0:
 		camera.global_transform = title.eye(size.y > size.x)
+		_warm()
+		_card.primed = 1.0 if _warm_all == 0 else clampf(float(_warm_all - _warming.size()) / maxf(_warm_first, 1.0), 0.0, 1.0)
 		if _trick == "--dive" and _clock > 0.6:
 			_trick = ""
 			_card.go.emit()
@@ -385,6 +465,10 @@ func _title_step(delta: float) -> void:
 	var behind := Transform3D(Basis.IDENTITY, _camera_place()).looking_at(player.global_position + player.heading * player.length, Vector3.UP)
 	camera.global_transform = _dive_from.interpolate_with(behind, smoothstep(0.0, 1.0, _dive))
 	if _dive >= 1.0:
+		if _warm_now:
+			_warm_now.queue_free()
+			_warm_now = null
+		_warm_view.queue_free()
 		title.queue_free()
 		title = null
 		_card.queue_free()
@@ -474,6 +558,17 @@ func _sound_out() -> void:
 					elif each.hunts and Life.can_eat(each.length, player.length) and player.length >= each.length * Life.TOO_SMALL:
 						seen.append(Vector3(off.dot(right), off.dot(ahead), 1.0))
 	pad.blips = seen
+	# (and the parts of the sea, as landmarks)
+	var marks := []
+	if player.alive:
+		var forward := Vector3(player.heading.x, 0.0, player.heading.z)
+		forward = forward.normalized() if forward.length() > 0.01 else Vector3.FORWARD
+		var aside := forward.cross(Vector3.UP)
+		for zone: String in Sea.ZONES:
+			var middle: Vector2 = Sea.ZONES[zone].at
+			var to := Vector3(middle.x - player.global_position.x, 0.0, middle.y - player.global_position.z)
+			marks.append([zone, Vector2(to.dot(aside), to.dot(forward))])
+	pad.landmarks = marks
 
 
 ## Reads the controls into the player's stick and burst: the bot's if it is playing, or the

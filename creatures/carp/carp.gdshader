@@ -3,7 +3,9 @@ shader_type spatial;
 // and pushes out into a tube, its fins scull; and every marking is drawn here, for each type, from
 // the species (the component's README says what was used): no texture files. What each point is
 // comes from the model (tools/build_carp.py): COLOR.r the part, as a tenth (0 body, 1 lower jaw and
-// its lip, 2 eye, 3 upper lip, 4 dorsal, 5 barbel, 6 tail, 7 anal, 8 pelvic, 9 pectoral). On the
+// its lip, 2 eye, 3 upper lip, 4 dorsal, 5 barbel, 6 tail, 7 anal, 8 pelvic, 9 pectoral, 10 the throat
+// and gills: COLOR.g 0 the throat's wall, 0.5 a gill arch, whose UV.x is along it and UV.y from its
+// rakers' edge (0) to the wall (1), UV2.x which arch, - on the left). On the
 // body UV.x is how far along the fish (0 snout to 1 tail tip), UV.y how high (0 belly line to 1 back
 // line), UV2.x how far round the skin from the back line (metres, + right, - left), UV2.y the whole
 // way from back line to belly line; COLOR.g the gill cover's edge, COLOR.b the inside of the mouth.
@@ -34,6 +36,11 @@ const float WAVE = 0.95;
 const float GAPE_TURN = 0.42;
 const float PROTRUDE = 0.03;
 const float DROP = 0.022;
+// How far the floor of the mouth (the inside of the lower jaw near its hinge) sinks with the mouth wide open,
+// so that the way into the throat is open (body lengths; THROAT_SINK in the build script).
+const float THROAT_SINK = 0.018;
+// And how far the roof of the mouth near the hinge vaults up into the head (THROAT_RAISE).
+const float THROAT_RAISE = 0.02;
 
 uniform float phase = 0.0;
 uniform float tail_beats = 2.0;
@@ -185,6 +192,8 @@ void vertex() {
 	// behind stays), then the lips and the front of the snout push forward and down into a tube.
 	float push = 0.0;
 	if (part == 1.0) {
+		// (near the hinge only, where the jaw is deep enough; floor_sink in the build script)
+		v.y -= open * COLOR.b * THROAT_SINK * LENGTH * smoothstep(0.0, HINGE_S, s);
 		float a = open * GAPE_TURN * smoothstep(HINGE_S + 0.025, HINGE_S - 0.02, s);
 		vec2 hinge = vec2(HINGE_Y, HINGE_S - 0.5) * LENGTH;
 		vec2 d = v.yz - hinge;
@@ -193,6 +202,10 @@ void vertex() {
 		push = smoothstep(0.095, 0.02, s);
 	} else if (part == 0.0 || part == 3.0) {
 		push = part == 3.0 ? smoothstep(0.085, 0.0, s) : pushed(s, y);
+		if (part == 0.0) {
+			// (the roof of the mouth near the hinge vaults up, opening the way into the throat)
+			v.y += open * COLOR.b * THROAT_RAISE * LENGTH * smoothstep(0.03, 0.062, s);
+		}
 	} else if (part == 5.0) {
 		// a barbel goes with the lip it grows from, and trails a little as the fish swims
 		push = smoothstep(0.085, 0.0, UV2.x);
@@ -200,7 +213,11 @@ void vertex() {
 	}
 	v.z -= open * push * PROTRUDE * LENGTH;
 	v.y -= open * push * DROP * LENGTH;
-	if (part >= 4.0 && part != 5.0) {
+	if (part == 10.0 && COLOR.g > 0.25) {
+		// The gill arches spread a little as the mouth opens.
+		v.z += (abs(UV2.x) - 1.5) * 0.005 * LENGTH * open;
+	}
+	if (part >= 4.0 && part != 5.0 && part < 9.5) {
 		// A fin waves the way its flat side faces, more towards its edge.
 		vec3 flat_way = normalize(vec3(UV2.x, UV2.y, COLOR.b * 2.0 - 1.0));
 		float r = UV.x;
@@ -425,6 +442,23 @@ void fragment() {
 			c = eye_lid(e, c, lid_c);
 		}
 		rough = 0.06;
+		glint = 0.0;
+	} else if (part > 9.5) {
+		// The throat and the gills, darker the deeper in: the throat's wall the mouth's colour; an arch
+		// pale gill rakers like a comb on its inner edge, a pink bar, and the deep red fringe of filaments.
+		float deep = mix(1.0, 0.45, smoothstep(0.07, 0.2, rest.z / LENGTH + 0.5));
+		if (extra.x < 0.25) {
+			c = mouth * 0.75;
+		} else {
+			float u = UV.y;
+			float comb = smoothstep(0.35, 0.6, abs(fract(UV.x * 16.0) - 0.5) * 2.0);
+			float fringe = smoothstep(0.2, 0.9, abs(fract(UV.x * 44.0) - 0.5) * 2.0);
+			c = mix(vec3(0.86, 0.78, 0.66), mouth * 0.6, comb * 0.7);
+			c = mix(c, vec3(0.78, 0.42, 0.4), smoothstep(0.14, 0.2, u));
+			c = mix(c, mix(vec3(0.7, 0.06, 0.07), vec3(0.34, 0.01, 0.02), fringe), smoothstep(0.27, 0.34, u));
+		}
+		c *= deep;
+		rough = 0.3;
 		glint = 0.0;
 	} else {
 		// A fin: its rays as fine lines that fork towards the edge.

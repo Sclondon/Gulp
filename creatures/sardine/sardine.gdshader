@@ -2,7 +2,7 @@ shader_type spatial;
 // The Pacific sardine (sardine.gd): every marking drawn here (no texture files), and its
 // swimming. What each point is comes from the model (tools/build_sardine.py): UV2.y the part
 // (0 body, 1 the dorsal fin, 2 the anal fin, 3 the tail, 4 a pectoral fin, 5 a pelvic fin, 6 an
-// eye, 7 the lower jaw). UV2.x: 1 inside the mouth, 0 elsewhere. UV, on the body and the jaw: x
+// eye, 7 the lower jaw, 8 a gill arch). UV2.x: 1 inside the mouth, 0 elsewhere. UV, on the body and the jaw: x
 // how far along, y how high on its side (1 the ridge of the back, 0 the
 // keel of the belly); on a fin: x root (0) to tip (1), y leading edge (0) to trailing edge (1);
 // on an eye: x middle (0) to rim (1).
@@ -26,6 +26,12 @@ const vec2 EYE_AT = vec2(0.021, 0.0042);
 const float JAW_TO = 0.019;
 const float HINGE_Y = -0.0049;
 const float GAPE_OPEN = 0.8;
+// The throat and the gills (kept in step with the model): where the gill arches stand and where the throat
+// ends (metres behind the jaw), and how high inside the head the full model's old wall across the back of the
+// mouth is lifted, out of the way, as the mouth opens.
+const float GILL_FROM = 0.02481;
+const float GILL_TO = 0.04540;
+const float WALL_Y = 0.00134;
 // The row of spots: where the first is (metres behind the jaw), how far apart, how many.
 const float SPOT_FROM = 0.058;
 const float SPOT_STEP = 0.0132;
@@ -64,6 +70,9 @@ uniform vec3 fin : source_color = vec3(0.7, 0.75, 0.74);
 uniform vec3 fin_dusk : source_color = vec3(0.2, 0.28, 0.29);
 // The inside of the mouth.
 uniform vec3 mouth_inside : source_color = vec3(0.1, 0.035, 0.04);
+// The gills: the filaments' blood red, and the pale gill rakers.
+uniform vec3 gill_red : source_color = vec3(0.62, 0.05, 0.07);
+uniform vec3 gill_raker : source_color = vec3(0.72, 0.6, 0.56);
 // The cartoon eye: 0 the eye as in life, 1 a bigger cartoon eye (a white, an iris, a pupil, a
 // highlight, a dark outline and lids of its own character); where its pupils look (x forward,
 // towards the snout, y up, -1..1, in each eye's own plane); a blink (0 open, 1 shut: lids the
@@ -145,8 +154,15 @@ void vertex() {
 		vec3 pivot = vec3(sign(v.x) * EYE_PIVOT.x, EYE_PIVOT.y, EYE_PIVOT.z - HALF);
 		v = pivot + (v - pivot) * mix(1.0, EYE_BIG, cartoon_eyes);
 	}
+	// The full model's old wall across the back of the mouth (points of the body, inside the mouth, UV y 0.5,
+	// where the jaw ends) is lifted up inside the head as soon as the mouth opens, so the throat behind it shows.
+	if (part < 0.5 && UV2.x > 0.5 && abs(UV.y - 0.5) < 0.01 && v.z + HALF > JAW_TO - 0.0002 && gape > 0.0) {
+		v.y = WALL_Y;
+		v.x *= 0.5;
+	}
 	float xm = v.z + HALF;
-	if (part > 6.5) {
+	// (the jaw's own part only: the gills stay where they are)
+	if (abs(part - 7.0) < 0.5) {
 		// The lower jaw swings down about its hinge; its end inside the head stays where it is.
 		float a = clamp(gape, 0.0, 1.0) * GAPE_OPEN * (1.0 - smoothstep(JAW_TO - 0.008, JAW_TO - 0.0005, xm));
 		float ca = cos(a);
@@ -281,6 +297,8 @@ void fragment() {
 		spec = mix(0.7, 0.4, dark);
 		// The inside of the mouth.
 		c = mix(c, mouth_inside, inside);
+		// (the throat behind the mouth: darker deeper in)
+		c *= 1.0 - 0.6 * inside * smoothstep(JAW_TO, GILL_TO, xm);
 		rough = mix(rough, 0.8, inside);
 		spec = mix(spec, 0.2, inside);
 	} else if (p == 1) {
@@ -312,6 +330,14 @@ void fragment() {
 	} else if (p == 5) {
 		// A pelvic fin: pale.
 		c = mix(belly * 0.95, fin, 0.5 * UV.x) * (0.9 + 0.1 * cos(UV.y * 40.0));
+	} else if (p == 8) {
+		// A gill arch: pale rakers along its front edge, then the bar and the fringe of blood-red filaments,
+		// darker deeper in the throat.
+		float strands = 0.75 + 0.25 * sin(UV.x * 90.0);
+		c = mix(gill_raker, gill_red * strands, smoothstep(0.06, 0.24, UV.y));
+		c *= mix(1.0, 0.45, smoothstep(GILL_FROM, GILL_TO, rest.z + HALF));
+		rough = 0.35;
+		spec = 0.5;
 	} else {
 		// An eye: a big black pupil, a silver iris with a little gold, a dark rim.
 		float r = UV.x;

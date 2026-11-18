@@ -127,11 +127,11 @@ PELVIC_FIN = {
 
 # How finely each model is cut: points round the body, how much longer than the finest rings' steps its rings'
 # steps are, how much of the fins' points, the jaw (rings, points round its keel, points across its hollow), the eye.
-FULL = {"around": 48, "step": 1.5, "fin": 1.0, "jaw": (22, 24, 10), "eye": (24, 7)}
-LOW = {"around": 12, "step": 5.0, "fin": 0.3, "jaw": (6, 8, 3), "eye": (8, 2)}
+FULL = {"around": 48, "step": 1.5, "fin": 1.0, "jaw": (22, 24, 10), "eye": (24, 7), "gill": (16, 6, 3, 10)}
+LOW = {"around": 12, "step": 5.0, "fin": 0.3, "jaw": (6, 8, 3), "eye": (8, 2), "gill": (6, 2, 1, 3)}
 # The game model (Claude's, 2026-11-18): the triangles spent where they show (see game_rings and ring_angles).
 GAME = {"around": 20, "squeeze": 0.45, "tol": 0.0025, "most": 0.08, "head": 0.025, "fin": 0.4, "fin_t": 0.3,
-        "per_spine": 2, "jaw": (8, 12, 3), "eye": (24, 2)}
+        "per_spine": 2, "jaw": (8, 12, 3), "eye": (24, 2), "gill": (8, 3, 1, 4)}
 
 
 def extras(m, detail):
@@ -155,6 +155,8 @@ ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 PREVIEW = ARGS[0] if ARGS else ""
 
 BODY, JAW, DORSAL, ANAL, TAIL, PECTORAL, PELVIC, EYE = range(8)
+# (the gill arches, added 2026-11-18)
+GILLS = 8
 TAU = math.tau
 # How far before and behind the jaw's hinge the corner of the mouth runs (as the shader has it).
 CORNER_B = 0.012
@@ -303,6 +305,9 @@ class Mesh:
         # per face: the way it should face
         self.out = []
         self.count = {}
+        # per face: which surface it is in (the full model's throat and gills are a second one)
+        self.surface = []
+        self.current = 0
 
     def add(self, p, uv, part, extra=0.0):
         self.verts.append(p)
@@ -320,6 +325,7 @@ class Mesh:
         if n.dot(out) < 0.0:
             points = tuple(reversed(points))
         self.faces.append(tuple(points))
+        self.surface.append(self.current)
         self.out.append((Vector(out), name))
         self.count[name] = self.count.get(name, 0) + 1
 
@@ -424,7 +430,8 @@ def rings(detail):
 def body(m, detail):
     around = detail["around"]
     grid = []
-    for s in rings(detail):
+    ss = rings(detail)
+    for s in ss:
         row = []
         angles = ring_angles(s, detail) if "squeeze" in detail else None
         for c in range(around):
@@ -432,11 +439,18 @@ def body(m, detail):
             p, inside = body_point(s, angle)
             row.append(m.add(p, (s, 0.5 + 0.5 * math.cos(angle)), BODY, inside))
         grid.append(row)
+    # (the way into the throat: the inner part of the wall behind the mouth is left out)
+    hole = set()
+    if "gill" in detail:
+        hole, loop = throat_hole(ss, around, detail)
+        m.throat_mouth = [grid[r][c] for r, c in loop]
     for r in range(len(grid) - 1):
         # (faces look away from the middle of their own ring: the roof of the mouth looks down)
         centre = sum((m.verts[q].y for q in grid[r] + grid[r + 1])) / (2 * around)
         for c in range(around):
             n = (c + 1) % around
+            if (r, c) in hole:
+                continue
             quad = (grid[r][c], grid[r][n], grid[r + 1][n], grid[r + 1][c])
             middle = sum((m.verts[q] for q in quad), Vector()) * 0.25
             if sum(m.data[q][1][0] for q in quad) > 1.0:
@@ -664,6 +678,134 @@ def skin_side(s, y):
     return abs(full_point(s, angle_of(s, y))[0])
 
 
+# --- the throat and the gills (added 2026-11-18) ---------------------------------------------------------------
+# The user: "The fish need modeled gills as well, well for relevant fish, so like when it opens its mouth wide you
+# can see them". Until then the mouth ended in a dark wall: behind the roof of the mouth the skin of the underside
+# came back down to the belly. Now the inner part of that wall is left out (`throat_hole`: from the last ring ahead
+# of it, which is the roof, back to a ring between 0.15 and 0.6 of the way down it, and not right up to the lips),
+# and a THROAT runs on from the hole: a short tunnel as wide and as high as the hole (inside the mouth, UV2.x 1, so
+# the shader draws it the mouth's colour; flat shaded) back to a little ahead of the gill cover's edge, closed there
+# by a dark wall. In it stand four GILL ARCHES a side (part GILLS): each a curved sheet from the floor of the throat up
+# its side, pale rakers on its inner edge, a bar, then a fringe of filaments leaning back to the wall (UV.x 0 the
+# rakers' edge to 1 the filaments'; UV.y the arch's number, 0 the first, plus how far up it, 0 to 1). All of it is
+# inside the head: with the mouth shut nothing of it is seen but, through the small gap at the very front of the
+# shut lips, the dark end of the throat in place of the dark wall. On the full model the throat and the gills are a
+# second surface of their own. (As the shader has it: where the throat's rings run, the THROAT line the build
+# prints.)
+
+
+def throat_hole(ss, around, detail):
+    """Which of the body's faces (ring, point) are left out as the way into the throat, and the loop of points round
+    the hole (ring, point), in order."""
+    r0 = max(i for i, s in enumerate(ss) if s <= HINGE[0] - CORNER_B + 1e-6)
+    # (as far down the wall as a ring goes up to 0.6 of the way, but at least to the first ring 0.15 down)
+    r1 = max([min(i for i, s in enumerate(ss) if wall_blend(s) >= 0.15)]
+             + [i for i, s in enumerate(ss) if wall_blend(s) <= 0.6])
+    s0 = ss[r0]
+    am = angle_of(s0, mouth_y(s0))
+    angles = ring_angles(s0, detail) if "squeeze" in detail else [c / around * TAU for c in range(around)]
+    # (not right up to the lips: through the corners of the shut mouth the old wall is still what is seen)
+    c0 = min(c for c in range(around) if angles[c] > am + 0.35)
+    c1 = max(c for c in range(around) if angles[c] < TAU - am - 0.35)
+    hole = {(r, c) for r in range(r0, r1) for c in range(c0, c1)}
+    loop = ([(r0, c) for c in range(c0, c1 + 1)] + [(r, c1) for r in range(r0 + 1, r1 + 1)]
+            + [(r1, c) for c in range(c1 - 1, c0 - 1, -1)] + [(r, c0) for r in range(r1 - 1, r0, -1)])
+    return hole, loop
+
+
+def wall_blend(s):
+    """How far down from the roof of the mouth to the belly the wall behind the mouth has come at `s` (as
+    body_point has it)."""
+    return smooth(HINGE[0] - CORNER_B, HINGE[0] + CORNER_C, s)
+
+
+def throat_span():
+    """Where the throat's own rings start (just behind the hole) and where it ends."""
+    return HINGE[0] + 0.5 * (CORNER_C - CORNER_B) + 0.01, GILL[0] - 0.035
+
+
+def throat(m, detail):
+    """The tunnel: from the loop round the hole in the wall, rings (each an oval as wide and as high as the hole) back
+    to its end, faces looking in at its middle line, a dark wall at its end."""
+    _, count, _, _ = detail["gill"]
+    s_a, s_b = throat_span()
+    mouth = m.throat_mouth
+    yl = sum(m.verts[q].y for q in mouth) / len(mouth)
+    # (the tunnel is as wide and as high as the way into it, so that what stands in it is seen through it)
+    ys = [m.verts[q].y for q in mouth]
+    m.throat_shape = (0.9 * max(abs(m.verts[q].x) for q in mouth), 0.5 * (max(ys) + min(ys)),
+                      0.45 * (max(ys) - min(ys)))
+    # (each point of the loop goes to the place as far round the throat's section as it is round the loop, so that
+    # no face of the first stretch is folded)
+    ps = [m.verts[q] for q in mouth]
+    n = len(ps)
+    steps = [(ps[(k + 1) % n] - ps[k]).length for k in range(n)]
+    whole = sum(steps)
+    area = sum(ps[k].x * ps[(k + 1) % n].y - ps[(k + 1) % n].x * ps[k].y for k in range(n))
+    way = 1.0 if area > 0.0 else -1.0
+    first = math.atan2(ps[0].y - yl, ps[0].x)
+    turns = []
+    gone = 0.0
+    for k in range(n):
+        turns.append(first + way * TAU * gone / whole)
+        gone += steps[k]
+    rows = [(mouth, yl)]
+    for i in range(count):
+        s = s_a + (s_b - s_a) * i / max(1, count - 1)
+        hw, yc, hh = m.throat_shape
+        row = [m.add(Vector((hw * math.cos(a), yc + hh * math.sin(a), s - 0.5)), (s, 0.5 + 0.5 * math.sin(a)),
+                     BODY, 1.0) for a in turns]
+        rows.append((row, yc))
+    n = len(mouth)
+    for i in range(count):
+        ra, ya = rows[i]
+        rb, yb = rows[i + 1]
+        for k in range(n):
+            j = (k + 1) % n
+            quad = (ra[k], ra[j], rb[j], rb[k])
+            middle = sum((m.verts[q] for q in quad), Vector()) * 0.25
+            out = Vector((-middle.x, 0.5 * (ya + yb) - middle.y, 0.0))
+            # (two triangles, cut along whichever diagonal leaves them least folded against each other: the first
+            # stretch's faces are far from flat)
+            p = [m.verts[q] for q in quad]
+            cuts = []
+            for tris in (((0, 1, 2), (0, 2, 3)), ((0, 1, 3), (1, 2, 3))):
+                ns = [(p[t[1]] - p[t[0]]).cross(p[t[2]] - p[t[0]]) for t in tris]
+                if min(x.length for x in ns) < 1e-14:
+                    continue
+                cuts.append((ns[0].normalized().dot(ns[1].normalized()), tris))
+            if not cuts:
+                continue
+            for t in max(cuts)[1]:
+                m.face(tuple(quad[q] for q in t), out, "throat")
+    row, yc = rows[-1]
+    end = m.add(Vector((0.0, yc, s_b + 0.003 - 0.5)), (s_b, 0.5), BODY, 1.0)
+    for k in range(n):
+        m.face((end, row[k], row[(k + 1) % n]), Vector((0.0, 0.0, -1.0)), "throat end")
+
+
+def gills(m, detail):
+    """Four gill arches a side, standing in the throat."""
+    _, _, nt, nu = detail["gill"]
+    s_a, s_b = throat_span()
+    lean = 0.05 * (s_b - s_a)
+    for sx in (1.0, -1.0):
+        for k in range(4):
+            s = s_a + (s_b - s_a) * (0.3 + 0.15 * k)
+            hw, yc, hh = m.throat_shape
+
+            def point(t, u, s=s, hw=hw, yc=yc, hh=hh, sx=sx):
+                a = math.radians(-82.0 + 156.0 * u)
+                wall = Vector((sx * hw * 0.95 * math.cos(a), yc + hh * 0.95 * math.sin(a), 0.0))
+                inner = Vector((sx * hw * 0.55 * math.cos(a), yc + hh * 0.7 * math.sin(a), 0.0))
+                p = inner + (wall - inner) * t
+                p.z = s - 0.5 + lean * t
+                return p
+
+            blade(m, GILLS, "gills", point, lambda p: p, Vector((0.0, 0.0, 1.0)), 0.006, lin(nt), lin(nu),
+                  uv=lambda t, u, k=k: (t, k + u))
+
+
 def make(name, detail):
     prepare()
     m = Mesh()
@@ -682,6 +824,10 @@ def make(name, detail):
         paired_fin(m, PECTORAL, "pectorals", pectoral, sx, detail)
         paired_fin(m, PELVIC, "pelvics", pelvic, sx, detail)
     extras(m, detail)
+    # the throat and the gills, last: on the full model a second surface of their own
+    m.current = 0 if name.endswith(("_lo", "_game")) else 1
+    throat(m, detail)
+    gills(m, detail)
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([to_b(p * LENGTH) for p in m.verts], [], m.faces)
     # (every layer made first, then each looked up by name: making one moves the others)
@@ -700,8 +846,18 @@ def make(name, detail):
     bsdf.inputs["Base Color"].default_value = COLOUR
     material.diffuse_color = COLOUR
     mesh.materials.append(material)
+    if any(m.surface):
+        inner = bpy.data.materials.get(NAME + "_throat") or bpy.data.materials.new(NAME + "_throat")
+        inner.diffuse_color = (0.3, 0.05, 0.06, 1.0)
+        mesh.materials.append(inner)
+        for poly in mesh.polygons:
+            poly.material_index = m.surface[poly.index]
     for poly in mesh.polygons:
         poly.use_smooth = True
+    # (the throat is flat shaded: its first stretch, from the hole in the wall to its round section, turns sharply)
+    for poly in mesh.polygons:
+        if m.out[poly.index][1] in ("throat", "throat end"):
+            poly.use_smooth = False
     sharp_creases(mesh, m)
     mesh.update()
     obj = bpy.data.objects.new(name, mesh)
@@ -724,7 +880,7 @@ def sharp_creases(mesh, m):
     """The edges where the roof of the mouth meets the lips, and the jaw's hollow its skin, are sharp: their
     points are split, so that each side keeps its own normal (one smooth normal across such a fold points
     the wrong way for some of the faces beside it)."""
-    creases = (("roof", "body"), ("jaw hollow", "jaw"))
+    creases = (("roof", "body"), ("jaw hollow", "jaw"), ("throat", "roof"), ("throat", "body"))
     owner = {}
     for poly in mesh.polygons:
         for key in poly.edge_keys:
@@ -805,6 +961,8 @@ def build(name, folder):
     export_one(game, os.path.join(OUT, name + "_game.glb"))
     game.location.x = 2.0 * LENGTH
     eye_report(name)
+    s_a, s_b = throat_span()
+    print("THROAT %s: its rings from s %.4f to %.4f" % (name, s_a, s_b))
     return full, low
 
 

@@ -99,6 +99,36 @@ vec4 cartoon_eye(vec3 p, vec3 skin) {
 	c = mix(c, vec3(0.01, 0.01, 0.015), line * 0.85 * step(r, 0.9));
 	return vec4(c, lid);
 }
+
+// The gills (added 2026-11-18; the user: "The fish need modeled gills as well, well for relevant fish, so like when
+// it opens its mouth wide you can see them"). The model has a short throat inside the head, its floor just above
+// the rear of the roof of the mouth, lined with four gill arches a side (part 7: UV.x the kind, 0 the throat's
+// wall, 1 a bar, 2 its filaments, 3 its rakers, plus a tenth of the arch's number; UV.y how deep; UV2.x how far
+// along the arch). While the mouth is open, the roof is cut open over the throat (THROAT_HOLE: its middle and half
+// length along the body, metres behind the snout's tip, its half width, and the height below which the skin there
+// is the roof), the arches spread a little and the gill covers lift (COVER_FLARE metres at their rear edge, over
+// COVER_BAND metres ahead of it), red filaments showing in the gap. With the mouth shut nothing of it changes.
+const vec2 THROAT_HOLE = vec2(1.1925, 0.0225);
+const float THROAT_HOLE_W = 0.026;
+const float THROAT_HOLE_Y = 0.06;
+const float COVER_BAND = 0.12;
+const float COVER_FLARE = 0.015;
+const float ARCH_SPREAD = 0.006;
+uniform vec3 gill_red : source_color = vec3(0.62, 0.04, 0.06);
+uniform vec3 gill_raker : source_color = vec3(0.86, 0.8, 0.72);
+
+// (the edge of the gill cover, as gill_x has it)
+float gill_edge(float y) {
+	return 1.43 - 1.5 * (y + 0.02) * (y + 0.02);
+}
+
+// (how much of the gill cover's lift a point of the skin takes: its rear band, the lower and middle of the side)
+float cover_lift(vec3 p, float high) {
+	float c = high * 2.0 - 1.0;
+	float ahead = gill_edge(p.y) - (p.z + HALF);
+	float mask = smoothstep(-0.95, -0.8, c) * (1.0 - smoothstep(0.4, 0.6, c));
+	return step(0.0, ahead) * (1.0 - smoothstep(0.0, COVER_BAND, ahead)) * mask;
+}
 // How widely it beats, for 1 as a swordfish cruising (its tail tips swing about 0.29 m either way).
 uniform float sway = 1.0;
 // How long the wave along its body is, in body lengths (the body: lower jaw to tail).
@@ -164,8 +194,17 @@ void vertex() {
 	rest = VERTEX;
 	rest_normal = NORMAL;
 	vec3 v = VERTEX;
-	if (part > 5.5) {
+	if (part > 5.5 && part < 6.5) {
 		eye_vertex(v);
+	}
+	if (gape > 0.0 && part < 0.5) {
+		// the gill cover lifts as the mouth opens
+		v.x += sign(v.x) * clamp(gape, 0.0, 1.0) * COVER_FLARE * cover_lift(v, UV.y);
+	}
+	if (gape > 0.0 && part > 6.5 && UV.x > 0.5) {
+		// the gill arches spread a little
+		float arch = floor(fract(UV.x + 0.001) * 10.0 + 0.5);
+		v.z += clamp(gape, 0.0, 1.0) * ARCH_SPREAD * (arch - 1.5);
 	}
 	vec3 n = NORMAL;
 	if (part > 2.5 && part < 3.5) {
@@ -202,6 +241,13 @@ float gill_x(float y) {
 
 void fragment() {
 	int p = int(part + 0.5);
+	if (p == 0 && gape > 0.0) {
+		// (the rear of the roof of the mouth opens onto the throat while the mouth is open)
+		vec2 hole = vec2((rest.z + HALF - THROAT_HOLE.x) / THROAT_HOLE.y, rest.x / THROAT_HOLE_W);
+		if (rest.y < THROAT_HOLE_Y && dot(hole, hole) < 1.0) {
+			discard;
+		}
+	}
 	float glance = 1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0);
 	vec3 c;
 	float rough = 0.4;
@@ -263,6 +309,22 @@ void fragment() {
 		c = mix(below, above, smoothstep(-0.15, 0.15, rest_normal.y)) * (0.85 + 0.15 * ray);
 		rough = 0.55;
 		spec = 0.3;
+	} else if (p == 7) {
+		// The throat and the gills: a dark throat, blood-red bars and filaments (fine ones across them), pale
+		// rakers, all darker deeper in.
+		float kind = floor(UV.x + 0.01);
+		if (kind < 0.5) {
+			c = mix(mouth, gill_red * 0.3, 0.6);
+		} else if (kind < 1.5) {
+			c = gill_red * 0.9;
+		} else if (kind < 2.5) {
+			c = gill_red * (0.85 + 0.45 * pow(abs(cos(UV2.x * 90.0)), 3.0));
+		} else {
+			c = gill_raker;
+		}
+		c *= mix(1.0, 0.6, clamp(UV.y, 0.0, 1.0));
+		rough = 0.3;
+		spec = 0.55;
 	} else {
 		// An eye: very large, a big blue-black pupil, a pale iris, a dark rim.
 		float r = UV.x;
@@ -277,6 +339,14 @@ void fragment() {
 			rough = mix(rough, mix(0.1, 0.5, toon.a), cartoon_eyes);
 			spec = mix(spec, mix(0.7, 0.4, toon.a), cartoon_eyes);
 		}
+	}
+	if (p == 0 && gape > 0.0) {
+		// (under the lifted gill cover: red filaments in the gap)
+		float behind = rest.z + HALF - gill_edge(rest.y);
+		float c2 = UV.y * 2.0 - 1.0;
+		float mask = smoothstep(-0.95, -0.8, c2) * (1.0 - smoothstep(0.4, 0.6, c2));
+		float gap = (1.0 - smoothstep(0.0, COVER_BAND * 0.25, abs(behind - COVER_BAND * 0.05))) * mask * smoothstep(0.0, 0.3, gape);
+		c = mix(c, gill_red * (0.55 + 0.45 * pow(abs(cos(rest.y * 600.0)), 2.0)), gap);
 	}
 	ALBEDO = c;
 	ROUGHNESS = rough;

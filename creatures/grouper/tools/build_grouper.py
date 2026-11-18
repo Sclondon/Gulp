@@ -9,7 +9,7 @@ It writes creatures/grouper/models/grouper.glb (the full model), grouper_lo.glb 
 them) and grouper_game.glb (the game model: Twilight Princess weight, its triangles spent on the outline, the eye
 and the mouth; built from the same lines with fewer, better placed rings and points), and the editable
 creatures/grouper/tools/grouper.blend holding all three (this folder has a .gdignore). Each
-model is one still mesh with one surface: the shader (grouper.gdshader) bends it to swim, works its mouth and
+model is one still mesh with one surface (the full model two: its throat and gills the second): the shader (grouper.gdshader) bends it to swim, works its mouth and
 fins, and draws every marking. It prints a WINDING line for each model (the check that nothing is inside out),
 SHAPE and EYE lines (the numbers the shader and the script share) and CLEARANCE lines (the paired fins against the body).
 With a preview folder it also renders the models from every side. --game-only exports the game model alone,
@@ -32,10 +32,18 @@ How it is put together (the method is the sockeye salmon's, GameCommon godot/soc
   forward as the mouth opens), EYES, and the FINS, thin closed solids with their rays as ridges: a spiny first
   dorsal (its edge cut in between the spines; the shader can fold it), a soft second dorsal, the tail, the anal
   fin, and a pair each of pelvic fins (under the pectorals, as a bass has them) and big round pectoral fins.
+- THE THROAT AND THE GILLS (added 2026-11-18): a short tunnel, the throat, from the back of the mouth to
+  ahead of the gill covers' edge, seen from inside (its faces turned inward), and in it four gill arches a
+  side: curved bars with a fringe of filaments behind and gill rakers in front. Shut, all of it lies inside the
+  head and the lower jaw; as the mouth opens the shader raises the middle of the back of the roof, drops the
+  floor and parts the skin at the back of the mouth, so that the throat and the arches show. On the full model
+  they are its second surface (its first is as it was before them); the game and low models are one surface.
 
 What a point is, for the shader: vertex colour red the part, as a tenth (0 body, 0.1 lower jaw, 0.2 eye, 0.3
 maxilla, 0.4 spiny dorsal, 0.5 soft dorsal, 0.6 tail, 0.7 anal, 0.8 pelvic, 0.9 pectoral, 1.0 the mouth's side
-skin). On the body: UV.x how far along the fish (0 the jaw's tip to 1 the tail's tip), UV.y how high on it (0
+skin; 0.04 a gill arch, read as part 11: a glTF colour is one byte and cannot go past 1.0). The throat is the
+body's code with blue 1 and UV2.y 0 (UV.x along the fish, UV.y 1). On a gill arch UV.x is 0 at the rakers, about
+0.35 on the bar and 1 at the filaments' tips, UV.y the arch's number plus how far along it (0 low, 1 high). On the body: UV.x how far along the fish (0 the jaw's tip to 1 the tail's tip), UV.y how high on it (0
 bottom line to 1 back line); UV2.x how far round the skin from the back line (metres, + on its right side, - on
 its left), UV2.y the whole way from back line to belly line there; green how much of the gill cover's moving edge
 it is, blue how much it is the roof of the mouth. On the jaw: UV as the body's (where it is when shut) but UV.y
@@ -116,7 +124,7 @@ SP = {
 # rows; maxillae: stations, around; eyes: rows, around (enough to stay round as a cartoon eye); the fins: rows out
 # along the rays, and points along each fin's edge per ray (2 where the edge is cut in between the rays).
 GAME = {
-    "body": (16, 12, 10), "jaw": (13, 5), "membrane": (6, 3), "maxilla": (8, 6), "eye": (3, 24), "fin_rows": {"pectoral": 2},
+    "body": (15, 11, 10), "jaw": (12, 5), "membrane": (5, 3), "maxilla": (7, 6), "eye": (3, 24), "fin_rows": {"pectoral": 2},
     "per_ray": {"dorsal_spiny": 2, "dorsal_soft": 0.75, "tail": 2, "anal": 0.7, "pelvic": 1, "pectoral": 0.7},
 }
 
@@ -125,6 +133,11 @@ GILL_S = SP["gill_s"]
 GAPE_MAX = SP["gape_max"]
 JAW_TIP = SP["chin"][0][0]
 GAME_LEVEL = "game"
+# The throat (a short tunnel back from the mouth to the gills) ends a little ahead of the gill cover's edge.
+THROAT_END = GILL_S - 0.03
+# The gill arches' code: the part number as a tenth cannot go past 1.0 (the glTF colour is one byte, it wraps),
+# so the arches are COLOR.r 0.04, which the shader reads as part 11.
+GILL_CODE = 0.04
 
 
 def by(low, full, lo, game):
@@ -339,11 +352,15 @@ class Part:
     """One closed piece of the fish: points (body lengths), what each is for the shader, and four-cornered
     faces. `done` welds it, turns every face outward and checks that."""
 
-    def __init__(self, name):
+    def __init__(self, name, inward=False, extra=False):
         self.name = name
         self.verts = []
         self.data = []
         self.faces = []
+        # (`inward`: a hollow seen from inside, the throat: its faces are turned inward once checked; `extra`:
+        # added 2026-11-18, in the full model's second surface so that its first stays as it was)
+        self.inward = inward
+        self.extra = extra
 
     def add(self, p, uv, uv2, colour):
         self.verts.append(Vector(p))
@@ -357,7 +374,7 @@ class Part:
                 self.faces.append((a[j], a[(j + 1) % n], b[(j + 1) % n], b[j]))
 
     def mirrored(self, name, flip):
-        other = Part(name)
+        other = Part(name, self.inward, self.extra)
         for p, d in zip(self.verts, self.data):
             other.add((-p.x, p.y, p.z), *flip(d))
         other.faces = list(self.faces)
@@ -425,6 +442,9 @@ class Part:
             bmesh.ops.reverse_faces(bm, faces=bm.faces)
             bm.normal_update()
             wrong, counted = self.inside_out(bm)
+        if self.inward:
+            bmesh.ops.reverse_faces(bm, faces=bm.faces)
+            bm.normal_update()
         out = []
         for f in bm.faces:
             out.append([(loop.vert.co.copy(), tuple(loop[uv].uv), tuple(loop[uv2].uv), tuple(loop[colour]))
@@ -580,6 +600,117 @@ def eye(low):
                            (0.0, 1.0), (EYE / 10.0, 0.0, 0.0)) for k in range(around)])
     part.loft(rings)
     return part
+
+
+THROAT_FROM = HINGE_S - 0.025
+# How far the middle of the roof of the mouth rises, and the floor (the lower jaw's top) drops, at the back of the
+# mouth as it opens wide (the shader's ROOF_LIFT and FLOOR_DROP), opening the way into the throat (body lengths).
+ROOF_LIFT = 0.3 * BODY_SKIN.at(HINGE_S)[2]
+FLOOR_DROP = 0.36 * BODY_SKIN.at(HINGE_S)[2]
+
+
+def throat_shape(s):
+    """The throat at s (added 2026-11-18): the height of its middle, its half width and its half height (body
+    lengths). It runs back from just ahead of the jaw's hinge, between the roof of the mouth raised by ROOF_LIFT
+    and its floor dropped by FLOOR_DROP (as the shader moves them when the mouth is open), narrowing to its end
+    ahead of the gill covers' edge. Shut, it lies wholly inside the head and the lower jaw."""
+    u = max(0.0, min(1.0, (s - THROAT_FROM) / (THROAT_END - THROAT_FROM)))
+    wide0 = BODY_SKIN.at(HINGE_S)[2]
+    roof = BODY_SKIN.bot(HINGE_S)
+    top = roof + ROOF_LIFT - 0.001
+    floor = roof - FLOOR_DROP - 0.006
+    high = (top - floor) * 0.5 * lerp(1.0, 0.8, u)
+    mid = (top + floor) * 0.5 - 0.004 * u
+    wide = lerp(0.55 * wide0, 0.4 * BODY_SKIN.at(THROAT_END)[2], u)
+    return mid, wide, high
+
+
+def throat_wall(s, q, k=1.0):
+    """A point on the throat's wall at s, `q` radians round from its right side (up first), `k` of the way out
+    from its middle: a rounded box in front (to fill the opening at the back of the mouth), an oval behind."""
+    mid, wide, high = throat_shape(s)
+    u = max(0.0, min(1.0, (s - THROAT_FROM) / (THROAT_END - THROAT_FROM)))
+    n = lerp(3.5, 2.2, u)
+    c, sn = math.cos(q), math.sin(q)
+    return Vector((wide * k * math.copysign(abs(c) ** (2.0 / n), c), mid + high * k * math.copysign(abs(sn) ** (2.0 / n), sn),
+                   s - 0.5))
+
+
+def throat(low):
+    """The throat: a short tunnel from the back of the mouth to the gill arches, closed at both ends, seen from
+    inside (its faces turned inward: from the mouth its front end is not seen and its back end is the dark end of
+    the tunnel). The body's code with blue 1, the mouth's inside, which the shader darkens the deeper it goes;
+    UV.y 1 keeps it out of the upper lip's push."""
+    part = Part("throat", inward=True, extra=True)
+    rings_n = by(low, 12, 3, 4)
+    around = by(low, 20, 6, 8)
+    s0, s1 = THROAT_FROM, THROAT_END
+    places = [s0] + [lerp(s0, s1, i / rings_n) for i in range(rings_n + 1)] + [s1]
+    rings = []
+    for i, s in enumerate(places):
+        mid, wide, high = throat_shape(s)
+        k = 0.0 if i in (0, len(places) - 1) else 1.0
+        ring = []
+        for j in range(around):
+            q = TAU * j / around
+            ring.append(part.add(throat_wall(s, q, k), (s, 0.0),
+                                 (0.0, 1.0), (BODY / 10.0, 0.0, 1.0)))
+        rings.append(ring)
+    part.loft(rings)
+    return part
+
+
+def gills(low):
+    """Four gill arches on the right side of the throat (the left are their mirror picture), each one closed
+    piece swept along a curve from low in the throat round its side up under its roof, its top leaning back:
+    a curved bar (blood red) with a fringe of filaments behind it reaching out and back to the throat's wall
+    (deep red), and gill rakers along its front reaching in towards the middle (pale). UV.x: 0 the rakers, about
+    0.35 the bar, 1 the filaments' tips; UV.y the arch's number plus how far along it (0 low, 1 high). COLOR.r
+    GILL_CODE. On the full model the filaments and rakers are toothed; the low model's arches are three-sided."""
+    made = []
+    steps = by(low, 16, 3, 4)
+    # (the cross-section, in the bar's radius: across, outward from the throat's middle line; along, back. None
+    # for the filaments' tip, worked out from the throat's wall; and each point's UV.x)
+    section = by(low,
+                 [((-1.0, -0.2), 0.0), ((-0.5, -0.9), 0.2), ((0.5, -0.9), 0.35), ((1.0, -0.2), 0.5), (None, 1.0),
+                  ((0.6, 0.9), 0.6), ((-0.6, 0.8), 0.3)],
+                 [((-1.0, 0.0), 0.1), ((0.5, -0.8), 0.35), (None, 1.0)],
+                 [((-1.0, 0.0), 0.0), ((0.6, -0.8), 0.35), (None, 1.0), ((0.0, 0.9), 0.4)])
+    _, _, high0 = throat_shape(HINGE_S)
+    bar = 0.1 * high0
+    for k in range(4):
+        part = Part("gill_%d" % k, extra=True)
+        s_k = lerp(HINGE_S, THROAT_END, 0.3 + 0.15 * k)
+        rings = []
+        for i in range(steps + 1):
+            t = i / steps
+            q = lerp(-1.25, 1.15, t)
+            s = s_k + 0.012 * (t - 0.5)
+            mid, wide, high = throat_shape(s)
+            axis = Vector((0.0, mid, s - 0.5))
+            wall = throat_wall(s, q)
+            out = (wall - axis).normalized()
+            back = Vector((0.0, 0.0, 1.0))
+            centre = axis + (wall - axis) * 0.78
+            # (toothed on the full model: every other step the filaments and the rakers reach less far)
+            tooth = 0.7 if (low is False and i % 2) else 1.0
+            ends = 0.0 if i in (0, steps) else 1.0
+            ring = []
+            for at, u in section:
+                if at is None:
+                    p = axis + (wall - axis) * lerp(0.78, 1.03, tooth) + back * (1.5 * bar * tooth)
+                else:
+                    a, b = at
+                    if u == 0.0:
+                        a *= 1.0 + 0.8 * tooth
+                    p = centre + out * (a * bar) + back * (b * bar)
+                p = centre.lerp(p, ends) if ends < 1.0 else p
+                ring.append(part.add(p, (u, 1.0 - (k + t)), (0.0, 1.0), (GILL_CODE, 0.0, 0.0)))
+            rings.append(ring)
+        # (closed at both ends: a ring drawn together to the bar's middle)
+        part.loft(rings)
+        made += [part, part.mirrored("gill_%d_left" % k, same)]
+    return made
 
 
 def fin(name, kind, rays, base, direction, length, normal, thick, low, paired=False, ridge_from=0.0, per_ray=4,
@@ -750,8 +881,12 @@ def make(name, low):
     ball = eye(low)
     parts += [ball, ball.mirrored("eye_left", same)]
     parts += fins(low)
+    # (added 2026-11-18: the throat and the gill arches, last, so that everything before comes out as it did)
+    parts.append(throat(low))
+    parts += gills(low)
 
     verts, faces, corners = [], [], []
+    second = []
     told = []
     wrong_all = 0
     for part in parts:
@@ -764,6 +899,9 @@ def make(name, low):
                 verts.append(co)
                 corners.append((uv, uv2, colour))
             faces.append(list(range(first, first + len(face))))
+            # (the full model keeps the throat and gills in a second surface: its first stays as it was, and
+            # Godot's importer thins it for far off as it did; the game and low models are one surface)
+            second.append(part.extra and low is False)
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(verts, [], faces)
     # (every layer made first, then each looked up by name: making one moves the others)
@@ -787,6 +925,12 @@ def make(name, low):
     bsdf.inputs["Base Color"].default_value = (0.62, 0.62, 0.52, 1.0)
     material.diffuse_color = (0.62, 0.62, 0.52, 1.0)
     mesh.materials.append(material)
+    if any(second):
+        inside = bpy.data.materials.get("fish_throat") or bpy.data.materials.new("fish_throat")
+        inside.diffuse_color = (0.35, 0.08, 0.08, 1.0)
+        mesh.materials.append(inside)
+        for poly, extra in zip(mesh.polygons, second):
+            poly.material_index = 1 if extra else 0
     for poly in mesh.polygons:
         poly.use_smooth = True
     mesh.update()
@@ -866,6 +1010,10 @@ def main():
     at, out, _up = body_frame(SP["eye"][0], SP["eye"][1])
     print("EYE %s: EYE_AT=(%.4f, %.4f, %.4f) EYE_OUT=(%.4f, %.4f, %.4f) (the right eye where it stands on the skin, "
           "metres, Godot space; the way out of the skin there)" % ((NAME,) + tuple(at * LENGTH) + tuple(out)))
+    _mid, wide, _high = throat_shape(HINGE_S)
+    print("THROAT %s: THROAT_END=%.4f THROAT_WIDE=%.4f ROOF_LIFT=%.4f FLOOR_DROP=%.4f (body lengths: where the throat "
+          "ends, its half width at the jaw's hinge, how far the roof rises and the floor drops)" % (
+              NAME, THROAT_END, wide, ROOF_LIFT, FLOOR_DROP))
     full = make(NAME, False)
     low = make(NAME + "_lo", True)
     game = make(NAME + "_game", GAME_LEVEL)

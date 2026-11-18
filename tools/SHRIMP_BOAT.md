@@ -26,13 +26,16 @@ the right as the camera sees it:
   sweeping up to a high, flared bow (deck 1.5 m, rail 2.3 m). This sweep is the first thing that says "workboat".
 - A raked stem and a flat **transom** with a short rudder and propeller under it.
 - The **wheelhouse** forward of amidships: a tall white box a step higher than the cabin behind it, with a brow over
-  three front windows and two port side windows; to starboard (the camera's side) one big open window at standing
-  height and the door standing open, hooked back aft, so the captain shows at the wheel; running lights at its front
+  three front windows and two port side windows; to starboard (the camera's side) one wide open doorway-high
+  opening, knee height to the lintel, no door, so the captain shows at the spoked wheel from the knees up; a flat
+  roof trimmed in teal with a small overhang; rust weeping from its corners; running lights at its front
   corners, a searchlight,
-  a horn and a whip aerial on the roof, and a tall black **stack** behind it.
+  a horn and a whip aerial on the roof. A black **stack** with a slanted, aft-turned top stands up through the
+  cabin roof's forward port corner, between the two houses as seen from abeam.
 - The **open cabin** behind it, lower-roofed: from this side a lit box open to the camera, posts at its corners, a
   grab rail on its roof. The computer stands against its far (port) wall.
-- The **mast** rising through the wheelhouse to 9.5 m, a crosstree, and the two **outriggers** raised 65 degrees in a
+- Two bare wooden **masts**: the main mast rising through the wheelhouse to 9.5 m with a crosstree, and a shorter
+  mizzen just aft of the cabin carrying the boom; and and the two **outriggers** raised 65 degrees in a
   V, with the green **nets** hung from their tips to dry, the floats on them, and the otter doors. This V of booms
   and hanging nets is the shrimp boat's signature: it must read even at phone size.
 - A **boom** swung aft over the working deck with a block and hook.
@@ -43,18 +46,26 @@ the close-up.
 
 **Palette** (small, warm and weathered, to sit with the rusted brass computer): weathered white (hull and house,
 uneven from station to station, grimy at the foot of the house and above the waterline), a faded teal stripe under
-a varnished brown rail cap, red-brown bottom paint showing 0.25 m above the water, warm grey-brown deck planks, dark
+a varnished brown rail cap, red-brown bottom paint showing 0.35 m above the water, warm grey-brown deck planks, dark
 bottle-green nets with orange floats, rust brown, black for the stack, tyres and scupper slots, brass for small
 fittings, red and white for the life ring. One spot of green (the starboard running light).
+
+**The hull's planking** (from the concept art): lapped strakes (clinker), each plank's lower edge standing 3 cm
+proud of the one below so a line of shadow runs under every seam: one seam in the bulwark and four between the deck
+and the boot top. Two teal bands: one at the sheer under the rail cap, and one strake low on the side ending in a
+teal rubbing strake. A tall stem head standing up above the rail.
+
+**The open cabin's far (port) wall** inside: upright dark boards, each a different shade, with rusty pipes rising at
+both ends of the wall and a pipe along under the roof (clear of the console's length and above the monitor).
 
 **Wear and repair** (character, kept calm):
 - Rust weeping in thin runs from some scuppers, from the cleats and from the anchor at the bow: white paint tinted
   rust brown at the top, fading into the white (vertex colours on the white).
 - A plank below the stripe renewed and left in red-lead primer.
 - Blank name boards on both bows and across the transom (the name is left off on purpose).
-- Old tyres hung as fenders on ropes from the starboard rail.
+- Two old tyres hung as fenders on ropes from the starboard rail.
 - The deck: planks of different weathered tints, oil and fish stains, one or two new pale planks put in.
-- The wheelhouse door's varnish gone grey; a rust run down one otter door.
+- A rust run down one otter door; rust under the house's opening and roof.
 
 **Deck furniture**, placed so nothing stands between the camera and the cabin: the trawl winch on the middle line
 aft of the cabin, the diver's air pump a little to port of the middle (an old two-cylinder pump in a wooden chest
@@ -77,13 +88,13 @@ keel, so the boat can rock.
 
 | Node | Kind | What it is |
 | --- | --- | --- |
-| `Boat` | MeshInstance3D | everything fixed (12,751 triangles) |
+| `Boat` | MeshInstance3D | everything fixed (14,491 triangles) |
 | `Wheel` | MeshInstance3D | the ship's wheel (rim radius 0.3 m), origin at its hub, Godot (0, 2.016, -3.2): 1.05 m above the deck under CaptainSpot and 0.45 m ahead of it; turns about its local Z, the boat's length (824) |
 | `PumpWheel` | MeshInstance3D | the air pump's crank wheel (radius 0.35 m), origin at its hub, Godot (-0.2, 1.879, 3.5): 1.0 m above the deck under DiverSpot and 0.5 m aft of it; turns about its local X (athwartships); its handle is at radius 0.22 m at the top when unturned, the grip sticking out to starboard (520) |
-| `OutriggerPort` | MeshInstance3D | origin at its hinge (-0.42, 3.65, -1.85), with its net, floats, otter door and lines (2,744) |
-| `OutriggerStarboard` | MeshInstance3D | the same at (0.42, 3.65, -1.85) (2,744) |
+| `OutriggerPort` | MeshInstance3D | origin at its hinge (-0.42, 3.65, -1.85), with its net, floats, otter door and lines (2,216) |
+| `OutriggerStarboard` | MeshInstance3D | the same at (0.42, 3.65, -1.85) (2,216) |
 
-Total **19,583 triangles**. Both outriggers are raised 65 degrees; they turn about their local Z. Their lines
+Total **20,267 triangles**. Both outriggers are raised 65 degrees; they turn about their local Z. Their lines
 (topping lift, guys, door line) are in their own objects and only look right at the built angle.
 
 **Markers** (Node3D). Each marker's -Z is the way it faces.
@@ -166,17 +177,42 @@ abeam. Nothing needed changing after it.
 Earlier first build (2026-11-17/18, camera aft): the bow's raked stem pushed the outer skin inside the bulwarks (63
 faces inside out); fixed by raking the stem below the deck only. The glass was made see-through so the wheel shows.
 
+**Concept-art passes** (2026-11-18; target: `tools/art_src/concept_boat.jpg`, the boat broadside from starboard
+under way, read beside the title view rendered with stand-ins, over a grey sky and dark sea like the picture's).
+What was taken from the picture: the clinker planking, the second teal band and rubbing strake, the thicker bottom
+paint, the tall stem head, the wide open side of the wheelhouse (the door is gone), the teal roof trims, rust at the
+house's corners, the dark board wall with pipes in the cabin, the black stack with a slanted top standing through
+the cabin roof, bare wooden spars (main mast, outriggers, boom) and a second (mizzen) mast aft of the cabin with the
+boom on it, a net swagged with floats from the boom's end to the starboard quarter, two bigger tyres hung lower, and
+a more muted palette (greyer white, duller teal and bottom paint, darker nets). Kept as they were: every marker,
+node, hub and axis (the game's `scripts/fishers.gd` also loads this model).
+- Concept pass 1 found: no plank lines showed (laps of 1.6 cm and three seams were too fine); the bottom paint too
+  thin; the lower teal band too low; the rust runs read as pale picket teeth; one tyre too many and the tyres small.
+  Changed: laps to 3 cm, five seams with grime in their shadows, boot top raised to 0.35 m, the teal strake moved up
+  a plank, two tyres, bigger and lower, more rust runs along the starboard rail; nets cut from 14 to 10 sides and the
+  foredeck planks lengthened to pay for it (about 20,300 triangles in all).
+- Concept pass 2 found: the rust runs still showed as pale wedges.
+- Concept pass 3 found the cause: each run is its own slab with its own shading, so a run fading to white looked
+  brighter than the weathered hull around it. Changed: runs are narrower and fade to a pale rust instead of white;
+  they now read as brown drips.
+
+Still different from the concept (left as they are): the concept's boat is shorter and stubbier, with a much higher
+freeboard aft, and its nets hang as wide flat swags rather than bundles (our outrigger nets stay bundled bags so
+they read from below and at phone size); its wheelhouse has a single flat roof with the cabin, ours steps down; its
+rust is heavier and painted as streaks across every plank, ours is a handful of drips; no bow net is draped (the
+foredeck stays clear); the concept's people and computer are the main session's.
+
 ## Checked
 
-- Inside-out faces in Blender: every one of the 580 closed parts on its own; a ray out of each triangle (from three
-  points of it) must leave the part's skin an even number of times. 0 of 19,583 face inwards (`INSIDE-OUT PASSED`).
+- Inside-out faces in Blender: every one of the 539 closed parts on its own; a ray out of each triangle (from three
+  points of it) must leave the part's skin an even number of times. 0 of 20,267 face inwards (`INSIDE-OUT PASSED`).
 - In Godot after `--import`, read back from the .glb: winding agrees with the normals on 100% of triangles and every
   mesh encloses a positive volume; node names and classes as above (no import-hint suffixes); markers face as listed;
-  COLOR_0 on every surface; 19,583 triangles.
+  COLOR_0 on every surface; 20,267 triangles.
 
 ## Not verified
 
-- Never seen in the game, with the game's water, lighting or post shader, or on a phone (19.6k triangles and blended
+- Never seen in the game, with the game's water, lighting or post shader, or on a phone (20.3k triangles and blended
   glass panes).
 - The real figures, console, monitor and helmet have not stood at the markers; only boxes and cylinders (boy 1.2 m,
   adults 1.8 m) did. From the title camera the bulwark hides the people's legs below the knee.
@@ -195,7 +231,7 @@ door or bow, diver aft by the pump, all facing as listed), the camera places, th
 Mine (change freely): the whole design sheet above (palette, the wear and where it is, tyre fenders, name boards
 left blank, the hatch, the running lights, aerial, brow and roof rail), the wheelhouse a step higher than the cabin,
 the low aft bulwark (0.45 m), the mast stepped inside the wheelhouse, the starboard door hauled up high and its net
-hauled up short (the port ones hang low), the helm on the middle line with the big open window and the door hooked open aft, the pump
+hauled up short (the port ones hang low), the helm on the middle line behind the wide open side, the pump
 chest to port of its crank wheel, the stowed anchor on the foredeck, the tyres left hanging, where the
 winch, pump, hatch, rope, crates and baskets stand, the see-through glass. The brief once asked for the bow on
 Blender -Y "so in Godot the bow points to -Z"; those two disagree, so the bow is on Blender +Y to get the Godot result.

@@ -25,7 +25,8 @@ component's README):
   rimmed ones over the eyes.
 
 What a point is, for the shader: vertex colour red the part (0 skin, 0.2 inside the mouth, 0.4 a tooth, 0.6
-an eye, 0.8 a hole: the inside of a nostril); green how much it swings with the lower jaw (0..1); blue how far
+an eye, 0.8 a hole: the inside of a nostril, 1 the throat and gills: blue 0 the throat's wall, 0.5 a gill arch, on
+which UV.x is along it and UV.y from its rakers' edge (0) to the wall (1)); green how much it swings with the lower jaw (0..1); blue how far
 out on the fin it is (0 the body, 1 the fin's edge). UV.x round the body (0 at the right corner of the mouth,
 over the back to 0.5 at the left, under the belly to 1), UV.y how far along (0 snout, 1 tail tip); on an eye
 UV.y is 0 at the middle of the pupil to 1 at its rim under the skin, on a tooth 0 its root to 1 its point.
@@ -55,7 +56,12 @@ HINGE_Y = -0.007
 EYE_AT = 0.055
 GILL_AT = 0.26
 
-SKIN, MOUTH_IN, TOOTH, EYE, HOLE = 0.0, 0.2, 0.4, 0.6, 0.8
+SKIN, MOUTH_IN, TOOTH, EYE, HOLE, GILL = 0.0, 0.2, 0.4, 0.6, 0.8, 1.0
+# The throat: a short tunnel from the back of the mouth (which is left open for it, not closed to a crease) back
+# past the four gill arches each side to a cap; how open the back of the mouth is kept (of the mouth's depth).
+THROAT_TO = 0.27
+ARCHES = (0.165, 0.19, 0.215, 0.24)
+OPEN_BACK = 0.55
 
 
 def to_b(p):
@@ -268,7 +274,7 @@ def body(m, low):
             ix = sx - dx
             lips.append([m.v(ix, sy + dy, s, 0.0, v), m.v(-ix, sy + dy, s, 0.5, v),
                          m.v(ix, sy - dy, s, 1.0, v, SKIN, 1.0), m.v(-ix, sy - dy, s, 0.5, v, SKIN, 1.0)])
-            fade = smooth(0.0, 0.035, MOUTH - s)
+            fade = max(smooth(0.0, 0.035, MOUTH - s), OPEN_BACK)
             high = min(0.45 * TOP(s), 0.016) * fade
             deep = min(0.45 * BOT(s), 0.014) * fade
             row_up = []
@@ -309,7 +315,89 @@ def body(m, low):
     y = 0.5 * (m.verts[upper[last][nb + nf]].y + m.verts[lower[last][nb + nf]].y)
     pole = m.v(0.0, y, LENGTH, 0.25, 1.0, SKIN, 0.0, 1.0)
     m.fan(pole, upper[last] + lower[last][1:], "skin_tail", -front)
-    return rings, lips, palate
+    return rings, lips, palate, floor
+
+
+def throat(s):
+    """The throat at `s`: its middle's height, how far its roof and floor are from it, and its half width.
+    It starts as the back of the mouth is and narrows to the gills, then closes in a cap."""
+    open_s = MOUTH
+    wide0 = WIDE(open_s) * math.sin(seam_angle(open_s))
+    high0 = min(0.45 * TOP(open_s), 0.016) * OPEN_BACK
+    deep0 = min(0.45 * BOT(open_s), 0.014) * OPEN_BACK
+    t = smooth(open_s, ARCHES[0], s)
+    close = math.sqrt(max(0.0, 1.0 - smooth(THROAT_TO - 0.025, THROAT_TO, s) ** 2))
+    return (SEAM(s), lerp(high0, 0.014, t) * close, lerp(deep0, 0.013, t) * close,
+            lerp(wide0, 0.021, smooth(open_s, open_s + 0.05, s)) * close)
+
+
+def lerp(a, b, t):
+    return a + (b - a) * t
+
+
+def gills(m, low, palate_back, floor_back):
+    """The throat, from the back of the mouth (its first ring is the mouth's last) back to a cap, its wall
+    facing in, and the gill arches across its walls: closed thin blades, the rakers' edge in towards the middle,
+    the filaments' fringe trailing back to the wall. None of it swings with the jaw."""
+    n_in = len(palate_back) - 1
+    rings = pick(low, 22, 4, 6)
+    first = palate_back + list(reversed(floor_back))[1:-1]
+    places = [lerp(MOUTH, THROAT_TO, (i / rings) ** 0.9) for i in range(1, rings + 1)]
+    loops = [first]
+    for s in places:
+        mid, high, deep, half = throat(s)
+        v = s / LENGTH
+        loop = []
+        for i in range(n_in + 1):
+            across = 1.0 - 2.0 * i / n_in
+            loop.append(m.v(half * across, mid + high * (1.0 - across * across), s, 0.5 * i / n_in, v, GILL))
+        for i in range(n_in - 1, 0, -1):
+            across = 1.0 - 2.0 * i / n_in
+            loop.append(m.v(half * across, mid - deep * (1.0 - across * across), s, 0.5 + 0.5 * i / n_in, v, GILL))
+        loops.append(loop)
+    for a, b in zip(loops, loops[1:]):
+        n = len(a)
+        for k in range(n):
+            corners = [a[k], a[(k + 1) % n], b[(k + 1) % n], b[k]]
+            middle = sum((m.verts[c] for c in corners), Vector()) / 4.0
+            mid = throat(min(middle.z, THROAT_TO - 0.001))[0]
+            m.face(corners, "throat", Vector((0.0, mid, middle.z)) - middle)
+    # (the last ring has closed to a point: the loft has capped it)
+    cols = pick(low, 12, 3, 4)
+    rows = pick(low, 6, 2, 3)
+    for side in (1.0, -1.0):
+        for s0 in ARCHES:
+            mid, high, deep, half = throat(s0)
+            v = s0 / LENGTH
+            sheets = ([], [])
+            for i in range(cols + 1):
+                t = i / cols
+                phi = math.radians(lerp(-65.0, 65.0, t))
+                wall = Vector((side * half * math.cos(phi), mid + (high if phi > 0.0 else deep) * math.sin(phi), s0))
+                centre = Vector((0.0, mid, s0))
+                edge = min(1.0, t / 0.12) ** 0.5 * min(1.0, (1.0 - t) / 0.12) ** 0.5
+                a, b = [], []
+                for j in range(rows + 1):
+                    u = j / rows
+                    p = centre + (wall - centre) * lerp(0.55, 1.0, u)
+                    p.z = s0 + 0.022 * max(0.0, u - 0.4) ** 1.3
+                    th = 0.003 * edge * (u ** 0.5) * (0.35 + 0.65 * u)
+                    a.append(m.v(p.x, p.y, p.z - th * 0.5, t, u, GILL, 0.0, 0.5))
+                    b.append(m.v(p.x, p.y, p.z + th * 0.5, t, u, GILL, 0.0, 0.5))
+                sheets[0].append(a)
+                sheets[1].append(b)
+            for i in range(cols):
+                for j in range(rows):
+                    for sheet, way in ((sheets[0], -1.0), (sheets[1], 1.0)):
+                        q = [sheet[i][j], sheet[i + 1][j], sheet[i + 1][j + 1], sheet[i][j + 1]]
+                        # (the sheet's own way: along the body, bent where the fringe trails back)
+                        n = (m.verts[q[1]] - m.verts[q[0]]).cross(m.verts[q[3]] - m.verts[q[0]])
+                        if n.z * way < 0.0:
+                            n = -n
+                        m.face(q, "gills", n)
+                # (the root along the wall closes it)
+                q = [sheets[0][i][rows], sheets[0][i + 1][rows], sheets[1][i + 1][rows], sheets[1][i][rows]]
+                m.face(q, "gills", m.verts[q[0]] - Vector((0.0, mid, m.verts[q[0]].z)))
 
 
 def cone(m, base, way, long, radius, sides, jaw):
@@ -440,7 +528,7 @@ def nostril(m, base, way, long, wide, low):
 
 def make(name, low):
     m = Mesh()
-    body(m, low)
+    rings, lips, palate, floor = body(m, low)
     teeth(m, low)
     for side in (1.0, -1.0):
         eye(m, side, low)
@@ -448,6 +536,9 @@ def make(name, low):
         nostril(m, Vector((side * at.x, at.y, at.z)), Vector((side * 0.45, 0.3, -1.0)), 0.011, 0.0027, low)
         at, out = skin_at(0.043, math.radians(24.0))
         nostril(m, Vector((side * at.x, at.y, at.z)), Vector((side * out.x, out.y, -0.2)), 0.002, 0.0026, low)
+    # (the throat and gills last: on the full model they are a second surface)
+    gill_from = len(m.faces)
+    gills(m, low, palate[-1], floor[-1])
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([to_b(p) for p in m.verts], [], m.faces)
     # (every layer made first, then each looked up by name: making one moves the others)
@@ -467,6 +558,14 @@ def make(name, low):
     bsdf.inputs["Base Color"].default_value = (0.36, 0.45, 0.1, 1.0)
     material.diffuse_color = (0.36, 0.45, 0.1, 1.0)
     mesh.materials.append(material)
+    if low == FULL:
+        inside = bpy.data.materials.get("moray_throat") or bpy.data.materials.new("moray_throat")
+        inside.use_nodes = True
+        next(n for n in inside.node_tree.nodes if n.type == "BSDF_PRINCIPLED").inputs["Base Color"].default_value = (0.5, 0.08, 0.08, 1.0)
+        inside.diffuse_color = (0.5, 0.08, 0.08, 1.0)
+        mesh.materials.append(inside)
+        for poly in mesh.polygons[gill_from:]:
+            poly.material_index = 1
     for poly in mesh.polygons:
         poly.use_smooth = True
     mesh.update()
@@ -503,6 +602,11 @@ def winding(name, mesh, m):
             side = -normal.y
         elif group in ("lip_lower", "floor"):
             side = normal.y
+        elif group == "throat":
+            # (it faces in, towards its middle line, or forward on its cap)
+            mid = throat(min(middle.z, THROAT_TO - 0.001))[0]
+            into = Vector((-middle.x, mid - middle.y, 0.0))
+            side = normal.dot(into) if into.length > 0.002 else -normal.z
         else:
             continue
         bad, all_ = counts.get(group, (0, 0))

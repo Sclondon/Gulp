@@ -7,7 +7,8 @@
 // is out of the sand up from the burrow's mouth, leaning back a little away from the current, and
 // curls its top over forward into a question mark so that its head faces -Z, into the current; then
 // sways it and turns its head a little, all as a function of `turn` (TAU times its phase).
-// UV2.y is the part (0 body, 1 an eye, 2 a pectoral fin). UV.x on the body: 0 snout to 1 tail.
+// UV2.y is the part (0 body, 1 an eye, 2 a pectoral fin, 3 the inside of the mouth and the throat,
+// 4 a gill arch). UV.x on the body: 0 snout to 1 tail.
 // Nothing here needs more than GL Compatibility has.
 
 // Kept in step with the model (and GardenEel.head_at): the snout's height in the still model, and
@@ -28,6 +29,42 @@ uniform vec3 spot : source_color = vec3(0.02, 0.02, 0.02);
 uniform vec3 eye_ring : source_color = vec3(0.75, 0.68, 0.45);
 // How many of the small specks show (0 none, 1 many).
 uniform float specks = 0.6;
+// The cartoon eye: 0 the eye as in life, 1 a bigger cartoon eye (a white, an iris, a pupil, a
+// highlight, a dark outline and lids of its own character); where its pupils look (x forward,
+// towards the snout, y up, towards its back, -1..1, in each eye's own plane); a blink (0 open,
+// 1 shut: lids the colour of its skin close over the eye, the cartoon one and the one in life).
+uniform float cartoon_eyes : hint_range(0.0, 1.0) = 0.0;
+uniform vec2 eye_look = vec2(0.0);
+uniform float blink : hint_range(0.0, 1.0) = 0.0;
+
+// The garden eel's cartoon eye: shy and wary, a peeker. Big and round, a pale gold iris almost
+// filled by a big round pupil, and the lower lid pushed up into a wary squint, higher towards
+// the snout; no upper lid in sight. It grows EEL_EYE_BIG times about a point a little out from
+// the skin (so that its rim stays on the round of the head). (Kept in step with the model:
+// build_garden_eel.py prints the eye's middle on the skin and its way out, the left one's.)
+const vec3 EEL_EYE_SKIN = vec3(0.005817, 0.2912, 0.0012);
+const vec3 EEL_EYE_OUT = vec3(0.992877, 0.0, 0.119145);
+const float EEL_EYE_LIFT = 0.0013;
+const float EEL_EYE_BIG = 1.5;
+const vec3 EEL_SCLERA = vec3(0.97, 0.97, 0.94);
+const vec3 EEL_IRIS_IN = vec3(0.96, 0.86, 0.52);
+const vec3 EEL_IRIS_OUT = vec3(0.6, 0.48, 0.2);
+const float EEL_IRIS_R = 0.5;
+const float EEL_PUPIL = 0.33;
+// The upper lid's edge (eye radii up from the middle) and its slant (up per radius forward); the
+// lower lid's.
+const float EEL_LID_TOP = 1.3;
+const float EEL_LID_SLANT = 0.0;
+const float EEL_LID_LOW = -0.4;
+const float EEL_LID_LOW_SLANT = 0.14;
+
+// The mouth (gape, in garden_eel.gdshader): how far the lower jaw turns at its widest (radians),
+// about its hinge at the corner of the mouth (as the build script has it: there, on the line of
+// the mouth).
+const float EEL_GAPE = 0.6;
+const float EEL_HINGE_D = -0.00364;
+// (as the build script has it, SNAP_RANGE: how far a COLOR of 0 or 1 slides a lip's point)
+const float EEL_SNAP_RANGE = 0.003;
 
 // Which way its middle line runs at `h` metres up it from the burrow's mouth (radians from upright,
 // more than 0 bowing forward to -Z): leaning back `th0` low down, turning a further `total` over the
@@ -92,15 +129,65 @@ vec3 eel_eye(float r) {
 	return mix(c, skin * 0.7, smoothstep(0.86, 0.98, r));
 }
 
-// The colour of a point of the still model `rest` (part 0 the body, 1 an eye, 2 a fin; `uv` its UV).
-// `drawn_eye`: draw the eye on the skin (the colony's model has none of its own).
+// The cartoon eye at `e`: a point of the eye in its own plane, in eye radii (x forward, towards
+// the snout; y up, towards its back). A white shaded towards its rim, an iris and a big pupil
+// that slide together as far as `eye_look` asks and the white allows, and highlights that stay
+// put, up and forward, towards the light.
+vec3 eel_cartoon_eye(vec2 e) {
+	vec2 d = e - clamp(eye_look, vec2(-1.0), vec2(1.0)) * (0.86 - EEL_IRIS_R);
+	float ir = length(d) / EEL_IRIS_R;
+	vec3 c = EEL_SCLERA * (1.0 - 0.2 * smoothstep(0.45, 0.95, length(e)));
+	vec3 iris = mix(EEL_IRIS_IN, EEL_IRIS_OUT, smoothstep(0.55, 1.0, ir));
+	iris = mix(iris, iris * 0.35, smoothstep(0.82, 0.96, ir));
+	c = mix(c, iris, 1.0 - smoothstep(0.96, 1.0, ir));
+	c = mix(c, vec3(0.01, 0.01, 0.015), 1.0 - smoothstep(0.9, 1.0, length(d) / EEL_PUPIL));
+	float shine = 1.0 - smoothstep(0.1, 0.135, length(e - vec2(0.2, 0.28)));
+	shine = max(shine, 1.0 - smoothstep(0.04, 0.065, length(e - vec2(-0.13, -0.17))));
+	return mix(c, vec3(1.0), shine);
+}
+
+// The lids over an eye at `e` (as above), `lid` the colour of its skin: in the cartoon eye where
+// its character puts them, with a dark line along each edge and a dark outline round the eye; in
+// the eye in life, out of sight. `blink` brings them together.
+vec3 eel_lids(vec3 c, vec2 e, vec3 lid) {
+	float top = mix(1.3, EEL_LID_TOP + EEL_LID_SLANT * e.x, cartoon_eyes);
+	float low = mix(-1.3, EEL_LID_LOW + EEL_LID_LOW_SLANT * e.x, cartoon_eyes);
+	float meet = mix(top, low, 0.6);
+	top = mix(top, meet, blink);
+	low = mix(low, meet, blink);
+	float over = max(smoothstep(-0.02, 0.02, e.y - top), smoothstep(-0.02, 0.02, low - e.y));
+	c = mix(c, lid, over);
+	float line = max(1.0 - smoothstep(0.035, 0.07, abs(e.y - top)), 1.0 - smoothstep(0.025, 0.05, abs(e.y - low)));
+	c = mix(c, vec3(0.03, 0.03, 0.035), line * mix(0.5, 1.0, cartoon_eyes) * step(0.001, max(cartoon_eyes, blink)));
+	return mix(c, vec3(0.03, 0.03, 0.035), smoothstep(0.84, 0.92, length(e)) * cartoon_eyes);
+}
+
+// The colour of a point of the still model `rest` (part 0 the body, 1 an eye, 2 a fin, 3 the inside
+// of the mouth, 4 a gill arch; `uv` its UV). `drawn_eye`: draw the eye on the skin (the colony's
+// model has none of its own).
 vec3 eel_colour(vec3 rest, float part, vec2 uv, bool drawn_eye) {
 	int p = int(part + 0.5);
 	if (p == 1) {
-		return eel_eye(uv.x);
+		vec2 e = vec2(EEL_EYE_AT.x - (EEL_TOP - rest.y), rest.z - EEL_EYE_AT.y) / EEL_EYE_RADIUS;
+		// (UV.y 1: the game model's eye, of few rings, drawn from where the point is so that it stays round)
+		float r = uv.y > 0.5 ? min(length(e), 1.0) : uv.x;
+		vec3 c = mix(eel_eye(r), eel_cartoon_eye(e), cartoon_eyes);
+		return eel_lids(c, e, skin);
 	}
 	if (p == 2) {
 		return mix(skin, vec3(0.95, 0.93, 0.88), 0.5);
+	}
+	if (p == 3) {
+		// the inside of the mouth and the throat: dark red, darker deeper in
+		float deep = smoothstep(EEL_MOUTH_TO - 0.004, 0.026, EEL_TOP - rest.y);
+		return mix(vec3(0.3, 0.09, 0.09), vec3(0.05, 0.012, 0.012), deep);
+	}
+	if (p == 4) {
+		// a gill arch: its bar pinkish and pale where it faces the mouth (the rakers), the filaments
+		// blood red; darker the deeper in the throat
+		float deep = smoothstep(0.011, 0.023, EEL_TOP - rest.y);
+		vec3 c = uv.y < 0.5 ? vec3(0.78, 0.5, 0.48) : (uv.y < 1.5 ? vec3(0.62, 0.04, 0.06) : vec3(0.9, 0.8, 0.72));
+		return c * (1.0 - 0.25 * deep);
 	}
 	float s = EEL_TOP - rest.y;
 	float around = atan(rest.x, rest.z);
@@ -137,10 +224,46 @@ vec3 eel_colour(vec3 rest, float part, vec2 uv, bool drawn_eye) {
 	float lip = (1.0 - smoothstep(0.00022, 0.0004, abs(rest.z - mouth_d))) * (1.0 - smoothstep(EEL_MOUTH_TO - 0.0012, EEL_MOUTH_TO, s));
 	c = mix(c, vec3(0.12, 0.08, 0.07), lip * smoothstep(0.0012, 0.0022, abs(rest.x)));
 	if (drawn_eye) {
-		float r = length(vec2(s, rest.z) - EEL_EYE_AT) / EEL_EYE_RADIUS;
+		float big = mix(1.0, EEL_EYE_BIG, cartoon_eyes);
+		float r = length(vec2(s, rest.z) - EEL_EYE_AT) / (EEL_EYE_RADIUS * big);
 		if (r < 1.0 && abs(rest.x) > 0.0025) {
-			c = eel_eye(r);
+			vec2 e = vec2(EEL_EYE_AT.x - s, rest.z - EEL_EYE_AT.y) / (EEL_EYE_RADIUS * big);
+			c = eel_lids(mix(eel_eye(r), eel_cartoon_eye(e), cartoon_eyes), e, skin);
 		}
 	}
 	return c;
+}
+
+// The mouth opening `gape` (0 shut, 1 wide) on a point `v` (normal `n`) of the still model, before it
+// is posed: the lower jaw (`w` its jaw weight, UV2.x) turns down about its hinge at the corner of
+// the mouth; behind the mouth the throat and the gill arches (`p` 3 and 4) widen, the arches
+// (`arch` 0..1, which of the four) spreading apart along it.
+void eel_open(inout vec3 v, inout vec3 n, float gape_by, int p, float w, float arch) {
+	if (w > 0.0) {
+		float a = gape_by * EEL_GAPE * w;
+		float c = cos(a);
+		float sn = sin(a);
+		vec2 d = vec2(EEL_TOP - v.y - EEL_MOUTH_TO, v.z - EEL_HINGE_D);
+		d = vec2(d.x * c - d.y * sn, d.x * sn + d.y * c);
+		v.y = EEL_TOP - EEL_MOUTH_TO - d.x;
+		v.z = EEL_HINGE_D + d.y;
+		vec2 m = vec2(-n.y, n.z);
+		m = vec2(m.x * c - m.y * sn, m.x * sn + m.y * c);
+		n = vec3(n.x, -m.x, m.y);
+	}
+	float s = EEL_TOP - v.y;
+	if (p >= 3 && s > EEL_MOUTH_TO) {
+		float open = gape_by * smoothstep(EEL_MOUTH_TO, EEL_MOUTH_TO + 0.004, s);
+		v.x *= 1.0 + 0.25 * open;
+		if (p == 4) {
+			v.y -= 0.0005 * open * (arch * 2.0 - 1.0);
+		}
+	}
+}
+
+// The cartoon eye is bigger: grows about a point a little out from the skin over the eye's middle.
+void eel_grow_eye(inout vec3 v) {
+	vec3 pivot = EEL_EYE_SKIN + EEL_EYE_OUT * EEL_EYE_LIFT;
+	pivot.x *= sign(v.x);
+	v = pivot + (v - pivot) * mix(1.0, EEL_EYE_BIG, cartoon_eyes);
 }

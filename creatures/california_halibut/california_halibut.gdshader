@@ -216,6 +216,22 @@ vec3 eye_grow(vec3 v, float r) {
 	return c + flat_part + o * (dn * k - EYE_RADIUS * EYE_SINK * (k - 1.0));
 }
 
+// THE GILLS (added 2026-11-18): four arches inside the mouth against its roof, seen when the jaw swings out.
+const vec3 GILL_RED = vec3(0.55, 0.05, 0.06);
+
+// The gills' colour (`uv`: x from an arch's root, 0, to its edge, 1; y along it): blood red filaments behind,
+// pale gill rakers along its free edge on its front, a little darker towards the edge.
+vec3 gill_colour(vec2 uv, bool rakers) {
+	float comb = 0.5 + 0.5 * cos(uv.y * 6.2831853 * 14.0);
+	vec3 red = GILL_RED * (0.7 + 0.45 * comb);
+	vec3 c = red;
+	if (rakers) {
+		// (pale gill rakers: short teeth along the arch's free edge)
+		c = mix(red, vec3(0.82, 0.74, 0.66), smoothstep(0.75, 0.9, uv.x) * step(0.55, comb));
+	}
+	return c * mix(1.0, 0.75, uv.x);
+}
+
 void vertex() {
 	part = UV2.y;
 	inside = UV2.x;
@@ -325,6 +341,11 @@ void fragment() {
 		c = mix(c, pale * 0.9, 0.45 * (1.0 - smoothstep(0.003, 0.009, abs(m))) * along);
 		c = mix(c, mouth, (1.0 - smoothstep(0.0006, 0.0018, abs(m))) * along);
 		c = mix(belly, c, upper);
+	} else if (p == 6) {
+		// A gill arch: pale rakers on its front (towards the snout), red filaments behind.
+		c = gill_colour(UV, rest_normal.z < 0.0);
+		rough = 0.6;
+		spec = 0.3;
 	} else if (p == 5) {
 		// An eye: a dark pupil, a gold-brown iris, the skin's colour at its rim.
 		float r = UV.x;

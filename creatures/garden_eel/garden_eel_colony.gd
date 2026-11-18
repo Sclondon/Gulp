@@ -43,6 +43,21 @@ const SHADER := preload("res://creatures/garden_eel/garden_eel_colony.gdshader")
 @export var hide_time := 2.5
 ## Seconds it takes to come all the way out again (each eel a little more or less).
 @export var rise_time := 4.0
+## The cartoon eye, drawn on the skin (as GardenEel's): 0 the eye as in life, 1 the cartoon eye.
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send(&"cartoon_eyes", cartoon_eyes)
+## Where their pupils look, -1..1 each way: x forward (towards the snout), y up (all of them).
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value.clamp(Vector2(-1.0, -1.0), Vector2.ONE)
+		_send(&"eye_look", eye_look)
+## A blink: 0 open, 1 shut (all of them at once).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send(&"blink", blink)
 
 var _material: ShaderMaterial
 var _world := PackedVector3Array()
@@ -82,6 +97,9 @@ func _init() -> void:
 
 func _ready() -> void:
 	_send(&"sway", sway)
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 
 
 ## Plants one eel at each of `places` (world points on the sand: the mouths of their burrows),

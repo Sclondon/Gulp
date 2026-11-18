@@ -513,8 +513,8 @@ def fins(m, low):
 # sword's root, the jaw's tip, the mouth's corner, its back end); the lower jaw's points round it and its rings;
 # the eye's spokes and rings (24 or more, so that it stays round). GAME_GAP: the longest step between rings
 # along the body (shorter where it bends).
-GAME_TOL = 0.0024
-GAME_TOL_AROUND = 0.0018
+GAME_TOL = 0.0028
+GAME_TOL_AROUND = 0.0024
 GAME_FLANK = 5.0
 GAME_FIN_GAP = 0.34
 GAME_KEEP_RINGS = (SWORD, JAW_FROM, 1.0, MOUTH_CORNER, 1.30, 1.34)
@@ -523,7 +523,7 @@ GAME_EYE = (32, 3)
 
 
 def GAME_GAP(x):
-    return 0.07 if x > 1.9 else 0.14
+    return 0.09 if x > 1.9 else 0.2
 
 
 # ---- The game model (added 2026-11-18) ------------------------------------------------------------------------
@@ -655,6 +655,272 @@ def blade_game(m, part, name, point, place, facing, thick, high=None):
             _zip_rows(m, grid[r], rows[r], grid[r + 1], rows[r + 1], facing * side, name)
 
 
+# The gills' settings (metres behind the snout's tip, metres): the throat from THROAT_FROM to THROAT_TO, at most
+# THROAT_W wide (half) and THROAT_H high, its floor THROAT_MARGIN above the roof of the mouth (level behind THROAT_LEVEL); where the four arches
+# stand along it, how far back their tops lean, the bars' radius, how long the filaments and the rakers are.
+GILL = 7
+THROAT_FROM, THROAT_TO, THROAT_W, THROAT_H, THROAT_MARGIN = 1.16, 1.405, 0.036, 0.09, 0.003
+THROAT_LEVEL = 1.21
+THROAT_REACH = 0.03
+ARCHES = (1.21, 1.245, 1.28, 1.315)
+ARCH_LEAN, ARCH_R, FILAMENT, RAKER = 0.03, 0.0045, 0.045, 0.012
+
+
+def outline_top(xm):
+    return top(xm)
+
+
+def jaw_top_at(xm, x):
+    """The top of the shut lower jaw at `xm` (None where there is none)."""
+    if JAW_FROM <= xm <= JAW_TO:
+        return jaw_floor(xm)
+    return None
+
+
+# ---- The gills (added 2026-11-18) ------------------------------------------------------------------------------
+# The user: "The fish need modeled gills as well, well for relevant fish, so like when it opens its mouth wide you
+# can see them". A short THROAT, a closed tunnel whose faces look inwards, runs back inside the head from above the
+# rear of the roof of the mouth; its floor lies just above the roof (and above the shut lower jaw), so that when the
+# shader opens a hole in the roof (only while the mouth is open: see THROAT_* in the shader) the tunnel is seen
+# through it. Four GILL ARCHES a side line its walls: each a curved bar, a fringe of filaments behind it and a comb
+# of rakers in front, every piece a closed mesh. All of it is part GILL and lies wholly inside the head, so with the
+# mouth shut nothing of it is seen. What a point of it is, for the shader: UV.x the kind (0 the throat's wall, 1 an
+# arch's bar, 2 its filaments, 3 its rakers) plus a tenth of the arch's number (0 to 3, front to back); UV.y how
+# deep in the throat (0 its front, 1 its back); UV2.x how far along the arch (0 the floor, 1 the top).
+
+
+def _under_y(xm, x):
+    """How high the underside of the body's skin (the roof of the mouth, ahead of the hinge) is `x` to one side."""
+    lo, hi = math.pi * 0.5, math.pi
+    for _ in range(30):
+        mid = (lo + hi) * 0.5
+        if abs(body_point(xm, mid).x) > abs(x):
+            lo = mid
+        else:
+            hi = mid
+    return body_point(xm, (lo + hi) * 0.5).y
+
+
+def _half_width_at(xm, y):
+    """How wide (half) the body's skin is at height `y`."""
+    lo, hi = 0.0, math.pi
+    for _ in range(30):
+        mid = (lo + hi) * 0.5
+        if body_point(xm, mid).y > y:
+            lo = mid
+        else:
+            hi = mid
+    return abs(body_point(xm, (lo + hi) * 0.5).x)
+
+
+def throat_floor(xm, x):
+    """The throat's floor: just above the roof of the mouth and above whatever of the shut lower jaw is there. Behind
+    THROAT_LEVEL it stays level, where the underside of the head drops away to the throat. It takes the highest of
+    the roof a little ahead and behind as well (THROAT_REACH): the bars and their combs reach that far, and the low
+    and game models' coarser skins lie a little inside the true one."""
+    xm = min(xm, THROAT_LEVEL)
+    y = max(_under_y(min(xm + d, THROAT_LEVEL), x) for d in (-THROAT_REACH, 0.0, THROAT_REACH))
+    jaw = jaw_top_at(xm, x)
+    if jaw is not None:
+        y = max(y, jaw)
+    return y + THROAT_MARGIN
+
+
+def throat_size(xm):
+    """The throat's half width and its height above the floor at `xm` (kept well inside the head)."""
+    floor = throat_floor(xm, 0.0)
+    high = min(THROAT_H, 0.45 * (outline_top(xm) - floor))
+    wide = min(THROAT_W, 0.7 * _half_width_at(xm, floor + high * 0.5), 0.7 * _half_width_at(xm, floor + THROAT_MARGIN))
+    return wide, high
+
+
+def throat_wall(xm, a):
+    """A point of the throat's wall at `xm`, `a` round it (0 the top, a half turn the middle of the floor)."""
+    wide, high = throat_size(xm)
+    s = math.sin(a)
+    c = math.cos(a)
+    x = wide * math.copysign(abs(s) ** 0.55, s)
+    floor = throat_floor(xm, x)
+    y = floor + (high * c ** 0.7 if c > 0.0 else 0.0)
+    return Vector((x, y, xm - HALF))
+
+
+def _closed_sheet(m, name, root, edge, rows, thick, kind_uv, along):
+    """A thin closed sheet between two lines of points (`root`, `edge`), `rows` rows across, thickest between
+    them and nothing at either line, its two skins facing either way."""
+    n = len(root)
+    across = [edge[i] - root[i] for i in range(n)]
+    for side in (1.0, -1.0):
+        grid = []
+        for j in range(rows + 1):
+            f = j / rows
+            row = []
+            for i in range(n):
+                tang = (root[min(i + 1, n - 1)] - root[max(i - 1, 0)])
+                face = tang.cross(across[i])
+                if face.length < 1e-12:
+                    face = Vector((0.0, 0.0, 1.0))
+                face.normalize()
+                p = root[i] + across[i] * f + face * (side * thick * 4.0 * f * (1.0 - f) * 0.5)
+                row.append((m.add(p, (kind_uv, along[i][1]), GILL, along[i][0]), face * side))
+            grid.append(row)
+        for j in range(rows):
+            for i in range(n - 1):
+                quad = (grid[j][i][0], grid[j][i + 1][0], grid[j + 1][i + 1][0], grid[j + 1][i][0])
+                m.face(quad, grid[j][i][1] + grid[j][i + 1][1], name)
+
+
+def gills(m, low):
+    """The throat and four gill arches a side (see above). Fewer points on the game model, fewest on the low one."""
+    detail = "game" if GAME else ("low" if low else "full")
+    rings_n, around, seg, sides, teeth, rows = {
+        "full": (10, 16, 10, 8, 12, 2), "game": (5, 10, 3, 3, 3, 1), "low": (3, 6, 2, 3, 2, 1)}[detail]
+    length = THROAT_TO - THROAT_FROM
+    # the throat: a tunnel facing inwards, closed at both ends
+    grid = []
+    xs = [THROAT_FROM + length * k / rings_n for k in range(rings_n + 1)]
+    for xm in xs:
+        depth = (xm - THROAT_FROM) / length
+        grid.append([m.add(throat_wall(xm, TAU * c / around), (0.0, depth), GILL, 0.0) for c in range(around)])
+    for r in range(rings_n):
+        xm = (xs[r] + xs[r + 1]) * 0.5
+        wide, high = throat_size(xm)
+        middle = Vector((0.0, throat_floor(xm, 0.0) + high * 0.4, xm - HALF))
+        for c in range(around):
+            n = (c + 1) % around
+            quad = (grid[r][c], grid[r][n], grid[r + 1][n], grid[r + 1][c])
+            centre = sum((m.verts[q] for q in quad), Vector()) * 0.25
+            inward = middle - centre
+            inward.z = 0.0
+            m.face(quad, inward, "throat")
+    for row, xm, way in ((grid[0], THROAT_FROM, 1.0), (grid[-1], THROAT_TO, -1.0)):
+        wide, high = throat_size(xm)
+        tip = m.add(Vector((0.0, throat_floor(xm, 0.0) + high * 0.4, xm - HALF)), (0.0, 0.0 if way > 0 else 1.0), GILL, 0.0)
+        # (the end has points of its own, so that smoothing does not bend the walls' normals into it)
+        own = [m.add(m.verts[q].copy(), (0.0, 0.0 if way > 0 else 1.0), GILL, 0.0) for q in row]
+        for c in range(around):
+            m.face((tip, own[c], own[(c + 1) % around]), Vector((0.0, 0.0, way)), "throat")
+    # the arches, four a side, each lining the wall from the floor to near the top, leaning back
+    for k, xk in enumerate(ARCHES):
+        for sx in (1.0, -1.0):
+            path = []
+            for i in range(seg + 1):
+                t = i / seg
+                # (round an ellipse inside the throat, from low beside the middle of the floor up the side to near
+                # the top: no sharp turns, so the bar never folds on itself)
+                phi = (0.3 + 0.55 * t) * math.pi
+                xm = xk + ARCH_LEAN * t
+                wide, high = throat_size(xm)
+                centre = Vector((0.0, throat_floor(xm, 0.0) + high * 0.4, xm - HALF))
+                p = centre + Vector((sx * (wide - ARCH_R * 2.5) * math.sin(phi), -(high * 0.4 - ARCH_R * 2.5) * math.cos(phi), 0.0))
+                inward = centre - p
+                inward.z = 0.0
+                inward.normalize()
+                path.append((p, inward, t))
+            depth = (xk - THROAT_FROM) / length
+            code = 0.1 * k
+            # the bar: a round tube along the path, closed at both ends
+            back = Vector((0.0, 0.0, 1.0))
+            ring_ids = []
+            for i, (p, inward, t) in enumerate(path):
+                ring = []
+                # (a frame square to the bar that does not twist along it: 'back' kept as square to it as it can be)
+                tangent = (path[min(i + 1, seg)][0] - path[max(i - 1, 0)][0]).normalized()
+                up = (back - tangent * back.dot(tangent)).normalized()
+                across = tangent.cross(up).normalized()
+                for s in range(sides):
+                    ang = TAU * s / sides
+                    q = p + (across * math.cos(ang) + up * math.sin(ang)) * ARCH_R
+                    ring.append(m.add(q, (1.0 + code, depth), GILL, t))
+                ring_ids.append((ring, p))
+            for i in range(seg):
+                for s in range(sides):
+                    n = (s + 1) % sides
+                    a0, a1 = ring_ids[i][0], ring_ids[i + 1][0]
+                    quad = (a0[s], a0[n], a1[n], a1[s])
+                    centre = sum((m.verts[q] for q in quad), Vector()) * 0.25
+                    axis = (ring_ids[i][1] + ring_ids[i + 1][1]) * 0.5
+                    m.face(quad, centre - axis, "gill arches")
+            for (ring, p), other in ((ring_ids[0], ring_ids[1][1]), (ring_ids[-1], ring_ids[-2][1])):
+                tip = m.add(p, (1.0 + code, depth), GILL, 0.0)
+                # (the end has points of its own, so that smoothing does not bend the sides' normals into it)
+                own = [m.add(m.verts[q].copy(), (1.0 + code, depth), GILL, m.data[q][1][0]) for q in ring]
+                for s in range(sides):
+                    m.face((tip, own[s], own[(s + 1) % sides]), p - other, "gill arch ends")
+            # the filaments behind the bar and the rakers in front: a toothed sheet each
+            # (one way for the whole sheet: back, square to the bar on the whole, never down into the floor, so that
+            # the sheet never folds along a leaning bar)
+            square = Vector((0.0, 0.0, 0.0))
+            for i in range(seg):
+                tangent = (path[i + 1][0] - path[i][0]).normalized()
+                square += back - tangent * back.dot(tangent)
+            square.y = max(square.y, 0.0)
+            square.normalize()
+            for kind, way, reach, name in ((2.0, 1.0, FILAMENT, "gill filaments"), (3.0, -1.0, RAKER, "gill rakers")):
+                count = teeth if kind == 2.0 else max(1, teeth // 2)
+                n_pts = 2 * count + 1
+                root, edge, along = [], [], []
+                for i in range(n_pts):
+                    t = i / (n_pts - 1)
+                    # (a point of the path at t, by straight steps between its points)
+                    f = t * seg
+                    i0 = min(int(f), seg - 1)
+                    u = f - i0
+                    p = path[i0][0].lerp(path[i0 + 1][0], u)
+                    inward = path[i0][1].lerp(path[i0 + 1][1], u).normalized()
+                    long = reach * (1.0 if i % 2 == 1 else 0.45)
+                    r0 = p + square * (way * ARCH_R * 0.7)
+                    root.append(r0)
+                    edge.append(r0 + square * (way * long) + inward * (long * (0.15 if kind == 2.0 else 0.3)))
+                    along.append((t, depth))
+                _closed_sheet(m, name, root, edge, rows, ARCH_R * 0.5, kind + code, along)
+
+
+def gills_inside_mesh(m, first):
+    """How many of the gills' points lie outside this model's own body (its faceted skin, part BODY, not the
+    curves it was built from): a ray from each must cross that skin an odd number of times."""
+    from mathutils.bvhtree import BVHTree
+    body_faces = [f for f, d in zip(m.faces, m.out) if round(1.0 - m.data[f[0]][1][1]) == BODY]
+    tris = []
+    for f in body_faces:
+        for k in range(1, len(f) - 1):
+            tris.append((f[0], f[k], f[k + 1]))
+    tree = BVHTree.FromPolygons(m.verts, tris)
+    way = Vector((0.0123, 0.0071, 0.9999)).normalized()
+    outside = 0
+    for i in range(first, len(m.verts)):
+        start = Vector(m.verts[i])
+        crossings = 0
+        while True:
+            hit = tree.ray_cast(start, way)
+            if hit[0] is None:
+                break
+            crossings += 1
+            start = hit[0] + way * 1e-6
+        if crossings % 2 == 0:
+            outside += 1
+    return outside
+
+
+def gills_inside(m, first):
+    """How far (metres) the point of the gills that is furthest outside the head's skin is outside it (0: none)."""
+    worst = 0.0
+    for i in range(first, len(m.verts)):
+        p = m.verts[i]
+        xm = p.z + HALF
+        up = outline_top(xm)
+        down = _under_y(xm, p.x)
+        out = max(p.y - up, down - p.y, 0.0)
+        if down < p.y < up:
+            out = max(out, abs(p.x) - _half_width_at(xm, p.y))
+        if out > worst:
+            worst = out
+            at = p
+    if worst > 0.0:
+        print("GILLS OUTSIDE most at x %.4f y %.4f xm %.4f" % (at.x, at.y, at.z + HALF))
+    return worst
+
+
 def make(name, low, game=False):
     global GAME
     GAME = game
@@ -664,6 +930,10 @@ def make(name, low, game=False):
     for sx in (1.0, -1.0):
         eye(m, sx, low)
     fins(m, low)
+    first = len(m.verts)
+    gills(m, low)
+    print("GILLS %s: %d points, the furthest outside the head's skin by %.4f m" % (name, len(m.verts) - first, gills_inside(m, first)))
+    print("GILLS %s: %d of them outside the model's own faceted skin" % (name, gills_inside_mesh(m, first)))
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([to_b(p) for p in m.verts], [], m.faces)
     # (every layer made first, then each looked up by name: making one moves the others)
@@ -682,6 +952,16 @@ def make(name, low, game=False):
     bsdf.inputs["Base Color"].default_value = (0.5, 0.5, 0.56, 1.0)
     material.diffuse_color = (0.5, 0.5, 0.56, 1.0)
     mesh.materials.append(material)
+    if not GAME:
+        # (on the full and the low model the throat and gills are a second surface, so that the body's surface
+        # stays as it was: one changed, Godot's importer thins it into different LODs and it looks different far off)
+        throat = bpy.data.materials.get(mesh.name + "_gills") or bpy.data.materials.new(mesh.name + "_gills")
+        throat.diffuse_color = (0.5, 0.05, 0.06, 1.0)
+        mesh.materials.append(throat)
+        names = ("throat", "gill arches", "gill arch ends", "gill filaments", "gill rakers")
+        for poly in mesh.polygons:
+            if m.out[poly.index][1] in names:
+                poly.material_index = 1
     for poly in mesh.polygons:
         poly.use_smooth = True
     mesh.update()
@@ -704,6 +984,8 @@ def winding(name, mesh, m):
         out, group = m.out[poly.index]
         if poly.normal.dot(to_b(out)) <= 0.0:
             bad[group] = bad.get(group, 0) + 1
+            if bad[group] == 1:
+                print("WRONG %s %s at %s normal %s out %s" % (name, group, tuple(round(v, 4) for v in poly.center), tuple(round(v, 3) for v in poly.normal), tuple(round(v, 3) for v in to_b(out))))
     told = ["%s %d/%d wrong" % (group, bad.get(group, 0), count) for group, count in m.count.items()]
     print("WINDING %s: %s: %s" % (name, "ok" if not bad else "INSIDE OUT", ", ".join(told)))
 

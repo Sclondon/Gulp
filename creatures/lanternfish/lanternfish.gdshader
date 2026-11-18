@@ -2,7 +2,7 @@ shader_type spatial;
 // The lanternfish (lanternfish.gd): every marking drawn here (no texture files), its swimming and its lights. What
 // each point is comes from the model (tools/build_lanternfish.py): UV2.y the part (0 body, 1 the dorsal fin, 2 the
 // anal fin, 3 the tail, 4 a pectoral fin, 5 a pelvic fin, 6 an eye, 7 the lower jaw, 8 a photophore, 9 the adipose
-// fin). UV2.x: 1 inside the mouth, 0 elsewhere. UV, on the body and the jaw: x how far along, y how high on its side
+// fin, 10 a gill arch). UV2.x: 1 inside the mouth, 0 elsewhere. UV, on the body and the jaw: x how far along, y how high on its side
 // (1 the ridge of the back, 0 the keel of the belly); on a fin: x root (0) to tip (1), y leading edge (0) to trailing
 // edge (1); on an eye or a photophore: x middle (0) to rim (1).
 //
@@ -71,6 +71,17 @@ const float PUPIL_R = 0.4;
 const float PUPIL_SLIT = 1.0;
 const float LID_REST = 0.0;
 const float LID_SLANT = 0.0;
+
+
+// THE GILLS (part 10): four arches a side standing in the throat, a short tunnel from the back of the mouth
+// back to GILL_TO (metres behind the snout's tip, as the model has them). Seen only through the open mouth; as it
+// opens they spread a little. Blood red with pale rakers, darker deeper in the throat. WALL_UP: where the full
+// model's old wall across the back of its mouth is lifted to as it opens.
+const float GILL_FROM = 0.0143;
+const float GILL_TO = 0.0185;
+const float WALL_UP = 0.00594;
+uniform vec3 gill_red : source_color = vec3(0.55, 0.04, 0.06);
+uniform vec3 gill_raker : source_color = vec3(0.86, 0.74, 0.70);
 
 
 varying vec3 rest;
@@ -158,6 +169,18 @@ void vertex() {
 		d.y *= 1.0 - 0.45 * blink * cartoon_eyes;
 		v = base + d;
 	}
+	if (gape > 0.0 && p == 0 && UV2.x > 0.999 && UV.y > 0.45 && UV.y < 0.55 && abs(v.z + HALF - JAW_TO) < 0.0001) {
+		// The full model's old wall across the back of the mouth (the foot of it): as the mouth opens it is lifted
+		// up out of the way, above the roof of the mouth, so that the throat and the gills behind it show. (The
+		// throat's own points are told apart by their UV's y, 0.)
+		v = vec3(v.x * 0.55, WALL_UP, v.z + 0.1 * (GILL_TO - JAW_TO));
+	}
+	if (p == 10) {
+		// The gill arches spread a little as the mouth opens.
+		float open = clamp(gape, 0.0, 1.0);
+		v.x *= 1.0 + 0.1 * open;
+		v.z += (v.z + HALF - 0.5 * (GILL_FROM + GILL_TO)) * 0.15 * open;
+	}
 	if (p == 7) {
 		// The lower jaw swings down about its hinge; its end inside the head stays where it is.
 		float a = clamp(gape, 0.0, 1.0) * GAPE_OPEN * (1.0 - smoothstep(JAW_TO - 0.005, JAW_TO - 0.0002, xm));
@@ -238,6 +261,18 @@ void fragment() {
 		c = mix(fin, fin * 1.8, smoothstep(0.4, 1.0, UV.x) * 0.6);
 		c = mix(c, back, ray * 0.5 * (p == 9 ? 0.0 : 1.0));
 		rough = 0.5;
+	} else if (p == 10) {
+		// A gill arch: its pale rakers at the inner front edge, the red bar, then the fringe of blood-red
+		// filaments (fine lines along it), darker deeper in the shadow of the throat.
+		float t = UV.x;
+		float u = UV.y;
+		c = mix(gill_raker, gill_red * 1.3, smoothstep(0.08, 0.22, u));
+		c = mix(c, gill_red * 0.8, smoothstep(0.3, 0.45, u));
+		c *= mix(1.0, 0.7 + 0.3 * (0.5 + 0.5 * cos(t * 150.0)), smoothstep(0.35, 0.5, u));
+		c = mix(c, c * 0.7, (1.0 - smoothstep(0.06, 0.12, u)) * step(0.5, fract(t * 16.0)));
+		c *= mix(1.0, 0.45, smoothstep(GILL_FROM - 0.2 * (GILL_TO - JAW_TO), GILL_TO, rest.z + HALF));
+		rough = 0.35;
+		spec = 0.45;
 	} else if (p == 6) {
 		// The big eye: a big black pupil, a silver iris, a dark rim.
 		float r = UV.x;

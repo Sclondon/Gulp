@@ -402,3 +402,88 @@ Claude's picks, all changeable:
 - The way garments are grown here could become a small shared tool:
   - copy the body, cut it by planes, stand it off and smooth it, holding the border;
   - add bands sized from the measured garment.
+
+## Matching the concept art (2026-11-18)
+
+The targets were `tools/art_src/concept_characters.jpg` (the three, front and back) and `concept_boat.jpg` (at work
+on the boat). The bodies, the captain's mask head, the poses, the constants and the API are all unchanged.
+
+### What changed
+
+- **Captain:**
+  - darker, greyed navy for the gansey and cap, faded mustard oilskins, a redder nose, greyer beard and hair;
+  - ribbed bands at the hem, cuffs and a thicker roll collar. The ribs are alternate rings of points shaded
+    darker (vertex colour), not noise, with faint knit ribs up the gansey;
+  - dark braces laid on the gansey's surface from steel clips at the hem, over the shoulders, into a Y at his back;
+  - hands 1.15 times bigger;
+  - **the pipe is kept in the corner of his mouth.** He steers with both hands, so it cannot be held in a hand as
+    the concept shows.
+- **Diver:**
+  - greyed tan dress with soft darker stains, dirtier toward the boots (vertex colour);
+  - copper and brass with darker tarnish patches;
+  - black rubber gauntlet gloves: his own hands 1.18 times bigger in black, with flared gauntlet cuffs;
+  - grilles over the lights: a cross over the front light, three bars over each side light, and a grid over a top
+    light moved up onto the dome;
+  - a small brass plate on the corselet;
+  - two grey lead weights on the chest, on leather straps that run up under the corselet's edge and down to the
+    belt, with leather straps crossed on his back;
+  - a steel buckle and a leather pouch on his left hip;
+  - grey boot uppers with black straps;
+  - the air hose now runs down his right side, and a three-loop coil of spare hose hangs on his back on the left.
+- **Boy:** unchanged; Warren's look already matches the concept.
+
+**Vertex colours:** the adults' glb files now carry a `Tint` vertex colour (1 = as the material is), and
+`TitleFigures` turns on `vertex_color_use_as_albedo` for their materials.
+
+### Passes
+
+Each pass rendered the figures standing (front, back, both sides, three-quarter, title size), close up, and at work
+over the cycle. The pictures were read beside the concept.
+
+1. **First:**
+   - the two weights read as one block (they were laid by rays from the middle line, which pulled them together);
+   - the stains and the tarnish were too faint to see;
+   - the braces were too dark to read on the navy.
+
+   Fixed: the rays now start under each point; the stains and tarnish are stronger; the braces are lighter.
+   Triangles were cut (fewer ribs, strap and hose segments, lighter gloves and dress, smaller studs).
+2. **Second:** at work, the coil's three loops fanned out behind his bending back like fins. They now lie closer
+   together.
+
+   Left as they are:
+   - small dark bits where the braces meet the gansey at the back of the shoulders, seen only close;
+   - the coil sits on his back, not over the top of his shoulder as in the concept (draped over the shoulder, it
+     would be in the way of his arms as he cranks).
+
+### Still different from the concept
+
+- No closed-eye hints on the faces: the masks stay eyeless, as the user asked.
+- The captain is not as short-legged as drawn: he keeps the man's own legs.
+- His trousers have no fly or pockets, and his gansey sits over the trousers rather than tucked in.
+- The diver's helmet is not dented.
+- The diver's coil is on his back, not over his shoulder, and his knife is small.
+
+### Checks
+
+- **Triangles:**
+
+  | Figure | Triangles |
+  | --- | --- |
+  | Boy | 6,093 |
+  | Captain | 7,069 |
+  | Diver | 6,792 |
+
+  The adults are over the 6,000 aim: the ribs are about 1,200 of the captain's and the brass about 2,000 of the
+  diver's.
+- **Clipping at rest:**
+  - braces lie 0.4 to 8 mm off the gansey, none under it;
+  - none of the hose or coil is inside the corselet;
+  - dress through the boots: 11 of 66 points, by up to 5 mm;
+  - dress through the cuffs: 1 of 24 points, by 3 mm;
+  - dress through the corselet: 2 of 132 points, by 5 mm;
+  - nothing of the head comes through the cap.
+- **At work:** hands on their targets to 3, 9 and 17 mm at worst over 15 s, with no SHAKE. The gloves close round
+  the crank handle all the way round. The coil and the weights clear the arms through the whole turn (four moments
+  per cycle, three sides each).
+- **Winding:** OK in Godot for all three; the worst is 9 of 700 near-degenerate triangles in the gloves.
+- **Headless run:** 300 frames and 15 s of work, no errors.

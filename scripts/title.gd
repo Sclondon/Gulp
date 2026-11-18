@@ -271,6 +271,12 @@ func eye(upright: bool) -> Transform3D:
 class Card:
 	extends Control
 	signal go
+	## How much of what must be made ready before the game can start has been (0..1): the button
+	## is dim, with a ring filling round it, until it is 1.
+	var primed := 1.0
+	# (kept here: a picture loaded inside _draw is let go before it is drawn, and draws white)
+	var _logo: Texture2D = load("res://textures/title/logo.png")
+	var _start: Texture2D = load("res://textures/title/start.png")
 
 	func _ready() -> void:
 		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -296,16 +302,21 @@ class Card:
 
 	func _draw() -> void:
 		var u := _unit()
-		var font := get_theme_default_font()
-		var high := int(120.0 * u)
-		var wide := font.get_string_size("GULP", HORIZONTAL_ALIGNMENT_LEFT, -1.0, high).x
-		var at := Vector2((size.x - wide) * 0.5, 40.0 * u + high)
-		draw_string_outline(font, at, "GULP", HORIZONTAL_ALIGNMENT_LEFT, -1.0, high, int(14.0 * u), Color(0.05, 0.1, 0.16, 0.9))
-		draw_string(font, at, "GULP", HORIZONTAL_ALIGNMENT_LEFT, -1.0, high, Color(0.93, 0.85, 0.62))
-		# the start button: a brass disc with an arrow, breathing
+		# The name and the button are pictures (textures/title: made with an image generator after the
+		# user asked, "the logo and start button needa concept art pass"; the originals are in
+		# tools/art_src/concept_logo.jpg).
+		var logo := _logo
+		var wide := minf(size.x * 0.86, 620.0 * u)
+		var high := wide * logo.get_height() / logo.get_width()
+		draw_texture_rect(logo, Rect2(Vector2((size.x - wide) * 0.5, 18.0 * u), Vector2(wide, high)), false)
+		# the start button: its lens is 0.355 of the picture's width from its left, half way down;
+		# breathing; dim, with a ring filling round it, until the game is ready to start
+		var start := _start
 		var middle := _button()
-		var r := (64.0 + 4.0 * sin(Time.get_ticks_msec() * 0.004)) * u
-		draw_circle(middle, r + 8.0 * u, Color(0.1, 0.07, 0.03, 0.85))
-		draw_circle(middle, r, Color(0.5, 0.38, 0.18))
-		draw_circle(middle, r - 9.0 * u, Color(0.8, 0.45, 0.12))
-		draw_colored_polygon(PackedVector2Array([middle + Vector2(-0.3, -0.42) * r, middle + Vector2(0.5, 0.0) * r, middle + Vector2(-0.3, 0.42) * r]), Color(0.2, 0.1, 0.03))
+		var r := (78.0 + 4.0 * sin(Time.get_ticks_msec() * 0.004)) * u
+		var across := r * 2.0 / 0.7
+		var tall := across * start.get_height() / start.get_width()
+		var shade := Color.WHITE if primed >= 1.0 else Color(0.45, 0.45, 0.5)
+		draw_texture_rect(start, Rect2(middle - Vector2(across * 0.355, tall * 0.5), Vector2(across, tall)), false, shade)
+		if primed < 1.0:
+			draw_arc(middle, r + 12.0 * u, -PI * 0.5, -PI * 0.5 + TAU * primed, 48, Color(0.95, 0.75, 0.3), 7.0 * u, true)

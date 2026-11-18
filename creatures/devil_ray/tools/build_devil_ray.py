@@ -41,6 +41,9 @@ princess model to compare to so we can make low poly versions while maintaining 
 silhouettes"). Its rows go where the outline and the profile bend most (`greedy`), with more round the eyes, the
 mouth and the edges, and every UV, UV2 and part the shader reads, so it swims, opens its mouth and is marked as
 the full one is. The full and low models come out exactly as before (their .glb files are byte for byte the same).
+
+THE GILLS (2026-11-18): new parts 7 a gill arch, 8 a gill slit's flap (see gill_flaps / gills below). They are a second surface on
+the full and low models, so that the body's surface is the same as before; the game model has one surface.
 """
 
 import math
@@ -207,14 +210,15 @@ SPECS = {
 # placed by `greedy` where the outline and the section's thickness bend most, none more than `max_step` of the
 # half span apart (so that the wing bends as a curve); `nu` points round each section's top and bottom skin;
 # `pocket` points down each side of the mouth; (along, across) for a cephalic fin, (rings, around) for the
-# tail, (spokes, rings) for an eye, (along, across) for the dorsal fin and a spine.
+# tail, (spokes, rings) for an eye, (along, across) for the dorsal fin and a spine, and (along an arch, along a
+# gill slit's flap) for the gills.
 GAMES = {
     "manta_ray": dict(gaps=24, max_step=0.07, nu=18, pocket=3, ceph=(10, 6), tail=(24, 8), eye=(28, 4),
-                      dorsal=(5, 4), spines=(5, 3)),
+                      dorsal=(5, 4), spines=(5, 3), gills=(2, 3)),
     "devil_ray": dict(gaps=18, max_step=0.1, nu=12, pocket=3, ceph=(7, 5), tail=(16, 6), eye=(24, 3),
-                      dorsal=(4, 3), spines=(4, 3)),
+                      dorsal=(4, 3), spines=(4, 3), gills=(3, 4)),
     "spotted_eagle_ray": dict(gaps=21, max_step=0.08, nu=15, pocket=3, ceph=None, tail=(30, 8), eye=(26, 3),
-                              dorsal=(4, 3), spines=(5, 3)),
+                              dorsal=(4, 3), spines=(5, 3), gills=(2, 2)),
 }
 
 S = SPECS[SPECIES]
@@ -624,6 +628,118 @@ def eye(m, sx, low):
         last = row
 
 
+# ---------------------------------------------------------------- the gills
+
+# (added 2026-11-18, the user: "The fish need modeled gills as well, well for relevant fish, so like when it opens
+# its mouth wide you can see them")
+#
+# Two things, both hidden while the mouth is shut and the slits closed, so that the animal looks exactly as before:
+# - THE GILL ARCHES: four a side, hanging from the roof of the mouth's pocket near its back, across the throat. Each
+#   a thin closed blade (UV.x from its root on the roof, 0, to its lower edge, 1; UV.y along it). Its front face is
+#   drawn as pale gill rakers, its back face as deep red filaments. Seen when the lower jaw turns down.
+# - THE GILL SLITS' FLAPS: five a side under the head, where the shader paints the slits. Each a thin closed blade
+#   lying just inside the skin behind its slit (UV.x from the slit, 0, to its back edge, 1; UV.y 0.3; UV2.x -1, the
+#   underside's). The shader drops its back edge as the gills open (`gape`, or `gills` for breathing), so that a flap
+#   of skin lifts and the red of the gills shows under it.
+# On the full model they are a second surface, so that the body's own surface is the same as it was.
+GILLS, FLAPS = 7, 8
+GILL_FACES = ("gill arches", "gill flaps")
+# The slits as the shader paints them: at.x from `inner` to `outer`, at.y = `base` + `step` * k + a shallow arc
+# (at = (|x| / HALF, z / DISC + 0.5)), and how far back each flap reaches (a part of the space between slits).
+SLITS = {
+    "manta_ray": dict(inner=(0.05, 0.004), outer=(0.155, -0.016), base=0.2, step=0.052),
+    "devil_ray": dict(inner=(0.05, 0.004), outer=(0.14, -0.013), base=0.2, step=0.05),
+    "spotted_eagle_ray": dict(inner=(0.045, 0.004), outer=(0.115, -0.009), base=0.27, step=0.036),
+}
+FLAP_SHARE = 0.4
+# Where the arches hang in the pocket: `s` from the lip (0) to the back (1).
+ARCH_AT = (0.5, 0.62, 0.74, 0.86)
+
+
+def flap_width():
+    return FLAP_SHARE * SLITS[SPECIES]["step"] * DISC
+
+
+def pocket_at(x, s):
+    """As disc() makes it: the point `s` of the way along the mouth's pocket at `x` across, how far its roof is above
+    that, and how far its floor is below."""
+    sigma = x / HALF
+    lip = skin(sigma, 0.0, True) if S["mouth"] == "front" else skin_at(sigma, S["mouth_at"], False)
+    back_zd = S["mouth_at"] + S["jaw"]
+    low_back = skin_at(sigma, back_zd, False)
+    high_back = skin_at(sigma, back_zd, True)
+    back = low_back + (high_back - low_back) * 0.42
+    p = lip + (back - lip) * s
+    zd = p.z + MID
+    arch = math.sin(math.pi * s ** 0.8) * lateral(x)
+    up = max(skin_at(sigma, zd, True).y - p.y, 0.0) * 0.55 * arch
+    down = max(p.y - skin_at(sigma, zd, False).y, 0.0) * 0.5 * arch
+    return p, up, down
+
+
+def closed_sheet(m, part, name, grid_point, nt, nu, thick, facing, extra=0.0, uv_y=None):
+    """A thin closed blade: `grid_point(t, u)` is its middle, `facing` the way its first skin faces; `thick` at its
+    root (t 0), nothing at its edge (t 1) and at both ends (u 0, 1)."""
+    for side in (1.0, -1.0):
+        grid = []
+        for ti in range(nt + 1):
+            t = ti / nt
+            row = []
+            for ui in range(nu + 1):
+                u = ui / nu
+                swell = thick * (1.0 - t) ** 0.7 * 2.6 * math.sqrt(u) * (1.0 - u)
+                p = grid_point(t, u) + facing * (side * swell * 0.5)
+                row.append(m.add(p, (t, u if uv_y is None else uv_y), part, extra))
+            grid.append(row)
+        for ti in range(nt):
+            for ui in range(nu):
+                m.face((grid[ti][ui], grid[ti][ui + 1], grid[ti + 1][ui + 1], grid[ti + 1][ui]), facing * side, name)
+
+
+def gills(m, low):
+    from mathutils.bvhtree import BVHTree
+    # (the model as built so far: the arches and flaps are fitted to its own faces, which on the low and game
+    # models lie a little inside the curves they were laid on)
+    tree = BVHTree.FromPolygons(m.verts, m.faces)
+    nt, nu = pick((3, 8), (1, 2), (1, G["gills"][0]), low)
+    # the arches, a side each, hanging from the roof of the pocket
+    half = S["mouth_half"]
+    for s in ARCH_AT:
+        for sx in (1.0, -1.0):
+            def arch_point(t, u, s=s, sx=sx):
+                x = sx * half * (0.06 + 0.76 * u)
+                p, up, down = pocket_at(x, s)
+                # (from just under the roof, as built, half way down to the floor)
+                roof = tree.ray_cast(p, Vector((0.0, 1.0, 0.0)))[0]
+                floor = tree.ray_cast(p, Vector((0.0, -1.0, 0.0)))[0]
+                top = roof.y if roof is not None else p.y + up
+                bottom = floor.y if floor is not None else p.y - down
+                gap = max(top - bottom, 0.0)
+                return Vector((p.x, top - gap * (0.12 + 0.4 * t), p.z))
+            closed_sheet(m, GILLS, "gill arches", arch_point, nt, nu, 0.25 * pocket_at(0.0, s)[1],
+                         Vector((0.0, 0.0, -1.0)))
+    # the slits' flaps, each just inside the skin of the model as built (found by a ray up from below)
+    sl = SLITS[SPECIES]
+    width = flap_width()
+    sink = 0.0016 * DISC
+    thick = 0.0012 * DISC
+    fnt, fnu = pick((3, 8), (1, 2), (1, G["gills"][1]), low)
+    for k in range(5):
+        inner = sl["inner"][0] + sl["inner"][1] * k
+        outer = sl["outer"][0] + sl["outer"][1] * k
+        mid = 0.5 * (inner + outer)
+        for sx in (1.0, -1.0):
+            def flap_point(t, u, inner=inner, outer=outer, mid=mid, sx=sx, k=k):
+                ax = inner + (outer - inner) * (0.04 + 0.92 * u)
+                along = sl["base"] + sl["step"] * k + 0.9 * (ax - mid) ** 2 / (outer - inner) - 0.05 * (ax - mid)
+                x = sx * ax * HALF
+                z = (along - 0.5) * DISC + t * width
+                hit = tree.ray_cast(Vector((x, -50.0, z)), Vector((0.0, 1.0, 0.0)))
+                y = hit[0].y if hit[0] is not None else skin_at(x / HALF, z + MID, False).y
+                return Vector((x, y + sink + 0.5 * thick, z))
+            closed_sheet(m, FLAPS, "gill flaps", flap_point, fnt, fnu, thick, Vector((0.0, -1.0, 0.0)), -1.0, 0.3)
+
+
 def make(name, low):
     m = Mesh()
     disc(m, low)
@@ -633,6 +749,7 @@ def make(name, low):
     fins(m, low)
     for sx in (1.0, -1.0):
         eye(m, sx, low)
+    gills(m, low)
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([to_b(p) for p in m.verts], [], m.faces)
     # (every layer made first, then each looked up by name: making one moves the others)
@@ -651,6 +768,15 @@ def make(name, low):
     bsdf.inputs["Base Color"].default_value = S["colour"] + (1.0,)
     material.diffuse_color = S["colour"] + (1.0,)
     mesh.materials.append(material)
+    if not GAME:
+        # (the full and low models: the gills a second surface, so that the body's is the same as it was, and
+        # Godot's importer thins it far off as it did; the game model is drawn without those thinned meshes)
+        inner = bpy.data.materials.get(SPECIES + "_gills") or bpy.data.materials.new(SPECIES + "_gills")
+        inner.diffuse_color = (0.5, 0.05, 0.05, 1.0)
+        mesh.materials.append(inner)
+        for poly in mesh.polygons:
+            if m.out[poly.index][1] in GILL_FACES:
+                poly.material_index = 1
     for poly in mesh.polygons:
         poly.use_smooth = True
     mesh.update()

@@ -105,7 +105,8 @@ var _material: ShaderMaterial
 var _models: Array[MeshInstance3D] = [null, null, null]
 
 
-## The full model's mesh, or the low one's (each one surface, to wear `new_material()`): for
+## The full model's mesh, or the low one's (each two surfaces, the body and the throat with its gills,
+## both to wear `new_material()`): for
 ## drawing one without this node.
 static func mesh_of(low_wanted := false) -> Mesh:
 	var path := MODEL % ("_lo" if low_wanted else "")

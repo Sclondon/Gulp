@@ -41,7 +41,7 @@ const SEE := 0.92
 ## How many times a fish can grow into something bigger (the growth dial's full turn).
 const STAGES := 8
 ## How far the sonar sees (m).
-const SONAR_RANGE := 30.0
+const SONAR_RANGE := Sonar.RANGE
 
 ## What the player is asking for: the stick (x right, y up, each -1..1), the burst, and the
 ## speed (0 dead slow to 1 full ahead).
@@ -62,10 +62,14 @@ var progress := 0.0
 var length := 0.0
 var heading := 0.0
 var blips: Array[Vector3] = []
+## The landmarks the sonar points to: each [its name in Sonar.LANDMARKS, where it is from the fish
+## (x to its right, y ahead, metres)].
+var landmarks: Array = []
 ## The game is paused: a veil over the sea and an arrow to go on.
 var paused := false
 
 var model: PanelModel
+var sonar: Sonar
 var _stick_touch := -1
 var _boost_touch := -1
 var _lever_touch := -1
@@ -77,6 +81,8 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	model = PanelModel.new()
 	add_child(model)
+	sonar = Sonar.new()
+	add_child(sonar)
 
 
 ## Lets go of everything (the run is over, or the pad is hidden). The lever stays where it is.
@@ -201,38 +207,13 @@ func _draw() -> void:
 	if paused:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.05, 0.1, 0.55))
 	draw_texture_rect(model.get_texture(), Rect2(Vector2.ZERO, size), false, Color(1.0, 1.0, 1.0, SEE))
-	# The sonar: a sweep going round, a ring, and what is about (hunters red, food green).
+	# The sonar's picture (scripts/sonar.gd) lies over the scope.
 	var scope := model.point("Scope")
-	var r := model.point("ScopeEdge").x - scope.x
-	var sweep := Time.get_ticks_msec() * 0.0022
-	for k in 14:
-		var way := Vector2.from_angle(sweep - k * 0.06)
-		draw_line(scope, scope + way * r * 0.82, Color(0.4, 1.0, 0.45, 0.5 * (1.0 - k / 14.0)), 2.5 * u, true)
-	draw_arc(scope, r * 0.42, 0.0, TAU, 32, Color(0.4, 1.0, 0.45, 0.22), 1.5 * u, true)
-	draw_arc(scope, r * 0.82, 0.0, TAU, 48, Color(0.4, 1.0, 0.45, 0.3), 1.5 * u, true)
-	draw_circle(scope, 3.0 * u, Color(0.6, 1.0, 0.6, 0.9))
-	for blip in blips:
-		var off := Vector2(blip.x, -blip.y) / SONAR_RANGE
-		if off.length() > 0.95:
-			continue
-		# (each brightens as the sweep passes it, and fades)
-		var lag := fposmod(sweep - off.angle(), TAU) / TAU
-		var bright := 0.45 + 0.55 * (1.0 - lag)
-		var colour := Color(1.0, 0.25, 0.15) if blip.z > 0.5 else Color(0.5, 1.0, 0.5)
-		draw_circle(scope + off * r * 0.82, (5.0 if blip.z > 0.5 else 3.5) * u, Color(colour, bright))
-	# The compass round its rim (the user: "The sonar radar needs caridnal direction indicators as
-	# well"): ahead is up the screen, so the points turn as the fish does. North is brighter.
-	var letter := int(maxf(r * 0.2, 9.0))
-	for k in 4:
-		var bearing := k * PI * 0.5 - heading
-		var at := scope + Vector2(sin(bearing), -cos(bearing)) * r * 0.91
-		var said := "NESW"[k]
-		var wide := font.get_string_size(said, HORIZONTAL_ALIGNMENT_LEFT, -1.0, letter).x
-		draw_string(font, at + Vector2(-wide * 0.5, letter * 0.36), said, HORIZONTAL_ALIGNMENT_LEFT, -1.0, letter, Color(1.0, 0.9, 0.5, 1.0) if k == 0 else Color(0.55, 1.0, 0.6, 0.85))
-	for k in 8:
-		var bearing := (k + 0.5) * PI * 0.25 - heading
-		var way := Vector2(sin(bearing), -cos(bearing))
-		draw_line(scope + way * r * 0.86, scope + way * r * 0.95, Color(0.55, 1.0, 0.6, 0.5), 1.5 * u, true)
+	sonar.fit(scope, model.point("ScopeEdge").x - scope.x)
+	sonar.blips = blips
+	sonar.landmarks = landmarks
+	sonar.heading = heading
+	sonar.visible = not paused
 	# The fish's length, written on the growth dial's face.
 	var high := int(maxf(model.scale_of("Length") * 0.17, 9.0))
 	var long := "%.2f m" % length

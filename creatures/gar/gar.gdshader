@@ -2,7 +2,8 @@ shader_type spatial;
 // The longnose gar (gar.gd): every marking drawn here (no texture files), its swimming, its
 // sideways snap and its opening beak. What each point is comes from the model
 // (tools/build_gar.py): UV2.y the part (0 body, 1 lower jaw, 2 dorsal fin, 3 anal fin, 4 tail,
-// 5 a pectoral fin, 6 a pelvic fin, 7 an eye, 9 a tooth; 8 is not used). UV, on the body and jaw:
+// 5 a pectoral fin, 6 a pelvic fin, 7 an eye, 9 a tooth, 10 a gill arch, 11 the throat; 8 is
+// not used). UV, on the body and jaw:
 // x how far along, y how high on its side (1 the ridge of the back, 0 the keel of the belly); on a
 // fin: x root (0) to edge (1), y leading edge (0) to trailing edge (1); on an eye: x middle (0) to
 // rim (1). UV2.x, on the body and jaw, how much the point is inside the mouth; on a tooth, 1 on
@@ -45,6 +46,14 @@ const float SPINE_SHARE = 0.0;
 const vec3 GILL = vec3(0.3, 0.0, 2.0);
 const vec2 EYE_AT = vec2(0.218, 0.011);
 const float PUPIL = 0.42;
+// The throat (a short tunnel back from the mouth) and the gill arches in it, as the model has them
+// (the build script's SHADER line): the tunnel's oval at its three stations (how far along; its
+// middle's height, half width, half height), and how far apart the arches stand.
+const vec3 TUBE_S = vec3(0.2030, 0.2327, 0.2880);
+const vec3 TUBE_Y = vec3(-0.0067, -0.0067, -0.0057);
+const vec3 TUBE_W = vec3(0.0085, 0.0100, 0.0060);
+const vec3 TUBE_H = vec3(0.0038, 0.0047, 0.0028);
+const float GILL_GAP = 0.0136;
 // How the curve of the body behind the head is laid (see `curl`): from where, how long.
 const float CURL_FROM = -0.15;
 const float CURL_SPAN = 0.6;
@@ -126,6 +135,9 @@ uniform float dorsal = 1.0;
 // The inside of the mouth, and the teeth.
 uniform vec3 mouth : source_color = vec3(0.3, 0.1, 0.08);
 uniform vec3 teeth : source_color = vec3(0.93, 0.91, 0.84);
+// The gills (added 2026-11-18): their blood red, and the pale of their rakers.
+uniform vec3 gill_red : source_color = vec3(0.62, 0.05, 0.06);
+uniform vec3 gill_raker : source_color = vec3(0.92, 0.72, 0.66);
 // The eye: 0 as the animal's own (as it always was), 1 the cartoon eye (bigger, a white, an iris,
 // a big pupil, a shine, a dark outline and the lids its character has; the top lists them).
 uniform float cartoon_eyes = 0.0;
@@ -256,6 +268,10 @@ void vertex() {
 	rest_normal = n;
 	inside = p <= 1 ? UV2.x : 0.0;
 	float open = clamp(gape, 0.0, 1.0);
+	if (p == 10) {
+		// The gill arches spread a little apart as the mouth opens.
+		v.z += open * 0.14 * GILL_GAP * (floor(UV.y) - 1.5);
+	}
 	bool lower = p == 1 || (p == 9 && UV2.x > 0.5);
 	if (lower) {
 		// The lower jaw (and its teeth) swings down about its hinge; the throat behind it stays.
@@ -400,8 +416,47 @@ float spotted(vec2 p, float many, float size) {
 	return found;
 }
 
+// The throat's oval at `s` (as the model has it): its middle's height, half width, half height.
+vec3 tube_at(float s) {
+	vec3 a = vec3(TUBE_Y.x, TUBE_W.x, TUBE_H.x);
+	vec3 b = vec3(TUBE_Y.y, TUBE_W.y, TUBE_H.y);
+	vec3 c = vec3(TUBE_Y.z, TUBE_W.z, TUBE_H.z);
+	if (s <= TUBE_S.y) {
+		return mix(a, b, clamp((s - TUBE_S.x) / (TUBE_S.y - TUBE_S.x), 0.0, 1.0));
+	}
+	return mix(b, c, clamp((s - TUBE_S.y) / (TUBE_S.z - TUBE_S.y), 0.0, 1.0));
+}
+
+// Whether a point of the head (as the model has it) is inside the throat's oval: the old dark wall at
+// the back of the mouth (and the back of the jaw) is cut away there, so the open mouth looks down the
+// throat to the gills. (All of it is inside the shut head: nothing seen from outside changes.)
+bool in_throat(vec3 r) {
+	float s = r.z + 0.5;
+	if (s <= TUBE_S.x || s >= TUBE_S.z) {
+		return false;
+	}
+	vec3 t = tube_at(s);
+	vec2 q = vec2(r.x / t.y, (r.y - t.x) / t.z);
+	return dot(q, q) < 1.0;
+}
+
+// The gills' colour: `uv` as the model gives it (x 0 the rakers' side, about 0.35 the bar, 1 the
+// filaments; y the arch's number plus how far along it), `s` how far back: blood red, the filaments
+// darker with fine lines across, the rakers pale, all darker deeper in the throat.
+vec3 gill_colour(vec2 uv, float s) {
+	float along = fract(uv.y);
+	vec3 fringe = gill_red * 0.62 * (0.72 + 0.28 * cos(along * 160.0));
+	vec3 c = mix(gill_red * 1.15, fringe, smoothstep(0.45, 0.9, uv.x));
+	float teeth_ = 0.6 + 0.4 * step(0.45, fract(along * 11.0));
+	c = mix(c, gill_raker, (1.0 - smoothstep(0.06, 0.24, uv.x)) * teeth_);
+	return c * (1.0 - 0.45 * smoothstep(TUBE_S.x, TUBE_S.z, s));
+}
+
 void fragment() {
 	int p = int(part + 0.5);
+	if (p <= 1 && in_throat(rest)) {
+		discard;
+	}
 	float glance = 1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0);
 	vec3 c;
 	float rough = 0.4;
@@ -451,6 +506,16 @@ void fragment() {
 		c = mix(c, spots, spotted(vec2(UV.x * 5.0, UV.y * 4.0), 0.4, 0.3) * 0.5);
 		rough = 0.55;
 		spec = 0.35;
+	} else if (p == 10) {
+		// A gill arch.
+		c = gill_colour(UV, rest.z + 0.5);
+		rough = 0.45;
+		spec = 0.4;
+	} else if (p == 11) {
+		// The throat: the mouth's inside, darker the deeper it goes.
+		c = mouth * mix(0.9, 0.25, UV.y);
+		rough = 0.6;
+		spec = 0.2;
 	} else if (p == 9) {
 		// A tooth: ivory, clearer at its point.
 		c = mix(teeth, teeth * 0.75 + vec3(0.1), UV.x * 0.5);

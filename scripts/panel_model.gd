@@ -44,8 +44,9 @@ const GAP := 0.1
 ## How each material of the model is drawn over the baked picture: its shine, and a tint.
 const PAINTS := {
 	"iron": {},
-	"brass": {"shine": 0.4},
-	"copper": {"shine": 0.4},
+	# (the user, 2026-11-18: "the controls needs a slightly more brass metallic look")
+	"brass": {"shine": 0.62, "tint": Color(1.34, 1.1, 0.66)},
+	"copper": {"shine": 0.55, "tint": Color(1.3, 0.95, 0.72)},
 	"rubber": {"shine": 0.12},
 	"dark": {},
 	"paper": {},

@@ -79,7 +79,7 @@ const FIN_BELOW := 0.118
 	set(value):
 		low = value
 		_show()
-## The game model (2,226 triangles, against the full model's 20,979): the same fish, its
+## The game model (2,402 triangles, against the full model's 22,197): the same fish, its
 ## triangles spent where they show (the outline, the eye, the mouth), for games. With `game` on
 ## (and `low` off) the full model is never loaded, so a game's export may leave its .glb out.
 @export var game := false:
@@ -110,7 +110,7 @@ var phase := 0.0:
 		_send_phase()
 
 ## The game model's triangles.
-const GAME_TRIANGLES := 2226
+const GAME_TRIANGLES := 2402
 
 static var _meshes := {}
 

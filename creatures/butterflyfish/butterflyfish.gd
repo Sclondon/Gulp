@@ -82,9 +82,18 @@ const REACH := {
 ## the pupil's width (of the iris) and shape (0 round, 1 a bar across, 2 an upright slit, 3 a
 ## keyhole), where the upper lid rests (`lid`, in eye radii up from its middle: 1 or more none
 ## of it shows, 0 half shut) and how it slants (`lid_tilt`: more than 0 higher at the nose),
-## and where the lower lid rests (-1 or less none of it shows).
+## and where the lower lid rests (-1 or less none of it shows). `throat`: the throat's ovals (how
+## far along, the height of its middle, half height, half width; body lengths: the build script's
+## THROAT_KNOTS line), for the shader to open the back of the mouth into it.
 const TYPES := {
 	Type.THREADFIN: {
+		"throat": [
+			Vector4(0.0300, -0.0324, 0.0110, 0.0071),
+			Vector4(0.0529, -0.0385, 0.0130, 0.0107),
+			Vector4(0.0993, -0.0456, 0.0130, 0.0131),
+			Vector4(0.1625, -0.0532, 0.0130, 0.0131),
+			Vector4(0.2400, -0.0624, 0.0130, 0.0131),
+		],
 		"kind": 0, "hinge_s": 0.045, "hinge_y": -0.033, "eye_at": Vector2(0.132, 0.04),
 		"pec_root": Vector3(0.0495, -0.0725, 0.265), "eye_skin": Vector3(0.0393, 0.04, 0.132),
 		# curious and wide awake: a big amber eye, round pupil, the lid just over its top
@@ -92,6 +101,13 @@ const TYPES := {
 		"pupil_shape": 0, "lid": 0.78, "lid_tilt": 0.0, "lower_lid": -1.2,
 	},
 	Type.RACCOON: {
+		"throat": [
+			Vector4(0.0250, -0.0291, 0.0120, 0.0067),
+			Vector4(0.0479, -0.0359, 0.0134, 0.0114),
+			Vector4(0.0943, -0.0437, 0.0134, 0.0138),
+			Vector4(0.1575, -0.0513, 0.0134, 0.0138),
+			Vector4(0.2350, -0.0606, 0.0134, 0.0138),
+		],
 		"kind": 1, "hinge_s": 0.04, "hinge_y": -0.031, "eye_at": Vector2(0.125, 0.05),
 		"pec_root": Vector3(0.0512, -0.0725, 0.26), "eye_skin": Vector3(0.0397, 0.05, 0.125),
 		# a sly bandit behind its mask: a red-orange eye half lidded over a narrowed lower lid,
@@ -100,6 +116,13 @@ const TYPES := {
 		"pupil_shape": 1, "lid": 0.2, "lid_tilt": 0.18, "lower_lid": -0.7,
 	},
 	Type.COPPERBAND: {
+		"throat": [
+			Vector4(0.0190, -0.0266, 0.0047, 0.0036),
+			Vector4(0.0479, -0.0295, 0.0062, 0.0052),
+			Vector4(0.1067, -0.0385, 0.0062, 0.0065),
+			Vector4(0.1869, -0.0481, 0.0062, 0.0065),
+			Vector4(0.2850, -0.0599, 0.0062, 0.0065),
+		],
 		"kind": 2, "hinge_s": 0.034, "hinge_y": -0.0275, "eye_at": Vector2(0.185, 0.042),
 		"pec_root": Vector3(0.05, -0.0725, 0.31), "eye_skin": Vector3(0.0372, 0.042, 0.185),
 		# prim and unimpressed, looking down its long nose: a pale green-gold eye, a small pupil,
@@ -108,6 +131,13 @@ const TYPES := {
 		"pupil_shape": 0, "lid": 0.3, "lid_tilt": 0.0, "lower_lid": -0.85,
 	},
 	Type.LONGNOSE: {
+		"throat": [
+			Vector4(0.0170, -0.0241, 0.0019, 0.0014),
+			Vector4(0.0505, -0.0242, 0.0038, 0.0035),
+			Vector4(0.1186, -0.0277, 0.0041, 0.0049),
+			Vector4(0.2114, -0.0476, 0.0041, 0.0049),
+			Vector4(0.3250, -0.0612, 0.0041, 0.0049),
+		],
 		"kind": 3, "hinge_s": 0.032, "hinge_y": -0.025, "eye_at": Vector2(0.238, 0.034),
 		"pec_root": Vector3(0.0474, -0.0675, 0.35), "eye_skin": Vector3(0.034, 0.034, 0.238),
 		# startled: a big round stare, white all round a small yellow iris and a pinprick pupil,
@@ -116,6 +146,13 @@ const TYPES := {
 		"pupil_shape": 0, "lid": 1.3, "lid_tilt": 0.0, "lower_lid": -1.3,
 	},
 	Type.BANNERFISH: {
+		"throat": [
+			Vector4(0.0250, -0.0355, 0.0109, 0.0062),
+			Vector4(0.0479, -0.0412, 0.0124, 0.0099),
+			Vector4(0.0943, -0.0492, 0.0124, 0.0120),
+			Vector4(0.1575, -0.0568, 0.0124, 0.0120),
+			Vector4(0.2350, -0.0661, 0.0124, 0.0120),
+		],
 		"kind": 4, "hinge_s": 0.04, "hinge_y": -0.037, "eye_at": Vector2(0.128, 0.034),
 		"pec_root": Vector3(0.0496, -0.0725, 0.26), "eye_skin": Vector3(0.0406, 0.034, 0.128),
 		# gentle and a little wistful: a big soft dark-brown eye, a big pupil, the lid raised at

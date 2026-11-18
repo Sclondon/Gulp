@@ -54,6 +54,10 @@ uniform float ruffle_alpha = 0.86;
 // How thick the tentacles are, for 1 as the model has them (they are made a little thicker than
 // life, to be seen from far off: a close picture wants them finer).
 uniform float tentacle_width = 1.0;
+// How bright the glint of light off it is (0.2 as the game has it; less, and it is less glassy).
+uniform float shine = 0.2;
+// How deep the bell's fine ribs and lumps are drawn (0 smooth, as the game has it; 1 well ribbed, as in photographs).
+uniform float bell_bumps = 0.0;
 
 varying float part;
 varying float flag;
@@ -223,6 +227,22 @@ void fragment() {
 		c = mix(c, amber * 0.9, 0.35 * noise3(rest * 2.3 + 5.0) * (1.0 - smoothstep(0.4, 0.7, at.y)));
 		c = mix(c, rust, dark);
 		a = mix(bell_alpha, 0.97, dark);
+		if (bell_bumps > 0.0) {
+			// ribs running out from the crown to the rim, a groove down each lobe, and soft lumps: the normal bent by
+			// how they rise and fall across the picture (a bump map with no texture)
+			float ribs = pow(0.5 + 0.5 * cos(at.x * 48.0 * 6.2831853), 2.0) * 0.6 + (1.0 - lobe) * 0.5;
+			float h = (ribs * smoothstep(0.15, 0.5, at.y) + 0.6 * noise3(rest * 7.0)) * bell_bumps * 0.012;
+			vec3 dpdx = dFdx(VERTEX);
+			vec3 dpdy = dFdy(VERTEX);
+			vec3 n = normalize(NORMAL);
+			vec3 r1 = cross(dpdy, n);
+			vec3 r2 = cross(n, dpdx);
+			float det = dot(dpdx, r1);
+			vec3 grad = sign(det) * (dFdx(h) * r1 + dFdy(h) * r2);
+			NORMAL = normalize(abs(det) * n - grad);
+			// (and a little darker down the grooves)
+			c *= 1.0 - 0.18 * bell_bumps * (1.0 - ribs);
+		}
 	} else if (part < 0.375) {
 		// The underside: pale and clear, fine lines running out to the rim in its outer band,
 		// a soft ring where that band begins, a dark dash on each lappet.
@@ -275,5 +295,5 @@ void light() {
 	float band = floor(wrap * 3.0 + 0.5) / 3.0;
 	DIFFUSE_LIGHT += mix(wrap, band, 0.25) * ATTENUATION * LIGHT_COLOR / 3.14159;
 	vec3 half_way = normalize(LIGHT + VIEW);
-	SPECULAR_LIGHT += pow(max(dot(NORMAL, half_way), 0.0), 60.0) * 0.2 * ATTENUATION * LIGHT_COLOR;
+	SPECULAR_LIGHT += pow(max(dot(NORMAL, half_way), 0.0), 60.0) * shine * ATTENUATION * LIGHT_COLOR;
 }

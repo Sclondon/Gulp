@@ -6,7 +6,9 @@ Run from the game's root:
 
 Writes creatures/bluefin_tuna/models/bluefin_tuna.glb (the full model), bluefin_tuna_game.glb (the game
 model) and bluefin_tuna_lo.glb (far off, phones), and the editable creatures/bluefin_tuna/tools/bluefin_tuna.blend
-(this folder has a .gdignore; it holds all three). Each model is one still mesh with one surface: the shader
+(this folder has a .gdignore; it holds all three). Each model is one still mesh: the full and the low model
+of two surfaces (the body as it always was, then the throat and the gills, added 2026-11-18 and written into
+the .glb by `merge_glb`), the game model of one. The shader
 (bluefin_tuna.gdshader) draws every marking, swims it and works its jaw. It prints a WINDING line for each
 (the check that nothing is inside out), a SHAPE line and an EYE line (the numbers the shader shares).
 
@@ -41,7 +43,7 @@ and X to its left side, and scaled to LENGTH as it is written out; the origin is
 along. `xm` below is units behind the tip of the snout.
 
 What a point is, for the shader: UV2.y the part (0 body, 1 first dorsal, 2 the second dorsal and the anal fin,
-3 a finlet, 4 the tail, 5 a pectoral fin, 6 a pelvic fin, 7 an eye). UV, on the body: x how far along (0 snout
+3 a finlet, 4 the tail, 5 a pectoral fin, 6 a pelvic fin, 7 an eye, 8 a gill: see `throat`). UV, on the body: x how far along (0 snout
 to 1 tail tips), y how high on its side (1 the ridge of the back, 0.5 its middle line, 0 the keel of the
 belly); on a fin: x from its root (0) to its tip (1), y from its leading edge (0) to its trailing edge (1); on
 an eye: x from its middle (0) to its rim (1). UV2.x, on the first dorsal, how far the point stands above the
@@ -52,8 +54,10 @@ lower. (The glTF writer flips V: what is written here is 1 - v, so that Godot re
 The numbers marked "as the shader has it" are in the .gdshader too: change one, change the other.
 """
 
+import json
 import math
 import os
+import struct
 import sys
 
 import bpy
@@ -143,7 +147,7 @@ GAME_FINS = 1.0
 
 U = LENGTH / 1.5
 HALF = 0.75
-BODY, DORSAL_PART, SICKLE, FINLET, TAIL, PECTORAL, PELVIC, EYE = range(8)
+BODY, DORSAL_PART, SICKLE, FINLET, TAIL, PECTORAL, PELVIC, EYE, GILLS = range(9)
 SKIN, JAW, ROOF, FLOOR, TOOTH_UP, TOOTH_DOWN = range(6)
 TAU = math.tau
 BODY_FROM = 0.002
@@ -277,6 +281,14 @@ class Mesh:
         # per face: the way it should face
         self.out = []
         self.count = {}
+        # per face: 0 the body's surface, 1 the throat's and the gills' (a second surface on the full model)
+        self.layers = []
+        self.layer = 0
+
+    def copy(self, i):
+        self.verts.append(self.verts[i].copy())
+        self.data.append(self.data[i])
+        return len(self.verts) - 1
 
     def add(self, p, uv, part, high=0.0):
         self.verts.append(Vector(p))
@@ -302,6 +314,7 @@ class Mesh:
             points = tuple(reversed(points))
         self.faces.append(tuple(points))
         self.out.append((Vector(out), name))
+        self.layers.append(self.layer)
         self.count[name] = self.count.get(name, 0) + 1
 
 
@@ -452,7 +465,11 @@ def mouth(m, xs, low):
         for j in range(across):
             m.face((tip, rows[0][j], rows[0][j + 1]), out, "mouth")
         sheets.append(rows)
-    # the wall at the back
+    # (the throat, back from the hinge where the back of the mouth was a wall, and the gills in it, are built
+    # last, by `throat`, so that every point before them is numbered as it always was)
+    m.sheets = sheets
+    # the wall at the back (the full and low models' body surface is kept as it always was, so the wall is still
+    # there; the shader leaves it out, opening the mouth onto the throat)
     roof_row = sheets[0][-1]
     floor_row = sheets[1][-1]
     for j in range(across):
@@ -498,6 +515,139 @@ def mouth(m, xs, low):
                 for q in range(sides):
                     a = (q + 0.5) / sides * TAU
                     m.face((end, ring[q], ring[(q + 1) % sides]), Vector((math.cos(a), 0.0, math.sin(a))), "teeth")
+
+
+# The throat and the gills (added 2026-11-18; the user: "The fish need modeled gills as well, well for relevant fish,
+# so like when it opens its mouth wide you can see them"). How far back from the hinge the throat runs (units), how
+# much it narrows by its end, where along it the four gill arches stand (shares of its length), how far in from its
+# wall they are (a share), where on the roof and the floor each arch ends (a share of the way out to the lips), and
+# the arches' bars, filaments and rakers (units, for a throat 0.07 units wide each side of its middle: they are
+# scaled to the throat this fish has).
+THROAT = 0.13
+THROAT_NARROW = 0.3
+ARCHES = (0.22, 0.4, 0.58, 0.76)
+ARCH_IN = 0.84
+ARCH_FROM = 0.3
+BAR = 0.0042
+FILAMENT = 0.02
+RAKER = 0.008
+
+
+def throat(m, sheets, low):
+    """A short tunnel back from the hinge, carrying on the roof and the floor of the mouth from where their last
+    rows meet (the mouth's back was a wall there), closed at its end; in it, on each side, four gill arches: a
+    curved bar from the roof round the corner of the throat to its floor, a fringe of filaments behind it, pale
+    rakers before it. All of it in the throat's layer (the full model's second surface), out of sight with the
+    mouth shut: it lies behind the hinge, inside the head. A gill's UV.x is how far along its arch it is (0 at the
+    roof, 1 the floor), UV.y what it is (0 the bar, 0.4 to 0.6 the filaments from their roots to their tips, 1 a
+    raker)."""
+    m.layer = 1
+    game = LEVEL == "game"
+    stations = 2 if low else 3 if game else 6
+    segments = 2 if low else 4 if game else 12
+    sides = 3 if low or game else 6
+    teeth = 1 if low else 2
+    roof_row, floor_row = sheets[0][-1], sheets[1][-1]
+    loop = list(roof_row) + list(reversed(floor_row[1:-1]))
+    half = len(roof_row)
+    centre_y = (mouth_y(HINGE, 0.0, True) + mouth_y(HINGE, 0.0, False)) * 0.5
+    flat_middle = Vector((0.0, centre_y, 0.0))
+    along = Vector((0.0, 0.0, 1.0))
+
+    def shrink(t):
+        return 1.0 - THROAT_NARROW * t
+
+    def inward(p):
+        return Vector((-p.x, centre_y - p.y, 0.0)).normalized()
+
+    # (the throat's first ring a copy of the mouth's last points, so that the throat is a mesh of its own)
+    rings = [[m.copy(i) for i in loop]]
+    for k in range(1, stations + 1):
+        t = k / stations
+        xm = HINGE + THROAT * t
+        ring = []
+        for n, i in enumerate(loop):
+            p = m.verts[i]
+            q = flat_middle + (Vector((p.x, p.y, 0.0)) - flat_middle) * shrink(t)
+            ring.append(m.add(Vector((q.x, q.y, xm - HALF)), (xm / 1.5, 0.5), BODY, ROOF if n < half else FLOOR))
+        rings.append(ring)
+    for r in range(stations):
+        for n in range(len(loop)):
+            quad = (rings[r][n], rings[r][(n + 1) % len(loop)], rings[r + 1][(n + 1) % len(loop)], rings[r + 1][n])
+            centre = sum((m.verts[i] for i in quad), Vector()) * 0.25
+            m.face(quad, inward(centre), "throat")
+    end = m.add(Vector((0.0, centre_y, HINGE + THROAT - HALF)), ((HINGE + THROAT) / 1.5, 0.5), BODY, ROOF)
+    for n in range(len(loop)):
+        m.face((end, rings[-1][n], rings[-1][(n + 1) % len(loop)]), Vector((0.0, 0.0, -1.0)), "throat")
+    # the gill arches
+    edge = lip_point(HINGE, 1.0, False)
+    size = edge.x / 0.07
+    bar, filament, raker = BAR * size, FILAMENT * size, RAKER * size
+    for sx in (1.0, -1.0):
+        for share in ARCHES:
+            z = HINGE + THROAT * share - HALF
+            scale = shrink(share) * ARCH_IN
+
+            def arch(v, sx=sx, z=z, scale=scale):
+                # (an even C, half an ellipse as wide as the throat and as deep, from the roof round its side to
+                # its floor: no bend tighter than the bar is thick)
+                a = math.asin(ARCH_FROM) + (math.pi - 2.0 * math.asin(ARCH_FROM)) * v
+                deep = mouth_y(HINGE, 0.0, True) - centre_y
+                q = Vector((sx * edge.x * math.sin(a), centre_y + deep * math.cos(a), 0.0))
+                q = flat_middle + (q - flat_middle) * scale
+                return Vector((q.x, q.y, z))
+
+            vs = [k / segments for k in range(segments + 1)]
+            curve = [arch(v) for v in vs]
+
+            def tangent(k, curve=curve):
+                return (curve[min(k + 1, segments)] - curve[max(k - 1, 0)]).normalized()
+
+            # the bar: a tube along the arch, closed at its ends
+            tube = []
+            for k, p in enumerate(curve):
+                side = tangent(k).cross(along).normalized()
+                tube.append([m.add(p + (side * math.cos(a) + along * math.sin(a)) * bar, (vs[k], 0.0), GILLS)
+                             for a in (q / sides * TAU for q in range(sides))])
+            for k in range(segments):
+                for q in range(sides):
+                    w = (q + 1) % sides
+                    quad = (tube[k][q], tube[k][w], tube[k + 1][w], tube[k + 1][q])
+                    centre = sum((m.verts[i] for i in quad), Vector()) * 0.25
+                    m.face(quad, centre - (curve[k] + curve[k + 1]) * 0.5, "gills")
+            for k, way in ((0, -tangent(0)), (segments, tangent(segments))):
+                cap = m.add(curve[k], (vs[k], 0.0), GILLS)
+                for q in range(sides):
+                    m.face((cap, tube[k][q], tube[k][(q + 1) % sides]), way, "gills")
+            # the filaments: a thin closed blade behind the bar, its edge a comb of long and short tips; the rakers:
+            # a pale tooth before the bar between each two points of it (each two skins back to back)
+            fine = [k / (segments * teeth) for k in range(segments * teeth + 1)]
+            base = [arch(v) for v in fine]
+            tips = []
+            for j, v in enumerate(fine):
+                long = filament * (1.0 if j % teeth == 0 else 0.55) * (0.6 + 0.4 * math.sin(math.pi * v))
+                tips.append(base[j] + (along + inward(base[j]) * 0.6).normalized() * long)
+            for skin in (1.0, -1.0):
+                roots, ends = [], []
+                for j, v in enumerate(fine):
+                    t_dir = (base[min(j + 1, len(fine) - 1)] - base[max(j - 1, 0)]).normalized()
+                    normal = t_dir.cross(tips[j] - base[j]).normalized()
+                    roots.append(m.add(base[j] + along * bar * 0.6 + normal * skin * bar * 0.35, (v, 0.4), GILLS))
+                    ends.append(m.add(tips[j], (v, 0.6), GILLS))
+                for j in range(len(fine) - 1):
+                    normal = (base[j + 1] - base[j]).cross(tips[j] - base[j]).normalized()
+                    m.face((roots[j], roots[j + 1], ends[j + 1], ends[j]), normal * skin, "gills")
+                for k in range(segments):
+                    a, b = curve[k], curve[k + 1]
+                    middle = (a + b) * 0.5
+                    tip = middle + (-along + inward(middle)).normalized() * raker
+                    normal = (b - a).cross(tip - a).normalized()
+                    lift = normal * skin * bar * 0.3
+                    tooth = (m.add(a - along * bar * 0.5 + lift, (vs[k], 1.0), GILLS),
+                             m.add(b - along * bar * 0.5 + lift, (vs[k + 1], 1.0), GILLS),
+                             m.add(tip, ((vs[k] + vs[k + 1]) * 0.5, 1.0), GILLS))
+                    m.face(tooth, normal * skin, "gills")
+    m.layer = 0
 
 
 def eye_skin(sx):
@@ -688,6 +838,9 @@ def fins(m, low):
 
 
 def make(name, low, level=None):
+    """Builds one model. The full and the low model come out as two objects: the body as it always was, and its
+    throat and gills (`name`_throat), which are written into the same .glb as a second surface (`export`); the
+    game model is one object."""
     global LEVEL
     LEVEL = level or ("low" if low else "full")
     m = Mesh()
@@ -695,8 +848,20 @@ def make(name, low, level=None):
     for sx in (1.0, -1.0):
         eye(m, sx, low)
     fins(m, low)
+    m.split = len(m.verts)
+    throat(m, m.sheets, low)
+    if LEVEL == "game":
+        return mesh_object(name, m, list(range(len(m.faces))), 0, len(m.verts), NAME, COLOUR), None
+    first = mesh_object(name, m, [i for i, layer in enumerate(m.layers) if layer == 0], 0, m.split, NAME, COLOUR)
+    inner = mesh_object(name + "_throat", m, [i for i, layer in enumerate(m.layers) if layer == 1], m.split,
+                        len(m.verts), NAME + "_throat", (0.4, 0.05, 0.06, 1.0))
+    return first, inner
+
+
+def mesh_object(name, m, faces, lo, hi, material_name, colour):
+    """A Blender object of the faces `faces` of `m`, whose points are `lo` to `hi`."""
     mesh = bpy.data.meshes.new(name)
-    mesh.from_pydata([to_b(p) * U for p in m.verts], [], m.faces)
+    mesh.from_pydata([to_b(p) * U for p in m.verts[lo:hi]], [], [tuple(i - lo for i in m.faces[f]) for f in faces])
     # (every layer made first, then each looked up by name: making one moves the others)
     mesh.uv_layers.new(name="UVMap")
     mesh.uv_layers.new(name="UV2")
@@ -704,38 +869,108 @@ def make(name, low, level=None):
     uv2 = mesh.uv_layers["UV2"].data
     for poly in mesh.polygons:
         for corner, vi in enumerate(poly.vertices):
-            d = m.data[vi]
+            d = m.data[vi + lo]
             uv[poly.loop_start + corner].uv = d[0]
             uv2[poly.loop_start + corner].uv = d[1]
-    material = bpy.data.materials.get(NAME) or bpy.data.materials.new(NAME)
+    material = bpy.data.materials.get(material_name) or bpy.data.materials.new(material_name)
     material.use_nodes = True
     bsdf = next(n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
-    bsdf.inputs["Base Color"].default_value = COLOUR
-    material.diffuse_color = COLOUR
+    bsdf.inputs["Base Color"].default_value = colour
+    material.diffuse_color = colour
     mesh.materials.append(material)
+    # (smooth, but for the gills' filaments and rakers: thin folded blades, flat so that each face keeps its own
+    # facing)
     for poly in mesh.polygons:
-        poly.use_smooth = True
+        poly.use_smooth = not (m.out[faces[poly.index]][1] == "gills" and m.data[m.faces[faces[poly.index]][0]][0][1] < 0.9)
     mesh.update()
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
     tris = sum(len(p.vertices) - 2 for p in mesh.polygons)
     box = [max(abs(v.co[i]) for v in mesh.vertices) for i in range(3)]
     print("BUILT %s verts=%d tris=%d reach side=%.3f along=%.3f up/down=%.3f" % (name, len(mesh.vertices), tris, box[0], box[1], box[2]))
-    winding(name, mesh, m)
+    winding(name, mesh, m, faces)
     return obj
 
 
-def winding(name, mesh, m):
+def winding(name, mesh, m, faces):
     """Nothing inside out: the skin of the body faces away from its middle line, each skin of a fin away
-    from the fin's own flat, an eye out from the head, the roof of the mouth down and its floor up (Blender's
-    front is the side a face's normal is on)."""
+    from the fin's own flat, an eye out from the head, the roof of the mouth down and its floor up, the throat in
+    towards its middle, each part of a gill out of itself (Blender's front is the side a face's normal is on)."""
     bad = {}
+    count = {}
     for poly in mesh.polygons:
-        out, group = m.out[poly.index]
+        out, group = m.out[faces[poly.index]]
+        count[group] = count.get(group, 0) + 1
         if poly.normal.dot(to_b(out)) <= 0.0:
             bad[group] = bad.get(group, 0) + 1
-    told = ["%s %d/%d wrong" % (group, bad.get(group, 0), count) for group, count in m.count.items()]
+            if os.environ.get("WHY"):
+                print("  wrong %s area=%.3g at %s" % (group, poly.area, tuple(round(v, 4) for v in poly.center)))
+    told = ["%s %d/%d wrong" % (group, bad.get(group, 0), n) for group, n in count.items()]
     print("WINDING %s: %s: %s" % (name, "ok" if not bad else "INSIDE OUT", ", ".join(told)))
+
+
+def export(obj, inner, path):
+    """Writes `obj` to `path`, and `inner` (if any) into the same .glb as a second primitive of its mesh, so that
+    Godot reads one mesh of two surfaces whose first is exactly what `obj` alone would have been."""
+    export_one(obj, path)
+    if inner is None:
+        return
+    extra = os.path.join(HERE, "_throat.glb")
+    export_one(inner, extra)
+    merge_glb(path, extra)
+    os.remove(extra)
+
+
+def _read_glb(path):
+    with open(path, "rb") as f:
+        data = f.read()
+    json_length = struct.unpack_from("<I", data, 12)[0]
+    gltf = json.loads(data[20:20 + json_length])
+    at = 20 + json_length
+    bin_length = struct.unpack_from("<I", data, at)[0]
+    return gltf, bytearray(data[at + 8:at + 8 + bin_length])
+
+
+def merge_glb(path, extra):
+    """Adds the first mesh of the .glb `extra` to the first mesh of the .glb `path` as more primitives (its
+    accessors, buffer views, materials and binary data appended after `path`'s own, which are left as they were)."""
+    base, data = _read_glb(path)
+    more, more_data = _read_glb(extra)
+    data += b"\0" * (-len(data) % 4)
+    shift = len(data)
+    views = len(base["bufferViews"])
+    accessors = len(base["accessors"])
+    materials = len(base.setdefault("materials", []))
+    for view in more["bufferViews"]:
+        view = dict(view)
+        view["buffer"] = 0
+        view["byteOffset"] = view.get("byteOffset", 0) + shift
+        base["bufferViews"].append(view)
+    for accessor in more["accessors"]:
+        accessor = dict(accessor)
+        accessor["bufferView"] += views
+        base["accessors"].append(accessor)
+    base["materials"] += more.get("materials", [])
+    for primitive in more["meshes"][0]["primitives"]:
+        primitive = dict(primitive)
+        primitive["attributes"] = {k: v + accessors for k, v in primitive["attributes"].items()}
+        if "indices" in primitive:
+            primitive["indices"] += accessors
+        if "material" in primitive:
+            primitive["material"] += materials
+        base["meshes"][0]["primitives"].append(primitive)
+    data += more_data
+    data += b"\0" * (-len(data) % 4)
+    base["buffers"][0]["byteLength"] = len(data)
+    text = json.dumps(base, separators=(",", ":")).encode("utf-8")
+    text += b" " * (-len(text) % 4)
+    total = 12 + 8 + len(text) + 8 + len(data)
+    with open(path, "wb") as f:
+        f.write(struct.pack("<III", 0x46546C67, 2, total))
+        f.write(struct.pack("<II", len(text), 0x4E4F534A))
+        f.write(text)
+        f.write(struct.pack("<II", len(data), 0x004E4942))
+        f.write(data)
 
 
 def export_one(obj, path):
@@ -788,16 +1023,19 @@ def main():
     deep = max(a + b for _, a, b, _ in PROFILE) * U
     print("SHAPE %s: LENGTH=%.3f HINGE=%.4f HINGE_Y=%.4f GILL=%.3f EYE_AT=(%.3f, %.3f) depth=%.3f width=%.3f" % (
         NAME, LENGTH, HINGE, lip_c(HINGE) * down, GILL, EYE_AT[0], EYE_AT[1], deep, 2.0 * max(p[3] for p in PROFILE) * U))
-    full = make(NAME, False)
-    low = make(NAME + "_lo", True)
+    full, full_inner = make(NAME, False)
+    low, low_inner = make(NAME + "_lo", True)
     os.makedirs(OUT, exist_ok=True)
-    export_one(full, os.path.join(OUT, NAME + ".glb"))
-    export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
+    export(full, full_inner, os.path.join(OUT, NAME + ".glb"))
+    export(low, low_inner, os.path.join(OUT, NAME + "_lo.glb"))
     # (the game model, built after the others are written out, so that they come out as they always did)
-    game = make(NAME + "_game", False, "game")
-    export_one(game, os.path.join(OUT, NAME + "_game.glb"))
+    game, _ = make(NAME + "_game", False, "game")
+    export(game, None, os.path.join(OUT, NAME + "_game.glb"))
     here, out = eye_frame(1.0)
     print("EYE %s: EYE_MID=vec3(%.5f, %.5f, %.5f) EYE_OUT=vec3(%.5f, %.5f, %.5f) EYE_RADIUS=%.4f" % ((NAME,) + tuple(here) + tuple(out) + (EYE_RADIUS,)))
+    # (in the .blend, each model's throat and gills ride with it)
+    for owner, inner in ((full, full_inner), (low, low_inner)):
+        inner.parent = owner
     low.location.x = LENGTH
     game.location.x = -LENGTH
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))

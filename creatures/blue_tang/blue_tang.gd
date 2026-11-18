@@ -22,7 +22,7 @@ extends Node3D
 ## For a school of hundreds, do not make hundreds of these nodes: draw `BlueTang.school_mesh()`
 ## with one MultiMesh (GameCommon's Flock takes it as its `custom_mesh`).
 ##
-## Three models besides the school one: the full one, the game one (`game`: about 1,590
+## Three models besides the school one: the full one, the game one (`game`: about 1,720
 ## triangles, the outline kept, for games) and the low one (`low`). Each is loaded only when first
 ## shown, so a game that sets `game` never loads the full model.
 ##
@@ -71,7 +71,7 @@ static var _meshes := {}
 	set(value):
 		low = value
 		_show()
-## The game model (about 1,590 triangles, spent on the outline, the eye, the mouth and the fins'
+## The game model (about 1,720 triangles, spent on the outline, the eye, the mouth and the fins'
 ## edges) in place of the full one: for games. With it set the full model is never loaded. `low`
 ## wins over it.
 @export var game := false:

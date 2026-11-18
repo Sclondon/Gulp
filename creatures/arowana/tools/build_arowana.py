@@ -398,6 +398,9 @@ def body(m, low):
                 # (as two triangles: at the corners of the mouth its quads are folded slivers)
                 m.face((throat_top[k], throat_top[k + 1], roofs[r + 1][k + 1]), Vector((0.0, -0.3, -1.0)), "throat")
                 m.face((throat_top[k], roofs[r + 1][k + 1], roofs[r + 1][k]), Vector((0.0, -0.3, -1.0)), "throat")
+    # (where the old wall across the back of the mouth is: its top edge, the back of the roof, and its bottom
+    # edge, the body's points under the line of the mouth; the throat behind it is added by throat_and_gills)
+    THROAT[0] = ([m.verts[q].copy() for q in throat_top], [m.verts[q].copy() for q in roofs[-1]])
     # the tip of the snout: a fan over the end of both
     loop = uppers[0] + roofs[0][1:-1]
     middle = sum((m.verts[q] for q in loop), Vector()) / len(loop)
@@ -693,6 +696,112 @@ def fins(m, low):
               facing, 0.0016, *res("pelvic", 8 // d, 6 // d))
 
 
+# --- the throat and the gills (added 2026-11-18) ---------------------------------------------------------
+# The user: "The fish need modeled gills as well, well for relevant fish, so like when it opens its mouth wide you
+# can see them". The old wall across the back of the mouth stays in the model as it was (the full model's first
+# surface is untouched, so it looks exactly as before); the shader moves that wall's top edge back to THROAT_Q, so
+# the wall becomes the floor of a short tunnel, a cone from the mouth's back edge to that point. Its roof is made
+# here, from the back of the roof of the mouth to the same point, and four gill arches stand on each side inside
+# it, where they are seen through the wide-open mouth. With the mouth shut none of it can be seen.
+#
+# A gill arch is part GILLS: UV.x along the arch (0 its top, 1 its bottom), UV.y across it (0 the pale rakers at
+# its front, 1 the tips of the red filaments behind it), UV2.x how deep in the throat it stands (0..1).
+GILLS = 9
+THROAT = [None]
+
+
+def throat_q():
+    """As the shader has it (THROAT_Q): the point at the back of the throat where the tunnel closes."""
+    my = mouth_y(JAW_TO)
+    deep = 0.6 * (gill_x(my) - JAW_TO)
+    return Vector((0.0, my - 0.3 * (my - bottom(JAW_TO)), JAW_TO + deep - HALF))
+
+
+def throat_and_gills(m, low):
+    tops, bottoms = THROAT[0]
+    q = throat_q()
+    deep = q.z + HALF - JAW_TO
+    # The roof of the throat: the back edge of the roof of the mouth drawn back and in to Q (a fan at its end).
+    rings = 3 if GAME[0] else 2 if low else 6
+    end = m.add(q, ((JAW_TO + deep) / LENGTH, 0.5), BODY, 1.0)
+    rows = []
+    for r in range(rings):
+        f = r / rings
+        rows.append([m.add(p.lerp(q, f), ((JAW_TO + 0.0005 + f * deep) / LENGTH, 0.5), BODY, 1.0) for p in tops])
+    for r in range(rings):
+        for k in range(len(tops) - 1):
+            if r < rings - 1:
+                points = (rows[r][k], rows[r][k + 1], rows[r + 1][k + 1], rows[r + 1][k])
+            else:
+                points = (rows[r][k], rows[r][k + 1], end)
+            m.face(points, Vector((0.0, -1.0, -0.5)), "throat roof")
+    # (at each corner of the mouth, the gap between the back of the roof, the lip and the end of the throat)
+    for p, u in ((tops[0], bottoms[0]), (tops[-1], bottoms[-1])):
+        corner = [m.add(v, ((JAW_TO + 0.0005) / LENGTH, 0.5), BODY, 1.0) for v in (p, u)]
+        m.face((corner[0], corner[1], end), Vector((-p.x, 0.0, -0.3)), "throat roof")
+    # The gill arches: on each side a curve from the middle of the roof round by the lip to the middle of the
+    # floor, following the tunnel's wall a little inside it, at four depths.
+    if GAME[0]:
+        profile = [(1.0, 0.0), (0.2, 0.55), (-1.2, 0.35), (-2.4, 0.0), (-1.2, -0.35), (0.2, -0.55)]
+        along = 3
+    elif low:
+        profile = [(1.0, 0.0), (0.0, 0.5), (-2.4, 0.0), (0.0, -0.5)]
+        along = 2
+    else:
+        profile = [(1.0, 0.0), (0.6, 0.5), (0.0, 0.55), (-1.2, 0.35), (-2.4, 0.0), (-1.2, -0.35), (0.0, -0.55), (0.6, -0.5)]
+        along = 12
+    middle_top = len(tops) // 2
+    middle_low = len(bottoms) // 2
+    for sx in (1.0, -1.0):
+        if sx > 0:
+            line = tops[middle_top::-1] + bottoms[1:middle_low + 1]
+        else:
+            line = tops[middle_top:] + bottoms[-2:middle_low - 1:-1]
+        lengths = [0.0]
+        for a, b in zip(line, line[1:]):
+            lengths.append(lengths[-1] + (b - a).length)
+
+        def at(s, line=line, lengths=lengths):
+            d = s * lengths[-1]
+            i = 0
+            while i < len(lengths) - 2 and lengths[i + 1] < d:
+                i += 1
+            t = (d - lengths[i]) / max(lengths[i + 1] - lengths[i], 1e-9)
+            return line[i].lerp(line[i + 1], t)
+
+        centre_y = sum((p.y for p in line), 0.0) / len(line)
+        for n, f in enumerate((0.3, 0.45, 0.6, 0.75)):
+            # (as thick as the tunnel is narrow there: the deep ones thinner, or they fold over at the tight bend
+            # by the corner of the mouth)
+            wide = 0.1 * deep * (1.0 - f)
+            sections = []
+            for i in range(along + 1):
+                s = 0.1 + 0.8 * i / along
+                p = at(s).lerp(q, f)
+                axis = Vector((0.0, centre_y + (q.y - centre_y) * f, p.z))
+                p = p + (axis - p) * 0.14
+                ahead = at(min(s + 0.02, 1.0)).lerp(q, f) - at(max(s - 0.02, 0.0)).lerp(q, f)
+                ahead.normalize()
+                front = Vector((0.0, 0.0, -1.0))
+                front = (front - ahead * front.dot(ahead)).normalized()
+                across = ahead.cross(front).normalized()
+                ring = [m.add(p + (front * a + across * b) * wide, (i / along, (1.0 - a) / 3.4), GILLS, f) for a, b in profile]
+                sections.append((p, ring))
+            k = len(profile)
+            for i in range(along):
+                (p0, r0), (p1, r1) = sections[i], sections[i + 1]
+                for j in range(k):
+                    quad = (r0[j], r0[(j + 1) % k], r1[(j + 1) % k], r1[j])
+                    mid = sum((m.verts[v] for v in quad), Vector()) * 0.25
+                    m.face(quad, mid - (p0 + p1) * 0.5, "gills")
+            # (each end closed by a fan facing the way the arch runs there)
+            for (p, ring), way, ahead in ((sections[0], -1.0, sections[1][0] - sections[0][0]),
+                                          (sections[-1], 1.0, sections[-1][0] - sections[-2][0])):
+                cap = m.add(p, (0.0 if way < 0 else 1.0, 0.3), GILLS, f)
+                for j in range(k):
+                    m.face((cap, ring[j], ring[(j + 1) % k]), ahead * way, "gills")
+
+
 def material_of(name, colour):
     material = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     material.use_nodes = True
@@ -716,6 +825,8 @@ def make(name, low, game=False):
     for sx in (1.0, -1.0):
         eye(m, sx, low)
     fins(m, low)
+    throat_from = len(m.faces)
+    throat_and_gills(m, low)
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([to_b(p) for p in m.verts], [], m.faces)
     # (every layer made first, then each looked up by name: making one moves the others)
@@ -729,6 +840,13 @@ def make(name, low, game=False):
             uv[poly.loop_start + corner].uv = d[0]
             uv2[poly.loop_start + corner].uv = d[1]
     mesh.materials.append(material_of("arowana", (0.7, 0.72, 0.74, 1.0)))
+    if not GAME[0]:
+        # (the full and the low models: the throat and the gills in a second surface, so that the first is
+        # exactly as it was, and is thinned for far off by the importer exactly as it was)
+        mesh.materials.append(material_of("arowana_throat", (0.5, 0.1, 0.1, 1.0)))
+        for poly in mesh.polygons:
+            if poly.index >= throat_from:
+                poly.material_index = 1
     for poly in mesh.polygons:
         poly.use_smooth = m.out[poly.index][1] not in FLAT
     mesh.update()
@@ -807,6 +925,7 @@ def main():
     low = make("arowana_lo", True)
     game = make("arowana_game", False, True)
     eye_numbers()
+    print("THROAT_Q %.5f, %.5f, %.5f" % tuple(throat_q()))
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, "arowana.glb"))
     export_one(low, os.path.join(OUT, "arowana_lo.glb"))

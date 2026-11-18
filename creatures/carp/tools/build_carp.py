@@ -674,6 +674,169 @@ def fins(low):
     return made
 
 
+class OpenPart(Part):
+    """A piece that is not a closed solid (the throat: a tunnel seen from inside). `done` welds it and turns
+    every face to face `inward(point)`, the way into the tunnel there, and checks that instead of the
+    ray test a closed solid gets."""
+
+    def __init__(self, name, inward):
+        super().__init__(name)
+        self.inward = inward
+
+    def done(self):
+        bm = bmesh.new()
+        uv = bm.loops.layers.uv.new("uv")
+        uv2 = bm.loops.layers.uv.new("uv2")
+        colour = bm.loops.layers.float_color.new("colour")
+        made = [bm.verts.new(to_b(p * LENGTH)) for p in self.verts]
+        for face in self.faces:
+            try:
+                f = bm.faces.new([made[i] for i in face])
+            except ValueError:
+                continue
+            for loop, i in zip(f.loops, face):
+                d = self.data[i]
+                loop[uv].uv = d[0]
+                loop[uv2].uv = d[1]
+                loop[colour] = (d[2][0], d[2][1], d[2][2], 1.0)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=2e-6)
+        bm.normal_update()
+        for f in list(bm.faces):
+            if f.calc_area() > 1e-12 and f.normal.dot(to_b(self.inward(f.calc_center_median()))) < 0.0:
+                f.normal_flip()
+        bm.normal_update()
+        wrong = 0
+        counted = 0
+        for f in bm.faces:
+            if f.calc_area() > 1e-12:
+                counted += 1
+                wrong += f.normal.dot(to_b(self.inward(f.calc_center_median()))) <= 0.0
+        out = []
+        for f in bm.faces:
+            out.append([(loop.vert.co.copy(), tuple(loop[uv].uv), tuple(loop[uv2].uv), tuple(loop[colour]))
+                        for loop in f.loops])
+        bm.free()
+        return out, wrong, counted
+
+
+# The throat and the gills (part 10): a short tunnel from behind the mouth back to the gills, seen through the
+# open mouth; four gill arches a side across its walls, each a curved bar with pale gill rakers on its inner edge
+# and a fringe of deep red filaments trailing back from it to the wall. All of it lies inside the head and the
+# lower jaw, so that nothing of it shows while the mouth is shut. Vertex colour green says which piece (0 the
+# tunnel's wall, 0.5 an arch with its rakers and filaments); on an arch UV.x is along it (0 its lower end to 1 its
+# upper), UV.y across it (0 the rakers' edge to 1 the filaments' edge at the wall), UV2.x which arch (0 the first).
+GILL = 10
+# How far the floor of the mouth (the inside of the lower jaw, near its hinge) sinks as the mouth opens, so that
+# it is not a wall across the way into the throat (body lengths; the shader's THROAT_SINK).
+THROAT_SINK = 0.018
+# And how far the roof of the mouth near the hinge vaults up into the head (the shader's THROAT_RAISE).
+THROAT_RAISE = 0.02
+
+
+def roof_raise(s):
+    """How much of THROAT_RAISE the roof of the mouth rises at `s` (along its middle; the shader has the same sum
+    times the roof's own weight, which is 1 along the middle)."""
+    return smooth(0.03, 0.062, s) * smooth(HINGE_S + 0.015, HINGE_S - 0.012, s)
+
+
+def floor_sink(s):
+    """How much of THROAT_SINK the floor of the mouth sinks at `s`: near the hinge only, where the jaw is deep
+    enough to take it (the shader has the same sum)."""
+    return smooth(0.0, HINGE_S, s) * smooth(HINGE_S + 0.025, HINGE_S - 0.002, s)
+THROAT_FROM, THROAT_TO = HINGE_S - 0.004, 0.205
+ARCHES = (0.079, 0.094, 0.109, 0.124)
+
+
+def throat(s):
+    """The tunnel at `s`: its top, its bottom and its half width (body lengths). At the front it lies just under
+    the roof of the mouth, inside the lower jaw; behind the hinge it rises into the head. Its floor is just over
+    where the floor of the mouth sinks to with the mouth wide open, so that nothing of the jaw is left across it
+    then; with the mouth shut all of it is inside the head and the jaw."""
+    top = lerp(BODY_SKIN.bot(min(s, HINGE_S)) + THROAT_RAISE * roof_raise(s) - 0.002, -0.008, smooth(HINGE_S, 0.1, s))
+    if s < JAW_SKIN.last - 0.004:
+        bot = JAW_SKIN.top(s) - THROAT_SINK * floor_sink(s) + 0.003
+        bot = max(bot, lerp(-1.0, BODY_SKIN.bot(s) + 0.022, smooth(0.1, 0.13, s)))
+    else:
+        bot = BODY_SKIN.bot(s) + 0.022
+    half = lerp(0.016, 0.034, smooth(0.07, 0.13, s))
+    # (it closes in a round cap behind the last arch)
+    close = math.sqrt(max(0.0, 1.0 - smooth(THROAT_TO - 0.018, THROAT_TO, s) ** 2))
+    mid = 0.5 * (top + bot)
+    return mid + (top - mid) * close, mid + (bot - mid) * close, half * close
+
+
+def throat_inward(p):
+    """The way into the tunnel from a point on its wall (Blender space in, Godot body lengths worked in)."""
+    q = Vector((p.x, p.z, -p.y)) / LENGTH
+    s = q.z + 0.5
+    top, bot, half = throat(min(max(s, THROAT_FROM), THROAT_TO))
+    into = Vector((-q.x, 0.5 * (top + bot) - q.y, 0.0))
+    if s > THROAT_TO - 0.02 and into.length < 0.25 * max(top - bot, 1e-6):
+        # (on the cap: the way into the tunnel is forward)
+        into = Vector((0.0, 0.0, -1.0))
+    return into
+
+
+def gills(low):
+    made = []
+    around = pick(low, 24, 8, 8)
+    rings = pick(low, 26, 5, 6)
+    tube = OpenPart("throat", throat_inward)
+    places = [lerp(THROAT_FROM, THROAT_TO, (i / rings) ** 0.85) for i in range(rings + 1)]
+    loops = []
+    for s in places:
+        top, bot, half = throat(s)
+        mid, high = 0.5 * (top + bot), 0.5 * (top - bot)
+        loop = []
+        for k in range(around):
+            a = TAU * k / around
+            loop.append(tube.add((half * math.sin(a), mid + high * math.cos(a), s - 0.5), (s, 1.0 - k / around),
+                                 (0.0, 1.0), (GILL / 10.0, 0.0, 0.0)))
+        loops.append(loop)
+    tube.loft(loops)
+    # (the cap at the back: its last ring is a point, so the loft has closed it)
+    made.append(tube)
+    # The arches, the right one of each pair (the left is its mirror picture).
+    cols = pick(low, 14, 4, 4)
+    rows = pick(low, 8, 2, 2)
+    for n, s0 in enumerate(ARCHES):
+        top, bot, half = throat(s0)
+        mid, high = 0.5 * (top + bot), 0.5 * (top - bot)
+        part = Part("gill_arch_%d" % n)
+        sheets = ([], [])
+        for i in range(cols + 1):
+            t = i / cols
+            phi = math.radians(lerp(-72.0, 72.0, t))
+            wall = Vector((half * math.cos(phi), mid + high * math.sin(phi), 0.0))
+            centre = Vector((0.0, mid, 0.0))
+            edge = min(1.0, t / 0.12) ** 0.5 * min(1.0, (1.0 - t) / 0.12) ** 0.5
+            a, b = [], []
+            for j in range(rows + 1):
+                u = j / rows
+                # (from the rakers' edge, well in from the wall, out to the wall; the filaments' part trails back)
+                p = centre + (wall - centre) * lerp(0.12, 1.0, u)
+                p.z = s0 - 0.5 + 0.01 * max(0.0, u - 0.4) ** 1.3
+                # (the rakers' edge keeps a little thickness and is closed by its own strip: a blade edge of
+                # no thickness, welded, leaves its points' normals lying in the blade, and Godot then reads
+                # the first row's big triangles as wound against them)
+                th = 0.0038 * edge * (0.3 + 0.7 * u)
+                data = ((t, 1.0 - u), (float(n), 1.0 - 1.0), (GILL / 10.0, 0.5, 0.0))
+                a.append(part.add(p + Vector((0.0, 0.0, -th * 0.5)), *data))
+                b.append(part.add(p + Vector((0.0, 0.0, th * 0.5)), *data))
+            sheets[0].append(a)
+            sheets[1].append(b)
+        for i in range(cols):
+            for j in range(rows):
+                for sheet in sheets:
+                    q0, q1, q2, q3 = sheet[i][j], sheet[i + 1][j], sheet[i + 1][j + 1], sheet[i][j + 1]
+                    part.faces.append((q0, q1, q2, q3))
+            # (the root along the wall and the rakers' edge close it)
+            part.faces.append((sheets[0][i][rows], sheets[0][i + 1][rows], sheets[1][i + 1][rows], sheets[1][i][rows]))
+            part.faces.append((sheets[0][i][0], sheets[0][i + 1][0], sheets[1][i + 1][0], sheets[1][i][0]))
+        made += [part, part.mirrored("gill_arch_%d_left" % n, flip_x)]
+    return made
+
+
 def make(name, low):
     parts = []
     body = Part("body")
@@ -689,11 +852,18 @@ def make(name, low):
     ball = eye(low)
     parts += [ball, ball.mirrored("eye_left", lambda d: d)]
     parts += fins(low)
+    # (the throat and the gills last: on the full model they are a second surface, so that the first is
+    # exactly as it was before they were added)
+    gill_parts = gills(low)
+    parts += gill_parts
 
     verts, faces, corners = [], [], []
     told = []
     wrong_all = 0
+    gill_from = None
     for part in parts:
+        if part is gill_parts[0]:
+            gill_from = len(faces)
         out, wrong, counted = part.done()
         told.append("%s %d/%d wrong" % (part.name, wrong, counted))
         wrong_all += wrong
@@ -725,6 +895,14 @@ def make(name, low):
     bsdf.inputs["Base Color"].default_value = (0.62, 0.5, 0.3, 1.0)
     material.diffuse_color = (0.62, 0.5, 0.3, 1.0)
     mesh.materials.append(material)
+    if low == FULL:
+        inside = bpy.data.materials.get("carp_throat") or bpy.data.materials.new("carp_throat")
+        inside.use_nodes = True
+        next(n for n in inside.node_tree.nodes if n.type == "BSDF_PRINCIPLED").inputs["Base Color"].default_value = (0.5, 0.08, 0.08, 1.0)
+        inside.diffuse_color = (0.5, 0.08, 0.08, 1.0)
+        mesh.materials.append(inside)
+        for poly in mesh.polygons[gill_from:]:
+            poly.material_index = 1
     for poly in mesh.polygons:
         poly.use_smooth = True
     mesh.update()

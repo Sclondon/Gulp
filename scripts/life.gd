@@ -198,6 +198,12 @@ func _ready() -> void:
 		_place_nettle(i, Sea.place(_rng, "open", 3.0))
 
 
+## A kind's model has already been shown once (Main's warm-up behind the title): it need not wait
+## its turn when it is first seen.
+func mark_dressed(kind: String) -> void:
+	_dressed[kind] = true
+
+
 ## A new run has begun at a place: whatever could hunt the player there leaves it alone a while.
 func make_way(at: Vector3) -> void:
 	for each in creatures:
