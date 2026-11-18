@@ -24,7 +24,7 @@ func drive() -> void:
 	var burst := false
 	if away.length() > 0.001:
 		# (away, and never into the sand or the edge of the sea)
-		way = (away.normalized() - at * Vector3(1.0, 0.0, 1.0) / Sea.RADIUS).normalized()
+		way = (away.normalized() - (at - Vector3(20.0, 0.0, 0.0)) * Vector3(1.0, 0.0, 1.0) / 120.0).normalized()
 		burst = close
 	else:
 		var food := life.nearest_food()
@@ -33,7 +33,7 @@ func drive() -> void:
 			burst = at.distance_to(food) < 3.0 and player.stamina > 0.5
 		else:
 			# nothing to eat that it knows of: back towards the middle
-			way = (Vector3(0.0, Sea.SURFACE * 0.5, 0.0) - at).normalized()
+			way = (Vector3(-20.0, Sea.SURFACE - 8.0, 0.0) - at).normalized()
 	if way.length() < 0.001:
 		way = player.heading
 	var want_yaw := atan2(-way.x, -way.z)

@@ -52,6 +52,12 @@ const BILL := 0.3
 	set(value):
 		sail = value
 		_send(&"sail", value)
+## How far its mouth is open: 0 shut, 1 wide open, as when it bites (the lower jaw swings down
+## about its hinge; the inside of the mouth is dark).
+@export_range(0.0, 1.0) var gape := 0.0:
+	set(value):
+		gape = value
+		_send(&"gape", value)
 ## The low model (about a twelfth of the triangles), for far off or for many of them.
 @export var low := false:
 	set(value):
@@ -81,6 +87,7 @@ func _ready() -> void:
 	_send_phase()
 	_send(&"sway", sway)
 	_send(&"sail", sail)
+	_send(&"gape", gape)
 
 
 ## Each frame, for one that is not having its `phase` set for it: moves it on through its beat.
@@ -95,7 +102,7 @@ func step(_velocity: Vector3, delta: float) -> void:
 ## of the raised sail waves to each side, metres), `wave` (the length of the wave along its
 ## body), `bars_show` (how strongly the flank's rows of dots show) and its colours (`back`,
 ## `back_blue`, `flank`, `silver`, `belly`, `bars`, `sail_blue`, `sail_dark`, `sail_spots`,
-## `fin_dark`, `bill`).
+## `fin_dark`, `bill`, `mouth`).
 func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)
 

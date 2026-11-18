@@ -17,6 +17,11 @@ the species (no picture was traced or copied):
   two fifths of the way back, its belly a little sharper than its back, running to a tail wrist about a third
   as deep. A pointed head, the lower jaw a little ahead of the upper; the line of the mouth, a groove; the
   gill cover, a step; a big eye, a low dome on each side.
+- THE MOUTH: the head ahead of the jaw's hinge is in two closed pieces that meet along the line of the mouth.
+  The upper one is part of the body: its underside is the roof of the mouth, and a wall behind it is the
+  throat. The LOWER JAW is a part of its own, its top the floor of the mouth; the shader swings it down about
+  its hinge under the front of the eye (`gape`). Shut, the two lie lip to lip and the fish's outline is that
+  of one whole body.
 - THE FINS, each a thin closed blade (two skins that meet at its edges): one small triangular dorsal fin at
   the middle of the body; a low anal fin far back; a deeply forked tail; two pectoral fins set low behind the
   gill covers, lying back; two small pelvic fins under the dorsal.
@@ -26,7 +31,8 @@ the origin is on its middle line, half way along (0.11 m behind the tip of its j
 behind the tip of the jaw.
 
 What a point is, for the shader: UV2.y the part (0 body, 1 the dorsal fin, 2 the anal fin, 3 the tail, 4 a
-pectoral fin, 5 a pelvic fin, 6 an eye). UV, on the body: x how far along (0 jaw to 1 tail tips), y how high
+pectoral fin, 5 a pelvic fin, 6 an eye, 7 the lower jaw). UV2.x: 1 inside the mouth (its roof, floor and
+throat), 0 elsewhere. UV, on the body and the jaw: x how far along (0 jaw to 1 tail tips), y how high
 on its side (1 the ridge of the back, 0.5 its middle line, 0 the keel of the belly); on a fin: x from its root
 (0) to its tip (1), y from its leading edge (0) to its trailing edge (1); on an eye: x from its middle (0) to
 its rim (1). (The glTF writer flips V: what is written here is 1 - v, so that Godot reads v.)
@@ -85,6 +91,9 @@ BODY_TO = 0.189
 MOUTH_TO = 0.018
 EYE_AT = (0.021, 0.0042)
 EYE_RADIUS = 0.0056
+# As the shader has it: how far back the lower jaw runs (its hinge is there, on the line of the mouth).
+JAW_TO = 0.019
+JAW = 7
 
 
 def mouth_y(xm):
@@ -194,9 +203,9 @@ class Mesh:
         self.out = []
         self.count = {}
 
-    def add(self, p, uv, part):
+    def add(self, p, uv, part, inside=0.0):
         self.verts.append(p)
-        self.data.append(((uv[0], 1.0 - uv[1]), (0.0, 1.0 - part)))
+        self.data.append(((uv[0], 1.0 - uv[1]), (inside, 1.0 - part)))
         return len(self.verts) - 1
 
     def dab(self, p, colour):
@@ -222,7 +231,7 @@ class Mesh:
 def rings(low):
     xs = []
     x = BODY_FROM
-    for until, step in ((0.058, 0.0009), (0.170, 0.0025), (BODY_TO, 0.001)):
+    for until, step in ((JAW_TO, 0.0009), (0.058, 0.0009), (0.170, 0.0025), (BODY_TO, 0.001)):
         if low:
             step *= 4.0
         n = max(1, round((until - x) / step))
@@ -233,10 +242,31 @@ def rings(low):
     return xs
 
 
+def lip_angle(xm):
+    """How far round the body from the ridge of the back the line of the mouth is, at `xm`."""
+    up, down, _ = outline(xm)
+    y = mouth_y(xm)
+    return math.acos(max(-0.999, min(0.999, y / (up if y >= 0.0 else down))))
+
+
+def inside_point(xm, across, hollow):
+    """A point of the roof (`hollow` up) or the floor (`hollow` down) of the mouth at `xm`: `across` 1 at the
+    left lip, -1 at the right, the surface arched away from the line of the mouth between them."""
+    lip = body_point(xm, lip_angle(xm))
+    y = lip.y + hollow * (1.0 - across * across) * smooth(0.003, 0.009, xm)
+    z = xm
+    if xm < 0.012:
+        z += 0.0013 * smooth(mouth_y(xm) - 0.0003, mouth_y(xm) + 0.0012, y) * (1.0 - smooth(0.0, 0.012, xm))
+    return Vector((lip.x * across, y, z - HALF))
+
+
 def body(m, low):
     around = 16 if low else 64
+    xs = rings(low)
+    head = [xm for xm in xs if xm < JAW_TO - 1e-9]
+    xs = xs[len(head):]
     grid = []
-    for xm in rings(low):
+    for xm in xs:
         row = []
         for c in range(around):
             angle = c / around * TAU
@@ -248,11 +278,88 @@ def body(m, low):
             quad = (grid[r][c], grid[r][n], grid[r + 1][n], grid[r + 1][c])
             middle = sum((m.verts[q] for q in quad), Vector()) * 0.25
             m.face(quad, Vector((middle.x, middle.y, 0.0)), "body")
-    # the tip of the jaw and the end inside the tail: a fan each
-    for row, xm, way in ((grid[0], 0.0, -1.0), (grid[-1], BODY_TO + 0.0004, 1.0)):
-        tip = m.add(Vector((0.0, 0.0, xm - HALF)), (xm / LENGTH, 0.5), BODY)
-        for c in range(around):
-            m.face((tip, row[c], row[(c + 1) % around]), Vector((0.0, 0.0, way)), "body")
+    # the end inside the tail: a fan
+    tip = m.add(Vector((0.0, 0.0, BODY_TO + 0.0004 - HALF)), ((BODY_TO + 0.0004) / LENGTH, 0.5), BODY)
+    for c in range(around):
+        m.face((tip, grid[-1][c], grid[-1][(c + 1) % around]), Vector((0.0, 0.0, 1.0)), "body")
+    # The head ahead of the jaw's hinge: its skin above the line of the mouth (`half` columns each side of
+    # the ridge, the last on the lip), and the roof of the mouth under it, lip to lip.
+    half = round(lip_angle(JAW_TO) / (TAU / around))
+    across = around - 2 * half
+    uppers = []
+    roofs = []
+    for xm in head:
+        reach = lip_angle(xm)
+        up = outline(xm)[0]
+        uppers.append([m.add(body_point(xm, j / half * reach), (xm / LENGTH, 0.5 + 0.5 * math.cos(j / half * reach)), BODY)
+                       for j in range(-half, half + 1)])
+        roofs.append([m.add(inside_point(xm, 1.0 - 2.0 * k / across, 0.4 * up), (xm / LENGTH, 0.5), BODY, smooth(BODY_FROM, 0.0022, xm))
+                      for k in range(across + 1)])
+    # (where they join the whole body: its own points above the line of the mouth; below it the throat, a
+    # wall across the back of the mouth, on the places of the body's points there)
+    first = grid[0]
+    uppers.append([first[j % around] for j in range(-half, half + 1)])
+    roofs.append([m.add(m.verts[first[(half + k) % around]], (JAW_TO / LENGTH, 0.5), BODY, 1.0) for k in range(across + 1)])
+    for r in range(len(head)):
+        for j in range(2 * half):
+            quad = (uppers[r][j], uppers[r][j + 1], uppers[r + 1][j + 1], uppers[r + 1][j])
+            middle = sum((m.verts[q] for q in quad), Vector()) * 0.25
+            m.face(quad, Vector((middle.x, middle.y + 0.002, 0.0)), "body")
+        for k in range(across):
+            quad = (roofs[r][k], roofs[r][k + 1], roofs[r + 1][k + 1], roofs[r + 1][k])
+            if r < len(head) - 1:
+                m.face(quad, Vector((0.0, -1.0, 0.0)), "mouth roof")
+            else:
+                m.face(quad, Vector((0.0, -0.3, -1.0)), "throat")
+    # the tip of the snout: a fan over the end of both
+    loop = uppers[0] + roofs[0][1:-1]
+    middle = sum((m.verts[q] for q in loop), Vector()) / len(loop)
+    tip = m.add(middle + Vector((0.0, 0.0, -0.0003)), (0.0, 0.5), BODY)
+    for i in range(len(loop)):
+        m.face((tip, loop[i], loop[(i + 1) % len(loop)]), Vector((0.0, 0.0, -1.0)), "body")
+
+
+def jaw(m, low):
+    """The lower jaw: the body's own skin below the line of the mouth, ahead of the hinge, closed over by
+    the floor of the mouth, with an end inside the head."""
+    around = 16 if low else 64
+    # (as many columns as the body has below the line of the mouth, so that its end meets the body point for point)
+    half = round(lip_angle(JAW_TO) / (TAU / around))
+    under = around - 2 * half
+    across = 4 if low else 12
+    xs = [xm for xm in rings(low) if xm < JAW_TO + 1e-9]
+    skins = []
+    floors = []
+    for xm in xs:
+        reach = lip_angle(xm)
+        down = outline(xm)[1]
+        row = []
+        for i in range(under + 1):
+            angle = reach + (TAU - 2.0 * reach) * i / under
+            if xm > JAW_TO - 1e-9:
+                angle = (half + i) / around * TAU
+            row.append(m.add(body_point(xm, angle), (xm / LENGTH, 0.5 + 0.5 * math.cos(angle)), JAW))
+        skins.append(row)
+        floors.append([m.add(inside_point(xm, 1.0 - 2.0 * k / across, -0.45 * down), (xm / LENGTH, 0.5), JAW, smooth(BODY_FROM, 0.0022, xm))
+                       for k in range(across + 1)])
+    for r in range(len(xs) - 1):
+        centre = 0.5 * (mouth_y(xs[r]) - outline(xs[r])[1])
+        for i in range(under):
+            quad = (skins[r][i], skins[r][i + 1], skins[r + 1][i + 1], skins[r + 1][i])
+            middle = sum((m.verts[q] for q in quad), Vector()) * 0.25
+            m.face(quad, Vector((middle.x, middle.y - centre, 0.0)), "jaw")
+        for k in range(across):
+            m.face((floors[r][k], floors[r][k + 1], floors[r + 1][k + 1], floors[r + 1][k]), Vector((0.0, 1.0, 0.0)), "mouth floor")
+    # its tip, and its end inside the head: a fan each
+    for r, z, way, inside in ((0, -HALF, -1.0, 0.0), (len(xs) - 1, JAW_TO - HALF, 1.0, 1.0)):
+        loop = skins[r] + floors[r][-2:0:-1]
+        if r > 0:
+            # (points of its own, so that the skin's shading does not turn towards the end)
+            loop = [m.add(m.verts[q], (xs[r] / LENGTH, 0.5), JAW, 1.0) for q in loop]
+        middle = sum((m.verts[q] for q in loop), Vector()) / len(loop)
+        tip = m.add(Vector((0.0, 0.0 if r == 0 else middle.y, z)), (xs[r] / LENGTH, 0.5), JAW, inside)
+        for i in range(len(loop)):
+            m.face((tip, loop[i], loop[(i + 1) % len(loop)]), Vector((0.0, 0.0, way)), "jaw" if r == 0 else "jaw end")
 
 
 def eye(m, sx, low):
@@ -416,6 +523,7 @@ def material_of(name, colour):
 def make(name, low):
     m = Mesh()
     body(m, low)
+    jaw(m, low)
     for sx in (1.0, -1.0):
         eye(m, sx, low)
     fins(m, low)

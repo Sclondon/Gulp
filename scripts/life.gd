@@ -26,23 +26,6 @@ const WORTH := 0.08
 ## How much food a jelly is for its size (it is mostly water), and krill and fish.
 const JELLY_RICH := 0.35
 
-## The other swimmers: kind, how many, how long (from, to), and the depth each keeps to when it
-## wanders (from, to: 0 the floor, 1 the surface).
-const FISH := [
-	["loach", 4, 0.16, 0.24, 0.0, 0.2],
-	["trout", 4, 0.3, 0.45, 0.2, 0.8], ["golden", 3, 0.32, 0.45, 0.2, 0.8],
-	["flying", 6, 0.24, 0.32, 0.8, 1.0],
-	["smolt", 6, 0.5, 0.62, 0.3, 0.9],
-	["catfish", 3, 0.55, 0.8, 0.0, 0.1],
-	["salmon", 5, 0.9, 1.2, 0.3, 0.9],
-	["eel", 3, 1.4, 1.9, 0.0, 0.15],
-	["tuna", 3, 2.0, 2.5, 0.4, 0.95],
-	["humboldt", 3, 1.9, 2.4, 0.1, 0.5],
-	["sailfish", 2, 2.5, 3.0, 0.6, 0.97],
-	["swordfish", 2, 3.1, 3.8, 0.3, 0.8],
-	["shark", 2, 3.6, 4.6, 0.2, 0.9],
-	["giant", 1, 7.0, 7.0, 0.05, 0.4],
-]
 const KRILL_CLOUDS := 6
 const KRILL_EACH := 60
 const KRILL_LENGTH := 0.035
@@ -59,6 +42,7 @@ const NETTLE_LENGTH := 1.6
 const SARDINES_SEEN := 32.0
 const KRILL_SEEN := 18.0
 const JELLY_SEEN := 32.0
+const FISH_SEEN := 55.0
 
 var player: Player
 ## Off: nothing hunts (for trying things out: `-- --calm`).
@@ -99,17 +83,20 @@ static func is_food(eater: float, prey: float) -> bool:
 func _ready() -> void:
 	_rng.seed = 5
 	for i in KRILL_CLOUDS:
-		_school(_krill_rules(), _krill_mesh(), KRILL_LENGTH, Sea.SURFACE - 7.0, Sea.SURFACE - 3.0, i)
+		_school(_krill_rules(), _krill_mesh(), KRILL_LENGTH, "", 0.55, 0.92, i)
 	for i in SARDINE_SCHOOLS:
-		_school(_sardine_rules(), Fish.school_mesh(), SARDINE_LENGTH, 6.0, Sea.SURFACE - 6.0, 100 + i)
-	for each: Array in FISH:
-		for i in int(each[1]):
+		_school(_sardine_rules(), Fish.school_mesh(), SARDINE_LENGTH, "open" if i % 2 == 0 else "kelp", 0.4, 0.85, 100 + i)
+	# Every kind Species has, where its creature is installed.
+	for kind: String in Species.ALL:
+		var entry := Species.of(kind)
+		if int(entry.count) == 0 or not Species.has(kind):
+			continue
+		for i in int(entry.count):
 			var made := Creature.new()
 			made._rng.seed = _rng.randi()
 			add_child(made)
-			made.length = _rng.randf_range(each[2], each[3])
-			made.band = Vector2(each[4], each[5])
-			made.set_kind(each[0])
+			made.length = _rng.randf_range(entry.size[0], entry.size[1])
+			made.become(kind)
 			made.place(made.somewhere())
 			creatures.append(made)
 	for i in JELLIES:
@@ -123,7 +110,7 @@ func _ready() -> void:
 		jellies.append(jelly)
 		_jelly_away.append(0.0)
 		_jelly_time.append(0.0)
-		_place_jelly(i, Sea.open_water(_rng, 1.0))
+		_place_jelly(i, Sea.place(_rng, "open" if i % 2 == 0 else "sand", 1.0))
 	for i in NETTLES:
 		var nettle := SeaNettle.new()
 		nettle.scale = Vector3.ONE * NETTLE_SIZE
@@ -134,7 +121,7 @@ func _ready() -> void:
 		nettles.append(nettle)
 		_nettle_away.append(0.0)
 		_nettle_goal.append(Vector3.ZERO)
-		_place_nettle(i, Sea.open_water(_rng, 3.0))
+		_place_nettle(i, Sea.place(_rng, "open", 3.0))
 
 
 ## A new run has begun at a place: whatever could hunt the player there leaves it alone a while.
@@ -177,7 +164,7 @@ func nearest_food() -> Vector3:
 				near = far
 				best = flock.boid_position(i)
 	for each in creatures:
-		if each.away <= 0.0 and is_food(player.length, each.length):
+		if each.away <= 0.0 and not each.giant and is_food(player.length, each.length):
 			# (a fish that will run is worth less than one the same distance off that will not)
 			var far := each.global_position.distance_to(at) * 1.5
 			if far < near:
@@ -196,7 +183,7 @@ func nearest_food() -> Vector3:
 func threats() -> Array:
 	var found := []
 	for each in creatures:
-		if each.away <= 0.0 and can_eat(each.length, player.length) and player.length >= each.length * TOO_SMALL:
+		if each.away <= 0.0 and each.hunts and can_eat(each.length, player.length) and player.length >= each.length * TOO_SMALL:
 			found.append([each.global_position, each.length])
 	for i in jellies.size():
 		if _jelly_away[i] <= 0.0 and not can_eat(player.length, jellies[i].size * 2.0):
@@ -223,8 +210,7 @@ func _step_schools(delta: float) -> void:
 		# The school roams: its bounds drift after a place that changes now and then.
 		var goal: Vector3 = school.goal
 		if flock.global_position.distance_to(goal) < 2.0:
-			goal = Sea.open_water(_rng, float(school.radius))
-			goal.y = clampf(goal.y, float(school.low), float(school.high))
+			goal = _school_place(school.zone, float(school.radius), float(school.low), float(school.high))
 			school.goal = goal
 		flock.global_position = flock.global_position.move_toward(goal, 0.35 * delta)
 		if not player.alive:
@@ -253,18 +239,30 @@ func _step_creatures(delta: float) -> void:
 			if each.away <= 0.0:
 				each.place(each.somewhere(player.global_position, 24.0))
 			continue
+		var apart := each.global_position.distance_to(player.global_position)
+		# Too far off to be seen through the water: not drawn, and moved only now and then.
+		var seen := apart < FISH_SEEN + each.length * 2.0
+		if each.visible != seen:
+			each.visible = seen
+		if not seen:
+			if (steps + each.get_index()) % 8 != 0:
+				continue
+			each.step(delta * 8.0, player, hunting)
+			continue
 		each.step(delta, player, hunting)
-		each.detail(each.global_position.distance_to(player.global_position) < 5.0 + each.length * 4.0)
+		each.detail(apart < 5.0 + each.length * 4.0)
 		if not player.alive:
 			continue
 		if each.mode == Creature.Mode.HUNT:
 			hunters += 1
+		if each.giant:
+			continue
 		if is_food(player.length, each.length):
 			if each.global_position.distance_to(mouth) < player.length * 0.3 + each.length * 0.35:
 				player.feed(each.length)
 				each.visible = false
 				each.away = _rng.randf_range(5.0, 12.0)
-		elif hunting and can_eat(each.length, player.length):
+		elif hunting and each.hunts and not player.in_air and can_eat(each.length, player.length):
 			if each.mouth().distance_to(player.global_position) < each.length * 0.22 + player.length * 0.3:
 				player.die(each.kind)
 
@@ -306,13 +304,13 @@ func _step_nettles(delta: float) -> void:
 		if _nettle_away[i] > 0.0:
 			_nettle_away[i] -= delta
 			if _nettle_away[i] <= 0.0:
-				_place_nettle(i, Sea.open_water(_rng, 3.0, player.global_position, 24.0))
+				_place_nettle(i, Sea.place(_rng, "open", 3.0, player.global_position, 24.0))
 			continue
 		var far := nettle.global_position.distance_to(player.global_position)
 		if far > JELLY_SEEN:
 			continue
 		if nettle.global_position.distance_to(_nettle_goal[i]) < 1.5:
-			_nettle_goal[i] = _nettle_place(Sea.open_water(_rng, 3.0))
+			_nettle_goal[i] = _nettle_place(Sea.place(_rng, "open", 3.0))
 		var way := (_nettle_goal[i] - nettle.global_position).normalized()
 		nettle.global_position += way * (0.12 + 0.5 * nettle.thrust) * delta
 		nettle.step(Vector3.ZERO, delta)
@@ -357,7 +355,15 @@ func _place_jelly(i: int, at: Vector3) -> void:
 	_jelly_time[i] = 0.0
 
 
-func _school(rules: FlockRules, mesh: Mesh, length: float, low: float, high: float, seed_of: int) -> void:
+## A place for a school in a zone, between two depths (0 the floor, 1 the surface).
+func _school_place(zone: String, room: float, low: float, high: float) -> Vector3:
+	var at := Sea.place(_rng, zone, room)
+	var floor_at := Sea.ground(at.x, at.z) + room
+	at.y = lerpf(floor_at, maxf(floor_at, Sea.SURFACE - room), _rng.randf_range(low, high))
+	return at
+
+
+func _school(rules: FlockRules, mesh: Mesh, length: float, zone: String, low: float, high: float, seed_of: int) -> void:
 	var flock := Flock.new()
 	flock.rules = rules
 	flock.custom_mesh = mesh
@@ -365,11 +371,10 @@ func _school(rules: FlockRules, mesh: Mesh, length: float, low: float, high: flo
 	# (a little thinking each a frame: there are ten of them)
 	flock.budget_ms = 0.4
 	flock.ground_at = func(p: Vector3) -> float: return Sea.ground(p.x, p.z)
-	var at := Sea.open_water(_rng, rules.bounds_size.x)
-	at.y = clampf(at.y, low, high)
+	var at := _school_place(zone, rules.bounds_size.x, low, high)
 	flock.position = at
 	add_child(flock)
-	schools.append({"flock": flock, "length": length, "rich": 1.0, "goal": at, "radius": rules.bounds_size.x, "low": low, "high": high,
+	schools.append({"flock": flock, "length": length, "rich": 1.0, "goal": at, "zone": zone, "radius": rules.bounds_size.x, "low": low, "high": high,
 			"seen": KRILL_SEEN if length < 0.1 else SARDINES_SEEN})
 
 

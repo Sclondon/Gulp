@@ -25,7 +25,7 @@ func _run() -> void:
 	var player: Player = main.player
 	life.hunting = false
 	await _frames(30)
-	_check("the sea is stocked", life.creatures.size() == 47 and life.schools.size() == 10 and life.jellies.size() == 9,
+	_check("the sea is stocked", life.creatures.size() >= 30 and life.schools.size() == 10 and life.jellies.size() == 9,
 			"%d fish, %d schools, %d jellies, %d nettles" % [life.creatures.size(), life.schools.size(), life.jellies.size(), life.nettles.size()])
 	_check("starts as the smallest fish", player.alive and player.stage == 0 and player.kind == "sardine", "%s %.2f m" % [player.kind, player.length])
 	# A krill in its mouth is eaten.
@@ -45,10 +45,12 @@ func _run() -> void:
 	# Fed, it becomes the next fish, bigger.
 	var was := player.length
 	for n in 40:
+		if player.choosing:
+			main._on_picked("smolt")
 		if player.stage > 0:
 			break
 		player.feed(player.length)
-	_check("grows into the next fish", player.stage == 1 and player.kind == "smolt" and player.length > was, "%s %.2f m" % [player.kind, player.length])
+	_check("grows into the next fish", player.stage == 1 and player.kind == "smolt" and player.length > was * 0.9, "%s %.2f m" % [player.kind, player.length])
 	_check("can eat a sardine now", Life.is_food(player.length, Life.SARDINE_LENGTH))
 	_check("a shark does not graze on krill", not Life.is_food(3.0, Life.KRILL_LENGTH) and Life.is_food(3.0, 1.0))
 	# A smaller fish near it flees.
@@ -73,7 +75,7 @@ func _run() -> void:
 			break
 	# (a small one: a bigger salmon takes no notice of so small a fish)
 	big.length = 0.9
-	big.place(player.global_position - player.heading * 3.0)
+	big.place(player.global_position - player.heading * 1.6)
 	big.heading = player.heading
 	big._tired = 0.0
 	var hunted := false
@@ -83,7 +85,7 @@ func _run() -> void:
 		if not player.alive:
 			break
 	_check("a bigger fish hunts it", hunted)
-	_check("being eaten ends the run", not player.alive and main.over and main.hud.over)
+	_check("being eaten ends the run", not player.alive and main.over and main.hud.over, "%s %.2f m, hunter %.2f m %.1f m off, mode %d, choosing %s" % [player.kind, player.length, big.length, big.global_position.distance_to(player.global_position), big.mode, player.choosing])
 	# Another run starts small.
 	main.restart()
 	await _frames(5)

@@ -6,17 +6,35 @@ extends Node3D
 ## little lighter, so that what is coming can be seen in time; the snow is CPU particles, not
 ## GPU ones, for GL Compatibility.
 ##
-## It is a round bowl: `RADIUS` across the middle, the sand banking up all round its edge, the
-## surface `SURFACE` metres up. `keep_in` holds a swimmer inside it and `clear_of_rocks` out of
-## the rocks (each rock is a sphere in models/sea_rocks.json, written by the Blender build).
+## It is a stretch of coast (see `ZONES`): a shore to the west with a river mouth among mangroves,
+## a sea grass bed and sand flats in the shallows, a kelp forest on rock and a small coral reef on
+## the shelf, and to the east the shelf's edge, where the floor drops away into the open ocean.
+## `ground` is the floor's height everywhere; `keep_in` holds a swimmer in the water and
+## `clear_of_rocks` out of the rocks (each a sphere); `place` finds somewhere in a zone.
 
 const WATER := preload("res://shaders/water.gdshader")
 const FOAM := preload("res://textures/foam_noise.png")
 const ROCK := preload("res://shaders/sea_floor.gdshader")
 
-## How far out a swimmer can go from the middle, and how high the water's surface is.
-const RADIUS := 44.0
-const SURFACE := 16.0
+## How high the water's surface is, and how far the sea runs: west (the shore) to east (open
+## ocean) along x, and north and south along z.
+const SURFACE := 40.0
+const WEST := -150.0
+const EAST := 175.0
+const SIDE := 105.0
+## Where the shelf ends and the floor drops away (x, wavering along z: see `edge_at`).
+const EDGE := 58.0
+## The places in it, each round a middle (x, z) out to a radius; "open" is everything beyond the
+## shelf's edge. Depths are `ground`'s business.
+const ZONES := {
+	"river": {"at": Vector2(-128.0, -30.0), "radius": 20.0},
+	"grass": {"at": Vector2(-82.0, -48.0), "radius": 30.0},
+	"sand": {"at": Vector2(-62.0, 48.0), "radius": 34.0},
+	"kelp": {"at": Vector2(0.0, -34.0), "radius": 40.0},
+	"reef": {"at": Vector2(12.0, 56.0), "radius": 24.0},
+	"open": {"at": Vector2(118.0, 0.0), "radius": 55.0},
+	"trench": {"at": Vector2(140.0, 55.0), "radius": 24.0},
+}
 
 ## The rocks, each as a sphere: x, y, z, radius.
 static var rocks: Array[Vector4] = []
@@ -25,6 +43,10 @@ var sand: SandGround
 ## Whatever the snow should hang round (the camera).
 var eye: Node3D
 var clock := 0.0
+## The eye is out of the water (see `set_above`).
+var above := false
+
+var _env: Environment
 
 var _snow: CPUParticles3D
 
@@ -32,19 +54,65 @@ var _snow: CPUParticles3D
 ## The height of the sand at a point. (tools/build_sea_floor.py has the same sum, to stand the
 ## rocks in it: change one, change the other, and build the rocks again.)
 static func ground(x: float, z: float) -> float:
-	var h := 0.6 * sin(x * 0.07 + 1.3) * cos(z * 0.06) + 0.2 * sin(x * 0.21 + z * 0.17)
-	var far := Vector2(x, z).length()
-	# (banks rising all round the edge of the sea)
-	return h + pow(maxf(far - 34.0, 0.0), 1.5) * 0.09
+	var bumps := 0.6 * sin(x * 0.07 + 1.3) * cos(z * 0.06) + 0.2 * sin(x * 0.21 + z * 0.17)
+	# How deep the water is, going out from the shore: a beach, the shallows, the shelf.
+	var deep := 0.0
+	if x < -100.0:
+		deep = remap(x, -140.0, -100.0, -3.0, 6.0)
+	elif x < -30.0:
+		deep = remap(x, -100.0, -30.0, 6.0, 16.0)
+	else:
+		deep = remap(minf(x, EDGE), -30.0, EDGE, 16.0, 24.0)
+	# The river: a channel cut through the shore, running out west.
+	var river: Vector2 = ZONES.river.at
+	var across := absf(z - river.y - 6.0 * sin(x * 0.05))
+	var channel := (1.0 - smoothstep(9.0, 16.0, across)) * (1.0 - smoothstep(-110.0, -92.0, x))
+	deep = lerpf(deep, maxf(deep, 5.0), channel)
+	# The reef: a mound.
+	var reef: Vector2 = ZONES.reef.at
+	deep -= 5.0 * (1.0 - smoothstep(6.0, float(ZONES.reef.radius), Vector2(x, z).distance_to(reef)))
+	# Past the shelf's edge the floor falls away.
+	var over := x - edge_at(z)
+	deep += 36.0 * smoothstep(0.0, 14.0, over) + 0.05 * maxf(over, 0.0)
+	# The trench: a long cleft in the ocean floor, far deeper still.
+	var trench: Vector2 = ZONES.trench.at
+	deep += 60.0 * (1.0 - smoothstep(5.0, 16.0, absf(x - trench.x - 0.3 * (z - trench.y)))) * (1.0 - smoothstep(18.0, 34.0, absf(z - trench.y)))
+	return SURFACE - deep + bumps * clampf(deep * 0.15, 0.0, 1.0)
 
 
-## A point held inside the sea, `room` metres clear of its floor, surface and edge.
+## Where the shelf's edge is (x) at a place along the coast (z).
+static func edge_at(z: float) -> float:
+	return EDGE + 7.0 * sin(z * 0.035) + 3.0 * sin(z * 0.11 + 1.0)
+
+
+## Which zone a place is in ("" for the plain shelf between them).
+static func zone_at(x: float, z: float) -> String:
+	if x > edge_at(z):
+		return "open"
+	for zone: String in ZONES:
+		if zone != "open" and zone != "trench" and Vector2(x, z).distance_to(ZONES[zone].at) < float(ZONES[zone].radius):
+			return zone
+	return ""
+
+
+## A point held inside the sea, `room` metres clear of its floor, surface and edges. Where the
+## water is too shallow for that it is moved out towards deeper water.
 static func keep_in(p: Vector3, room: float) -> Vector3:
-	var out := Vector2(p.x, p.z)
-	if out.length() > RADIUS - room:
-		out = out.normalized() * (RADIUS - room)
-	var low := ground(out.x, out.y) + room
-	return Vector3(out.x, clampf(p.y, low, maxf(low, SURFACE - room)), out.y)
+	var x := clampf(p.x, WEST, EAST - room)
+	var z := clampf(p.z, -SIDE + room, SIDE - room)
+	var low := ground(x, z) + room
+	for attempt in 8:
+		if low <= SURFACE - room:
+			break
+		# (downhill: the way the floor falls)
+		var fall := Vector2(ground(x - 0.5, z) - ground(x + 0.5, z), ground(x, z - 0.5) - ground(x, z + 0.5))
+		if fall.length() < 0.0001:
+			fall = Vector2.RIGHT
+		fall = fall.normalized() * 0.6
+		x += fall.x
+		z += fall.y
+		low = ground(x, z) + room
+	return Vector3(x, clampf(p.y, low, maxf(low, SURFACE - room)), z)
 
 
 ## A point pushed out of any rock it is in, `room` metres clear.
@@ -57,14 +125,20 @@ static func clear_of_rocks(p: Vector3, room: float) -> Vector3:
 	return p
 
 
-## A place in open water, at random, no nearer than `apart` to `from` if that can be had.
-static func open_water(rng: RandomNumberGenerator, room: float, from := Vector3.INF, apart := 0.0) -> Vector3:
+## A place in the water of a zone ("" for anywhere), at random, no nearer than `apart` to `from`
+## if that can be had.
+static func place(rng: RandomNumberGenerator, zone: String, room: float, from := Vector3.INF, apart := 0.0) -> Vector3:
 	var best := Vector3.ZERO
 	var best_far := -1.0
 	for attempt in 12:
-		var turn := rng.randf() * TAU
-		var reach := (RADIUS - 4.0) * sqrt(rng.randf())
-		var p := Vector3(cos(turn) * reach, rng.randf_range(1.0, SURFACE - 1.5), sin(turn) * reach)
+		var flat := Vector2(rng.randf_range(WEST + 30.0, EAST - 6.0), rng.randf_range(-SIDE + 6.0, SIDE - 6.0))
+		if zone == "open":
+			flat.x = rng.randf_range(EDGE + 16.0, EAST - 6.0)
+		elif ZONES.has(zone):
+			var turn := rng.randf() * TAU
+			flat = ZONES[zone].at + Vector2(cos(turn), sin(turn)) * float(ZONES[zone].radius) * sqrt(rng.randf())
+		var p := Vector3(flat.x, 0.0, flat.y)
+		p.y = rng.randf_range(ground(p.x, p.z) + 1.0, SURFACE - 1.5)
 		p = clear_of_rocks(keep_in(p, room), room)
 		if from == Vector3.INF:
 			return p
@@ -77,10 +151,11 @@ static func open_water(rng: RandomNumberGenerator, room: float, from := Vector3.
 	return best
 
 
+static func open_water(rng: RandomNumberGenerator, room: float, from := Vector3.INF, apart := 0.0) -> Vector3:
+	return place(rng, "", room, from, apart)
+
+
 func _ready() -> void:
-	if rocks.is_empty():
-		for each: Array in (load("res://models/sea_rocks.json") as JSON).data:
-			rocks.append(Vector4(each[0], each[1], each[2], each[3]))
 	_light()
 	_floor()
 	_surface()
@@ -92,6 +167,19 @@ func _process(delta: float) -> void:
 	RenderingServer.global_shader_parameter_set(&"water_clock", clock)
 	if eye:
 		_snow.global_position = eye.global_position - eye.global_basis.z * 4.0
+
+
+## Whether the eye is above the surface: there the air is clear and the sky pale; under it the
+## water is blue and thick.
+func set_above(to: bool) -> void:
+	if to == above:
+		return
+	above = to
+	_env.background_color = Color(0.55, 0.75, 0.95) if to else Color(0.012, 0.07, 0.17)
+	_env.fog_light_color = Color(0.7, 0.82, 0.95) if to else Color(0.012, 0.07, 0.17)
+	_env.fog_density = 0.004 if to else 0.04
+	_env.ambient_light_color = Color(0.8, 0.85, 0.9) if to else Color(0.3, 0.5, 0.8)
+	_snow.visible = not to
 
 
 ## Dim blue water, lighter than Moon Jellies' (there the jellies are the only light; here a
@@ -114,6 +202,7 @@ func _light() -> void:
 	env.glow_bloom = 0.1
 	env.glow_hdr_threshold = 0.8
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
+	_env = env
 	var world := WorldEnvironment.new()
 	world.environment = env
 	add_child(world)
@@ -129,23 +218,14 @@ func _light() -> void:
 func _floor() -> void:
 	sand = SandGround.new()
 	sand.name = "Sand"
-	sand.half = Vector2(60.0, 60.0)
-	sand.cell = 1.0
+	sand.half = Vector2(180.0, 112.0)
+	sand.cell = 2.0
 	sand.colour = Color(0.62, 0.63, 0.6)
 	sand.ripples = Sand.Ripples.MIXED
 	sand.solid = false
 	sand.casts_shadow = false
 	sand.height = Sea.ground
 	add_child(sand)
-	var made := (load("res://models/sea_floor.glb") as PackedScene).instantiate()
-	add_child(made)
-	for mesh: MeshInstance3D in made.find_children("*", "MeshInstance3D", true, false):
-		var material := ShaderMaterial.new()
-		material.shader = ROCK
-		material.set_shader_parameter(&"rock", true)
-		material.set_shader_parameter(&"caustics", 0.5)
-		mesh.material_override = material
-		mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 ## The water overhead: Salmon Run 2's water (shaders/water.gdshader), on the kind of mesh its

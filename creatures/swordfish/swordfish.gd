@@ -48,6 +48,12 @@ const SWORD := 0.95
 	set(value):
 		sway = value
 		_send(&"sway", value)
+## How far its mouth is open: 0 shut, 1 wide open, as when it bites (its lower jaw swung down
+## about its hinge, its tip about 0.18 m; the inside of the mouth is dark).
+@export_range(0.0, 1.0) var gape := 0.0:
+	set(value):
+		gape = clampf(value, 0.0, 1.0)
+		_send(&"gape", gape)
 ## The low model (about a twelfth of the triangles), for far off or for many of them.
 @export var low := false:
 	set(value):
@@ -76,6 +82,7 @@ func _ready() -> void:
 	_show()
 	_send_phase()
 	_send(&"sway", sway)
+	_send(&"gape", gape)
 
 
 ## Each frame, for one that is not having its `phase` set for it: moves it on through its beat.
@@ -87,7 +94,7 @@ func step(_velocity: Vector3, delta: float) -> void:
 
 ## Sets one of the shader's settings: `curl` (how far the body is bent round into a turn behind
 ## the head, radians from gills to tail; more than 0 brings the tail round to +X), its colours
-## (`back`, `bronze`, `sheen`, `flank`, `belly`, `fin_dark`, `iris`) and `wave` (the length of
+## (`back`, `bronze`, `sheen`, `flank`, `belly`, `mouth`, `fin_dark`, `iris`) and `wave` (the length of
 ## the wave along its body).
 func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)

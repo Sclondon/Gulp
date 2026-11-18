@@ -15,7 +15,9 @@ species (no picture was given, traced or copied):
 - THE SWORD: the upper jaw, 0.95 m of it ahead of the lower jaw's tip: flat and broad like a blade (at its
   middle 0.08 m across and 0.02 m deep), oval in section.
 - THE LOWER JAW: short and pointed, a part of its own under the sword's root, so that the mouth is a real gap;
-  behind the mouth's corner it lies flush with the head.
+  behind the mouth's corner it lies flush with the head. The mouth has a real inside: the head is cut off at
+  the roof of the mouth and hollowed upwards from it, the jaw's top is hollowed too, both closed skins, so that
+  when the shader swings the jaw down about its hinge (`gape`) there is a dark mouth to look into.
 - THE BODY: stout and round, deepest (0.44 m) and widest (0.32 m) just behind the head, tapering to a narrow
   tail wrist with ONE large keel on each side. A very large eye, a low dome on each side. The gill cover, a
   step. No scales, no pelvic fins.
@@ -32,7 +34,8 @@ What a point is, for the shader: UV2.y the part (0 body, 1 first dorsal, 2 the s
 the tail, 5 a pectoral fin, 6 an eye). UV, on the body: x how far along (0 sword tip to 1 tail tips), y how
 high on its side (1 the ridge of the back, 0.5 its middle line, 0 the keel of the belly); on the lower jaw: the
 same as on the body; on a fin: x from its root (0) to its tip (1), y from
-its leading edge (0) to its trailing edge (1); on an eye: x from its middle (0) to its rim (1). (The glTF
+its leading edge (0) to its trailing edge (1); on an eye: x from its middle (0) to its rim (1). UV2.x, on the body and the lower jaw: how far inside the mouth the point is (0 the
+skin and the lips, 1 the middle of the mouth's roof or floor), for its dark lining. (The glTF
 writer flips V: what is written here is 1 - v, so that Godot reads v.)
 
 The numbers marked "as the shader has it" are in swordfish.gdshader too, and the lower jaw's and the pectoral
@@ -95,8 +98,13 @@ BODY_TO = 2.84
 # As the shader has it: where the lower jaw's tip is, the edge of the gill cover, the eye.
 SWORD = 0.95
 JAW_FROM = 0.955
-JAW_TO = 1.33
+JAW_TO = 1.338
 MOUTH_CORNER = 1.19
+# How far up towards the top of the head the roof of the mouth is hollowed, along its middle.
+MOUTH_HOLLOW = 0.4
+# As the shader has it: where the lower jaw hinges (metres behind the sword's tip, metres up): the shader
+# swings the whole jaw down about it to open the mouth (`gape`).
+HINGE = (1.33, -0.16)
 EYE_AT = (1.205, 0.04)
 EYE_RADIUS = 0.05
 
@@ -161,16 +169,34 @@ def bottom(xm):
 
 
 def body_point(xm, angle):
+    return body_skin(xm, angle)[0]
+
+
+def lining(side, chord):
+    """How far inside the mouth a point of its roof or floor is: 0 at the lips, 1 along the middle (no
+    slope at the lips, so the lips themselves are as they would be on a flat cut)."""
+    if chord < 1e-6 or abs(side) >= chord:
+        return 0.0
+    return (1.0 - (side / chord) ** 2) ** 2
+
+
+def body_skin(xm, angle):
     """A point of the skin: `angle` round the body from the ridge of the back (0) by its left side (a
-    quarter turn) to the keel of the belly (half a turn)."""
+    quarter turn) to the keel of the belly (half a turn). And how far inside the mouth it is (0: not)."""
+    inside = 0.0
     up, down, wide = outline(xm)
     c = math.cos(angle)
     s = math.sin(angle)
     y = c * (up if c >= 0.0 else down)
     side = math.copysign(abs(s) ** 0.92, s) * wide
     # the mouth: the head stops at its roof (the lower jaw, a part of its own, lies under it)
+    # and is hollowed upwards from there, the inside of the mouth
     if JAW_FROM < xm < 1.34:
-        y = max(y, mouth_roof(xm))
+        roof = mouth_roof(xm)
+        if y < roof:
+            chord = wide * max(0.0, 1.0 - (roof / down) ** 2) ** 0.46
+            inside = lining(side, chord) * smooth(0.97, 1.03, xm) * (1.0 - smooth(1.3, 1.335, xm))
+            y = roof + MOUTH_HOLLOW * (up - roof) * inside * (1.0 - smooth(MOUTH_CORNER, 1.32, xm))
     # the keel: one large ridge along each side of the tail wrist
     keel = 0.032 * smooth(2.44, 2.62, xm) * (1.0 - smooth(2.72, 2.82, xm))
     side += math.copysign(keel * math.exp(-(c / 0.24) ** 2), s)
@@ -180,7 +206,7 @@ def body_point(xm, angle):
         mask = smooth(-0.95, -0.8, c) * (1.0 - smooth(0.4, 0.6, c))
         step = 0.008 * smooth(0.0, 0.008, behind) * math.exp(-behind / 0.07) * mask
         side *= 1.0 - step / wide
-    return Vector((side, y, xm - HALF))
+    return Vector((side, y, xm - HALF)), inside
 
 
 def mouth_roof(xm):
@@ -202,7 +228,9 @@ def jaw_under(xm):
 
 
 def jaw_point(xm, angle):
-    """A point of the lower jaw: the underside of the head's own section, cut off flat at `jaw_floor`."""
+    """A point of the lower jaw: the underside of the head's own section, cut off at `jaw_floor` and
+    hollowed a little from there (the floor of the mouth). And how far inside the mouth it is (0: not)."""
+    inside = 0.0
     up, down, wide = outline(xm)
     down *= 1.012
     wide *= 1.012
@@ -212,10 +240,11 @@ def jaw_point(xm, angle):
     y = c * (up if c >= 0.0 else down)
     side = math.copysign(abs(s) ** 0.92, s) * wide
     if y > floor:
-        y = floor
         chord = wide * max(0.0, 1.0 - (floor / down) ** 2) ** 0.46
         side = math.copysign(min(abs(side), chord), s)
-    return Vector((side, y, xm - HALF))
+        inside = lining(side, chord)
+        y = floor - 0.3 * (floor + down) * inside
+    return Vector((side, y, xm - HALF)), inside
 
 
 def high_of(p):
@@ -275,15 +304,19 @@ def body(m, low):
         row = []
         for c in range(around):
             angle = c / around * TAU
-            p = body_point(xm, angle)
-            row.append(m.add(p, (xm / LENGTH, high_of(p)), BODY))
+            p, inside = body_skin(xm, angle)
+            row.append(m.add(p, (xm / LENGTH, high_of(p)), BODY, inside))
         grid.append(row)
     for r in range(len(grid) - 1):
         for c in range(around):
             n = (c + 1) % around
             quad = (grid[r][c], grid[r][n], grid[r + 1][n], grid[r + 1][c])
             middle = sum((m.verts[q] for q in quad), Vector()) * 0.25
-            m.face(quad, Vector((middle.x, middle.y, 0.0)), "body")
+            if max(m.data[q][1][0] for q in quad) > 0.0:
+                # (the roof of the mouth faces down, into the mouth)
+                m.face(quad, Vector((0.0, -1.0, 0.0)), "mouth")
+            else:
+                m.face(quad, Vector((middle.x, middle.y, 0.0)), "body")
     # the tip of the sword and the end inside the tail: a fan each
     for row, xm, way in ((grid[0], 0.0, -1.0), (grid[-1], BODY_TO + 0.002, 1.0)):
         tip = m.add(Vector((0.0, 0.0, xm - HALF)), (xm / LENGTH, 0.5), BODY)
@@ -302,8 +335,8 @@ def jaw(m, low):
         row = []
         for c in range(around):
             angle = c / around * TAU
-            p = jaw_point(xm, angle)
-            row.append(m.add(p, (xm / LENGTH, high_of(p)), JAW))
+            p, inside = jaw_point(xm, angle)
+            row.append(m.add(p, (xm / LENGTH, high_of(p)), JAW, inside))
         grid.append(row)
     for r in range(len(grid) - 1):
         for c in range(around):
@@ -311,6 +344,10 @@ def jaw(m, low):
             quad = (grid[r][c], grid[r][n], grid[r + 1][n], grid[r + 1][c])
             middle = sum((m.verts[q] for q in quad), Vector()) * 0.25
             at = middle.z + HALF
+            if max(m.data[q][1][0] for q in quad) > 0.0:
+                # (the floor of the mouth faces up, into the mouth)
+                m.face(quad, Vector((0.0, 1.0, 0.0)), "mouth")
+                continue
             m.face(quad, Vector((middle.x, middle.y - (jaw_floor(at) + jaw_under(at)) * 0.5, 0.0)), "lower jaw")
     for row, xm, way in ((grid[0], JAW_FROM, -1.0), (grid[-1], JAW_TO + 0.002, 1.0)):
         tip = m.add(Vector((0.0, (jaw_floor(xm) + jaw_under(xm)) * 0.5, xm - HALF)), (xm / LENGTH, 0.1), JAW)
@@ -492,7 +529,8 @@ def make(name, low):
 
 
 def winding(name, mesh, m):
-    """Nothing inside out: the skin of the body faces away from its middle line, the lower jaw's away from
+    """Nothing inside out: the skin of the body faces away from its middle line (the roof of its mouth
+    down, the floor of it, on the jaw, up), the lower jaw's away from
     its own, each skin of a fin away from the fin's own flat, an eye out from the head (Blender's front is
     the side a face's normal is on)."""
     bad = {}

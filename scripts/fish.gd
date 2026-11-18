@@ -13,19 +13,13 @@ const SHADER := preload("res://shaders/fish.gdshader")
 ## How far a fish's body bends into its tightest turn (radians, gills to tail).
 const CURL := 0.7
 
-## What it is: one of `KINDS`.
+## What it is: a name in Species.ALL.
 var kind := ""
 ## Nose to tail, in metres.
 var length := 0.2: set = set_length
 ## The way it is pointing (a unit vector) and how it is moving (m/s).
 var heading := Vector3.FORWARD
 var velocity := Vector3.ZERO
-
-## Every kind there is.
-const KINDS: Array[String] = [
-	"sardine", "loach", "trout", "golden", "flying", "smolt", "catfish", "salmon", "eel", "tuna",
-	"humboldt", "sailfish", "swordfish", "shark", "giant",
-]
 
 # The holder that is scaled to the fish's length, and what is in it: a creature's node, or (the
 # shark) a mesh under `_material`.
@@ -39,10 +33,15 @@ var _front := 0.5
 # enough to be drawn in full.
 var _beat := 0.0
 var _curls := false
+# Its mouth opens by a shader setting (`gape`) with no property of the node's.
+var _mouths := false
 var _near := true
 var _phase := randf() * TAU
 var _bend := 0.0
 var _flash := 0.0
+var _gape := 0.0
+## How wide it wants its mouth (0 shut, 1 wide): set each frame by whoever moves it; it is eased.
+var bite := 0.0
 
 static var _meshes := {}
 
@@ -53,8 +52,8 @@ static func pace(of_length: float) -> float:
 
 
 ## The light mesh that a school of sardines is drawn with, many at once (its nose at -z).
-static func school_mesh() -> Mesh:
-	return Sardine.school_mesh()
+static func school_mesh(of_kind := "sardine") -> Mesh:
+	return (load("res://creatures/%s/%s.gd" % [of_kind, of_kind]) as GDScript).call(&"school_mesh")
 
 
 ## Makes it a swimmer of a kind.
@@ -69,48 +68,15 @@ func set_kind(to: String) -> void:
 	_material = null
 	_curls = true
 	_near = true
-	match to:
-		"sardine":
-			_wear(Sardine.new(), Sardine.LENGTH)
-		"loach":
-			_wear(ClownLoach.new(), ClownLoach.LENGTH)
-		"trout", "golden":
-			var trout := CutthroatTrout.new()
-			trout.look = CutthroatTrout.Look.GOLDEN if to == "golden" else CutthroatTrout.Look.GREENBACK
-			_wear(trout, CutthroatTrout.LENGTH)
-		"flying":
-			_wear(FlyingFish.new(), FlyingFish.LENGTH)
-		"smolt", "salmon":
-			var salmon := SockeyeSalmon.new()
-			salmon.stage = SockeyeSalmon.Stage.SMOLT if to == "smolt" else SockeyeSalmon.Stage.OCEAN
-			_wear(salmon, SockeyeSalmon.LENGTH)
-		"catfish":
-			_wear(ChannelCatfish.new(), ChannelCatfish.LENGTH)
-		"tuna":
-			var tuna := YellowfinTuna.new()
-			# (folded into its groove, as when it swims)
-			tuna.first_dorsal = 0.25
-			_wear(tuna, YellowfinTuna.LENGTH)
-		"sailfish":
-			_wear(Sailfish.new(), Sailfish.LENGTH)
-		"swordfish":
-			_wear(Swordfish.new(), Swordfish.LENGTH)
-		"eel":
-			# (its origin is the tip of its snout; its body is a rope that follows it)
-			_wear(MorayEel.new(), MorayEel.LENGTH, 0.0, false)
-		"humboldt":
-			# (mantle first: the head is its origin, its mantle ahead, its arms behind)
-			var squid := HumboldtSquid.new()
-			squid.colour_beat = 7.0
-			_wear(squid, 2.2, 1.3, false)
-		"giant":
-			_wear(GiantSquid.new(), 5.1, 2.2, false)
-		_:
-			if to != "shark":
-				push_error("Fish: no such kind: " + to)
-			if not _meshes.has("shark"):
-				_meshes["shark"] = Props.shark_whole()
-			_wear_mesh(_meshes["shark"])
+	var made := Species.make(to) if Species.has(to) else null
+	if made:
+		var entry := Species.of(to)
+		_wear(made, Species.long_of(to, made), float(entry.get("front", -1.0)), bool(entry.get("curls", true)))
+	else:
+		# (the shark, and any kind whose creature is not installed yet)
+		if not _meshes.has("shark"):
+			_meshes["shark"] = Props.shark_whole()
+		_wear_mesh(_meshes["shark"])
 	set_length(length)
 
 
@@ -171,6 +137,11 @@ func pose(delta: float, effort: float, turning: float) -> void:
 	_look.call(&"step", Vector3.ZERO, delta)
 	if _curls:
 		_look.call(&"set_shader_parameter", &"curl", _bend * CURL)
+	_gape = move_toward(_gape, bite, delta * (9.0 if bite > _gape else 4.0))
+	if &"gape" in _look:
+		_look.set(&"gape", _gape)
+	elif _mouths:
+		_look.call(&"set_shader_parameter", &"gape", 0.07 + _gape * 0.55)
 
 
 ## `from` turned towards `to` (unit vectors) by no more than an angle.
@@ -193,6 +164,7 @@ func _wear(look: Node3D, long: float, front := -1.0, curls := true) -> void:
 	_long = long
 	_front = long * 0.5 if front < 0.0 else front
 	_curls = curls
+	_mouths = look is SockeyeSalmon or look is CutthroatTrout or look is FlyingFish
 	_beat = float(look.get(&"beat")) if &"beat" in look else 0.0
 	# (each starts somewhere else in its beat)
 	if &"phase" in look:

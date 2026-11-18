@@ -11,7 +11,7 @@ extends Node3D
 ## a bigger or smaller one. No sound.
 ##
 ## It swims as sardines do: a wave down the whole back half of the body, drawn by the shader (no
-## bones).
+## bones). Its mouth opens: `gape`.
 ##
 ## Everything that moves runs on `phase`, 0 to 1 through one `beat`, in which its tail beats
 ## `tail_beats` times (a whole number), so its motion comes round again exactly every beat.
@@ -46,6 +46,12 @@ const WIDTH := 0.024
 	set(value):
 		sway = value
 		_send(&"sway", value)
+## How far its mouth is open: 0 shut, 1 wide open (as when it bites, or swims open-mouthed to
+## strain its food from the water).
+@export_range(0.0, 1.0) var gape := 0.0:
+	set(value):
+		gape = clampf(value, 0.0, 1.0)
+		_send(&"gape", gape)
 ## The low model (about a thirteenth of the triangles), for far off or for several of them.
 @export var low := false:
 	set(value):
@@ -82,7 +88,7 @@ static func school_mesh() -> Mesh:
 
 
 ## A new material for `mesh_of()`'s meshes. Its shader settings are the game's to set: `phase`
-## (0..1 through one beat of the tail), `sway`, `curl`, `wave` and the colours (the top of the
+## (0..1 through one beat of the tail), `sway`, `gape`, `curl`, `wave` and the colours (the top of the
 ## shader lists them).
 static func new_material() -> ShaderMaterial:
 	var made := ShaderMaterial.new()
@@ -100,6 +106,7 @@ func _ready() -> void:
 	_show()
 	_send_phase()
 	_send(&"sway", sway)
+	_send(&"gape", gape)
 
 
 ## Each frame, for one that is not having its `phase` set for it: moves it on through its beat.
@@ -112,7 +119,7 @@ func step(_velocity: Vector3, delta: float) -> void:
 ## Sets one of the shader's settings: `curl` (bent round into a turn: radians from gills to tail,
 ## more than 0 the tail comes round to its left, +X), `wave` (the length of the wave along its
 ## body, in body lengths), its colours (`back`, `back_green`, `silver`, `belly`, `sheen`, `spot`,
-## `fin`, `fin_dusk`), `spots_show` and `second_row` (how strongly the row of spots and the
+## `fin`, `fin_dusk`, `mouth_inside`), `spots_show` and `second_row` (how strongly the row of spots and the
 ## fainter row above it show) and `scales_show`.
 func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)

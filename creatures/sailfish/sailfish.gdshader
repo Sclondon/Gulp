@@ -24,6 +24,12 @@ const float HEAD = 0.82;
 const float JOINT = 2.29;
 const float SAIL_RAYS = 46.0;
 const float SAIL_HIGH = 0.54;
+// The lower jaw: where its tip and its sunk end are, its hinge (metres behind the bill's tip, metres
+// up), and how far it swings down when the mouth is wide open (radians).
+const float JAW_FROM = 0.30;
+const float JAW_TO = 0.64;
+const vec2 JAW_HINGE = vec2(0.63, -0.06);
+const float JAW_SWING = 0.36;
 
 // How far through a beat of its tail (0..1, it wraps). Set by Sailfish.
 uniform float phase = 0.0;
@@ -37,6 +43,9 @@ uniform float sway = 1.0;
 uniform float sail = 1.0;
 // How far the top of the raised sail ripples to each side (metres).
 uniform float ripple = 0.022;
+// How far its mouth is open (0 shut, 1 wide open, as when it bites): the lower jaw swings down
+// about its hinge under the eye.
+uniform float gape = 0.0;
 // How long the wave along its body is, in body lengths.
 uniform float wave = 1.2;
 
@@ -57,6 +66,8 @@ uniform vec3 sail_spots : source_color = vec3(0.006, 0.008, 0.025);
 // The other fins and the bill.
 uniform vec3 fin_dark : source_color = vec3(0.02, 0.03, 0.075);
 uniform vec3 bill : source_color = vec3(0.03, 0.04, 0.08);
+// The inside of the mouth (seen only when it is open).
+uniform vec3 mouth : source_color = vec3(0.05, 0.016, 0.022);
 
 varying vec3 rest;
 varying vec3 rest_normal;
@@ -113,6 +124,18 @@ void vertex() {
 		float high = UV2.x / SAIL_HIGH;
 		v.x += up * ripple * high * high * sin(6.2831853 * (phase - rest.z * 1.4));
 	}
+	vec3 nn = NORMAL;
+	if (part > 2.5 && part < 3.5) {
+		// The lower jaw swings down about its hinge.
+		float a = clamp(gape, 0.0, 1.0) * JAW_SWING;
+		float ca = cos(a);
+		float sa = sin(a);
+		float dy = v.y - JAW_HINGE.y;
+		float dz = v.z - (JAW_HINGE.x - HALF);
+		v.y = JAW_HINGE.y + dy * ca + dz * sa;
+		v.z = JAW_HINGE.x - HALF + dz * ca - dy * sa;
+		nn = vec3(nn.x, nn.y * ca + nn.z * sa, nn.z * ca - nn.y * sa);
+	}
 	float xm = v.z + HALF;
 	// (the head and bill ahead, and the tail behind its hinge, are stiff: they turn as one piece)
 	float zc = clamp(xm, HEAD, JOINT);
@@ -124,7 +147,7 @@ void vertex() {
 	float sn = sin(turn);
 	vec3 o = vec3(v.x, v.y, xm - zc);
 	VERTEX = vec3(h + o.x * c + o.z * sn, o.y, zc - HALF - o.x * sn + o.z * c);
-	NORMAL = vec3(NORMAL.x * c + NORMAL.z * sn, NORMAL.y, -NORMAL.x * sn + NORMAL.z * c);
+	NORMAL = vec3(nn.x * c + nn.z * sn, nn.y, -nn.x * sn + nn.z * c);
 	vec3 curled = VERTEX;
 	vec3 curled_normal = NORMAL;
 	curl_bend(curled, curled_normal);
@@ -174,6 +197,19 @@ void fragment() {
 		// The bill and the top of the head: blue-black, paler underneath.
 		float beak = (1.0 - smoothstep(0.42, 0.66, xm)) * smoothstep(-0.75, -0.1, q);
 		c = mix(c, bill * (0.9 + 0.2 * grain), beak);
+		// The roof of the mouth: the underside of the bill and head where the shut lower jaw lies
+		// against it (hidden inside the jaw until the mouth opens).
+		float open = smoothstep(0.0, 0.06, gape);
+		if (open > 0.0 && q < -0.3 && xm > JAW_FROM - 0.01 && xm < JAW_TO) {
+			float js = max(0.0, (xm - JAW_FROM) / (JAW_TO - JAW_FROM));
+			float jaw_up = -abs(y / q) + 0.004;
+			float chin = min(-(0.0165 + 0.056 * pow(js, 1.1)), jaw_up - 0.002);
+			float across_jaw = max(pow(1.0 - q * q, 0.46) / 0.92, abs(rest.x) / (0.006 + 0.085 * max(xm - JAW_FROM, 0.0)));
+			float up_jaw = (y - 0.5 * (jaw_up + chin)) / (0.5 * (jaw_up - chin));
+			float inside = 1.0 - smoothstep(0.75, 1.0, across_jaw * across_jaw + up_jaw * up_jaw);
+			// (not at the sunk end of the jaw, where its skin and the head's all but meet)
+			c = mix(c, mouth, inside * open * (1.0 - smoothstep(0.55, 0.6, xm)));
+		}
 		// The gill cover's edge.
 		float span = smoothstep(-0.95, -0.8, q) * (1.0 - smoothstep(0.4, 0.6, q));
 		float behind = xm - gill_x(y);
@@ -212,6 +248,8 @@ void fragment() {
 		c = mix(silver * 0.8, belly * 0.95, smoothstep(0.3, 0.9, UV.y));
 		c = mix(c, bill, (1.0 - smoothstep(0.2, 0.75, UV.x)) * 0.55);
 		c = mix(c, vec3(0.02, 0.02, 0.03), (1.0 - smoothstep(0.14, 0.3, UV.y)) * 0.85);
+		// (its top is the floor of the mouth, seen when it is open)
+		c = mix(c, mouth, (1.0 - smoothstep(0.3, 0.42, UV.y)) * smoothstep(0.0, 0.06, gape));
 	} else if (p == 4) {
 		// The tail: blue-black, fine rays.
 		float ray = 0.5 + 0.5 * cos(UV.y * 90.0);

@@ -2,7 +2,8 @@ shader_type spatial;
 // The Pacific sardine (sardine.gd): every marking drawn here (no texture files), and its
 // swimming. What each point is comes from the model (tools/build_sardine.py): UV2.y the part
 // (0 body, 1 the dorsal fin, 2 the anal fin, 3 the tail, 4 a pectoral fin, 5 a pelvic fin, 6 an
-// eye). UV, on the body: x how far along, y how high on its side (1 the ridge of the back, 0 the
+// eye, 7 the lower jaw). UV2.x: 1 inside the mouth, 0 elsewhere. UV, on the body and the jaw: x
+// how far along, y how high on its side (1 the ridge of the back, 0 the
 // keel of the belly); on a fin: x root (0) to tip (1), y leading edge (0) to trailing edge (1);
 // on an eye: x middle (0) to rim (1).
 //
@@ -20,6 +21,11 @@ const float HALF = 0.11;
 const float JOINT = 0.183;
 const float MOUTH_TO = 0.018;
 const vec2 EYE_AT = vec2(0.021, 0.0042);
+// The lower jaw: how far back it runs (metres behind its tip), where its hinge is there (on the
+// line of the mouth), and how far it swings down, wide open (radians).
+const float JAW_TO = 0.019;
+const float HINGE_Y = -0.0049;
+const float GAPE_OPEN = 0.8;
 // The row of spots: where the first is (metres behind the jaw), how far apart, how many.
 const float SPOT_FROM = 0.058;
 const float SPOT_STEP = 0.0132;
@@ -36,6 +42,9 @@ uniform float curl = 0.0;
 uniform float sway = 1.0;
 // How long the wave along its body is, in body lengths.
 uniform float wave = 0.95;
+// How far its mouth is open: 0 shut, 1 wide open (as when it bites, or swims open-mouthed to
+// strain its food from the water). The lower jaw swings down about its hinge.
+uniform float gape : hint_range(0.0, 1.0) = 0.0;
 
 // The back, and the blue-green it turns to towards the flank and where light glances off it.
 uniform vec3 back : source_color = vec3(0.02, 0.09, 0.19);
@@ -53,10 +62,13 @@ uniform float scales_show = 0.6;
 // The pale fins; the dusky tail and dorsal fin.
 uniform vec3 fin : source_color = vec3(0.7, 0.75, 0.74);
 uniform vec3 fin_dusk : source_color = vec3(0.2, 0.28, 0.29);
+// The inside of the mouth.
+uniform vec3 mouth_inside : source_color = vec3(0.1, 0.035, 0.04);
 
 varying vec3 rest;
 varying vec3 rest_normal;
 varying float part;
+varying float inside;
 
 float hash2(vec2 p) {
 	vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
@@ -99,8 +111,20 @@ void vertex() {
 	part = UV2.y;
 	rest = VERTEX;
 	rest_normal = NORMAL;
+	inside = UV2.x;
 	vec3 v = VERTEX;
 	float xm = v.z + HALF;
+	if (part > 6.5) {
+		// The lower jaw swings down about its hinge; its end inside the head stays where it is.
+		float a = clamp(gape, 0.0, 1.0) * GAPE_OPEN * (1.0 - smoothstep(JAW_TO - 0.008, JAW_TO - 0.0005, xm));
+		float ca = cos(a);
+		float sa = sin(a);
+		vec2 d = vec2(v.y - HINGE_Y, xm - JAW_TO);
+		v.y = HINGE_Y + d.x * ca + d.y * sa;
+		v.z = JAW_TO - HALF + d.y * ca - d.x * sa;
+		NORMAL = vec3(NORMAL.x, NORMAL.y * ca + NORMAL.z * sa, NORMAL.z * ca - NORMAL.y * sa);
+		xm = v.z + HALF;
+	}
 	// (the tail, behind its hinge, is one plate: it turns about the hinge)
 	float zc = min(xm, JOINT);
 	float h = side_at(zc);
@@ -142,7 +166,7 @@ void fragment() {
 	vec3 c;
 	float rough = 0.42;
 	float spec = 0.5;
-	if (p == 0) {
+	if (p == 0 || p == 7) {
 		float xm = rest.z + HALF;
 		float y = rest.y;
 		float q = UV.y * 2.0 - 1.0;
@@ -190,6 +214,10 @@ void fragment() {
 		c = mix(c, c * 0.62, grooves * cover * 0.5);
 		rough = mix(0.26, 0.5, dark);
 		spec = mix(0.7, 0.4, dark);
+		// The inside of the mouth.
+		c = mix(c, mouth_inside, inside);
+		rough = mix(rough, 0.8, inside);
+		spec = mix(spec, 0.2, inside);
 	} else if (p == 1) {
 		// The dorsal fin: dusky, clearer towards its rear, about seventeen rays.
 		float ray = pow(abs(cos(3.14159265 * UV.y * 17.0)), 6.0);

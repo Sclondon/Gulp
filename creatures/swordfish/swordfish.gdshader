@@ -4,7 +4,8 @@ shader_type spatial;
 // first dorsal, 2 the small fins, 3 the lower jaw, 4 the tail, 5 a pectoral fin, 6 an eye). UV, on
 // the body and the lower jaw: x how far along, y how high on its side (1 the ridge of the back, 0
 // the keel of the belly); on a fin: x root (0) to tip (1), y leading edge (0) to trailing edge
-// (1); on an eye: x middle (0) to rim (1).
+// (1); on an eye: x middle (0) to rim (1). UV2.x, on the body and the lower jaw: how far inside
+// the mouth (0 skin and lips, 1 the middle of its roof or floor).
 //
 // It swims as tunas do (thunniform): the sword and head still, the body all but rigid, a wave that
 // only grows large in the last third, the tail wrist flexing and the stiff crescent tail swung as
@@ -19,6 +20,10 @@ const float HALF = 1.5;
 const float SWORD = 0.95;
 // Where the tail fin is hinged: behind it the tail is one stiff plate.
 const float JOINT = 2.68;
+// Where the lower jaw hinges (metres behind the sword's tip, metres up), as the model has it, and how
+// far it swings down for `gape` 1 (radians: its tip drops about 0.18 m).
+const vec2 HINGE = vec2(1.33, -0.16);
+const float GAPE_TURN = 0.5;
 // Where the body starts to bend into a turn (just behind the gill covers).
 const float CURL_FROM = 1.45;
 
@@ -28,6 +33,8 @@ uniform float phase = 0.0;
 // to the tail (0 straight; more than 0 the tail comes round to +X, its left, as it turns left).
 // The sword and head stay as they are; set it from how tightly the fish is turning.
 uniform float curl = 0.0;
+// How far its mouth is open: 0 shut, 1 wide open, as when it bites. Set by Swordfish.
+uniform float gape : hint_range(0.0, 1.0) = 0.0;
 // How widely it beats, for 1 as a swordfish cruising (its tail tips swing about 0.29 m either way).
 uniform float sway = 1.0;
 // How long the wave along its body is, in body lengths (the body: lower jaw to tail).
@@ -40,6 +47,8 @@ uniform vec3 sheen : source_color = vec3(0.16, 0.14, 0.42);
 // The flank under the dark back, and the belly it shades to.
 uniform vec3 flank : source_color = vec3(0.42, 0.33, 0.27);
 uniform vec3 belly : source_color = vec3(0.8, 0.78, 0.74);
+// The inside of the mouth.
+uniform vec3 mouth : source_color = vec3(0.05, 0.02, 0.025);
 // The fins.
 uniform vec3 fin_dark : source_color = vec3(0.1, 0.075, 0.06);
 // The eye's iris.
@@ -91,6 +100,15 @@ void vertex() {
 	rest = VERTEX;
 	rest_normal = NORMAL;
 	vec3 v = VERTEX;
+	vec3 n = NORMAL;
+	if (part > 2.5 && part < 3.5) {
+		// The lower jaw swings down about its hinge, all of it as one stiff piece.
+		float a = clamp(gape, 0.0, 1.0) * GAPE_TURN;
+		vec2 hinge = vec2(HINGE.y, HINGE.x - HALF);
+		vec2 d = v.yz - hinge;
+		v.yz = hinge + vec2(d.x * cos(a) + d.y * sin(a), d.y * cos(a) - d.x * sin(a));
+		n.yz = vec2(n.y * cos(a) + n.z * sin(a), n.z * cos(a) - n.y * sin(a));
+	}
 	float xm = v.z + HALF;
 	// (the tail, behind its hinge, is one stiff plate: it turns about the hinge)
 	float zc = min(xm, JOINT);
@@ -102,7 +120,7 @@ void vertex() {
 	float sn = sin(turn);
 	vec3 o = vec3(v.x, v.y, xm - zc);
 	VERTEX = vec3(h + o.x * c + o.z * sn, o.y, zc - HALF - o.x * sn + o.z * c);
-	NORMAL = vec3(NORMAL.x * c + NORMAL.z * sn, NORMAL.y, -NORMAL.x * sn + NORMAL.z * c);
+	NORMAL = vec3(n.x * c + n.z * sn, n.y, -n.x * sn + n.z * c);
 	vec3 curled = VERTEX;
 	vec3 curled_normal = NORMAL;
 	curl_bend(curled, curled_normal);
@@ -149,7 +167,9 @@ void fragment() {
 		} else {
 			in_mouth *= smoothstep(0.75, 0.95, rest_normal.y);
 		}
-		c = mix(c, vec3(0.03, 0.02, 0.025), in_mouth * 0.9);
+		// (and its lining, which the model marks: the roof and the floor of the mouth, seen when it gapes)
+		float lined = smoothstep(0.0, 0.12, UV2.x);
+		c = mix(c, mouth, max(in_mouth * 0.9, lined));
 		float span = smoothstep(-0.95, -0.8, q) * (1.0 - smoothstep(0.4, 0.6, q));
 		float behind = xm - gill_x(y);
 		float crease = (1.0 - smoothstep(0.0, 0.007, abs(behind - 0.004))) * 0.55 + (1.0 - smoothstep(0.0, 0.06, behind)) * step(0.0, behind) * 0.2;
@@ -157,7 +177,7 @@ void fragment() {
 		// The tail wrist: dark along its keels.
 		float wrist = smoothstep(2.4, 2.6, xm) * (1.0 - smoothstep(0.3, 0.75, abs(q)));
 		c = mix(c, back * 1.2, wrist * 0.85);
-		rough = mix(0.32, 0.5, max(dark, wrist));
+		rough = mix(mix(0.32, 0.5, max(dark, wrist)), 0.7, lined);
 		spec = mix(0.6, 0.4, max(dark, wrist));
 	} else if (p == 1 || p == 2 || p == 4) {
 		// The first dorsal, the small fins and the tail: dark brown, fine rays, a glance of blue.

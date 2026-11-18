@@ -14,7 +14,7 @@ extends Control
 ##
 ## Arguments (after --): --bot plays by itself and starts again when eaten; --seconds=<n> quits
 ## after n seconds (with --bot, printing how it did); --check runs the smoke test's checks
-## (tests/checks.gd) and quits, --check=touch its touch checks (in a window); --stage=<n> starts runs at a later stage (0..4); --calm:
+## (tests/checks.gd) and quits, --check=touch its touch checks (in a window); --as=<kind> starts runs as that animal (a name in Player.GROWTH; --stage=<n> is the old five by number); --calm:
 ## nothing hunts; --over ends the run at once (for a picture of that screen); --shot=<seconds>
 ## saves a picture at that time and quits (--out=<file>); --near=<jelly|shark|salmon|sardines|krill>
 ## starts the run beside one of those, with nothing hunting (to look at it).
@@ -39,7 +39,12 @@ var _viewport: SubViewport
 var _bubbles: CPUParticles3D
 var _clock := 0.0
 var _over_for := 0.0
-var _start_stage := 0
+var _start_kind := "sardine"
+var _post: ShaderMaterial
+var _frames := 0
+# For a picture: "--feed" fills its stage after a moment (the choice of what to become),
+# "--leap" sends it up through the surface.
+var _trick := ""
 var _quit_at := -1.0
 var _shot_at := -1.0
 var _shot_out := ""
@@ -68,7 +73,12 @@ func _ready() -> void:
 		elif arg.begins_with("--seconds="):
 			_quit_at = float(arg.get_slice("=", 1))
 		elif arg.begins_with("--stage="):
-			_start_stage = int(arg.get_slice("=", 1))
+			# (the old five stages, by number)
+			_start_kind = ["sardine", "smolt", "salmon", "tuna", "shark"][clampi(int(arg.get_slice("=", 1)), 0, 4)]
+		elif arg == "--feed" or arg == "--leap":
+			_trick = arg
+		elif arg.begins_with("--as="):
+			_start_kind = arg.get_slice("=", 1)
 		elif arg.begins_with("--shot="):
 			_shot_at = float(arg.get_slice("=", 1))
 		elif arg.begins_with("--near="):
@@ -95,6 +105,7 @@ func _ready() -> void:
 	post.set_shader_parameter(&"dither", 0.5)
 	post.set_shader_parameter(&"vignette", 0.3)
 	container.material = post
+	_post = post
 	add_child(container)
 	_viewport = SubViewport.new()
 	container.add_child(_viewport)
@@ -117,12 +128,16 @@ func _ready() -> void:
 	hud = Hud.new()
 	hud.player = player
 	hud.restart.connect(restart)
+	hud.picked.connect(_on_picked)
 	add_child(hud)
 	pad = TouchPad.new()
 	add_child(pad)
 	player.ate.connect(_on_ate)
 	player.grew.connect(_on_grew)
 	player.died.connect(_on_died)
+	player.choice.connect(_on_choice)
+	player.leapt.connect(_on_splash)
+	player.splashed.connect(_on_splash)
 	if botted:
 		bot = Bot.new()
 		bot.player = player
@@ -141,8 +156,9 @@ func _ready() -> void:
 
 ## Starts a run.
 func restart() -> void:
-	var at := Sea.clear_of_rocks(Vector3(0.0, 8.0, 10.0), 0.5)
-	player.begin(at, _start_stage)
+	var at := Sea.clear_of_rocks(Vector3(-24.0, Sea.SURFACE - 7.0, 6.0), 0.5)
+	player.begin(at, _start_kind)
+	hud.offer([])
 	life.make_way(at)
 	over = false
 	_over_for = 0.0
@@ -185,8 +201,28 @@ func _process(delta: float) -> void:
 	_clock += delta
 	delta = minf(delta, 0.05)
 	_steer()
-	player.step(delta)
-	life.step(delta)
+	_frames += 1
+	if _trick == "--feed" and _clock > 0.8:
+		_trick = ""
+		player.feed(player.length * 3.0)
+	elif _trick == "--leap" and _clock > 0.3:
+		_trick = ""
+		player.global_position.y = Sea.SURFACE - 1.5
+		player.pitch = 0.9
+		player.boost_held = true
+	# (while it is choosing what to become, the sea stands still)
+	if not player.choosing:
+		player.step(delta)
+		life.step(delta)
+		if _frames % 4 == 0 and player.alive:
+			var food := life.nearest_food()
+			player.near_food = food != Vector3.INF and food.distance_to(player.mouth()) < 0.4 + player.length * 1.2
+	elif bot:
+		var ways := player.options()
+		_on_picked(ways[randi() % ways.size()])
+	# Above the surface the air is clear; under it the water is blue and thick.
+	sea.set_above(camera.global_position.y > Sea.SURFACE)
+	_post.set_shader_parameter(&"underwater", 0.0 if sea.above else 1.0)
 	if player.alive:
 		camera.global_position = camera.global_position.lerp(_camera_place(), 1.0 - exp(-5.0 * delta))
 		_aim_camera()
@@ -257,6 +293,8 @@ func _camera_place() -> Vector3:
 	var long := player.length
 	# (above as well as behind: from straight behind a fish is only as big as it is thick)
 	var behind := player.global_position - player.heading * (0.25 + long * 1.9) + Vector3.UP * (0.2 + long * 1.1)
+	if player.in_air or behind.y > Sea.SURFACE:
+		return behind
 	return Sea.keep_in(behind, 0.3)
 
 
@@ -278,7 +316,30 @@ func _on_grew(stage: int) -> void:
 	hud.grew()
 
 
+func _on_choice(options: Array) -> void:
+	hud.offer(options)
+	pad.visible = false
+	pad.release()
+
+
+func _on_picked(kind: String) -> void:
+	if not player.choosing:
+		return
+	hud.offer([])
+	pad.visible = true
+	player.choose(kind)
+
+
+## Spray where it leaves the water and where it comes back in.
+func _on_splash(at: Vector3) -> void:
+	_bubbles.global_position = at
+	_bubbles.scale_amount_min = 0.5 * player.length
+	_bubbles.scale_amount_max = 1.2 * player.length
+	_bubbles.restart()
+
+
 func _on_died(by: String) -> void:
+	hud.offer([])
 	if bot:
 		print("GULP BOT eaten by %s at %.0f s, stage %d, %.2f m, %d meals" % [by, _clock, player.stage, player.length, player.meals])
 	over = true
