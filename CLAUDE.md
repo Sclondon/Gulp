@@ -192,3 +192,47 @@ Gulp's models as built (`tests/wire.gd` counts every kind and saves a wireframe 
 triangles (most fish 30,000 to 60,000), low 450 to 6,400; 3.1 million against 251,000 in all. The full ones spend
 their triangles as an even fine grid; the reference spends them unevenly: dense at the face, hands and edges of the
 outline, a few big triangles across flat stretches. Not yet done: a "game" model of each at that budget.
+
+## The control panel and the title (2026-11-18)
+
+The user's words, in order: "the contols UI should be old timey submarine themed, and there needs to be a lever to
+control speed around the boost button"; "There should be a whole control panel on the bottom part, that also shows speed
+and your evolution level and maybe any special ability buttons, with and old rusted and e gad frankenstein technology
+aesthetic"; (of two rounds of generated pictures) "the non interactive parts are a little too busy, and it looks a
+little too obviopusly ai"; "lets recreate the ui as a 3d model to interact with"; "The sonar map should be bigger and
+hust off center to the left, the speed dial should be above the boost and soeed controls to the right and bigger, and
+the evolution dial should be above the joystick to the left. There can be a little dwpth dial next to sonar"; "the model
+should be very similar in style to the first concpet art- though the texture needs to be less noisy"; "the ui model is
+too blocky and not lumpy and greebled like the concept"; "The electrodes are fine".
+
+- The panel is a 3D model: `tools/build_panel.py` -> `models/control_panel.glb` (three housings: Helm, Engine, Gauges;
+  the script's docstring lists the parts). `scripts/panel_model.gd` (PanelModel) draws it in its own SubViewport and moves
+  the parts; `scripts/touch_pad.gd` takes the touches and draws the sonar and the spark over it. The numbers in capitals
+  are in both the build script and PanelModel: change both. `shaders/panel.gdshader` paints it (unshaded, no lights).
+- **Decision (Claude's pick): a SubViewport with its own World3D and a clear background**, the usual Godot way to put
+  3D things in a 2D interface. Alternatives: a second camera on a render layer (the game's half-size dithered picture
+  would shrink and dither it), or parenting to the game camera (the water's fog would tint it). The camera is a narrow
+  lens straight on, so faces sit where a flat panel would and `PanelModel.to_screen` matches touches to parts by sum.
+- The first concept picture is `tools/art_src/panel_concept_1.png`; both rounds of generated pictures and the flat
+  panel made from them are retired in `tools/art_src` and `textures/panel` (not used by the game).
+- Claude's picks: the burst dial beside the depth dial; the vacuum tubes dropped (the evolution dial replaced them);
+  two switches and a grille kept for abilities that do not exist; the instrument housing sunk on wide screens so it
+  does not stand over the fish; about 37,000 triangles (not yet trimmed for phones).
+- The dials are not labelled. Speed (engine housing), evolution (helm housing, a full turn at 8 stages), depth (small,
+  upper, by the sonar), burst left (small, lower).
+
+The title (the user): "the main menu / start of the game should be the boy from warren, a sea captain, and and oldtimy
+diver on a shrimping boat (look up reference pics). In the open back cabin of the shrimping boat should be a old timey
+franketstein computer hooked up to a helmet on the boys head- the controls for the pc are the controls for the game".
+`scripts/title.gd` (Title, and Title.Card for the name and the start button) stands a boat on the surface over the
+fish's start; the computer is the panel's own model on a bench; `tools/build_helmet.py` -> `models/brain_helmet.glb`
+(helmet, cable, bench). Main opens on it unless a test, bot or picture is driving (`--title` forces it), and on start
+sends the eye down through the surface to the fish. Tests skip it.
+
+## More animals (2026-11-18)
+
+In the sea from the user's second list: ichthyosaur, mosasaur, plesiosaur, walrus, narwhal (open ocean, no cold sea yet),
+four sea turtles, pufferfish, three seahorses, cleaner/mantis/pistol shrimps, three starfish, three urchins, feather
+star and sea lily. `Species` gained `slow` (pace beside a fish of its length; 0 stays put). Installed but NOT yet in
+the sea (they need placing like scenery or the nettles, not as swimmers): `anemone` (three kinds), `lions_mane_jelly`,
+`box_jelly`, `fried_egg_jelly`, `man_o_war` (floats on the waterline). Places, numbers and sizes are Claude's picks.
