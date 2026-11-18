@@ -41,12 +41,26 @@ Keep it that way.
   table of every kind (what draws it, where it lives, how many, how it behaves). **A kind whose creature is not
   installed is left out of the sea by itself**, so installing a finished component and running `--import` is all it
   takes for a kind already in the table (check its script path and class there).
-- In and drawing: sardine (with a school mesh), sockeye salmon (smolt, ocean), yellowfin tuna, flying fish, trout
-  (two looks), loach, catfish, moray eel, Humboldt squid, giant squid, sea nettle, sailfish, swordfish. The shark is
-  still Salmon Run 2's code-built mesh until `white-shark` is installed.
+- **Every animal the user named is built and installed** (87 folders in `creatures/`, about 290 animals and 20
+  schools stocked): see `Species.ALL` for the list. Schools (one draw each): krill, sardine, anchovy, mackerel,
+  piranha, neon tetra, zebra danio, lanternfish. Plankton clouds feed a fish under 0.45 m. The old code-built shark
+  is only a fallback now (`white_shark` is installed).
 - The sea is a coast (`Sea.ZONES`, `Sea.ground`): river mouth, sea grass, sand flats, kelp, reef, the shelf's edge,
-  open ocean, a trench. **Only the floor's shape and who lives where exist: no kelp, grass, rocks, coral, mangroves
-  or garden eels are placed yet** (the old rock outcrops are retired: `models/sea_floor.glb` is unused).
+  open ocean, a trench. `scripts/scenery.gd` plants it from GameCommon's `plants/` and `scenery/`: kelp on rocks
+  (with an arch), sea grass, a coral reef with clownfish anemones, cliffs along the shelf's edge, garden eels in the
+  sand (they sink; one still out can be eaten), mangroves along the river. Rocks, coral heads, cliffs and mangrove
+  roots stop a swimmer through `Sea.add_rock` (spheres in a grid of 8 m squares). The old rock outcrops are retired
+  (`models/sea_floor.glb` is unused). The trench has no scenery of its own and is no darker than the rest.
+- **A web build has not been made since, and would be far too big as it stands**: the models are about 105 MB of
+  `.glb` (each creature loads its full and its low model). Before a push: export low models only for the web, or
+  cut the list of kinds there. Phones are untried (about 6 ms a frame at the reef on the desktop).
+- Unused so far: lionfish spines do not sting; the betta's `flare`, cuttlefish patterns, the otter's `afloat`, the
+  gar's `snap`, the arowana's and whales' `arch`, the manta's `scoops`, the anglerfish's `lure` are never driven;
+  nothing but the player leaps; air-breathers do not go up for air.
+- Bot (tests): from sardine to an 8 m orca in 300 s with no deaths, so the sea is too easy as tuned.
+- Learned: Godot's importer makes automatic LOD meshes, and a body bent in its vertex shader then bends in straight
+  pieces far off; `Fish._wear` sets `lod_bias` 64 on every creature mesh to stop it (some newer components also
+  strip the LODs themselves).
 - Branching growth (`Player.GROWTH`, the cards in `Hud.ChoiceCard`), the leap (`Player.in_air`), mouths (`Fish.bite`).
 - The online arena (`scripts/arena.gd`, `arena_net.gd`; after Liquid Metal's): players share a room on the site's
   server and eat each other by the one rule; each game keeps its own sea life (Claude's simplification); the high
@@ -59,15 +73,15 @@ Keep it that way.
   out and sized to the fish; the user: "The bubble and particle and splash effects should be based on the salmon run
   ones in game common". They were not in GameCommon (only `godot/water`, a different water, cites Salmon Run 2):
   these copies are worth saving there as a component.
-- Not started: trench fish (GameCommon has an `anglerfish`, a monster made for Warren: look before
-  using), sound, the plants and rocks in the zones, anything above the water (shore, mangrove trees, sky).
+- Not started: sound, the shore and sky above the water, a darker trench, the site's leaderboard for the high score.
 
-### Model builders (agents) and what is still to start
+### The model builders
 
-The first wave of builders was cut off by the account's usage limit and restarted on another model; each owns
-its folder in `C:\Projects\GameCommon\godot`. The shared brief they follow is kept at `tools/CREATURE_BRIEF.md`,
-and the list of what had not been started at `tools/PENDING_BUILDERS.md`. A component is finished when it has a
-README and a check script beside it; a folder without a README is a half-built one.
+Every model was built by an agent into its own folder in `C:\Projects\GameCommon\godot` (the first wave was cut off
+by the account's usage limit and restarted on another model). The brief they followed is kept at
+`tools/CREATURE_BRIEF.md`; `tools/PENDING_BUILDERS.md` is the queue as it stood (all of it is now built). The new
+components are not yet in GameCommon's README index. The new octopus is `giant-pacific-octopus`
+(`GiantPacificOctopus`): GameCommon's `octopus` is Warren's and was left alone.
 
 ### Claude's picks in this round (change freely)
 
