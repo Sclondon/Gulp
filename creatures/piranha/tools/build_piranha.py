@@ -4,7 +4,8 @@ Run from the game's root:
     blender --background --python creatures/piranha/tools/build_piranha.py
     blender --background --python creatures/piranha/tools/build_piranha.py -- <preview folder>   # with pictures
 
-Writes creatures/piranha/models/piranha.glb (the full model, for one seen close), piranha_lo.glb (far off,
+Writes creatures/piranha/models/piranha.glb (the full model, for one seen close), piranha_game.glb (the game model:
+Twilight Princess weight, GAME_RINGS below), piranha_lo.glb (far off,
 phones) and piranha_school.glb (a very light one whose look is in its vertex colours, for many drawn by one
 MultiMesh), and the editable creatures/piranha/tools/piranha.blend (this folder has a .gdignore). The full and
 the low model are one still mesh with one surface each: the shader (piranha.gdshader) draws every marking and
@@ -250,7 +251,51 @@ class Mesh:
 FLAT = ("teeth", "throat")
 
 
+# The game model (for Gulp, at Twilight Princess weight): its rings, placed by hand where the outline turns
+# (close at the snout, the mouth, the gill cover and the tail's wrist, far apart along the flanks).
+GAME_RINGS = [0.0006, 0.002, 0.0045, 0.008, 0.012, 0.017, 0.023, JAW_TO,
+              0.036, 0.044, 0.053, 0.063, 0.074, 0.085, 0.100, 0.115, 0.130, 0.145, 0.160, 0.175, 0.190, 0.205,
+              0.218, 0.228, 0.240, 0.246, BODY_TO]
+GAME_AROUND = 18
+# (set while the game model is made)
+GAME = [False]
+# The game model's columns round the body (radians from the ridge of the back): evenly spaced for this deep, round
+# body (k 0; closer at the ridge and keel made the back pointed from the front, closer on the flanks the keel), one
+# exactly on the line of the mouth at the hinge; and that column's number.
+ANGLES = [None]
+LIP_COL = [0]
+# The game model's fins: (rows from root to tip, columns from leading to trailing edge) of each skin. Thin
+# blades: few rows where a fin is straight from root to tip, columns enough for the outline of its edge.
+GAME_FINS = {"dorsal": (3, 6), "adipose": (2, 3), "anal": (2, 8), "tail": (6, 3), "pectorals": (4, 2), "pelvics": (3, 2)}
+
+
+def game_angles(around, k=0.0):
+    n = around // 2
+    lip = lip_angle(JAW_TO)
+    base = [math.pi * (i / n - k * math.sin(TAU * i / n) / TAU) for i in range(n + 1)]
+    j = min(range(1, n), key=lambda i: abs(base[i] - lip))
+    side = [b * lip / base[j] if i <= j else lip + (b - base[j]) * (math.pi - lip) / (math.pi - base[j])
+            for i, b in enumerate(base)]
+    return side + [TAU - side[around - c] for c in range(n + 1, around)], j
+
+
+def col_angle(c):
+    """How far round the body from the ridge of the back column `c` is."""
+    if ANGLES[0] is None:
+        return c / AROUND[0] * TAU
+    return ANGLES[0][c % AROUND[0]]
+
+
+def lip_col():
+    """The column on the line of the mouth at the hinge."""
+    if ANGLES[0] is None:
+        return round(lip_angle(JAW_TO) / (TAU / AROUND[0]))
+    return LIP_COL[0]
+
+
 def rings(low):
+    if GAME[0]:
+        return list(GAME_RINGS)
     xs = []
     x = BODY_FROM
     for until, step in ((JAW_TO, 0.0008), (0.085, 0.0012), (0.234, 0.0026), (BODY_TO, 0.0012)):
@@ -278,6 +323,8 @@ AROUND = [56]
 def lip_reach(xm):
     """lip_angle, eased over the back of the mouth onto the nearest of the body's own columns at the hinge,
     where the head and the jaw meet the whole body point for point."""
+    if ANGLES[0] is not None:
+        return lip_angle(xm) + (col_angle(lip_col()) - lip_angle(JAW_TO)) * smooth(0.6 * JAW_TO, JAW_TO, xm)
     step = TAU / AROUND[0]
     snap = round(lip_angle(JAW_TO) / step) * step
     return lip_angle(xm) + (snap - lip_angle(JAW_TO)) * smooth(0.6 * JAW_TO, JAW_TO, xm)
@@ -299,7 +346,7 @@ def inside_point(xm, across, way):
 
 
 def body(m, low):
-    around = 14 if low else 56
+    around = AROUND[0]
     xs = rings(low)
     head = [xm for xm in xs if xm < JAW_TO - 1e-9]
     xs = xs[len(head):]
@@ -307,7 +354,7 @@ def body(m, low):
     for xm in xs:
         row = []
         for c in range(around):
-            angle = c / around * TAU
+            angle = col_angle(c)
             row.append(m.add(body_point(xm, angle), (xm / LENGTH, 0.5 + 0.5 * math.cos(angle)), BODY))
         grid.append(row)
     for r in range(len(grid) - 1):
@@ -323,7 +370,7 @@ def body(m, low):
         m.face((tip, grid[-1][c], grid[-1][(c + 1) % around]), Vector((0.0, 0.0, 1.0)), "body")
     # The head ahead of the jaw's hinge: its skin above the line of the mouth (`half` columns each side of
     # the ridge, the last on the lip), and the roof of the mouth under it, lip to lip.
-    half = round(lip_angle(JAW_TO) / (TAU / around))
+    half = lip_col()
     across = around - 2 * half
     uppers = []
     roofs = []
@@ -341,7 +388,7 @@ def body(m, low):
     uppers.append([first[j % around] for j in range(-half, half + 1)])
     # (its outer edge is skin, the throat under the jaw that shows when the jaw drops; it darkens up into
     # the mouth)
-    roofs.append([m.add(m.verts[first[(half + k) % around]], (JAW_TO / LENGTH, 0.5 + 0.5 * math.cos((half + k) / around * TAU)), BODY, 0.0)
+    roofs.append([m.add(m.verts[first[(half + k) % around]], (JAW_TO / LENGTH, 0.5 + 0.5 * math.cos(col_angle(half + k))), BODY, 0.0)
                   for k in range(across + 1)])
     for r in range(len(head)):
         cy = outline(head[r])[0]
@@ -376,11 +423,11 @@ def jaw(m, low):
     """The lower jaw: the body's own skin below the line of the mouth, ahead of the hinge, closed over by
     the floor of the mouth, with an end inside the head. It swings down whole about its hinge (the
     shader turns it), the hinge being the line across the head through both corners of the mouth."""
-    around = 14 if low else 56
+    around = AROUND[0]
     # (as many columns as the body has below the line of the mouth, so that its end meets the body point for point)
-    half = round(lip_angle(JAW_TO) / (TAU / around))
+    half = lip_col()
     under = around - 2 * half
-    across = 4 if low else 12
+    across = 4 if GAME[0] else 4 if low else 12
     xs = [xm for xm in rings(low) if xm < JAW_TO + 1e-9]
     skins = []
     floors = []
@@ -390,7 +437,7 @@ def jaw(m, low):
         for i in range(under + 1):
             angle = reach + (TAU - 2.0 * reach) * i / under
             if xm > JAW_TO - 1e-9:
-                angle = (half + i) / around * TAU
+                angle = col_angle(half + i)
             row.append(m.add(inset(body_point(xm, angle), xm), (xm / LENGTH, 0.5 + 0.5 * math.cos(angle)), JAW))
         skins.append(row)
         floors.append([m.add(inset(inside_point(xm, 1.0 - 2.0 * k / across, -1.0), xm), (xm / LENGTH, 0.5), JAW, smooth(BODY_FROM, 0.003, xm))
@@ -429,12 +476,12 @@ TEETH_ACROSS = 0.93
 
 def teeth(m, low):
     for n, (upper, xm, high, wide) in enumerate(TEETH):
-        if low and n % 2:
+        if (low or GAME[0]) and n % 2:
             continue
         part = TEETH_UP if upper else TEETH_LOW
         way = -1.0 if upper else 1.0
         for sx in (1.0, -1.0):
-            base = inside_point(xm, sx * (TEETH_ACROSS - (0.1 if low else 0.0)), -way)
+            base = inside_point(xm, sx * (TEETH_ACROSS - (0.1 if low or GAME[0] else 0.0)), -way)
             if not upper:
                 base = inset(base, xm)
             # (rooted a little under the surface it stands on)
@@ -451,10 +498,8 @@ def teeth(m, low):
             m.face((ob, inb, tip), Vector((0.0, 0.0, 1.0)), "teeth")
 
 
-def eye(m, sx, low):
-    """A low dome lying on the skin of the head."""
-    spokes = 10 if low else 28
-    steps = 2 if low else 8
+def eye_frame(sx):
+    """The middle of the eye on the skin, and the way the skin faces there."""
     xe, ye = EYE_AT
     d = EYE_RADIUS * 0.12
     here = skin(xe, ye, sx)
@@ -462,6 +507,28 @@ def eye(m, sx, low):
     out.normalize()
     if out.x * sx < 0.0:
         out = -out
+    return here, out
+
+
+def eye_numbers():
+    """As the shader has it, for the cartoon eye (grown about its middle, its rim kept on the skin): the
+    left eye's middle on the skin, the way it faces, and how far the skin falls away from the plane
+    there (along the normal, per metre squared, going up and going along)."""
+    here, out = eye_frame(1.0)
+    h = EYE_RADIUS
+    xe, ye = EYE_AT
+    sag_y = ((skin(xe, ye + h, 1.0) - here).dot(out) + (skin(xe, ye - h, 1.0) - here).dot(out)) / (2.0 * h * h)
+    sag_z = ((skin(xe + h, ye, 1.0) - here).dot(out) + (skin(xe - h, ye, 1.0) - here).dot(out)) / (2.0 * h * h)
+    print("EYE middle=(%.5f, %.5f, %.5f) out=(%.4f, %.4f, %.4f) sag=(%.3f, %.3f)" % (
+        here.x, here.y, here.z, out.x, out.y, out.z, sag_y, sag_z))
+
+
+def eye(m, sx, low):
+    """A low dome lying on the skin of the head."""
+    spokes = 24 if GAME[0] else 10 if low else 28
+    steps = 2 if GAME[0] else 2 if low else 8
+    xe, ye = EYE_AT
+    here, out = eye_frame(sx)
     dome = EYE_RADIUS * 0.22
     middle = m.add(here + out * dome, (0.0, 0.0), EYE)
     last = None
@@ -486,6 +553,8 @@ def blade(m, part, name, point, place, facing, thick, nt, nu):
     its tip, u 0 at its leading edge to 1 at its trailing edge), `place` puts that in the model, `facing`
     is the way one of its two skins faces. It is `thick` at its root, a foil across (nothing at either
     edge), thinning to nothing at its tip."""
+    if GAME[0]:
+        nt, nu = GAME_FINS[name]
     for side in (1.0, -1.0):
         grid = []
         for ti in range(nt + 1):
@@ -621,9 +690,14 @@ def material_of(name, colour):
     return material
 
 
-def make(name, low):
+def make(name, low, game=False):
     m = Mesh()
     AROUND[0] = 14 if low else 56
+    GAME[0] = game
+    ANGLES[0] = None
+    if game:
+        AROUND[0] = GAME_AROUND
+        ANGLES[0], LIP_COL[0] = game_angles(GAME_AROUND)
     body(m, low)
     jaw(m, low)
     teeth(m, low)
@@ -655,6 +729,8 @@ def finish(name, mesh, m):
     tris = sum(len(p.vertices) - 2 for p in mesh.polygons)
     print("BUILT %s verts=%d tris=%d" % (name, len(mesh.vertices), tris))
     winding(name, mesh, m)
+    GAME[0] = False
+    ANGLES[0] = None
     return obj
 
 
@@ -848,14 +924,19 @@ def main():
     bpy.context.preferences.filepaths.save_version = 0
     full = make("piranha", False)
     low = make("piranha_lo", True)
+    game = make("piranha_game", False, True)
+    eye_numbers()
     school = make_school("piranha_school")
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, "piranha.glb"))
     export_one(low, os.path.join(OUT, "piranha_lo.glb"))
+    export_one(game, os.path.join(OUT, "piranha_game.glb"))
+    game.location.x = -0.12
     export_one(school, os.path.join(OUT, "piranha_school.glb"), True)
     low.location.x = 0.12
     school.location.x = 0.24
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "piranha.blend"))
+    game.location.x = 0.0
     low.location.x = 0.0
     school.location.x = 0.0
     if PREVIEW:

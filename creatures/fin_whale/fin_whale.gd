@@ -23,8 +23,11 @@ extends Node3D
 ## set `phase` yourself (for a picture that must loop: frame / frames in a beat). The same
 ## names and meanings as GameCommon's fish (the yellowfin tuna, the sardine).
 ##
-## The models are creatures/fin_whale/models/fin_whale.glb (and _lo), built by
+## The models are creatures/fin_whale/models/fin_whale.glb (the full model), _game.glb (the game
+## model: about 4,680 triangles, the same outline, for games) and _lo.glb (far off), built by
 ## tools/build_fin_whale.py; fin_whale.gdshader draws the markings, swims it and opens its mouth.
+## Each model is loaded only when it is first shown: with `game` on, the full model is never
+## loaded, so a game can leave models/fin_whale.glb out of its export.
 
 const MODEL := "res://creatures/fin_whale/models/fin_whale%s.glb"
 const SHADER := preload("res://creatures/fin_whale/fin_whale.gdshader")
@@ -68,11 +71,34 @@ const FLIPPER_REACH := 2.4
 	set(value):
 		arch = value
 		_send(&"arch", value)
-## The low model (about a twelfth of the triangles), for far off or for several of them.
+## The game model in place of the full one: about 4,680 triangles (the full model has about
+## 58,600), the same outline, the same markings and movement. Off by default.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The low model (about a twelfth of the full model's triangles), for far off or for several of
+## them. It wins over `game`.
 @export var low := false:
 	set(value):
 		low = value
 		_show()
+## The cartoon eye: 0 the eye as it is, 1 a big cartoon eye of its own (keen and quick, the greyhound of the sea: a sea-green iris, a narrow bar of a pupil, the upper lid slanting down towards the snout in a focused look, the lower lid raised).
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send(&"cartoon_eyes", cartoon_eyes)
+## Where the cartoon eyes look, -1..1 each way: right and up as seen by someone looking at that
+## eye (so both turn the same way: x more than 0 turns its gaze towards its -X side).
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value.clamp(Vector2(-1.0, -1.0), Vector2(1.0, 1.0))
+		_send(&"eye_look", eye_look)
+## A blink: 0 open, 1 shut (its lids close over its eyes, the cartoon eye or the eye as it is).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send(&"blink", blink)
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set
 ## it yourself.
 var phase := 0.0:
@@ -84,7 +110,9 @@ static var _meshes := {}
 
 var _material: ShaderMaterial
 var _full: MeshInstance3D
+var _game: MeshInstance3D
 var _low: MeshInstance3D
+var _started := false
 
 
 ## The full model's mesh, or the low one's (each one surface, to wear `new_material()`): for
@@ -93,9 +121,31 @@ static func mesh_of(low_wanted := false) -> Mesh:
 	return _mesh_at(MODEL % ("_lo" if low_wanted else ""))
 
 
-## A new material for `mesh_of()`'s meshes. Its shader settings are the game's to set: `phase`
-## (0..1 through one beat), `tail_beats`, `sculls`, `sway`, `scull`, `gape`, `curl`, `arch`,
-## `wave` and the colours (the top of the shader lists them).
+## The game model's mesh (one surface, to wear `new_material()`), without the thinned LOD meshes
+## Godot's importer adds (the shader bends it, and a thinned mesh would bend in straight pieces far
+## off): for a game that draws its meshes itself. Loads only the game model.
+static func game_mesh() -> Mesh:
+	var path := MODEL % "_game"
+	if not _meshes.has(path):
+		var made := (load(path) as PackedScene).instantiate()
+		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+		_meshes[path] = without_lods(found.mesh)
+		made.free()
+	return _meshes[path]
+
+
+## A copy of a mesh with its surfaces only (no LODs).
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return plain
+
+
+## A new material for `mesh_of()`'s and `game_mesh()`'s meshes. Its shader settings are the game's
+## to set: `phase` (0..1 through one beat), `tail_beats`, `sculls`, `sway`, `scull`, `gape`, `curl`,
+## `arch`, `wave`, `cartoon_eyes`, `eye_look`, `blink` and the colours (the top of the shader lists
+## them).
 static func new_material() -> ShaderMaterial:
 	var made := ShaderMaterial.new()
 	made.shader = SHADER
@@ -107,10 +157,9 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
+	_started = true
 	_show()
-	for setting: StringName in [&"sway", &"gape", &"curl", &"arch", &"phase"]:
+	for setting: StringName in [&"sway", &"gape", &"curl", &"arch", &"phase", &"cartoon_eyes", &"eye_look", &"blink"]:
 		_send(setting, get(setting))
 	_send(&"tail_beats", float(tail_beats))
 
@@ -131,7 +180,7 @@ func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)
 
 
-## Its one material (both models wear it).
+## Its one material (every model wears it).
 func material() -> ShaderMaterial:
 	return _material
 
@@ -141,19 +190,31 @@ func _send(setting: StringName, value: Variant) -> void:
 		_material.set_shader_parameter(setting, value)
 
 
+# Shows the model wanted, making it the first time (each model is loaded only when first shown).
 func _show() -> void:
+	if not _started:
+		return
+	if low and not _low:
+		_low = _instance_of(mesh_of(true), "FinWhaleLo")
+	elif not low and game and not _game:
+		_game = _instance_of(game_mesh(), "FinWhaleGame")
+	elif not low and not game and not _full:
+		_full = _instance_of(mesh_of(false), "FinWhale")
 	if _full:
-		_full.visible = not low
+		_full.visible = not low and not game
+	if _game:
+		_game.visible = not low and game
+	if _low:
 		_low.visible = low
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of(made: Mesh, named: String) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
+	mesh.mesh = made
 	mesh.material_override = _material
 	# (its flukes swing, its jaw drops and its throat balloons out past where the still model ends)
 	mesh.extra_cull_margin = 5.0
-	mesh.name = "FinWhaleLo" if low_wanted else "FinWhale"
+	mesh.name = named
 	add_child(mesh)
 	return mesh
 

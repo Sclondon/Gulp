@@ -9,6 +9,13 @@ phones), and the editable creatures/gray_whale/tools/gray_whale.blend (this fold
 one still mesh with one surface: the shader (gray_whale.gdshader) swims it, opens its mouth and draws every
 marking, its barnacles among them. It prints a WINDING line: the check that nothing is inside out.
 
+It also writes gray_whale_game.glb, the game model (2026-11-18): at the weight of a Twilight Princess model, with
+the full model's outline, for games. The user: "We should have a twilight princess model to compare to so we can
+make low poly versions while maintaining high quality looks and silhouettes", then "just rebuild all of them, and
+keep the high quality version as well". It is built from the same lines as the others, with fewer rings and
+points placed where the outline bends (GAME_DEFAULTS, and GAME where a whale has its own); the full and low models come out as
+before, byte for byte.
+
 A gray whale (Eschrichtius robustus), 13 m from the tip of its snout to the notch of its flukes, built from the
 species (no picture was traced), on the plan of GameCommon's blue whale:
 
@@ -143,9 +150,11 @@ class Section:
             return yc + (top - yc) * (1.0 - f ** nt) ** (1.0 / nt)
         return yc - (yc - bot) * (1.0 - f ** nb) ** (1.0 / nb)
 
-    def outline(self, s, half):
+    def outline(self, s, half, gain=0.0):
         """half + 1 points down its right side from the top line to the bottom line, evenly spaced along the
-        skin: (x, y, how far round from the top)."""
+        skin: (x, y, how far round from the top). With `gain` (the game model) they are closer together where
+        the skin bends more sharply (spaced as 1 / sqrt of its curvature, which spreads the error of straight
+        edges evenly), so the outline seen from the front and from above stays round on few points."""
         top, bot, hw, ycf, nt, nb = self.at(s)
         yc = bot + ycf * (top - bot)
         dense = []
@@ -164,6 +173,34 @@ class Section:
             acc.append(acc[-1] + math.hypot(dense[i + 1][0] - dense[i][0], dense[i + 1][1] - dense[i][1]))
         whole = acc[-1]
         out = []
+        if gain > 0.0:
+            # (each piece of the skin weighed by its length times 1 + gain * sqrt(how sharply it turns there))
+            bend = []
+            for i in range(steps):
+                seg = acc[i + 1] - acc[i]
+                a0 = math.atan2(dense[i][1] - dense[i - 1][1], dense[i][0] - dense[i - 1][0]) if i > 0 else None
+                a1 = math.atan2(dense[i + 1][1] - dense[i][1], dense[i + 1][0] - dense[i][0])
+                a2 = (math.atan2(dense[i + 2][1] - dense[i + 1][1], dense[i + 2][0] - dense[i + 1][0])
+                      if i + 2 <= steps else None)
+                turn = 0.0
+                for a in (a0, a2):
+                    if a is not None:
+                        turn += abs((a1 - a + math.pi) % TAU - math.pi)
+                bend.append(math.sqrt(turn / max(seg, 1e-12)) if seg > 1e-12 else 0.0)
+            mean = sum(b * (acc[i + 1] - acc[i]) for i, b in enumerate(bend)) / max(whole, 1e-12)
+            wacc = [0.0]
+            for i in range(steps):
+                wacc.append(wacc[-1] + (acc[i + 1] - acc[i]) * (1.0 + gain * bend[i] / max(mean, 1e-12)))
+            for j in range(half + 1):
+                want = wacc[-1] * j / half
+                i = min(bisect.bisect_right(wacc, want) - 1, steps - 1)
+                span = wacc[i + 1] - wacc[i]
+                t = (want - wacc[i]) / span if span > 1e-12 else 0.0
+                out.append((lerp(dense[i][0], dense[i + 1][0], t), lerp(dense[i][1], dense[i + 1][1], t),
+                            lerp(acc[i], acc[i + 1], t)))
+            out[0] = (dense[0][0], dense[0][1], 0.0)
+            out[-1] = (dense[-1][0], dense[-1][1], whole)
+            return out, whole
         for j in range(half + 1):
             want = whole * j / half
             i = min(bisect.bisect_right(acc, want) - 1, steps - 1)
@@ -329,13 +366,42 @@ def places(n, first, last, density):
     return out
 
 
-def skin(part, section, where, half, kind):
+def bends(lines, first, last, steps=4000):
+    """For the game model: how sharply the given lines (functions of s, or of r on a fin) bend at each of
+    `steps` places from first to last, as sqrt(|second derivative|) summed, scaled to average 1. Points
+    spaced as 1 / that put as much error between each pair (a straight edge between points is off by about
+    h * h * |f''| / 8)."""
+    h = (last - first) / steps
+    out = []
+    for i in range(steps):
+        s = first + h * (i + 0.5)
+        k = 0.0
+        for f in lines:
+            k += math.sqrt(abs(f(s + h) - 2.0 * f(s) + f(s - h)) / (h * h))
+        out.append(k)
+    mean = sum(out) / steps
+    return [k / max(mean, 1e-12) for k in out]
+
+
+def game_places(n, first, last, lines, gain, even=None):
+    """n + 1 places from first to last for the game model: closer where the lines bend (weight `gain`), and
+    where `even(s)` (another density, weight 1) asks."""
+    table = bends(lines, first, last)
+    steps = len(table)
+
+    def density(s):
+        i = min(max(int((s - first) / (last - first) * steps), 0), steps - 1)
+        return (even(s) if even else 1.0) + gain * table[i]
+    return places(n, first, last, density)
+
+
+def skin(part, section, where, half, kind, gain=0.0):
     """Lofts a Section into a Part (BODY or JAW). UV: (s, 1 - h), h how high (0 the belly or keel line, 1 the
     back line or the middle of the floor of the mouth); UV2: (how far round from the top line, metres, + its
     left side (+x), - its right; 1 - the whole way round from the top line to the bottom line, metres)."""
     rings = []
     for s in where:
-        side, whole = section.outline(s, half)
+        side, whole = section.outline(s, half, gain)
         top, bot, hw, ycf, nt, nb = section.at(s)
         yc = bot + ycf * (top - bot)
         ring = []
@@ -367,8 +433,9 @@ def skin(part, section, where, half, kind):
     part.loft(rings)
 
 
-def dome(part, kind, at, out, up, ball, stands, rows, around, uv_round=True):
-    """A dome set in a skin: a ball of radius `ball` standing `stands` out of it, closed behind, inside."""
+def dome(part, kind, at, out, up, ball, stands, rows, around, uv_round=True, back_ring=True):
+    """A dome set in a skin: a ball of radius `ball` standing `stands` out of it, closed behind, inside.
+    Without `back_ring` (the game model's knobs) the rim is closed straight away by a fan to a point inside."""
     along = up.cross(out).normalized()
     up = out.cross(along).normalized()
     seen = math.sqrt(max(1.0 - (1.0 - stands / ball) ** 2, 1e-6))
@@ -388,6 +455,17 @@ def dome(part, kind, at, out, up, ball, stands, rows, around, uv_round=True):
                                  (kind / 10.0, 0.0, 0.0)))
         rings.append(ring)
     back = centre + out * (ball * math.cos(reach) - 0.6 * stands)
+    if not back_ring:
+        tip = part.add(centre + out * ball, (0.5, 0.5), (0.0, 1.0), (kind / 10.0, 0.0, 0.0))
+        first = rings[0]
+        for k in range(around):
+            part.faces.append((tip, first[(k + 1) % around], first[k]))
+        part.loft(rings)
+        last = rings[-1]
+        mid = part.add(back, (0.5, 0.5), (0.0, 1.0), (kind / 10.0, 0.0, 0.0))
+        for k in range(around):
+            part.faces.append((mid, last[k], last[(k + 1) % around]))
+        return
     rings.append([part.add(back, (0.5 + 0.5 * math.cos(TAU * k / around), 0.5 - 0.5 * math.sin(TAU * k / around)),
                            (0.0, 1.0), (kind / 10.0, 0.0, 0.0)) for k in range(around)])
     # (the middle of the top: a fan of triangles to one point)
@@ -409,14 +487,15 @@ def airfoil(t):
     return (t ** 0.5 * (1.0 - t)) / 0.3849
 
 
-def blade(name, kind, rows, cols, mid, normal, thick, uvs, closed_root=True, t_power=1.0):
+def blade(name, kind, rows, cols, mid, normal, thick, uvs, closed_root=True, t_power=1.0, r_at=None):
     """A fin: a thin closed solid round the surface mid(r, t) (r 0 root to 1 tip, t 0 leading to 1 trailing
     edge), `thick(r, t)` through, its two skins meeting at its edges; closed by a wall at its root (inside the
-    body) when `closed_root`, else meeting there too. UV: `uvs(r, t)`; UV2 and blue the way it faces."""
+    body) when `closed_root`, else meeting there too. UV: `uvs(r, t)`; UV2 and blue the way it faces. `r_at`
+    (the game model): the rows' places, rows + 1 of them from 0 to 1, instead of evenly."""
     part = Part(name)
     top, under = [], []
     for j in range(rows + 1):
-        r = j / rows
+        r = r_at[j] if r_at else j / rows
         a, b = [], []
         for i in range(cols + 1):
             t = (i / cols) ** t_power if t_power != 1.0 else i / cols
@@ -484,12 +563,32 @@ def palate_point(s, x):
     return BODY_SKIN.y_at(s, x, False)
 
 
-def baleen(low):
+# The game model's numbers (Claude's picks, 2026-11-18; a whale's own GAME dict may change any of them): rings
+# along the body and points down each side of it, how much the bends of its lines pull them together, the same
+# for the lower jaw; the eye's rows and points round; the baleen's and the mouth wall's columns and rows; the
+# fins' rows (placed where their edges bend) and columns; the knobs' points round.
+GAME_DEFAULTS = {
+    "body_rings": 48, "body_half": 13, "body_gain": 1.6, "body_round": 0.7,
+    "jaw_rings": 16, "jaw_half": 7, "jaw_gain": 1.0, "jaw_round": 1.0,
+    "eye": (3, 28), "baleen": (16, 1), "fan": (8, 3),
+    "flipper_rows": 18, "flipper_cols": 3, "flipper_gain": 2.0,
+    "dorsal": (7, 3), "flukes_rows": 30, "flukes_cols": 3, "flukes_gain": 2.0, "knob_around": 6, "body_keep": None,
+}
+
+
+def G(key):
+    return dict(GAME_DEFAULTS, **(GAME if "GAME" in globals() and GAME else {}))[key]
+
+
+def baleen(q):
     """The right side's baleen: a curtain hanging from the edge of the roof of the mouth, inside the lower
     jaw's lips when the mouth is shut. UV: (how far back along the row, 1 - how far down the curtain)."""
+    low = q == "lo"
     b0, b1, height, inset = BALEEN
     cols = 14 if low else 60
     rows = 1 if low else 4
+    if q == "game":
+        cols, rows = G("baleen")
     grid = []
     least = 1e9
     for i in range(cols + 1):
@@ -512,13 +611,16 @@ def baleen(low):
     return part
 
 
-def fan(low):
+def fan(q):
     """The right side's wall of the mouth: built folded up along the roof of the mouth, inside the head (each
     row turned `w` of FAN_OPEN, a sliver, about the hinge); the shader turns each point by w of (the gape -
     FAN_OPEN), so that open it walls the side of the mouth from the roof down to the lower jaw. Green: w."""
+    low = q == "lo"
     f0, inset = FAN
     cols = 10 if low else 32
     rows = 2 if low else 8
+    if q == "game":
+        cols, rows = G("fan")
     s1 = HINGE_S - 0.014
     grid = []
     for i in range(cols + 1):
@@ -530,17 +632,26 @@ def fan(low):
                 lambda i, j: ((i / cols, 1.0 - j / rows), (0.0, 1.0), (K_FAN / 10.0, j / rows, 1.0)))
 
 
-
-def eye(low):
+def eye(q):
     """The right eye: a small dome set in the side of the head over the corner of the mouth."""
+    low = q == "lo"
     part = Part("eye")
     s, y, ball, stands = EYE
     at, out, up = body_frame(s, y)
-    dome(part, K_EYE, at, out, up, ball, stands, 3 if low else 9, 8 if low else 28)
+    rows, around = (3 if low else 9), (8 if low else 28)
+    if q == "game":
+        rows, around = G("eye")
+    dome(part, K_EYE, at, out, up, ball, stands, rows, around)
+    if q == "full":
+        # (for the shader's cartoon eye, which swells the eye about the middle of its rim, where it meets the skin)
+        c = at * LENGTH
+        print("EYE where it meets the skin (m, the +X eye) %.4f %.4f %.4f, facing %.4f %.4f %.4f" % (
+            c.x, c.y, c.z, out.x, out.y, out.z))
     return part
 
 
-def flipper_part(low):
+def flipper_part(q):
+    low = q == "lo"
     f = FLIPPER
     at, out, up = body_frame(f["s"], BODY_SKIN.bot(f["s"]) + f["up"] * (BODY_SKIN.top(f["s"]) - BODY_SKIN.bot(f["s"])))
     root = at - out * f["sink"]
@@ -561,14 +672,26 @@ def flipper_part(low):
 
     def thick(r, t):
         return f["thick"] * (1.0 - r) ** 0.6 * (0.35 + 0.65 * (1.0 - r)) * airfoil(t)
-    part = blade("flipper", K_FLIPPER, 16 if low else f.get("rows", 48), 4 if low else f.get("cols", 14), mid, normal, thick,
-                 lambda r, t: (r, 1.0 - t))
+    if q == "game":
+        # (rows where its leading and trailing edges bend: the humpback's knobbed edge, the rounded tip)
+        rows = G("flipper_rows")
+        lead = f["lead"]
+        r_at = game_places(rows, 0.0, 1.0, [lambda r: lead(min(max(r, 0.0), 1.0)) / f["length"],
+                                             lambda r: (lead(min(max(r, 0.0), 1.0)) + f["chord"](min(max(r, 0.0), 1.0))) / f["length"]],
+                           G("flipper_gain"))
+        part = blade("flipper", K_FLIPPER, rows, G("flipper_cols"), mid, normal, thick, lambda r, t: (r, 1.0 - t),
+                     r_at=r_at)
+    else:
+        part = blade("flipper", K_FLIPPER, 16 if low else f.get("rows", 48), 4 if low else f.get("cols", 14), mid, normal, thick,
+                     lambda r, t: (r, 1.0 - t))
     tip = mid(1.0, 0.5)
-    print("FLIPPER tip at x %.3f y %.3f z %.3f (m)" % (tip.x * LENGTH, tip.y * LENGTH, tip.z * LENGTH))
+    if q == "full":
+        print("FLIPPER tip at x %.3f y %.3f z %.3f (m)" % (tip.x * LENGTH, tip.y * LENGTH, tip.z * LENGTH))
     return part
 
 
-def dorsal_part(low):
+def dorsal_part(q):
+    low = q == "lo"
     d = DORSAL
     s0, s1, tip_s, height, sink = d["s0"], d["s1"], d["tip_s"], d["height"], d["sink"]
 
@@ -582,11 +705,18 @@ def dorsal_part(low):
 
     def thick(r, t):
         return d["thick"] * (1.0 - r) ** 0.55 * airfoil(t)
-    return blade("dorsal", K_DORSAL, 5 if low else 22, 4 if low else 18, mid, lambda r, t: Vector((1.0, 0.0, 0.0)),
-                 thick, lambda r, t: (r, 1.0 - t))
+    rows, cols = (5 if low else 22), (4 if low else 18)
+    r_at = None
+    if q == "game":
+        rows, cols = G("dorsal")
+        # (a little closer towards the tip, where it rounds over)
+        r_at = [1.0 - (1.0 - j / rows) ** 1.3 for j in range(rows + 1)]
+    return blade("dorsal", K_DORSAL, rows, cols, mid, lambda r, t: Vector((1.0, 0.0, 0.0)),
+                 thick, lambda r, t: (r, 1.0 - t), r_at=r_at)
 
 
-def flukes_part(low):
+def flukes_part(q):
+    low = q == "lo"
     f = FLUKES
 
     def mid(r, t):
@@ -599,15 +729,31 @@ def flukes_part(low):
     def thick(r, t):
         a = abs(2.0 * r - 1.0)
         return f["thick"] * (1.0 - a ** 2) ** 0.7 * airfoil(t)
-    return blade("flukes", K_FLUKES, 24 if low else f.get("rows", 110), 4 if low else f.get("cols", 14), mid,
+    rows, cols = (24 if low else f.get("rows", 110)), (4 if low else f.get("cols", 14))
+    r_at = None
+    if q == "game":
+        # (rows where its edges bend: the notch, the tips, a ragged trailing edge's points); one half placed
+        # and mirrored, so that both halves match and a row lies on the notch
+        rows, cols = G("flukes_rows"), G("flukes_cols")
+        half = rows // 2
+        rows = half * 2
+
+        def edge(fn):
+            return lambda r: fn(min(max(1.0 - 2.0 * r, 0.0), 1.0)) / (2.0 * f["span"])
+        left = game_places(half, 0.0, 0.5, [edge(f["lead"]), edge(f["trail"])], G("flukes_gain"))
+        left[0], left[-1] = 0.0, 0.5
+        r_at = left + [1.0 - r for r in reversed(left[:-1])]
+    return blade("flukes", K_FLUKES, rows, cols, mid,
                  lambda r, t: Vector((0.0, 1.0, 0.0)), thick, lambda r, t: (abs(2.0 * r - 1.0), 1.0 - t),
-                 closed_root=False)
+                 closed_root=False, r_at=r_at)
 
 
-def knob_parts(low):
-    """Knobs (a humpback's tubercles), on the upper skin (KNOB) and on the lower jaw (JAW_KNOB)."""
-    if low or not KNOBS:
+def knob_parts(q):
+    """Knobs (a humpback's tubercles), on the upper skin (KNOB) and on the lower jaw (JAW_KNOB). The game model
+    keeps every one (they are in its outline), each a low six-sided cap."""
+    if q == "lo" or not KNOBS:
         return []
+    game = q == "game"
     # (each its own part: knobs that touch would confuse the check of which way a part's faces face)
     made = []
     for k, (where, s, w, ball, stands) in enumerate(KNOBS()):
@@ -615,34 +761,67 @@ def knob_parts(low):
             one = Part("knob_%d" % k)
             at, out = top_frame(s, w)
             ahead = Vector((0.0, 0.0, -1.0))
-            dome(one, K_KNOB, at - out * 0.0005, out, (ahead - out * ahead.dot(out)).normalized(), ball, stands, 3, 10)
+            if game:
+                dome(one, K_KNOB, at - out * 0.0005, out, (ahead - out * ahead.dot(out)).normalized(), ball, stands,
+                     1, G("knob_around"), back_ring=False)
+            else:
+                dome(one, K_KNOB, at - out * 0.0005, out, (ahead - out * ahead.dot(out)).normalized(), ball, stands, 3, 10)
             made.append(one)
         else:
             one = Part("jaw_knob_%d" % k)
             at, out, up = jaw_frame(s, w)
-            dome(one, K_JAW_KNOB, at - out * 0.0005, out, up, ball, stands, 3, 10)
+            if game:
+                dome(one, K_JAW_KNOB, at - out * 0.0005, out, up, ball, stands, 1, G("knob_around"), back_ring=False)
+            else:
+                dome(one, K_JAW_KNOB, at - out * 0.0005, out, up, ball, stands, 3, 10)
             made += [one, one.mirrored(one.name + "_left")]
     return made
 
 
-def make(name, low):
+def make(name, q):
+    """q: "full", "game" or "lo"."""
+    low = q == "lo"
     parts = []
     body = Part("body")
-    half = 9 if low else BODY_HALF
-    where = places(60 if low else BODY_RINGS, BODY_SKIN.first, BODY_SKIN.last, ring_density)
-    skin(body, BODY_SKIN, where, half, K_BODY)
+    if q == "game":
+        # rings closer where the lines of the back, the belly and the sides bend (the head, the jaw's corner,
+        # the humps and knuckles, the tail stock), and where the full model's own spacing asks for them
+        top_line = lambda s: BODY_SKIN.top(s) + extra_top(s, 0.0)
+        mean_rd = sum(ring_density(BODY_SKIN.first + (BODY_SKIN.last - BODY_SKIN.first) * (i + 0.5) / 400)
+                      for i in range(400)) / 400
+        where = game_places(G("body_rings"), BODY_SKIN.first, BODY_SKIN.last,
+                            [top_line, BODY_SKIN.bot, lambda s: BODY_SKIN.at(s)[2]], G("body_gain"),
+                            lambda s: ring_density(s) / mean_rd)
+        keep = G("body_keep")
+        if keep:
+            # (a run of knuckles: rings on each one's top and shoulders, as the whale's data lists them, in place
+            # of the ones placed there by the bends)
+            keep = sorted(keep)
+            lo, hi = keep[0] - 0.004, keep[-1] + 0.004
+            where = sorted([s for s in where if s < lo or s > hi] + keep)
+        skin(body, BODY_SKIN, where, G("body_half"), K_BODY, G("body_round"))
+    else:
+        half = 9 if low else BODY_HALF
+        where = places(60 if low else BODY_RINGS, BODY_SKIN.first, BODY_SKIN.last, ring_density)
+        skin(body, BODY_SKIN, where, half, K_BODY)
     parts.append(body)
     jaw = Part("jaw")
-    jaw_where = places(18 if low else JAW_RINGS, JAW_SKIN.first, JAW_SKIN.last, lambda s: 1.0 + 3.0 * smooth(0.03, -0.01, s))
-    skin(jaw, JAW_SKIN, jaw_where, 6 if low else JAW_HALF, K_JAW)
+    jaw_density = lambda s: 1.0 + 3.0 * smooth(0.03, -0.01, s)
+    if q == "game":
+        jaw_where = game_places(G("jaw_rings"), JAW_SKIN.first, JAW_SKIN.last,
+                                [JAW_SKIN.top, JAW_SKIN.bot, lambda s: JAW_SKIN.at(s)[2]], G("jaw_gain"), jaw_density)
+        skin(jaw, JAW_SKIN, jaw_where, G("jaw_half"), K_JAW, G("jaw_round"))
+    else:
+        jaw_where = places(18 if low else JAW_RINGS, JAW_SKIN.first, JAW_SKIN.last, jaw_density)
+        skin(jaw, JAW_SKIN, jaw_where, 6 if low else JAW_HALF, K_JAW)
     parts.append(jaw)
     for maker in (eye, baleen, fan, flipper_part):
-        one = maker(low)
+        one = maker(q)
         parts += [one, one.mirrored(one.name + "_left")]
     if DORSAL:
-        parts.append(dorsal_part(low))
-    parts.append(flukes_part(low))
-    parts += knob_parts(low)
+        parts.append(dorsal_part(q))
+    parts.append(flukes_part(q))
+    parts += knob_parts(q)
 
     verts, faces, corners = [], [], []
     told = []
@@ -765,13 +944,19 @@ def main():
     for r in JAW_ROWS:
         rows.append((r[0], lip(r[0]) if r[1] is LIP else r[1]) + tuple(r[2:]))
     JAW_SKIN = Section(rows)
-    full = make(NAME, False)
-    low = make(NAME + "_lo", True)
+    full = make(NAME, "full")
+    low = make(NAME + "_lo", "lo")
+    game = make(NAME + "_game", "game")
     export_one(full, os.path.join(OUT, NAME + ".glb"))
     export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
+    export_one(game, os.path.join(OUT, NAME + "_game.glb"))
+    # (in the .blend: the full model, the low one beside it, the game model beyond)
     low.location.x = 1.2 * FLUKES["span"] * 2.0 * LENGTH
+    game.location.x = 2.4 * FLUKES["span"] * 2.0 * LENGTH
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
+    game.hide_render = True
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
         render(PREVIEW, [full, low])
@@ -858,6 +1043,9 @@ FLUKES = {
                         - 0.016 * (1.0 - smooth(0.0, 0.07, a))),
 }
 KNOBS = None
+# The game model: rings on the top, the shoulders and the hollow before each knuckle down the tail stock (as
+# extra_top has them).
+GAME = {"body_rings": 42, "body_keep": [0.69 + 0.022 * i + d for i in range(9) for d in (-0.011, -0.0045, 0.0, 0.0045)]}
 
 
 def extra_top(s, x):

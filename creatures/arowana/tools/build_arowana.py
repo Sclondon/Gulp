@@ -4,7 +4,8 @@ Run from the game's root:
     blender --background --python creatures/arowana/tools/build_arowana.py
     blender --background --python creatures/arowana/tools/build_arowana.py -- <preview folder>   # with pictures
 
-Writes creatures/arowana/models/arowana.glb (the full model, for one seen close) and arowana_lo.glb (far off,
+Writes creatures/arowana/models/arowana.glb (the full model, for one seen close), arowana_game.glb (the game model: Twilight
+Princess weight, GAME_RINGS below) and arowana_lo.glb (far off,
 phones), and the editable creatures/arowana/tools/arowana.blend (this folder has a .gdignore). Each is one still
 mesh with one surface: the shader (arowana.gdshader) draws every marking and swims it. It prints a WINDING line
 for each: the check that nothing is inside out.
@@ -252,7 +253,47 @@ class Mesh:
 FLAT = ("throat",)
 
 
+# The game model (for Gulp, at Twilight Princess weight): its rings, placed by hand where the outline turns
+# (close at the snout, the mouth, the gill cover and the tail's wrist, far apart along the straight flanks).
+GAME_RINGS = [0.0015, 0.005, 0.010, 0.017, 0.026, 0.037, 0.050, 0.064, 0.078, 0.092, JAW_TO,
+              0.125, 0.150, 0.178, 0.205, 0.245, 0.29, 0.34, 0.40, 0.46, 0.52, 0.58, 0.635, 0.685, 0.73,
+              0.765, 0.79, 0.805, 0.816, 0.823, BODY_TO]
+GAME_AROUND = 20
+# (set while the game model is made)
+GAME = [False]
+# The game model's columns round the body (radians from the ridge of the back), close at the ridge and the keel,
+# far apart over the flat flanks, one exactly on the line of the mouth at the hinge; and that column's number.
+ANGLES = [None]
+LIP_COL = [0]
+
+
+def game_angles(around, k=0.3):
+    n = around // 2
+    lip = lip_angle(JAW_TO)
+    base = [math.pi * (i / n - k * math.sin(TAU * i / n) / TAU) for i in range(n + 1)]
+    j = min(range(1, n), key=lambda i: abs(base[i] - lip))
+    side = [b * lip / base[j] if i <= j else lip + (b - base[j]) * (math.pi - lip) / (math.pi - base[j])
+            for i, b in enumerate(base)]
+    return side + [TAU - side[around - c] for c in range(n + 1, around)], j
+
+
+def col_angle(c):
+    """How far round the body from the ridge of the back column `c` is."""
+    if ANGLES[0] is None:
+        return c / AROUND[0] * TAU
+    return ANGLES[0][c % AROUND[0]]
+
+
+def lip_col():
+    """The column on the line of the mouth at the hinge."""
+    if ANGLES[0] is None:
+        return round(lip_angle(JAW_TO) / (TAU / AROUND[0]))
+    return LIP_COL[0]
+
+
 def rings(low):
+    if GAME[0]:
+        return list(GAME_RINGS)
     xs = []
     x = BODY_FROM
     for until, step in ((JAW_TO, 0.0022), (0.30, 0.0036), (0.80, 0.006), (BODY_TO, 0.0022)):
@@ -278,6 +319,8 @@ AROUND = [64]
 def lip_reach(xm):
     """lip_angle, eased over the back of the mouth onto the nearest of the body's own columns at the hinge,
     where the head and the jaw meet the whole body point for point."""
+    if ANGLES[0] is not None:
+        return lip_angle(xm) + (col_angle(lip_col()) - lip_angle(JAW_TO)) * smooth(0.6 * JAW_TO, JAW_TO, xm)
     step = TAU / AROUND[0]
     snap = round(lip_angle(JAW_TO) / step) * step
     return lip_angle(xm) + (snap - lip_angle(JAW_TO)) * smooth(0.6 * JAW_TO, JAW_TO, xm)
@@ -307,7 +350,7 @@ def body(m, low):
     for xm in xs:
         row = []
         for c in range(around):
-            angle = c / around * TAU
+            angle = col_angle(c)
             row.append(m.add(body_point(xm, angle), (xm / LENGTH, 0.5 + 0.5 * math.cos(angle)), BODY))
         grid.append(row)
     for r in range(len(grid) - 1):
@@ -323,7 +366,7 @@ def body(m, low):
         m.face((tip, grid[-1][c], grid[-1][(c + 1) % around]), Vector((0.0, 0.0, 1.0)), "body")
     # The head ahead of the jaw's hinge: its skin above the line of the mouth (`half` columns each side of
     # the ridge, the last on the lip), and the roof of the mouth under it, lip to lip.
-    half = round(lip_angle(JAW_TO) / (TAU / around))
+    half = lip_col()
     across = around - 2 * half
     uppers = []
     roofs = []
@@ -340,7 +383,7 @@ def body(m, low):
     # the throat under the jaw that shows when the jaw drops, darkening up into the mouth)
     first = grid[0]
     uppers.append([first[j % around] for j in range(-half, half + 1)])
-    roofs.append([m.add(m.verts[first[(half + k) % around]], (JAW_TO / LENGTH, 0.5 + 0.5 * math.cos((half + k) / around * TAU)), BODY, 0.0)
+    roofs.append([m.add(m.verts[first[(half + k) % around]], (JAW_TO / LENGTH, 0.5 + 0.5 * math.cos(col_angle(half + k))), BODY, 0.0)
                   for k in range(across + 1)])
     for r in range(len(head)):
         for j in range(2 * half):
@@ -376,9 +419,9 @@ def jaw(m, low):
     shader turns it), the hinge being the line across the head through both corners of the mouth."""
     around = AROUND[0]
     # (as many columns as the body has below the line of the mouth, so that its end meets the body point for point)
-    half = round(lip_angle(JAW_TO) / (TAU / around))
+    half = lip_col()
     under = around - 2 * half
-    across = 4 if low else 12
+    across = 6 if GAME[0] else 4 if low else 12
     xs = [xm for xm in rings(low) if xm < JAW_TO + 1e-9]
     skins = []
     floors = []
@@ -388,7 +431,7 @@ def jaw(m, low):
         for i in range(under + 1):
             angle = reach + (TAU - 2.0 * reach) * i / under
             if xm > JAW_TO - 1e-9:
-                angle = (half + i) / around * TAU
+                angle = col_angle(half + i)
             row.append(m.add(inset(body_point(xm, angle), xm), (xm / LENGTH, 0.5 + 0.5 * math.cos(angle)), JAW))
         skins.append(row)
         floors.append([m.add(inset(inside_point(xm, 1.0 - 2.0 * k / across, -1.0), xm), (xm / LENGTH, 0.5), JAW, smooth(BODY_FROM, 0.006, xm))
@@ -424,8 +467,8 @@ BARBEL_THICK = 0.0021
 def barbels(m, low):
     """Two stout barbels from the tip of the lower jaw, standing forward and a little up and apart, curving
     a little outward at their tips. Each a tapering tube with a closed point, rooted inside the jaw."""
-    around = 5 if low else 9
-    along = 4 if low else 14
+    around = 5 if low or GAME[0] else 9
+    along = 6 if GAME[0] else 4 if low else 14
     for sx in (1.0, -1.0):
         xm, below = BARBEL_AT
         root = skin(xm, mouth_y(xm) - below, sx)
@@ -473,10 +516,8 @@ def barbels(m, low):
             last = row
 
 
-def eye(m, sx, low):
-    """A low dome lying on the skin of the head."""
-    spokes = 10 if low else 28
-    steps = 2 if low else 8
+def eye_frame(sx):
+    """The middle of the eye on the skin, and the way the skin faces there."""
     xe, ye = EYE_AT
     d = EYE_RADIUS * 0.12
     here = skin(xe, ye, sx)
@@ -484,6 +525,28 @@ def eye(m, sx, low):
     out.normalize()
     if out.x * sx < 0.0:
         out = -out
+    return here, out
+
+
+def eye_numbers():
+    """As the shader has it, for the cartoon eye (grown about its middle, its rim kept on the skin): the
+    left eye's middle on the skin, the way it faces, and how far the skin falls away from the plane
+    there (along the normal, per metre squared, going up and going along)."""
+    here, out = eye_frame(1.0)
+    h = EYE_RADIUS
+    xe, ye = EYE_AT
+    sag_y = ((skin(xe, ye + h, 1.0) - here).dot(out) + (skin(xe, ye - h, 1.0) - here).dot(out)) / (2.0 * h * h)
+    sag_z = ((skin(xe + h, ye, 1.0) - here).dot(out) + (skin(xe - h, ye, 1.0) - here).dot(out)) / (2.0 * h * h)
+    print("EYE middle=(%.5f, %.5f, %.5f) out=(%.4f, %.4f, %.4f) sag=(%.3f, %.3f)" % (
+        here.x, here.y, here.z, out.x, out.y, out.z, sag_y, sag_z))
+
+
+def eye(m, sx, low):
+    """A low dome lying on the skin of the head."""
+    spokes = 28 if GAME[0] else 10 if low else 28
+    steps = 3 if GAME[0] else 2 if low else 8
+    xe, ye = EYE_AT
+    here, out = eye_frame(sx)
     dome = EYE_RADIUS * 0.3
     middle = m.add(here + out * dome, (0.0, 0.0), EYE)
     last = None
@@ -559,6 +622,15 @@ def rising(u):
     return (0.14 + 0.86 * smooth(0.0, 0.92, u) ** 1.4) * (1.0 - 0.25 * smooth(0.93, 1.0, u))
 
 
+# The game model's fins: (rows from root to tip, columns from leading to trailing edge) of each skin. Thin
+# blades: few rows where a fin is straight from root to tip, columns enough for the outline of its edge.
+GAME_FINS = {"dorsal": (2, 14), "anal": (2, 16), "tail": (6, 3), "pectoral": (5, 3), "pelvic": (3, 2)}
+
+
+def res(name, nt, nu):
+    return GAME_FINS[name] if GAME[0] else (nt, nu)
+
+
 def fins(m, low):
     d = 3 if low else 1
     # The dorsal fin: long and low, far back, its rays raked well back so that its back end reaches over the
@@ -570,7 +642,7 @@ def fins(m, low):
         high = DORSAL_HIGH * rising(u) * t
         return (xm + math.sin(lean) * high, top(xm) - 0.002 + math.cos(lean) * high + 0.002 * t)
 
-    blade(m, DORSAL, "dorsal", dorsal_point, upright, SIDE, 0.0024, 8 // d, 40 // d)
+    blade(m, DORSAL, "dorsal", dorsal_point, upright, SIDE, 0.0024, *res("dorsal", 8 // d, 40 // d))
     # The anal fin: longer, starting further forward, the same shape below.
     lean_a = math.radians(40.0)
 
@@ -579,13 +651,13 @@ def fins(m, low):
         high = ANAL_HIGH * rising(u) * t
         return (xm + math.sin(lean_a) * high, bottom(xm) + 0.002 - math.cos(lean_a) * high - 0.002 * t)
 
-    blade(m, ANAL, "anal", anal_point, upright, SIDE, 0.0024, 8 // d, 48 // d)
+    blade(m, ANAL, "anal", anal_point, upright, SIDE, 0.0024, *res("anal", 8 // d, 48 // d))
     # The tail: small and rounded, a fan behind the wrist (two halves that meet along the middle line).
     for way in (1.0, -1.0):
         deep = 0.054 if way > 0 else 0.060
         blade(m, TAIL, "tail", swept(((0.796, 0.010 * way), (0.842, deep * way), (0.90, -0.0015)),
                                       ((0.798, -0.0015), (0.85, -0.0015), (0.90, -0.0015))),
-              upright, SIDE, 0.003, 16 // d, 10 // max(d - 1, 1))
+              upright, SIDE, 0.003, *res("tail", 16 // d, 10 // max(d - 1, 1)))
     for sx in (1.0, -1.0):
         # The pectoral fins: long and narrow, low behind the gill covers, lying back along the belly.
         root = skin(0.172, -0.058, sx)
@@ -603,7 +675,7 @@ def fins(m, low):
 
         blade(m, PECTORAL, "pectorals", pectoral_point,
               lambda p, root=root, span=span, chord=chord: root + span * p[0] + chord * p[1],
-              facing, 0.0022, 16 // d, 8 // max(d - 1, 1))
+              facing, 0.0022, *res("pectoral", 16 // d, 8 // max(d - 1, 1)))
         # The pelvic fins: small, under the belly, pointing back and down.
         root = Vector((sx * 0.004, bottom(0.40) + 0.004, 0.40 - HALF))
         span = Vector((sx * 0.25, -0.55, 0.8)).normalized()
@@ -618,7 +690,7 @@ def fins(m, low):
 
         blade(m, PELVIC, "pelvics", pelvic_point,
               lambda p, root=root, span=span, chord=chord: root + span * p[0] + chord * p[1],
-              facing, 0.0016, 8 // d, 6 // d)
+              facing, 0.0016, *res("pelvic", 8 // d, 6 // d))
 
 
 def material_of(name, colour):
@@ -630,9 +702,14 @@ def material_of(name, colour):
     return material
 
 
-def make(name, low):
+def make(name, low, game=False):
     m = Mesh()
     AROUND[0] = 16 if low else 64
+    GAME[0] = game
+    ANGLES[0] = None
+    if game:
+        AROUND[0] = GAME_AROUND
+        ANGLES[0], LIP_COL[0] = game_angles(GAME_AROUND)
     body(m, low)
     jaw(m, low)
     barbels(m, low)
@@ -660,6 +737,8 @@ def make(name, low):
     tris = sum(len(p.vertices) - 2 for p in mesh.polygons)
     print("BUILT %s verts=%d tris=%d" % (name, len(mesh.vertices), tris))
     winding(name, mesh, m)
+    GAME[0] = False
+    ANGLES[0] = None
     return obj
 
 
@@ -726,12 +805,17 @@ def main():
     bpy.context.preferences.filepaths.save_version = 0
     full = make("arowana", False)
     low = make("arowana_lo", True)
+    game = make("arowana_game", False, True)
+    eye_numbers()
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, "arowana.glb"))
     export_one(low, os.path.join(OUT, "arowana_lo.glb"))
+    export_one(game, os.path.join(OUT, "arowana_game.glb"))
     low.location.x = 0.25
+    game.location.x = -0.25
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "arowana.blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
         render(PREVIEW, [full, low])

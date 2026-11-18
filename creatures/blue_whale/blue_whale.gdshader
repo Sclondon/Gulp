@@ -42,6 +42,29 @@ const float PLEAT_DEPTH = 0.025;
 const float BLOW_S = 0.199;
 const float BLOW_APART = 0.09;
 const float BLOW_LONG = 0.55;
+// The eye (the one on +X; the other is its mirror): the middle of its rim, where it meets the skin
+// (metres), the way it faces, and how far the skin round it curves away (metres: the radius of the
+// head there), for the cartoon eye, which swells it about the middle of its rim.
+const vec3 EYE_AT = vec3(1.3982, -0.325, -7.125);
+const vec3 EYE_OUT = vec3(0.8684, -0.0584, -0.4925);
+const float EYE_BEND = 1.4;
+// The cartoon eye, this whale's own (serene and dreamy, the calm of the biggest animal there is: a deep blue iris, a wide oval pupil lying flat, its lids half lowered and level): how much bigger than life; the
+// white, the iris (its colour, how big: 1 the whole eye) and the pupil (its half width and half
+// height, as a share of the eye, and how square it is: 2 round or oval, more a rounded bar); the
+// lids: where the upper and lower lids' edges cross the middle (1 the top of the eye, -1 the
+// bottom), how far the upper lid's edge drops towards the snout (+) or the tail (-), how much it
+// bows up in the middle, where the lids meet as it blinks; the lid's colour.
+const float EYE_GROW = 1.7;
+const vec3 EYE_WHITE = vec3(0.9, 0.93, 0.95);
+const vec3 EYE_IRIS = vec3(0.12, 0.3, 0.62);
+const float IRIS_SIZE = 0.55;
+const vec2 PUPIL = vec2(0.24, 0.13);
+const float PUPIL_SQUARE = 2.0;
+const float LID_TOP = 0.3;
+const float LID_BOTTOM = -0.55;
+const float LID_SLANT = 0.0;
+const float LID_BOW = 0.2;
+const float LID_MEET = -0.15;
 
 // How far through a beat it is (0..1), and how many times in a beat its flukes beat and its
 // flippers scull (whole numbers).
@@ -83,6 +106,14 @@ uniform vec3 fringe : source_color = vec3(0.34, 0.32, 0.3);
 // The eye.
 uniform vec3 eye_dark : source_color = vec3(0.02, 0.018, 0.016);
 uniform vec3 eye_iris : source_color = vec3(0.16, 0.1, 0.06);
+// The cartoon eye: 0 the eye as it is (above), 1 a big cartoon eye of its own (a pale white, a
+// coloured iris, a dark pupil, a highlight, a dark rim, lids that give it its look); between, a blend.
+uniform float cartoon_eyes : hint_range(0.0, 1.0) = 0.0;
+// Where the cartoon eye looks: -1..1 each way, right and up as seen by someone looking at that eye
+// (so both eyes turn the same way: x more than 0 turns its gaze towards its -X side).
+uniform vec2 eye_look = vec2(0.0);
+// A blink: 0 open, 1 shut (its lids, the colour of its skin, close over the eye).
+uniform float blink : hint_range(0.0, 1.0) = 0.0;
 
 varying vec3 rest;
 varying vec3 rest_normal;
@@ -217,6 +248,15 @@ void vertex() {
 		float b = clamp(gape, 0.0, 1.0) * COLOR.g;
 		v.y -= b * BALLOON * LENGTH;
 		v.x *= 1.0 + b * BALLOON * 3.0;
+	} else if (part == 2.0 && cartoon_eyes > 0.0) {
+		// The cartoon eye: the eye swollen about the middle of its rim, sunk a little at its edge
+		// where the skin round it curves away.
+		vec3 at = EYE_AT * vec3(side_is, 1.0, 1.0);
+		vec3 ax = EYE_OUT * vec3(side_is, 1.0, 1.0);
+		float k = mix(1.0, EYE_GROW, clamp(cartoon_eyes, 0.0, 1.0));
+		vec3 d = v - at;
+		vec3 flat_d = d - ax * dot(d, ax);
+		v = at + d * k - ax * (dot(flat_d, flat_d) * (k * k - 1.0)) / (2.0 * EYE_BEND);
 	} else if (part == 7.0) {
 		// The flippers scull slowly, the stroke growing out to the tip, one a little after the other.
 		vec3 flat_way = normalize(vec3(UV2.x, UV2.y, COLOR.b * 2.0 - 1.0));
@@ -289,6 +329,52 @@ void fragment() {
 		c *= 0.85 + 0.3 * noise3(m * 40.0);
 		rough = 0.12;
 		spec = 0.7;
+		// Where on its round face (1 its rim): forward (towards the snout) and up, and right as seen
+		// by someone looking at it.
+		float fwd = (0.5 - UV.y) * 2.0;
+		float upw = (UV.x - 0.5) * 2.0;
+		vec2 e = vec2(side_is * fwd, upw);
+		float aa = max(fwidth(r), 0.002);
+		// its lids, an edge above and below, closing as it blinks
+		float b = clamp(blink, 0.0, 1.0);
+		float top_edge = mix(LID_TOP, LID_MEET, b) - LID_SLANT * fwd * (1.0 - b) - LID_BOW * fwd * fwd * (1.0 - 0.6 * b);
+		float bottom_edge = mix(LID_BOTTOM, LID_MEET, b) + 0.25 * fwd * fwd * (1.0 - b);
+		float lid = max(smoothstep(top_edge - aa, top_edge + aa, upw), smoothstep(bottom_edge + aa, bottom_edge - aa, upw));
+		if (cartoon_eyes > 0.0) {
+			vec2 look = clamp(eye_look, vec2(-1.0), vec2(1.0)) * (0.92 - IRIS_SIZE) ;
+			vec2 ir = e - look;
+			float ri = length(ir) / IRIS_SIZE;
+			vec3 toon = EYE_WHITE * (1.0 - 0.18 * smoothstep(0.5, 1.0, r));
+			// the iris: darker round its edge, a ring of paler flecks
+			vec3 iris_c = mix(EYE_IRIS * 1.25, EYE_IRIS * 0.55, smoothstep(0.35, 1.0, ri));
+			iris_c *= 0.9 + 0.2 * noise3(vec3(atan(ir.y, ir.x) * 3.0, ri * 4.0, 0.0));
+			toon = mix(toon, iris_c, smoothstep(1.0 + aa / IRIS_SIZE, 1.0 - aa / IRIS_SIZE, ri));
+			toon = mix(toon, EYE_IRIS * 0.3, smoothstep(0.8, 1.0, ri) * step(ri, 1.0) * 0.6);
+			// the pupil
+			vec2 pp = abs(ir / PUPIL);
+			float rp = pow(pow(pp.x, PUPIL_SQUARE) + pow(pp.y, PUPIL_SQUARE), 1.0 / PUPIL_SQUARE);
+			toon = mix(toon, vec3(0.012), smoothstep(1.0 + aa * 3.0, 1.0 - aa * 3.0, rp));
+			// a bright highlight that stays put (up and towards the front), and a small one below it
+			float hl = 1.0 - smoothstep(0.13 - aa, 0.13 + aa, length(vec2(fwd, upw) - vec2(0.28, 0.34)));
+			hl = max(hl, 1.0 - smoothstep(0.06 - aa, 0.06 + aa, length(vec2(fwd, upw) - vec2(0.42, 0.12))));
+			toon = mix(toon, vec3(1.0), hl);
+			// a dark rim, so it reads from far off
+			toon = mix(toon, vec3(0.02), smoothstep(0.84 - aa, 0.88 + aa, r));
+			// the lids, the colour of its skin, a dark line along their edges
+			float edge = max(1.0 - smoothstep(0.0, 0.07 + aa, abs(upw - top_edge)), 1.0 - smoothstep(0.0, 0.05 + aa, abs(upw - bottom_edge)));
+			vec3 lid_c = head;
+			toon = mix(toon, lid_c * (0.9 + 0.2 * smoothstep(-1.0, 1.0, upw)), lid);
+			toon = mix(toon, vec3(0.02), edge * step(0.0, 1.0 - r));
+			c = mix(c, toon, clamp(cartoon_eyes, 0.0, 1.0));
+			rough = mix(rough, 0.25, lid * cartoon_eyes);
+		} else if (b > 0.0) {
+			// (the eye as it is: no lids showing until it blinks)
+			float top_r = mix(1.1, LID_MEET, b);
+			float bottom_r = mix(-1.1, LID_MEET, b);
+			float shut = max(smoothstep(top_r - aa, top_r + aa, upw), smoothstep(bottom_r + aa, bottom_r - aa, upw));
+			c = mix(c, head, shut);
+			rough = mix(rough, 0.45, shut);
+		}
 	} else if (p == 3) {
 		// The baleen: close-set plates hanging in a row, their inner edges frayed into a fringe of
 		// bristles towards the bottom.

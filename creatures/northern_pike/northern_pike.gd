@@ -20,8 +20,10 @@ extends Node3D
 ## set `phase` yourself (for a picture that must loop: frame / frames in a beat). The same
 ## names and meanings as GameCommon's yellowfin tuna and sardine, so they are driven the same way.
 ##
-## The models are creatures/northern_pike/models/northern_pike.glb (and _lo), built by
-## tools/build_northern_pike.py; northern_pike.gdshader draws the markings and swims it.
+## The models are creatures/northern_pike/models/northern_pike.glb (the full one), northern_pike_game.glb (the game one,
+## its triangles spent where they show: `game`) and northern_pike_lo.glb, built by tools/build_northern_pike.py;
+## northern_pike.gdshader draws the markings and swims it. Each model is loaded only when it is first
+## shown, so with `game` on the full one is never loaded.
 
 const MODEL := "res://creatures/northern_pike/models/northern_pike%s.glb"
 const SHADER := preload("res://creatures/northern_pike/northern_pike.gdshader")
@@ -54,6 +56,27 @@ const WIDTH := 0.094
 	set(value):
 		low = value
 		_show()
+## The game model in place of the full one (about as light as the low one, but its triangles are
+## spent on the outline, the eye, the mouth and the fins' edges). `low` still shows the low one.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye: 0 as in life, 1 bigger, a golden iris, a keyhole pupil pointing to the snout, a low cold lid.
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send(&"cartoon_eyes", cartoon_eyes)
+## Where its eyes look: x towards its snout (less than 0 back), y up; -1..1.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value.clamp(Vector2(-1.0, -1.0), Vector2(1.0, 1.0))
+		_send(&"eye_look", eye_look)
+## 0 its eyes open, 1 shut (squashed, a lid of its skin's colour drawn over them).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send(&"blink", blink)
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set
 ## it yourself.
 var phase := 0.0:
@@ -64,14 +87,21 @@ var phase := 0.0:
 static var _meshes := {}
 
 var _material: ShaderMaterial
-var _full: MeshInstance3D
-var _low: MeshInstance3D
+# (each model's MeshInstance3D, made when it is first shown: "", "_game" or "_lo")
+var _shown := {}
+var _ready_done := false
 
 
 ## The full model's mesh, or the low one's (each one surface, to wear `new_material()`): for
 ## drawing a pike without this node.
 static func mesh_of(low_wanted := false) -> Mesh:
 	return _mesh_at(MODEL % ("_lo" if low_wanted else ""))
+
+
+## The game model's mesh (one surface, to wear `new_material()`), without the importer's
+## automatic LODs (they would bend in straight pieces). Loading it does not load the full model.
+static func game_mesh() -> Mesh:
+	return _mesh_at(MODEL % "_game")
 
 
 ## A new material for `mesh_of()`'s meshes. Its shader settings are the game's to set: `phase`
@@ -88,12 +118,14 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
+	_ready_done = true
 	_show()
 	_send_phase()
 	_send(&"sway", sway)
 	_send(&"gape", gape)
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 
 
 ## Each frame, for one that is not having its `phase` set for it: moves it on through its beat.
@@ -128,18 +160,22 @@ func _send_phase() -> void:
 
 
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if not _ready_done:
+		return
+	var which := "_lo" if low else "_game" if game else ""
+	if not _shown.has(which):
+		_shown[which] = _instance_of(which)
+	for key: String in _shown:
+		(_shown[key] as MeshInstance3D).visible = key == which
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of(which: String) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
+	mesh.mesh = _mesh_at(MODEL % which)
 	mesh.material_override = _material
 	# (its tail swings out past where the still model ends, and its jaw drops below it)
 	mesh.extra_cull_margin = 0.15
-	mesh.name = "NorthernPikeLo" if low_wanted else "NorthernPike"
+	mesh.name = {"": "NorthernPike", "_lo": "NorthernPikeLo", "_game": "NorthernPikeGame"}[which]
 	add_child(mesh)
 	return mesh
 
@@ -148,6 +184,16 @@ static func _mesh_at(path: String) -> Mesh:
 	if not _meshes.has(path):
 		var made := (load(path) as PackedScene).instantiate()
 		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
-		_meshes[path] = found.mesh
+		# (the game model without the importer's automatic LODs: thinned, it would bend in straight
+		# pieces far off; the full and the low models are kept as they always were)
+		_meshes[path] = without_lods(found.mesh) if path.ends_with("_game.glb") else found.mesh
 		made.free()
 	return _meshes[path]
+
+
+## A copy of `mesh` without its automatic LODs.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return plain
