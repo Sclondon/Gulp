@@ -224,7 +224,7 @@ func _process(delta: float) -> void:
 	sea.set_above(camera.global_position.y > Sea.SURFACE)
 	_post.set_shader_parameter(&"underwater", 0.0 if sea.above else 1.0)
 	if player.alive:
-		camera.global_position = camera.global_position.lerp(_camera_place(), 1.0 - exp(-5.0 * delta))
+		camera.global_position = camera.global_position.lerp(_camera_place(), 1.0 - exp(-(12.0 if player.in_air else 5.0) * delta))
 		_aim_camera()
 		hud.reached = maxf(hud.reached, player.length)
 	# (wider in an upright window, where the picture is narrow)
@@ -243,7 +243,7 @@ func _process(delta: float) -> void:
 		_shot_at = -1.0
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(_shot_out)
-		print("GULP SHOT ", _shot_out)
+		print("GULP SHOT ", _shot_out, " eye y %.1f, fish y %.1f, in air %s, above %s" % [camera.global_position.y, player.global_position.y, player.in_air, sea.above])
 		get_tree().quit()
 	elif _quit_at >= 0.0 and _clock >= _quit_at:
 		_quit_at = -1.0
@@ -293,7 +293,11 @@ func _camera_place() -> Vector3:
 	var long := player.length
 	# (above as well as behind: from straight behind a fish is only as big as it is thick)
 	var behind := player.global_position - player.heading * (0.25 + long * 1.9) + Vector3.UP * (0.2 + long * 1.1)
-	if player.in_air or behind.y > Sea.SURFACE:
+	if player.in_air:
+		# (out of the water with it, and looking a little down on it)
+		behind.y = maxf(behind.y, player.global_position.y) + 0.3 + long * 0.6
+		return behind
+	if behind.y > Sea.SURFACE:
 		return behind
 	return Sea.keep_in(behind, 0.3)
 

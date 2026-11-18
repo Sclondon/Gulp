@@ -205,7 +205,7 @@ func step(delta: float) -> void:
 	_speed = lerpf(_speed, want, 1.0 - exp(-4.0 * delta))
 	velocity = heading * _speed
 	var next := global_position + velocity * delta
-	if next.y > Sea.SURFACE - room * 0.5 and heading.y > 0.2 and _speed > Fish.pace(length) * LEAP_PACE:
+	if next.y > Sea.SURFACE - room and heading.y > 0.2 and _speed > Fish.pace(length) * LEAP_PACE:
 		# Up through the surface, fast enough: out it comes.
 		in_air = true
 		velocity *= LEAP_KICK
