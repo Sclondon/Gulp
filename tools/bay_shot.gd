@@ -35,14 +35,18 @@ func _initialize() -> void:
 			["docks_monterey", Vector3(m.x, 36.5, m.y - 22.0), Vector3(m.x, 36.0, m.y)],
 			["docks_monterey_wharf", Vector3(m.x - 20.0, 37.0, m.y - 4.0), Vector3(m.x - 10.0, 39.0, m.y)],
 			["docks_santacruz", Vector3(s.x + 4.0, 37.0, s.y + 22.0), Vector3(s.x - 8.0, 36.0, s.y)],
-			["river_mangroves", Vector3(84.0, 38.0, -10.0), Vector3(99.0, 37.0, -20.0)],
+			["river_mangroves", Vector3(96.0, 38.0, -30.0), Vector3(108.0, 37.0, -39.0)],
 			["wreck_shelf", Sea.WRECK_AT + Vector3(0.0, 14.0, -30.0), Sea.WRECK_AT],
 			["ruins_terrace", Sea.RUINS_AT + Vector3(22.0, 14.0, -26.0), Sea.RUINS_AT],
 			["pirate_hollow", Sea.PIRATE_AT + Vector3(16.0, 10.0, -18.0), Sea.PIRATE_AT],
 			["seal_rock_above", Vector3(Scenery.OUTCROP.x + 14.0, 45.0, Scenery.OUTCROP.y + 12.0), Vector3(Scenery.OUTCROP.x, 40.5, Scenery.OUTCROP.y)],
 			["seal_rock_below", Vector3(Scenery.OUTCROP.x + 18.0, 30.0, Scenery.OUTCROP.y + 16.0), Vector3(Scenery.OUTCROP.x, 26.0, Scenery.OUTCROP.y)],
-			["canyon_head", Vector3(64.0, 30.0, 8.0), Vector3(88.0, 20.0, -8.0)],
-			["kelp_south", Vector3(32.0, 34.0, 24.0), Vector3(53.0, 30.0, 42.0)],
+			["canyon_head", Vector3(70.0, 28.0, -20.0), Vector3(90.0, 22.0, -37.0)],
+			["kelp_south", Vector3(36.0, 34.0, 40.0), Vector3(44.0, 30.0, 55.0)],
+			["canyon_wall_north", Vector3(40.0, 0.0, -18.0), Vector3(40.0, 5.0, -42.0)],
+			["canyon_wall_from_floor", Vector3(20.0, -20.0, -30.0), Vector3(30.0, 10.0, -45.0)],
+			["canyon_from_rim", Vector3(30.0, 22.0, -55.0), Vector3(30.0, -10.0, -30.0)],
+			["ruins_from_canyon", Sea.RUINS_AT + Vector3(30.0, -10.0, 10.0), Sea.RUINS_AT],
 		]
 	for shot: Array in shots:
 		camera.global_position = shot[1]

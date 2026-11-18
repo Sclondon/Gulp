@@ -49,8 +49,8 @@ const HARBOURS := [
 ## Shelves made level (world metres): middle, flat out to, blended out to, depth at the middle (m),
 ## and how much deeper it gets per metre (x, z); a long one also its heading (as rotation.y) and how
 ## much narrower it is across (the liner's, along its hull).
-const WRECK_SHELF := [Vector2(2.0, 125.0), 34.0, 48.0, 30.0, Vector2(-0.1, 0.0), Vector2(0.32, 2.2)]
-const RUINS_TERRACE := [Vector2(-30.0, -15.0), 35.0, 62.0, 42.0, Vector2(-0.05, 0.0)]
+const WRECK_SHELF := [Vector2(38.0, 12.0), 34.0, 56.0, 25.0, Vector2(0.0, 0.0), Vector2(2.3, 2.2)]
+const RUINS_TERRACE := [Vector2(-53.0, 26.0), 34.0, 56.0, 93.0, Vector2(0.0, 0.0)]
 const PIRATE_HOLLOW := [Vector2(-20.0, -62.0), 20.0, 38.0, 21.0, Vector2(0.0, 0.06)]
 
 static var _grid := PackedFloat32Array()
@@ -186,7 +186,7 @@ static func shelf_weight(p: Vector2, shelf: Array) -> float:
 	var turn := atan2(off.y, off.x)
 	var seed := middle.x * 0.13 + middle.y * 0.07
 	var spread := 1.0 + 0.6 * sin(turn * 3.0 + seed) + 0.35 * sin(turn * 5.0 + seed * 2.3)
-	var out := flat + (float(shelf[2]) - flat) * maxf(spread, 0.25)
+	var out := flat + (float(shelf[2]) - flat) * clampf(spread, 0.45, 1.35)
 	return 1.0 - smoothstep(flat, out, off.length())
 
 

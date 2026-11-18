@@ -138,8 +138,8 @@ const TABLES := {
 	]},
 	# The canyons' rock bands and the shelf's edge: what grows on deep rock.
 	"walls": {"area": [], "edge": 2.0, "layers": [
-		{"what": "prop", "pieces": ["rock_ledge", "rock_slab", "rock_split"], "on": [1], "depth": [20.0, 95.0], "slope_min": 0.6, "density": [0.7, 0.7],
-		 "spacing": 5.0, "size": [1.0, 1.6], "lift": -0.6, "downhill": true},
+		{"what": "prop", "pieces": ["rock_ledge", "rock_slab", "rock_split", "rock_stack"], "on": [1], "depth": [12.0, 106.0], "slope_min": 0.5, "density": [2.4, 2.4],
+		 "noise": [0.06, 61, -0.35], "spacing": 3.4, "clump": [1, 3, 3.0], "size": [1.3, 2.8], "lift": -0.8, "downhill": true, "tint": Color(0.6, 0.58, 0.55)},
 		{"what": "prop", "pieces": ["vase_sponge", "sea_fan_red", "puffball_sponges", "feather_dusters"], "on": [1], "depth": [22.0, 95.0], "slope_min": 0.4,
 		 "density": [2.0, 2.0], "spacing": 1.8, "clump": [1, 3, 1.2], "size": [1.4, 2.4], "lift": -0.05},
 	]},

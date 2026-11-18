@@ -401,6 +401,25 @@ choices below are Claude's.
   (the floor with a 20 m grid, `--zones`), `tools/bay_probe.gd` (depth and shore at points). Not yet tuned to the new
   floor: the floor painting (`FloorTypes`: blocky 2 m patches, rock over every steep wall, which the real canyons
   make much more of), the biomes' depth bands, the land's look; nobody has swum it.
+- The user, of the first real-bay map: "atlantis shouldn't just be a giant crater, same with the reef, and we need to
+  work on a way to make the trench cliffs look good, stretched terrain looks bad". So: set pieces stand on the floor's
+  own depth where it is flattest (`tools/bay_probe.gd --flat=`), levelled only by the difference, with uneven sides
+  (`Bay.shelf_weight`, its spread capped) and never right up to a shore. Atlantis: the deep basin's flattest ground,
+  93 m down (it now needs the 100 m amplifier; it was 42 m on a raised terrace). The liner: the user chose (over
+  their X off Point Lobos, where the floor is the Carmel Canyon's head) the level shelf off Pacific Grove, 25 m down,
+  lying south-west to north-east; its shelf is long along the hull.
+- **Decision: rock walls** (the cliffs). What: steep floor (`wall_from`/`wall_to` on 1 - the normal's y) is painted
+  as rock from the sides in the sand's shader (`Sea.WALL_ROCK`/`WALL_MIX`, put into the sand's code as the caustics
+  are): level beds that waver, a silted lip and shadowed foot each, which also tip the light, upright joints here and
+  there; the sand's ripples are taken out of the light there. And Biomes' "walls" puts three times the rock pieces
+  (bigger, tinted to the wall) on rock steeper than 0.5. Why: the sand is painted from above, so a heightfield's
+  walls stretched it into bands. The practice: triplanar texturing on steep terrain plus rock meshes over the cliffs
+  (the usual heightfield cure; Star Wars Battlefront blends scanned rocks into its terrain shader the same way).
+  Alternatives: real cliff meshes along every wall (the kit's 12 x 16 m cliff pieces: they need a straight edge to
+  run along, and the canyon's walls wind), a finer grid (stretches less, never fixes vertical faces), voxel terrain
+  (far too heavy for phones). Concept: `tools/art_src/concept_canyon_wall.png` (Gemini, 2026-11-18): blocky stepped
+  ledges, rubble at the foot, silt on every ledge; the shader matches its beds and silt; its chunky overhanging
+  blocks are only as good as the scattered rock pieces so far.
 - `tests/overhead.gd` draws the whole bay from straight above as a labelled chart (no water, fog or culling; tiles
   stitched): `godot --path . --audio-driver Dummy --resolution 400x400 -s res://tests/overhead.gd -- --out=<folder>`.
 - **The web pack** (62.5 MB -> 33 MB): `tools/web_excludes.sh` also turns off automatic LODs and shadow meshes in every

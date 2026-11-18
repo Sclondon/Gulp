@@ -45,21 +45,23 @@ const ZONES := {
 	"sand": {"at": Vector2(-10.0, -105.0), "radius": 22.0},
 	"pirate": {"at": Vector2(-20.0, -62.0), "radius": 18.0},
 	"trench": {"at": Vector2(30.0, -36.0), "radius": 45.0, "deeper": 45.0},
-	"ruins": {"at": Vector2(-30.0, -15.0), "radius": 30.0},
+	"ruins": {"at": Vector2(-53.0, 26.0), "radius": 30.0},
 	"grass": {"at": Vector2(82.0, 52.0), "radius": 12.0},
-	"reef": {"at": Vector2(2.0, 125.0), "radius": 24.0},
+	"reef": {"at": Vector2(38.0, 12.0), "radius": 24.0},
 	"open": {"at": Vector2(-95.0, 10.0), "radius": 24.0},
 }
 ## The liner's wreck (scripts/wreck.gd, another agent's): where the middle of its keel rests on the
-## bottom, and its turn (rotation.y; the hull's length lies along the node's own Z). On a ledge at the
-## head of the Carmel Canyon off Point Lobos (the user's red X), along the coast: the real floor there
-## drops 60 m within a few metres of the shore, so its shelf is a ledge with the canyon beside it.
-const WRECK_AT := Vector3(2.0, 10.0, 125.0)
-const WRECK_HEADING := 0.32
+## bottom, and its turn (rotation.y; the hull's length lies along the node's own Z). On the level shelf
+## off Pacific Grove, north of the peninsula, 25 m down, lying south-west to north-east (the user, 2026-11-18,
+## chose this over their first X off Point Lobos, where the real floor is the Carmel Canyon's head and the
+## liner could only lie on a carved ledge: "the reef ... shouldn't just be a giant crater").
+const WRECK_AT := Vector3(38.0, 15.0, 12.0)
+const WRECK_HEADING := 2.3
 ## Atlantis (scripts/ruins.gd, another agent's): the middle of its terrace on the bottom, and its
-## turn (its front, the node's -Z, faces east, up the canyon). In the canyon's deep lower reach.
-const RUINS_AT := Vector3(-30.0, -2.0, -15.0)
-const RUINS_HEADING := -1.4
+## turn (its front, the node's -Z, faces north-east, up the canyon). In the canyon's deep basin, 93 m down, on
+## its flattest ground, at the floor's own depth (not a raised terrace: "atlantis shouldn't just be a giant crater").
+const RUINS_AT := Vector3(-53.0, -53.0, 26.0)
+const RUINS_HEADING := -0.93
 ## The pirate ship (scripts/pirate_wreck.gd, another agent's): the middle of its sandy hollow, and
 ## its turn (its length along the node's own Z). On the canyon's north rim, along it.
 const PIRATE_AT := Vector3(-20.0, 19.0, -62.0)
@@ -422,6 +424,13 @@ func _caustics() -> void:
 	code = code.replace(anchors[1], CAUSTIC_NET + anchors[1])
 	code = code.replace(anchors[2], "	caustic_k = caustics * caustic_net(at) * (1.0 - smoothstep(5.0, 12.0, caustic_surface - at.y)) * (1.0 - smoothstep(16.0, 34.0, length(VERTEX)));\n" + anchors[2])
 	code = code.replace(anchors[3], "	DIFFUSE_LIGHT += lit * sun * (LIGHT_IS_DIRECTIONAL ? 1.0 + caustic_k : 1.0) + (LIGHT_IS_DIRECTIONAL ? sky : vec3(0.0));")
+	# (and steep ground is rock painted from the sides, not sand stretched down it: WALL_ROCK)
+	var walls := ["void fragment() {", "	float distance_off = length(VERTEX);"]
+	if code.count(walls[0]) == 1 and code.count(walls[1]) == 1:
+		code = code.replace(walls[0], WALL_ROCK + walls[0])
+		code = code.replace(walls[1], WALL_MIX + walls[1])
+	else:
+		push_warning("Sea: the sand's shader has changed; no rock walls")
 	# (and the sea floor's rock (the sand's sandstone kind, scripts/floor_types.gd) without the strong
 	# beds of colour a desert's sandstone has: under the sea they read as stripes. Same program.)
 	code = code.replace("stone_colour * mix(vec3(0.66, 0.58, 0.55), vec3(1.2, 1.17, 1.08)", "stone_colour * mix(vec3(0.88, 0.86, 0.84), vec3(1.07, 1.06, 1.04)")
@@ -430,6 +439,53 @@ func _caustics() -> void:
 	material.shader = shader
 	material.set_shader_parameter(&"caustic_surface", SURFACE)
 	_sand_look = material
+
+
+## Rock walls (the user, 2026-11-18: "we need to work on a way to make the trench cliffs look good,
+## stretched terrain looks bad"). The sand is painted from above (its x and z), so on a canyon wall
+## its ripples and grain stretch into bands. Where the ground is steeper than `wall_from` (1 - the
+## normal's y) it is rock instead, painted from the sides (triplanar: the x-y and z-y planes, blended
+## by which way the wall faces): beds that run level along it and waver, each its own tone, with a
+## lip of light over a shadowed foot; joints; blotches; silt on what faces up. The sand's ripples
+## are taken out of its light there too. The usual cure for stretched heightfield cliffs (CLAUDE.md,
+## "Decision: rock walls"); rock pieces over the steepest walls break their outline (Biomes' "walls").
+const WALL_ROCK := """
+uniform vec3 wall_colour : source_color = vec3(0.4, 0.38, 0.36);
+uniform float wall_from = 0.32;
+uniform float wall_to = 0.55;
+
+// The rock at a point of a wall (p: along it, up it): its colour, and in .a how much its face there
+// tips up (the lip of a bed, +) or under (its foot, -), for the light.
+vec4 wall_rock(vec2 p) {
+	float bed = p.y * 0.6 + (patches(p * vec2(0.035, 0.02)) - 0.5) * 2.6 + (patches(p * vec2(0.25, 0.1)) - 0.5) * 0.35;
+	float layer = fract(bed);
+	float lip = 1.0 - smoothstep(0.0, 0.14, layer);
+	float foot = smoothstep(0.7, 1.0, layer);
+	float tone = patches(vec2(floor(bed) * 3.1, 0.5));
+	float blot = patches(p * 0.4 + 5.0);
+	float fine = patches(p * vec2(2.2, 3.4) + 1.0);
+	// (joints, thin and only here and there, mostly upright between the beds)
+	float split = 1.0 - smoothstep(0.002, 0.012, cracks(p * vec2(0.55, 0.3) + 3.0));
+	split *= smoothstep(0.35, 0.6, patches(p * 0.12 + 11.0));
+	vec3 c = wall_colour * (0.75 + 0.45 * tone) * (0.82 + 0.3 * blot) * (0.9 + 0.2 * fine);
+	// (pale silt lies on each lip, as in tools/art_src/concept_canyon_wall.png)
+	c = mix(c, vec3(0.62, 0.62, 0.58), lip * 0.55 * smoothstep(0.3, 0.6, patches(p * vec2(0.3, 0.8) + 2.0)));
+	c *= (1.0 + 0.2 * lip) * (1.0 - 0.45 * foot) * (1.0 - 0.4 * split);
+	return vec4(c, lip - foot);
+}
+
+"""
+const WALL_MIX := """	float wall = smoothstep(wall_from, wall_to, 1.0 - unrippled.y);
+	if (wall > 0.001) {
+		vec3 side = abs(unrippled);
+		float across = side.x / max(side.x + side.z, 0.001);
+		vec4 rock = wall_rock(vec2(at.z, at.y)) * across + wall_rock(vec2(at.x, at.y)) * (1.0 - across);
+		vec3 stone = mix(rock.rgb, colour, smoothstep(0.45, 0.8, unrippled.y) * 0.6);
+		colour = mix(colour, stone, wall);
+		// (the ledges tip the light: a lip faces up, a foot faces down)
+		up = normalize(mix(up, unrippled, wall) + vec3(0.0, rock.a * 0.9 * wall, 0.0));
+	}
+"""
 
 
 ## The net itself: two layers of wandering lines (where a smooth noise crosses its middle),

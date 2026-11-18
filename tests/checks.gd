@@ -233,14 +233,20 @@ func _schooling() -> void:
 	# A seal out of breath goes up for air.
 	var seal := _one_of(["seal", "sea_lion", "dolphin"])
 	if seal:
+		# (in open water 8 m down by the start: one wandering in the real bay's shallows is already as
+		# high as it can go)
+		seal.place(Vector3(Sea.START.x, Sea.SURFACE - 8.0, Sea.START.y))
 		player.global_position = seal.global_position + Vector3(0.0, 0.0, 6.0)
 		seal._air = 0.0
 		var top := -INF
-		for n in 900:
+		# (up to 30 s)
+		for n in 1800:
 			player.global_position = seal.global_position + Vector3(0.0, 0.0, 6.0)
 			await _frames(1)
 			top = maxf(top, seal.global_position.y)
-		_check("a %s goes up for air" % seal.kind, top > Sea.SURFACE - 0.5 - seal.length * 0.4, "reached %.1f m, the surface at %.1f" % [top, Sea.SURFACE])
+			if top > Sea.SURFACE - 0.5 - seal.length * 0.4:
+				break
+		_check("a %s goes up for air" % seal.kind, top > Sea.SURFACE - 0.5 - seal.length * 0.4, "reached %.1f m, the surface at %.1f; %s %.1f m long at %s, floor %.1f" % [top, Sea.SURFACE, seal.kind, seal.length, seal.global_position, Sea.ground(seal.global_position.x, seal.global_position.z)])
 	# A lionfish's spines hurt a fish too small to eat it, and do not kill it.
 	main.restart()
 	await _frames(3)

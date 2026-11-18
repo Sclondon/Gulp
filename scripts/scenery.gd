@@ -35,7 +35,7 @@ const EEL_COUNT := 260
 ## The garden's ridge in the sand off Santa Cruz (world, its two ends), and the small colony beside the
 ## liner (its middle; how many).
 const EEL_RIDGE: Array[Vector2] = [Vector2(-25.0, -100.0), Vector2(5.0, -110.0)]
-const REEF_EEL_AT := Vector2(-14.0, 118.0)
+const REEF_EEL_AT := Vector2(50.0, 26.0)
 const REEF_EELS := 50
 ## How long a garden eel counts as for the eating rule (m), and how long one stays gone (s).
 const EEL_LENGTH := 0.6
