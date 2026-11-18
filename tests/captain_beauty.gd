@@ -57,6 +57,8 @@ func _initialize() -> void:
 	# close-ups of his left hand and left foot (cap on; it does not show)
 	_shots.append(["hand", Vector3(0.75, 0.1, 0.65).normalized(), Vector3(0.43, 0.7, 0.0), 0.75, true])
 	_shots.append(["foot", Vector3(0.35, 0.5, 0.8).normalized(), Vector3(0.17, 0.05, 0.1), 0.7, true])
+	# (fifteenth round: the boxers close, from his front three-quarter)
+	_shots.append(["boxers", Vector3(0.55, 0.12, 0.83).normalized(), Vector3(0.0, 0.62, 0.0), 1.05, true])
 
 
 func _process(_delta: float) -> bool:

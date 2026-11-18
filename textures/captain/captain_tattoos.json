@@ -47,10 +47,10 @@
   {
    "picture": "captain_chest_anchor",
    "part": "torso_front",
-   "x": 0.6668,
+   "x": 0.6679,
    "y": 0.8239,
-   "size": 0.1499,
-   "turn": -14.8,
+   "size": 0.1504,
+   "turn": -12.5,
    "mirror": false,
    "strength": 1.0
   },
@@ -87,20 +87,20 @@
   {
    "picture": "captain_ship_back",
    "part": "torso_back",
-   "x": 0.3145,
+   "x": 0.3139,
    "y": 0.7931,
-   "size": 0.1922,
-   "turn": 6.5,
+   "size": 0.1917,
+   "turn": 5.4,
    "mirror": false,
    "strength": 1.0
   },
   {
    "picture": "captain_swallow_heart",
    "part": "torso_back",
-   "x": 0.6997,
+   "x": 0.7002,
    "y": 0.7931,
-   "size": 0.1759,
-   "turn": -6.7,
+   "size": 0.1755,
+   "turn": -6.1,
    "mirror": false,
    "strength": 1.0
   },
@@ -117,10 +117,10 @@
   {
    "picture": "captain_squid_back",
    "part": "torso_back",
-   "x": 0.3818,
+   "x": 0.3814,
    "y": 0.5451,
-   "size": 0.1189,
-   "turn": 0.8,
+   "size": 0.1193,
+   "turn": 1.3,
    "mirror": false,
    "strength": 1.0
   },
