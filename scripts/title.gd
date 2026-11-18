@@ -302,10 +302,21 @@ func _process(delta: float) -> void:
 		if _detail.size() > 0 and _detail[0].visible != near:
 			for each in _detail:
 				each.visible = near
-	# The boat on the swell (seen broadside: it rolls towards and away, and pitches a little).
-	boat.rotation.z = sin(_clock * 0.8) * 0.03
-	boat.rotation.x = sin(_clock * 0.6 + 1.0) * 0.018
-	boat.position.y = sin(_clock * 0.7) * 0.06
+	# The boat on the swell: it rides the water as it is drawn (Sea.surface_height: the swell, and a rogue
+	# wave if one comes by), pitching to the water under its bow and stern and rolling to its sides,
+	# eased as a heavy hull would, with a little roll of its own on top.
+	var at := global_position
+	var ahead := -global_basis.z
+	var abeam := global_basis.x
+	var middle := Sea.surface_height(at.x, at.z)
+	var bow := Sea.surface_height(at.x + ahead.x * 3.0, at.z + ahead.z * 3.0)
+	var stern := Sea.surface_height(at.x - ahead.x * 3.0, at.z - ahead.z * 3.0)
+	var starboard := Sea.surface_height(at.x + abeam.x * 1.6, at.z + abeam.z * 1.6)
+	var port := Sea.surface_height(at.x - abeam.x * 1.6, at.z - abeam.z * 1.6)
+	var ease := 1.0 - exp(-2.5 * delta)
+	boat.position.y = lerpf(boat.position.y, (middle + bow + stern) / 3.0 - at.y + sin(_clock * 0.7) * 0.03, ease)
+	boat.rotation.x = lerpf(boat.rotation.x, atan2(bow - stern, 6.0) + sin(_clock * 0.6 + 1.0) * 0.008, ease)
+	boat.rotation.z = lerpf(boat.rotation.z, atan2(starboard - port, 3.2) + sin(_clock * 0.8) * 0.015, ease)
 	# The wheel goes with the captain's hands, the pump's crank with the diver's.
 	if _figures:
 		if _wheel and _captain:

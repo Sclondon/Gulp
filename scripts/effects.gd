@@ -149,11 +149,12 @@ func _process(delta: float) -> void:
 	_trail.direction = (-player.heading + Vector3.UP * 0.6).normalized()
 	_stream.direction = _trail.direction
 	# spray while its back cuts the surface
-	var cutting := under and at.y > Sea.SURFACE - maxf(long * 0.35, 0.15)
+	var top := Sea.surface_height(at.x, at.z)
+	var cutting := under and at.y > top - maxf(long * 0.35, 0.15)
 	var across := player.heading.cross(Vector3.UP).normalized()
 	for dots in _dots:
 		var side: float = dots.get_meta(&"side")
-		dots.global_position = Vector3(at.x, Sea.SURFACE + 0.02, at.z) + across * side * 0.28 * big + player.heading * 0.35 * big
+		dots.global_position = Vector3(at.x, top + 0.02, at.z) + across * side * 0.28 * big + player.heading * 0.35 * big
 		dots.direction = (across * side * 0.55 + Vector3.UP - player.heading * 0.5).normalized()
 		dots.emitting = cutting
 	_churn(delta, under, going, tail, long)
@@ -163,7 +164,7 @@ func _process(delta: float) -> void:
 	fov_kick = lerpf(fov_kick, FOV_KICK * burst, 1.0 - exp(-(5.0 if burst > fov_kick / FOV_KICK else 2.5) * delta))
 	_streaks = lerpf(_streaks, hard, 1.0 - exp(-(6.0 if hard > _streaks else 3.0) * delta))
 	if post:
-		post.set_shader_parameter(&"streaks", _streaks if camera and camera.global_position.y < Sea.SURFACE else 0.0)
+		post.set_shader_parameter(&"streaks", _streaks if camera and camera.global_position.y < Sea.surface_height(camera.global_position.x, camera.global_position.z) else 0.0)
 
 
 # The churned water behind the fish: every so often the place its tail is at is kept (with how
@@ -183,7 +184,7 @@ func _churn(delta: float, under: bool, going: float, tail: Vector3, long: float)
 	var points := PackedVector4Array()
 	points.resize(HAZE_POINTS)
 	var seen := camera.get_viewport().get_visible_rect().size
-	var wet := camera.global_position.y < Sea.SURFACE
+	var wet := camera.global_position.y < Sea.surface_height(camera.global_position.x, camera.global_position.z)
 	var tall := 2.0 * tan(deg_to_rad(camera.fov) * 0.5)
 	for i in HAZE_POINTS:
 		var h := _haze_at[i]
@@ -225,9 +226,11 @@ func splash(at: Vector3, how_hard := 1.0) -> void:
 	var falling := absf(player.velocity.y) / maxf(sqrt(9.0 * long), 0.6)
 	var hard := (0.55 if out else clampf(0.6 + falling * 0.45, 0.7, 1.6)) * how_hard
 	_next = (_next + 1) % _splashes.size()
-	_splashes[_next].start(Vector3(at.x, Sea.SURFACE, at.z), size, WATER, FOAM, hard)
+	# (on the water as it is there: Sea.surface_height)
+	var top := Sea.surface_height(at.x, at.z)
+	_splashes[_next].start(Vector3(at.x, top, at.z), size, WATER, FOAM, hard)
 	var bead := clampf(0.018 + long * 0.018, 0.02, 0.17)
-	_plunge.global_position = Vector3(at.x, Sea.SURFACE - long * 0.4, at.z)
+	_plunge.global_position = Vector3(at.x, top - long * 0.4, at.z)
 	_plunge.emission_sphere_radius = 0.25 * long + 0.05
 	_plunge.scale_amount_min = bead * 0.8
 	_plunge.scale_amount_max = bead * (1.9 if not out else 1.4)

@@ -212,13 +212,15 @@ func step(delta: float) -> void:
 		var next := global_position + velocity * delta
 		var held := Sea.keep_in(Vector3(next.x, Sea.SURFACE - 1.0, next.z), room)
 		global_position = Vector3(held.x, next.y, held.z)
-		if global_position.y < Sea.SURFACE - room * 0.5 and velocity.y < 0.0:
+		# (the water's surface where it is, waves and all: Sea.surface_height)
+		var top := Sea.surface_height(global_position.x, global_position.z)
+		if global_position.y < top - room * 0.5 and velocity.y < 0.0:
 			in_air = false
 			pitch = asin(clampf(heading.y, -1.0, 1.0))
 			yaw = atan2(-heading.x, -heading.z)
 			_speed = velocity.length() * 0.75
 			_landed = 0.9
-			splashed.emit(Vector3(global_position.x, Sea.SURFACE, global_position.z))
+			splashed.emit(Vector3(global_position.x, top, global_position.z))
 		pose(delta, 0.4, stick.x)
 		# (still blinking if it is: it was left hidden for the whole leap when it went up hidden)
 		_body.visible = safe <= 0.0 or fmod(safe, 0.3) > 0.1
@@ -249,7 +251,9 @@ func step(delta: float) -> void:
 		pose(delta, 2.0 if boosting else 1.0, stick.x)
 		return
 	var next := global_position + velocity * delta
-	if next.y > Sea.SURFACE - room and heading.y > 0.2 and _speed > Fish.pace(length) * LEAP_PACE:
+	# (the surface where it is: the swell, the surf, a rogue wave. tools/WATER_FX.md, "Surf and rogue waves")
+	var top := Sea.surface_height(next.x, next.z)
+	if next.y > top - room and heading.y > 0.2 and _speed > Fish.pace(length) * LEAP_PACE:
 		# Up through the surface, fast enough: out it comes.
 		in_air = true
 		velocity *= LEAP_KICK
@@ -257,12 +261,16 @@ func step(delta: float) -> void:
 		var least := sqrt(2.0 * GRAVITY * (LEAP_LEAST + length * LEAP_PER_LENGTH)) * (1.0 if boosting else 0.75)
 		velocity.y = maxf(velocity.y, least)
 		global_position = next
-		leapt.emit(Vector3(next.x, Sea.SURFACE, next.z))
+		leapt.emit(Vector3(next.x, top, next.z))
 	else:
-		global_position = Sea.clear_of_rocks(Sea.keep_in(next, room), room)
+		var held := Sea.keep_in(next, room)
+		# (Sea.keep_in holds it under the still surface; under a wave's crest it may go higher, under
+		# a trough it must go lower: up to the surface as it is there)
+		held.y = held.y if held.y > next.y else minf(next.y, top - room)
+		global_position = Sea.clear_of_rocks(held, room)
 		global_position.y = maxf(global_position.y, Sea.SURFACE - deepest - LIMIT_GIVE)
 		# (held under the surface, it levels off along it)
-		if next.y > Sea.SURFACE - room and pitch > 0.0:
+		if next.y > top - room and pitch > 0.0:
 			pitch = maxf(pitch - 2.0 * delta, 0.0)
 	bite = 1.0 if _snap > 0.0 or near_food else 0.0
 	pose(delta, 2.0 if boosting else lerpf(0.3, 1.0, throttle), stick.x)

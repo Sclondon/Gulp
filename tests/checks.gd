@@ -113,8 +113,66 @@ func _run() -> void:
 	await _schooling()
 	await _fishing()
 	await _loop()
+	await _waves()
 	print("GULP SMOKE PASSED" if _bad == 0 else "GULP SMOKE FAILED (%d)" % _bad)
 	get_tree().quit()
+
+
+## The water's surface (tools/WATER_FX.md, "Surf and rogue waves"): the open sea rides a gentle swell;
+## the surf at a beach rises and falls far more and breaks; a fish swimming up fast leaps clear of the
+## surface as it is there and falls back in; a rogue wave stands far over the sea round it, pushes what
+## swims near the top and leaves the deep alone, and is gone at the end of its life.
+func _waves() -> void:
+	var player: Player = main.player
+	main.restart()
+	await _frames(5)
+	var open := Vector2(-40.0, -55.0)
+	var shore := Vector2(60.0, -120.5)
+	var open_range := Vector2(INF, -INF)
+	var shore_range := Vector2(INF, -INF)
+	for n in 120:
+		var a := Sea.surface_height(open.x, open.y)
+		var b := Sea.surface_height(shore.x, shore.y)
+		open_range = Vector2(minf(open_range.x, a), maxf(open_range.y, a))
+		shore_range = Vector2(minf(shore_range.x, b), maxf(shore_range.y, b))
+		await _frames(4)
+	_check("the open sea rides a gentle swell", open_range.x > Sea.SURFACE - 0.7 and open_range.y < Sea.SURFACE + 0.7 and open_range.y - open_range.x > 0.05,
+			"%.2f to %.2f m" % [open_range.x, open_range.y])
+	var breaking := Surf.wave(shore.x, shore.y, Surf.clock)
+	_check("the surf at a beach rises and falls more", shore_range.y - shore_range.x > (open_range.y - open_range.x) * 1.5,
+			"%.2f to %.2f m (open %.2f m)" % [shore_range.x, shore_range.y, open_range.y - open_range.x])
+	var deep_wave := Surf.wave(open.x, open.y, Surf.clock)
+	_check("the surf is only near the shore", deep_wave[7] == 0.0 and breaking[7] > 0.5, "weight %.2f there, %.2f out at sea" % [breaking[7], deep_wave[7]])
+	# A leap from the open sea, by the surface as it is there.
+	player.global_position = Vector3(open.x, Sea.SURFACE - 1.5, open.y)
+	player.pitch = 0.9
+	player.yaw = 0.0
+	player.boost_held = true
+	var out := false
+	var top := -INF
+	var back := false
+	for n in 400:
+		await _frames(1)
+		out = out or player.in_air
+		if player.in_air:
+			top = maxf(top, player.global_position.y - Sea.surface_height(player.global_position.x, player.global_position.z))
+		if out and not player.in_air:
+			back = true
+			break
+	player.boost_held = false
+	_check("a fish swimming up fast leaps clear of the waves and falls back in", out and top > 0.2 and back, "highest %.2f m over the water there, back in %s" % [top, back])
+	# A rogue wave over the fish, at its highest.
+	var at := Vector2(player.global_position.x, player.global_position.z)
+	Sea.rogue_wave(at, Vector2(1.0, 0.0), true)
+	Surf.rogue_age = Surf.ROGUE_LIFE * 0.5
+	var crest := Sea.surface_height(at.x, at.y)
+	var near_top := Sea.surge(Vector3(at.x + Surf.ROGUE_LENGTH * 0.6, crest - 0.5, at.y))
+	var deep := Sea.surge(Vector3(at.x, Sea.SURFACE - 30.0, at.y))
+	_check("a rogue wave stands far over the sea, pushes near the top and not deep down", crest > Sea.SURFACE + 3.0 and near_top.length() > 0.5 and deep.length() < 0.05,
+			"crest %.1f m over the still sea, push %.2f m/s near the top, %.3f m/s 30 m down" % [crest - Sea.SURFACE, near_top.length(), deep.length()])
+	Surf.rogue_age = Surf.ROGUE_LIFE - 0.05
+	await _frames(10)
+	_check("a rogue wave is gone at the end of its life", not Surf.rogue_on and absf(Sea.surface_height(at.x, at.y) - Sea.SURFACE) < 0.7)
 
 
 ## Schooling (tools/SCHOOLING.md): a swarm loses the one fish at the mouth and has it back later,

@@ -969,3 +969,27 @@ Claude's.
     squat muscular little man and the model matched it. The old sheets are kept, retired.
   - Lit perspective "beauty" pictures (`tests/<figure>_view.gd --persp`/`--beauty`, `tests/captain_beauty.gd`) are what
     the user is shown; the tiled sheet comparisons are for checking.
+
+## Surf and rogue waves (2026-11-18)
+
+The user: "Can we work on simulating crashing waves by the shoreline, and also rogue waves? Looking up solutions for
+actual wave cresting etc so we can enhance our water / ocean system". `tools/WATER_FX.md`, "Surf and rogue waves", has
+the research (with sources), the numbers, what is checked and what is rough. Concepts: `tools/art_src/concept_waves_shore.png`,
+`concept_waves_rogue.png`.
+
+- **Decision (Claude's pick): shore-distance surf on rings round the eye, a scripted rogue swell.** What: the shores are
+  baked at start into a small map (`Surf.bake`: shore distance, depth, openness every 2 m); one train of Gerstner waves
+  runs in to every shore, phased by the distance to it, growing by Green's law, breaking at McCowan's 0.78 of the depth,
+  its crest thrown forward (Fournier-Reeves), foam where the surface folds (Tessendorf's Jacobian) and in the broken
+  bore behind; the water mesh is five rings round the eye (0.5 m squares near, 8 m far, `Sea._rings`); a rogue wave is
+  one travelling hump 4.5 m high with a trough before it, rare (240 to 480 s) and gentle in its push. Why: GL
+  Compatibility on phones has no compute (no FFT or shallow-water simulation); a vertex sum is cheap; Bay's shore is
+  already baked. Practice: GPU Gems Gerstner waves, Crest's LOD rings and shallow-water foam, a baked shore mask as AC
+  III's. Alternatives: FFT, a simulation grid, breaker sheet meshes along the coast, a finer fixed mesh, a shore strip.
+- One surface for everything: `Sea.surface_height(x, z)` (the swell, the surf and any rogue wave, as drawn), used by the
+  leap, the camera, the splashes and spray, the title boat. `Sea.rogue_wave(at, heading, over)` sends one (`-- --rogue`
+  for a test); `Sea.surge(at)` is its push (player and awake animals near the top). `scripts/surf.gd` and
+  `shaders/surf.gdshaderinc` hold the same sums: change both.
+- The water shader writes depth now (`depth_draw_always`: a tall wave's far side showed through its face).
+- Pictures: `tests/surf_shot.gd` (an eye out from a shore, `--shore=x,z`, or anywhere; `--rogue=metres,age`; strips).
+- Not in GameCommon (tied to this shader and Bay's shore); a candidate component if another game wants surf.

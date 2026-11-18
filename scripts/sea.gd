@@ -123,6 +123,14 @@ var _look_wait := 0.0
 var _shaft_strength := 0.0
 ## What Main tints the picture with under water (POST_TINT, leaning to KELP_POST_TINT in the kelp forest).
 var post_tint := POST_TINT
+## The water's mesh, which goes with the eye (`_surface`), and bubbles churned in the surf round it.
+var _water_mesh: MeshInstance3D
+var _surf_bubbles: CPUParticles3D
+## Seconds until a rogue wave comes by itself (Surf.ROGUE_EVERY); `rogues` false stops them.
+var rogues := true
+var _rogue_wait := 0.0
+## How much the rogue wave over the eye darkens the water (eased).
+var _rogue_dim := 0.0
 
 
 ## The height of the sea floor at a point: Monterey Bay (scripts/bay.gd has the one sum; this
@@ -134,6 +142,27 @@ static func ground(x: float, z: float) -> float:
 ## Where the shelf's edge is (x) at a place along the coast (z): the open ocean is west of it.
 static func edge_at(z: float) -> float:
 	return Bay.edge_at(z)
+
+
+## Where the water's surface is at a point (world y), as it is drawn: the swell, the surf along the
+## shores and any rogue wave (scripts/surf.gd). SURFACE is its middle height.
+static func surface_height(x: float, z: float) -> float:
+	return Surf.height(x, z)
+
+
+## The rogue wave's push on something swimming at a point (m/s; zero with none under way).
+static func surge(at: Vector3) -> Vector3:
+	return Surf.surge(at)
+
+
+## Sends a rogue wave across the sea from `at` (x, z) along `heading`; with `over` set it is started
+## so that it is at its highest when it passes over that point. (By itself one comes now and then:
+## Surf.ROGUE_EVERY.)
+static func rogue_wave(at: Vector2, heading: Vector2, over := false) -> void:
+	var way := heading.normalized() if heading.length_squared() > 0.0 else Vector2(1.0, 0.0)
+	if over:
+		at -= way * Surf.ROGUE_SPEED * Surf.ROGUE_LIFE * 0.5
+	Surf.start_rogue(at, way)
 
 
 ## A zone's patches: each [middle, radius].
@@ -339,6 +368,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	clock += delta
 	RenderingServer.global_shader_parameter_set(&"water_clock", clock)
+	_waves(delta)
 	if eye:
 		_snow.global_position = eye.global_position - eye.global_basis.z * 4.0
 	# (the time of day moves the light on, a few times a second; the shafts fade as the eye goes deep)
@@ -629,9 +659,18 @@ func _floor() -> void:
 	add_child(sand)
 
 
-## The water overhead: Salmon Run 2's water (shaders/water.gdshader), on the kind of mesh its
-## water_scene.gd builds (a few metres to a square, each corner's place in metres in its UVs).
-## As Moon Jellies lays it.
+## The water overhead: Salmon Run 2's water (shaders/water.gdshader), with the surf and the rogue
+## wave (scripts/surf.gd, shaders/surf.gdshaderinc). Its mesh goes with the eye: rings of squares, the
+## finest (RING_CELL, half a metre) round the eye out to RING_HALF, each ring out twice as wide in squares
+## twice as big, to 256 m (a clipmap, as Crest and most open-world oceans lay theirs: fine where the
+## waves are seen close, coarse far off). It is moved in steps of its coarsest square, so every corner
+## stays on the same place of the water and nothing swims. (Before 2026-11-18 it was one fixed 400 m
+## sheet of 4 m squares: too coarse to break a wave on.)
+const RING_CELL := 0.5
+const RING_HALF := 16.0
+const RINGS := 5
+
+
 func _surface() -> void:
 	var water := ShaderMaterial.new()
 	_water = water
@@ -642,53 +681,183 @@ func _surface() -> void:
 	water.set_shader_parameter(&"swell", 1.6)
 	water.set_shader_parameter(&"whitecaps", 0.35)
 	water.set_shader_parameter(&"flow", 0.05)  # (the user, 2026-11-18: "the foam on the water surface is moving wa ytoo fast")
-	var size := Vector2(400.0, 400.0)
-	var cell := Vector2(4.0, 4.0)
-	var cols := int(size.x / cell.x)
-	var rows := int(size.y / cell.y)
-	var verts := PackedVector3Array()
+	Surf.dress(water)
+	# (none by itself in the checks, which must come out the same each time; they send their own)
+	rogues = not OS.get_cmdline_user_args().has("--check")
+	_rogue_wait = randf_range(Surf.ROGUE_EVERY.x, Surf.ROGUE_EVERY.y)
+	var surface := MeshInstance3D.new()
+	surface.name = "Water"
+	surface.mesh = _rings()
+	surface.material_override = water
+	surface.position = Vector3(0.0, SURFACE, 0.0)
+	# (the waves lift it: a rogue wave up to 4 m)
+	surface.custom_aabb = AABB(Vector3(-300.0, -6.0, -300.0), Vector3(600.0, 12.0, 600.0))
+	surface.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(surface)
+	_water_mesh = surface
+	# Bubbles churned under the breaking surf, round the eye when it is there.
+	var bubble := ShaderMaterial.new()
+	bubble.shader = preload("res://shaders/bubble.gdshader")
+	bubble.set_shader_parameter(&"near_cut", 0.45)
+	var quad := QuadMesh.new()
+	quad.size = Vector2(1.0, 1.0)
+	_surf_bubbles = CPUParticles3D.new()
+	_surf_bubbles.name = "SurfBubbles"
+	_surf_bubbles.mesh = quad
+	_surf_bubbles.material_override = bubble
+	_surf_bubbles.amount = 70
+	_surf_bubbles.lifetime = 2.2
+	_surf_bubbles.local_coords = false
+	_surf_bubbles.emitting = false
+	_surf_bubbles.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	_surf_bubbles.emission_box_extents = Vector3(5.0, 0.6, 5.0)
+	_surf_bubbles.direction = Vector3.DOWN
+	_surf_bubbles.spread = 60.0
+	_surf_bubbles.initial_velocity_min = 0.2
+	_surf_bubbles.initial_velocity_max = 1.2
+	_surf_bubbles.gravity = Vector3(0.0, 1.4, 0.0)
+	_surf_bubbles.damping_min = 1.5
+	_surf_bubbles.damping_max = 2.5
+	_surf_bubbles.scale_amount_min = 0.025
+	_surf_bubbles.scale_amount_max = 0.09
+	_surf_bubbles.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_surf_bubbles)
+
+
+# The rings' mesh, round (0, 0). Where a ring's squares meet the finer ring inside it, each square
+# on the seam is a fan from its middle through the finer ring's corners on its edge, so no crack opens
+# between them (no T-junctions). Every triangle faces up (clockwise from above, as Godot's front faces).
+static func _rings() -> ArrayMesh:
+	# (Arrays, not packed ones: the two helpers below change them, and a lambda keeps its own copy of a
+	# packed array)
+	var verts: Array[Vector3] = []
+	var indices: Array[int] = []
+	var known := {}
+	var corner := func(x: float, z: float) -> int:
+		var key := Vector2i(roundi(x * 8.0), roundi(z * 8.0))
+		if known.has(key):
+			return known[key]
+		known[key] = verts.size()
+		verts.append(Vector3(x, 0.0, z))
+		return verts.size() - 1
+	var tri := func(a: int, b: int, c: int) -> void:
+		var up := (verts[b] - verts[a]).cross(verts[c] - verts[a]).y
+		if up < 0.0:
+			indices.append_array([a, b, c])
+		else:
+			indices.append_array([a, c, b])
+	var cell := RING_CELL
+	var half := RING_HALF
+	var inner := 0.0
+	for ring in RINGS:
+		var n := int(round(half * 2.0 / cell))
+		for i in n:
+			for j in n:
+				var x0 := -half + i * cell
+				var z0 := -half + j * cell
+				var x1 := x0 + cell
+				var z1 := z0 + cell
+				# (inside the finer ring: skip)
+				if inner > 0.0 and x0 >= -inner - 0.001 and x1 <= inner + 0.001 and z0 >= -inner - 0.001 and z1 <= inner + 0.001:
+					continue
+				# (which of its edges lie on the finer ring's edge: those get the finer corner in their middle)
+				var seam := inner > 0.0 and (absf(absf(x0) - inner) < 0.001 or absf(absf(x1) - inner) < 0.001 or absf(absf(z0) - inner) < 0.001 or absf(absf(z1) - inner) < 0.001)
+				var edge := [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]
+				if not seam:
+					var a: int = corner.call(x0, z0)
+					var b: int = corner.call(x1, z0)
+					var c: int = corner.call(x1, z1)
+					var d: int = corner.call(x0, z1)
+					tri.call(a, b, c)
+					tri.call(a, c, d)
+					continue
+				var ring_pts: Array[int] = []
+				for k in 4:
+					var p: Array = edge[k]
+					var q: Array = edge[(k + 1) % 4]
+					ring_pts.append(corner.call(p[0], p[1]))
+					var px: float = p[0]
+					var pz: float = p[1]
+					var qx: float = q[0]
+					var qz: float = q[1]
+					# (an edge lying along the finer ring's edge, within it, has a finer corner in its middle)
+					var on_x := absf(px - qx) < 0.001 and absf(absf(px) - inner) < 0.001 and absf(pz) <= inner + 0.001 and absf(qz) <= inner + 0.001
+					var on_z := absf(pz - qz) < 0.001 and absf(absf(pz) - inner) < 0.001 and absf(px) <= inner + 0.001 and absf(qx) <= inner + 0.001
+					if on_x or on_z:
+						ring_pts.append(corner.call((px + qx) * 0.5, (pz + qz) * 0.5))
+				var middle: int = corner.call((x0 + x1) * 0.5, (z0 + z1) * 0.5)
+				for k in ring_pts.size():
+					tri.call(middle, ring_pts[k], ring_pts[(k + 1) % ring_pts.size()])
+		inner = half
+		half *= 2.0
+		cell *= 2.0
 	var normals := PackedVector3Array()
 	var colours := PackedColorArray()
 	var uvs := PackedVector2Array()
 	var uv2s := PackedVector2Array()
 	var tangents := PackedFloat32Array()
-	var indices := PackedInt32Array()
-	for r in rows + 1:
-		var s := size.y * r / rows
-		for c in cols + 1:
-			var x := size.x * (float(c) / cols - 0.5)
-			verts.append(Vector3(x, 0.0, size.y * 0.5 - s))
-			normals.append(Vector3.UP)
-			colours.append(Color(0.0, 1.0, 0.0))
-			uvs.append(Vector2(0.5 + x / 26.8, s))
-			uv2s.append(Vector2(x, 1.0))
-			tangents.append_array(PackedFloat32Array([1.0, 0.0, 0.0, 1.0]))
-	for r in rows:
-		for c in cols:
-			var a := r * (cols + 1) + c
-			var b := a + 1
-			var d := a + cols + 1
-			var e := d + 1
-			indices.append_array(PackedInt32Array([a, e, b, a, d, e]))
+	for v in verts:
+		normals.append(Vector3.UP)
+		colours.append(Color(0.0, 1.0, 0.0))
+		# (the shader works its places out from the world; these are only the old mesh's, for a still one)
+		uvs.append(Vector2(0.5 + v.x / 26.8, 200.0 - v.z))
+		uv2s.append(Vector2(v.x, 1.0))
+		tangents.append_array(PackedFloat32Array([1.0, 0.0, 0.0, 1.0]))
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array(verts)
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_COLOR] = colours
 	arrays[Mesh.ARRAY_TEX_UV] = uvs
 	arrays[Mesh.ARRAY_TEX_UV2] = uv2s
 	arrays[Mesh.ARRAY_TANGENT] = tangents
-	arrays[Mesh.ARRAY_INDEX] = indices
+	arrays[Mesh.ARRAY_INDEX] = PackedInt32Array(indices)
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	var surface := MeshInstance3D.new()
-	surface.name = "Water"
-	surface.mesh = mesh
-	surface.material_override = water
-	surface.position = Vector3(0.0, SURFACE, 0.0)
-	surface.extra_cull_margin = 4.0
-	surface.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(surface)
+	return mesh
+
+
+# Each frame: the water's mesh goes with the eye (in steps of its coarsest square), the water's clock
+# and the rogue wave go on, a rogue wave now and then comes by itself, the water darkens under one,
+# and the surf churns bubbles round an eye under it.
+func _waves(delta: float) -> void:
+	Surf.clock = clock
+	Surf.advance(delta)
+	Surf.dress_rogue(_water)
+	_water.set_shader_parameter(&"eye_above", 1.0 if above else 0.0)
+	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
+	if cam == null:
+		return
+	var at := cam.global_position
+	var step := RING_CELL * pow(2.0, RINGS - 1)
+	_water_mesh.global_position = Vector3(snappedf(at.x, step), SURFACE, snappedf(at.z, step))
+	if rogues:
+		_rogue_wait -= delta
+		if _rogue_wait <= 0.0:
+			_rogue_wait = randf_range(Surf.ROGUE_EVERY.x, Surf.ROGUE_EVERY.y)
+			# (it passes near the eye at its highest, from any way, over water deep enough to carry it)
+			var way := Vector2.from_angle(randf() * TAU)
+			var over := Vector2(at.x, at.z) + Vector2(-way.y, way.x) * randf_range(-12.0, 12.0)
+			if SURFACE - ground(over.x, over.y) > 8.0 and Bay.shore_distance(over) > Surf.REACH:
+				rogue_wave(over, way, true)
+			else:
+				_rogue_wait = 30.0
+	var under := not above and at.y < SURFACE + 1.0
+	var dim := 0.0
+	if Surf.rogue_on and under:
+		dim = clampf(Surf.rogue(at.x, at.z).x / Surf.ROGUE_HEIGHT, 0.0, 1.0) * 0.45
+	_rogue_dim = lerpf(_rogue_dim, dim, 1.0 - exp(-3.0 * delta))
+	_env.ambient_light_energy = 1.0 - _rogue_dim
+	_env.background_energy_multiplier = 1.0 - _rogue_dim
+	_env.fog_light_energy = 1.0 - _rogue_dim
+	var churn := false
+	if under and at.y > SURFACE - 6.0:
+		var surf := Surf.wave(at.x, at.z, clock)
+		churn = surf[7] > 0.3 and surf[4] > 0.3
+		if churn:
+			_surf_bubbles.global_position = Vector3(at.x, Surf.height(at.x, at.z) - 0.8, at.z)
+	if _surf_bubbles.emitting != churn:
+		_surf_bubbles.emitting = churn
 
 
 ## Marine snow: specks hanging in the water round the camera, sinking very slowly.

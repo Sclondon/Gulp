@@ -12,9 +12,14 @@
 // Every stage can set any of these from its entry in levels.gd: a key "water_<name>" sets the
 // uniform <name>.
 shader_type spatial;
-render_mode cull_disabled, specular_schlick_ggx;
+// (Gulp: depth_draw_always: a wave's near face hides its far side, which is drawn in the same mesh
+// with no order between them; without it the far side's underside showed through every tall wave)
+render_mode cull_disabled, specular_schlick_ggx, depth_draw_always;
 
 #include "res://shaders/psx_common.gdshaderinc"
+// (Gulp: the surf along the shores and the rogue wave, scripts/surf.gd; the mesh follows the eye, so
+// every place on the water is worked out from the world, not from the mesh's UVs)
+#include "res://shaders/surf.gdshaderinc"
 
 
 group_uniforms colour;
@@ -140,6 +145,12 @@ varying float v_steep;
 // the swell there is here (none far out to sea)
 varying vec2 v_metres;
 varying float v_swell;
+// the surf here (Surf.wave: height, push, phase, wave height; breaking, steepness, wavenumber,
+// weight), which way it runs, and where this water was before the waves moved it
+varying vec4 v_surf_a;
+varying vec4 v_surf_b;
+varying vec2 v_surf_way;
+varying vec2 v_at;
 
 // A random number from 0 to 1 for each corner of a grid. It is worked out in whole numbers,
 // so that a corner gets the same number whichever square of the grid asks for it. (The usual
@@ -239,11 +250,30 @@ vec3 swell_at(vec2 p) {
 }
 
 void vertex() {
+	// (Gulp: the mesh goes with the eye: its places on the water come from the world, mapped as the
+	// old fixed 400 m mesh's UVs were, so the swell and the foam lie as they did)
+	vec3 still = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	UV = vec2(0.5 + still.x / 26.8, 200.0 - still.z);
+	UV2 = vec2(still.x, 1.0);
+	v_at = still.xz;
 	v_steep = 1.0 - clamp(NORMAL.y, 0.0, 1.0);
 	v_metres = vec2(UV2.x, UV.y);
 	// (none on a waterfall, and none far out to sea, where the mesh is too coarse to bend)
 	v_swell = UV2.y * (1.0 - smoothstep(0.1, 0.4, v_steep));
-	VERTEX.y += swell_at(v_metres).x * v_swell;
+	vec4 wa;
+	vec4 wb;
+	surf_wave(still.xz, water_clock, shore_at(still.xz), wa, wb);
+	v_surf_a = wa;
+	v_surf_b = wb;
+	v_surf_way = wb.w > 0.0 ? shore_way(still.xz) : vec2(0.0);
+	vec2 r_slope;
+	vec2 r_shape;
+	vec4 r = rogue_at(still.xz, r_slope, r_shape);
+	// (the surf's shape only where the mesh is fine enough for it: near the eye; its foam goes on
+	// further, worked out at every pixel)
+	float fine = 1.0 - smoothstep(45.0, 80.0, length(still - CAMERA_POSITION_WORLD));
+	VERTEX.y += swell_at(v_metres).x * v_swell * (1.0 - 0.6 * v_surf_b.w) + v_surf_a.x * fine + r.x;
+	VERTEX.xz += v_surf_way * v_surf_a.y * fine + rogue_a.zw * r.y;
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	POSITION = psx_snap(PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0), VIEWPORT_SIZE);
 }
@@ -262,7 +292,7 @@ void fragment() {
 	// none) and in rapids (vertex red)
 	float edge = smoothstep(0.36, 0.5, abs(UV.x - 0.5)) * (1.0 - COLOR.g);
 	// (a hair over 1 with everything at 0, so that then there is none at all)
-	float patches = step(1.001 - foam_amount * 0.5 - edge * edge_foam * 0.6 - COLOR.r * rapid_foam * 0.3, n);
+	float patches = step(1.001 - foam_amount * 0.5 - edge * edge_foam * 0.6 - COLOR.r * rapid_foam * 0.3, n) * (1.0 - smoothstep(0.2, 0.8, v_surf_b.w));
 	// the rim: a hard band wherever the water is only this deep, with a ragged outer edge
 	float rim = step(water, rim_width * (1.0 - rim_ragged * 0.8 * (1.0 - n))) * step(0.0001, rim_width);
 	float fall = smoothstep(0.35, 0.6, v_steep);
@@ -370,9 +400,82 @@ void fragment() {
 	vec2 cuv = at / max(crest_size, 0.01);
 	float broken = texture(foam_texture, cuv + vec2(0.53, 0.11)).r * 0.6 + texture(foam_texture, cuv.yx * 2.2 + vec2(0.07, 0.61)).r * 0.4;
 	float top = step(1.0 - crest_amount * 0.5, crest + (broken - 0.5) * crest_ragged) * step(0.001, crest_amount) * step(0.001, v_swell);
-	cap = max(cap, top) * near;
+	// (none in the surf, which has foam of its own)
+	cap = max(cap, top) * near * (1.0 - smoothstep(0.2, 0.8, v_surf_b.w));
 	white = max(white, cap);
 	col = mix(col, foam_color.rgb, cap);
+	// The surf (scripts/surf.gd). The faces of the shoaling waves glow green where they stand up, the
+	// water inside the break is churned a sandy green, and the foam comes three ways, each in flat
+	// painted pieces like the rest: on a crest steep enough to break, where the surface folds over
+	// itself (its Jacobian, 1 - steepness x sin(phase), falls towards 0); the roller down the face of
+	// a breaking crest; and the whitewater each broken wave leaves behind it, thinning into lace.
+	// (The surf's colours are dimmed with the water's own at night.)
+	float lit_water = length(shallow.rgb) / 0.646;
+	vec2 surf_slope = vec2(0.0);
+	float surf_thick = 0.0;
+	if (v_surf_b.w > 0.001) {
+		float sw = v_surf_b.w;
+		float up = sin(v_surf_a.z);
+		float fold = 1.0 - v_surf_b.y * up;
+		surf_slope = v_surf_way * (v_surf_a.w * v_surf_b.z * cos(v_surf_a.z) / max(fold, 0.3)) * sw;
+		// (how far through the wave's period this water is since its crest went by: 0 to 1)
+		float since = fract((1.5707963 - v_surf_a.z) / 6.2831853);
+		// (its foam pattern is laid along the crests, drawn out along them, and drifts in with the waves)
+		vec2 fp = v_at - v_surf_way * water_clock * 0.25;
+		vec2 fl = vec2(dot(fp, v_surf_way), dot(fp, vec2(-v_surf_way.y, v_surf_way.x)));
+		float fn = texture(foam_texture, fl * vec2(0.17, 0.1)).r * 0.6 + texture(foam_texture, fl * vec2(0.4, 0.22) + 0.41).r * 0.4;
+		// (how far the shoaling has gone: the wave's height over the most the depth here can carry,
+		// McCowan's 0.78; it breaks from 0.85 and is broken water, a bore, from 1.4)
+		float ratio = v_surf_b.x;
+		float brk = smoothstep(0.85, 1.25, ratio);
+		float gone = smoothstep(1.2, 1.8, ratio);
+		col = mix(col, surf_sandy.rgb * lit_water, sw * brk * 0.5);
+		// (the surf is green-teal and thick with stirred sand, not the open blue: the waves read as bodies of water)
+		col = mix(col, surf_body.rgb * lit_water, sw * 0.65);
+		surf_thick = sw * smoothstep(0.25, 1.2, water);
+		// (crests paler, troughs darker, so the swell reads from above the water as well as by its light)
+		col *= mix(1.0, mix(0.72, 1.18, up * 0.5 + 0.5), sw);
+		// (the face of a wave standing up to break glows green, lit through)
+		col = mix(col, surf_glow.rgb * lit_water, sw * smoothstep(0.3, 0.75, v_surf_b.y) * smoothstep(-0.2, 0.8, up) * smoothstep(0.55, 0.95, since + up * 0.3) * 0.8 * (1.0 - gone));
+		// the lip: the top of a crest that folds over (its Jacobian falls towards 0) goes white
+		float lip = smoothstep(0.45, 0.1, fold) * brk;
+		// the bore: broken, the wave rolls in as white water down its front, and leaves it behind
+		float bore = gone * (smoothstep(0.55, 0.9, since) + exp(-since * 4.0));
+		float trail = brk * exp(-since * 1.6);
+		float lace = brk * (1.0 - smoothstep(0.03, 0.09, abs(fn - 0.5))) * (0.35 + 0.65 * exp(-since * 1.2));
+		// (and a broken white line along the top of each wave as it stands up to break)
+		float crest_line = smoothstep(0.9, 0.985, up) * smoothstep(0.4, 0.75, v_surf_b.y) * (1.0 - brk * 0.6);
+		float surf_white = max(step(0.5, lip * (0.6 + 0.8 * fn)), step(0.5, bore * (0.45 + 0.9 * fn)));
+		surf_white = max(surf_white, step(0.55, trail * (0.3 + 1.1 * fn)));
+		// (inside the break the water is a blanket of foam with holes in it)
+		surf_white = max(surf_white, step(0.6, gone * (0.2 + 0.9 * fn)));
+		surf_white = max(surf_white, step(0.5, crest_line * (0.35 + 0.9 * fn)));
+		surf_white = max(surf_white, step(0.45, lace)) * step(0.3, sw) * (1.0 - fall);
+		white = max(white, surf_white);
+		col = mix(col, foam_color.rgb, surf_white);
+	}
+	// The rogue wave: its face goes dark as it stands up; foam on its breaking crest, streaking down
+	// its face, and a broad band left behind it.
+	vec2 r_slope;
+	vec2 r_shape;
+	vec4 rg = rogue_at(v_at, r_slope, r_shape);
+	float rogue_face = 0.0;
+	if (r_shape.y > 0.01) {
+		float an = r_shape.x;
+		float crest_n = sech2(an);
+		// (its face a dark glassy green-blue wall, lighter towards the lip, where the light comes through)
+		float face = r_shape.y * rg.w * smoothstep(0.1, 0.6, crest_n) * smoothstep(-0.4, 0.2, an);
+		col = mix(col, mix(deep.rgb * 0.55, surf_body.rgb * lit_water * 0.9, smoothstep(0.5, 0.95, crest_n)), face * 0.85);
+		rogue_face = face;
+		float rn = texture(foam_texture, vec2(dot(v_at, rogue_a.zw) * 0.05, dot(v_at, vec2(-rogue_a.w, rogue_a.z)) * 0.2)).r;
+		float rn2 = texture(foam_texture, v_at * 0.11 + 0.3).r;
+		float on_top = rg.z * smoothstep(0.86, 0.97, crest_n) * smoothstep(-0.5, -0.1, an);
+		float streak = rg.z * step(0.0, an) * smoothstep(0.12, 0.55, crest_n) * step(0.7, rn);
+		float left = rg.z * step(an, -0.6) * exp((an + 0.6) * 0.3);
+		float rogue_white = max(step(0.5, on_top * (0.45 + rn2)), max(streak, step(0.6, left * (0.3 + rn2))));
+		white = max(white, rogue_white);
+		col = mix(col, foam_color.rgb, rogue_white);
+	}
 	// and faint pale lines wander over it, like light on the surface
 	vec2 lp = at * 0.3 + (vec2(vnoise(at * 0.2 + 1.0), vnoise(at * 0.2 + 7.0)) - 0.5) * 2.0;
 	float line = (1.0 - smoothstep(0.0, 0.045, abs(vnoise(lp + vec2(0.0, TIME * 0.12)) - 0.5))) * lines * (1.0 - white)
@@ -399,26 +502,48 @@ void fragment() {
 	// (far off the small waves are smaller than a pixel: they are smoothed away, or they would
 	// only be noise; foam is not shiny; and the wake has flattened them. The swell is none
 	// of those things: it is the shape of the water itself.)
-	float steepness = ripple_height * 0.5 * mix(1.0, 0.12, smoothstep(30.0, 170.0, far)) * (1.0 - white) * (1.0 - 0.85 * wake_flat);
-	vec2 slope = vec2(slope_x, slope_y) * steepness + swell_slope * v_swell;
+	// (and in the surf the small ripples give way to the big waves: they hid them)
+	float steepness = ripple_height * 0.5 * mix(1.0, 0.12, smoothstep(30.0, 170.0, far)) * (1.0 - white) * (1.0 - 0.85 * wake_flat) * (1.0 - 0.75 * v_surf_b.w);
+	// (the surf's and the rogue wave's slopes are in the world's x and z; the water's second way runs to -z)
+	vec2 slope = vec2(slope_x, slope_y) * steepness + swell_slope * v_swell * (1.0 - 0.6 * v_surf_b.w)
+			+ vec2(surf_slope.x + r_slope.x, -(surf_slope.y + r_slope.y));
 	vec3 wavy = normalize(flat_normal - across_way * slope.x - along_way * slope.y);
 	// seen at a low angle water is a mirror, however clear it is seen from above
 	float fresnel = pow(1.0 - clamp(dot(wavy, to_eye / max(far, 0.001)), 0.0, 1.0), 5.0);
 	ALBEDO = col;
 	ALPHA = mix(mix(mix(alpha_shallow, alpha_deep, depth), 1.0, fresnel * 0.9), 0.97, white);
+	// (the surf is solid water where it stands thick, clear only in the thin swash)
+	ALPHA = mix(ALPHA, 0.94, surf_thick * 0.85);
+	ALPHA = mix(ALPHA, 0.97, rogue_face);
 	ROUGHNESS = mix(roughness, 0.85, white);
 	SPECULAR = specular;
 	METALLIC = 0.0;
 	EMISSION = foam_color.rgb * fall * 0.15;
 	// seen from underneath, the surface is a bright ceiling that hides the sky
-	if (!FRONT_FACING) {
+	// (Gulp: with the eye above the water a back face is the underside of a wave's curling lip or an
+	// overhanging wall: drawn as the water it is, not as the bright ceiling seen from under the sea)
+	if (!FRONT_FACING && eye_above > 0.5) {
+		ALBEDO = mix(col, surf_body.rgb * lit_water * 0.8, 0.5);
+		ALPHA = 0.97;
+	} else if (!FRONT_FACING) {
 		ALBEDO = mix(shallow.rgb, vec3(1.0), 0.2 + 0.4 * white);
 		// (Moon Jellies: far off it fades into the dark of the deep water, so that the bright
 		// water is a window overhead, as it is to a diver, and has no edge)
 		ALPHA = 0.95 * (1.0 - smoothstep(18.0, 60.0, far));
 		EMISSION = shallow.rgb * 0.45;
+		// (Gulp: under the surf the churned water is a bright white roof, the waves' troughs darker
+		// bands between; under a rogue wave the water above goes dark)
+		float surf_under = v_surf_b.w * smoothstep(0.85, 1.25, v_surf_b.x);
+		ALBEDO = mix(ALBEDO, vec3(1.0), white * surf_under * 0.6) * mix(1.0, 0.75 + 0.25 * sin(v_surf_a.z), v_surf_b.w);
+		EMISSION += vec3(0.85, 0.95, 1.0) * white * (0.25 + 0.5 * surf_under);
+		EMISSION *= 1.0 - 0.6 * rogue_face;
 		ROUGHNESS = 0.9;
 	} else {
 		NORMAL = normalize((VIEW_MATRIX * vec4(wavy, 0.0)).xyz);
+	}
+	if (surf_debug > 0) {
+		vec3 sd = shore_at(v_at);
+		ALBEDO = surf_debug == 3 ? (FRONT_FACING ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)) : surf_debug == 1 ? vec3(clamp(sd.x / 30.0, 0.0, 1.0), clamp(sd.y / 10.0, 0.0, 1.0), v_surf_b.w) : vec3(v_surf_b.w, v_surf_b.x, fract(v_surf_a.z / 6.2831853));
+		ALPHA = 1.0;
 	}
 }

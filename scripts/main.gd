@@ -154,7 +154,7 @@ func _ready() -> void:
 		elif arg.begins_with("--stage="):
 			# (the old five stages, by number)
 			_start_kind = ["sardine", "smolt", "salmon", "tuna", "shark"][clampi(int(arg.get_slice("=", 1)), 0, 4)]
-		elif arg == "--feed" or arg == "--leap" or arg == "--sell" or arg == "--shop":
+		elif arg == "--feed" or arg == "--leap" or arg == "--sell" or arg == "--shop" or arg == "--rogue":
 			_trick = arg
 		elif arg.begins_with("--server="):
 			_server = arg.get_slice("=", 1)
@@ -370,7 +370,7 @@ func _process(delta: float) -> void:
 	delta = minf(delta, 0.05)
 	if _on_deck:
 		_title_step(delta)
-		sea.set_above(camera.global_position.y > Sea.SURFACE)
+		sea.set_above(camera.global_position.y > Sea.surface_height(camera.global_position.x, camera.global_position.z))
 		_post.set_shader_parameter(&"underwater", 0.0 if sea.above else 1.0)
 		camera.fov = 72.0 if size.y > size.x else 60.0
 		_finish_frame()
@@ -385,6 +385,10 @@ func _process(delta: float) -> void:
 		player.global_position.y = Sea.SURFACE - 1.5
 		player.pitch = 0.9
 		player.boost_held = true
+	elif _trick == "--rogue" and _clock > 0.5:
+		# (a rogue wave across the fish, at its highest in 15 s: tools/WATER_FX.md)
+		_trick = ""
+		Sea.rogue_wave(Vector2(player.global_position.x, player.global_position.z), Vector2(player.heading.x, player.heading.z), true)
 	elif (_trick == "--sell" or _trick == "--shop") and _clock > 1.0:
 		# (for a picture of the sale, or of the shop after it)
 		var then := _trick
@@ -399,6 +403,9 @@ func _process(delta: float) -> void:
 	_p_was = Input.is_physical_key_pressed(KEY_P)
 	if not player.choosing and not paused:
 		player.step(delta)
+		# (a rogue wave pushes what swims near the top: Surf.surge)
+		if player.alive and not player.in_air and not player.caught:
+			player.global_position += Sea.surge(player.global_position) * delta
 		# (the plankton that drifts everywhere feeds the smallest fish a little as it swims through
 		# it: the user, "that you can eat maybe??"; the plankton clouds are the rich feeding)
 		if player.alive and not player.in_air and player.length < Life.PLANKTON_EATER:
@@ -436,7 +443,7 @@ func _process(delta: float) -> void:
 		else:
 			_on_picked(ways[randi() % ways.size()])
 	# Above the surface the air is clear; under it the water is blue and thick.
-	sea.set_above(camera.global_position.y > Sea.SURFACE)
+	sea.set_above(camera.global_position.y > Sea.surface_height(camera.global_position.x, camera.global_position.z))
 	_post.set_shader_parameter(&"underwater", 0.0 if sea.above else 1.0)
 	# (the picture's water tint: green-teal in the kelp forest, Sea.post_tint)
 	_post.set_shader_parameter(&"water_tint", sea.post_tint)
@@ -895,19 +902,21 @@ func _camera_place() -> Vector3:
 		# (and a little to one side, so that its arc is seen and not only its tail)
 		flat = flat.normalized().rotated(Vector3.UP, 0.45)
 		var after := player.global_position - flat * (0.6 + long * 1.9)
-		after.y = Sea.SURFACE + 0.35 + long * 0.5 + maxf(player.global_position.y - Sea.SURFACE, 0.0) * 0.55
+		# (over the water as it is there: the waves and a rogue wave lift it)
+		var under_fish := Sea.surface_height(player.global_position.x, player.global_position.z)
+		after.y = Sea.surface_height(after.x, after.z) + 0.35 + long * 0.5 + maxf(player.global_position.y - under_fish, 0.0) * 0.55
 		return after
 	# (water fx: in the water the eye stays under it, below the waves; it used to rise out of it
 	# whenever the fish swam near the top, and looked down through the surface at nothing)
 	behind = Sea.keep_in(behind, 0.3)
-	behind.y = minf(behind.y, Sea.SURFACE - 0.5)
+	behind.y = minf(behind.y, Sea.surface_height(behind.x, behind.z) - 0.5)
 	# (QUALITY.md: kept out of rocks and the floor; when that brings it in close, it looks down from
 	# higher over the fish instead, if that sees further)
 	var pivot := player.global_position + Vector3.UP * long * 0.3
 	var eye := _camera_clear(pivot, behind, long * 0.7 + 0.2)
 	if eye.distance_squared_to(behind) > 0.0025:
 		var over := Sea.keep_in(pivot + Vector3.UP * (0.4 + long * 1.8) - player.heading * long * 0.7, 0.3)
-		over.y = minf(over.y, Sea.SURFACE - 0.5)
+		over.y = minf(over.y, Sea.surface_height(over.x, over.z) - 0.5)
 		var high := _camera_clear(pivot, over, long * 0.7 + 0.2)
 		if high.distance_to(pivot) > eye.distance_to(pivot) + 0.1:
 			eye = high

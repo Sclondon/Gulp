@@ -554,6 +554,9 @@ func _step_creatures(delta: float) -> void:
 				each.step(delta * 2.0, player, hunting)
 		elif (steps + each.get_index()) % 3 == 0:
 			each.step(delta * 3.0, player, hunting)
+		# (a rogue wave tumbles what swims near the top along with it: Surf.surge, tools/WATER_FX.md)
+		if Surf.rogue_on and each.global_position.y > Sea.SURFACE - 8.0:
+			each.global_position += Surf.surge(each.global_position) * delta
 		each.detail(apart < 5.0 + each.length * 4.0)
 		# A pack hunter or a filter feeder at a swarm or a cloud: the swarm balls up and flees it,
 		# and what its open mouth passes is taken.
