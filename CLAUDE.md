@@ -306,3 +306,18 @@ seen (`Creature.become(kind, bare)`, `Life.mark_dressed`), (2) behind the title 
 (`Main._begin_warm`), the start button waiting for the starting waters' kinds. First load is still about a minute and
 a half on a Windows desktop browser. Build the web export from the clean worktree `../Gulp-build` (`git checkout
 --detach main` there; `git checkout -- build` first if it refuses), after `sh tools/web_excludes.sh` here.
+
+### More asked on 2026-11-18 (late), the user's words
+
+- (with the cover of Ted Bell's novel Nick of Time) "Nick of Time by Ned Bell is part of the inspiration, and the art
+  on the cover- the boy needs and old timey sailor boy outfit": mood only, nothing copied. Concept:
+  `tools/art_src/concept_sailor_boy.jpg`; a builder is changing the boy in `tools/build_title_figures.py`.
+- "there should also be a submarine" (concept `concept_submarine.jpg`; GameCommon `submarine`, being built) and
+  "and remoras" (GameCommon `remora`, being built; it needs to ride sharks, rays and whales: not written).
+- "w4e also need to come up with leviathan, sea monster, cthulu old one, and godzilla like designs": concept
+  `concept_monsters.jpg`; GameCommon `leviathan`, `sea-serpent`, `old-one`, `reef-back`, being built. They are our own
+  designs: the last two must never be made to look like Godzilla or any published Cthulhu.
+- "the boy should also have a diving suit that you can play as to walk along the sea floor": not started (a new way
+  to play: needs a concept, a design and the character controller question solved, see the title figures note).
+- Landed since the list above: the Monterey map and docks, schooling and habits, water effects with day and night, the
+  boat's quality pass, the fish logo (`scripts/title_logo.gd`; the picture logo is retired).
