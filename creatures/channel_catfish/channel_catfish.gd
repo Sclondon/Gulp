@@ -14,7 +14,8 @@ extends Node3D
 ## and 0.3 m behind. `scale` it (evenly) for a bigger or smaller one. No sound.
 ##
 ## It swims by a slow wave down its whole body, drawn by the shader (no bones): the head
-## swinging a little, the tail widest.
+## swinging a little, the tail widest. Its mouth opens (`gape`): the lower jaw swings down
+## under the snout, and the chin's four barbels go with it.
 ##
 ## Its barbels are ropes, as the sea nettle's strands are (GameCommon's godot/sea-nettle: its
 ## README's "Decision: ropes" says why and how): each is a short chain of points simulated
@@ -76,6 +77,13 @@ const OUTLINE := [
 	[0.18, 0.0455, -0.0595, 0.0442, -0.008],
 	[0.24, 0.0508, -0.06, 0.0398, -0.0035],
 ]
+## The lower jaw, as the shader has it: where it hinges (metres behind the snout, metres up: the
+## corners of the mouth), where it ends at the belly (metres behind the snout), and how far it
+## swings down for `gape` 1 (radians). The chin's barbels (2 to 5) are rooted on it.
+const HINGE := Vector2(0.031, -0.02794)
+const MOUTH_TO := 0.031
+const JAW_BACK := 0.043
+const GAPE_TURN := 0.55
 ## The sharpest a barbel may bend from one piece to the next (radians): a barbel has a
 ## stiff core, so it curves and never kinks (but where the head turns it aside, that wins).
 const BEND := 0.4
@@ -101,6 +109,15 @@ const ROOT_BEND := 0.55
 	set(value):
 		wave = maxf(value, 0.1)
 		_send(&"wave", wave)
+## How far its mouth is open: 0 shut (as it always was before 2026-11-17), 1 wide open (its
+## lower jaw swung down about the corners of the mouth, the front of the lower lip about 0.013 m,
+## the chin's barbels with it; the inside of the mouth is dark).
+@export_range(0.0, 1.0) var gape := 0.0:
+	set(value):
+		gape = clampf(value, 0.0, 1.0)
+		_send(&"gape", gape)
+		if not _swings and _laid:
+			lay_ropes()
 ## The low model (about a twelfth of the triangles), for far off or for many of them.
 @export var low := false:
 	set(value):
@@ -155,6 +172,7 @@ func _ready() -> void:
 	_send_phase()
 	_send(&"sway", sway)
 	_send(&"wave", wave)
+	_send(&"gape", gape)
 	lay_ropes()
 
 
@@ -213,7 +231,7 @@ func lay_ropes() -> void:
 	for k in BARBELS.size():
 		var barbel: Array = BARBELS[k]
 		var piece: float = float(barbel[3]) * barbel_long * size / (POINTS - 1)
-		var held := _held(barbel)
+		var held := _held(barbel, k >= 2 and k <= 5)
 		var rest: Vector3 = held[0]
 		for i in POINTS:
 			if i > 0:
@@ -250,10 +268,11 @@ func clear_of_body(at: Vector3) -> float:
 
 
 ## Sets one of the shader's settings: its colours (`back`, `back_blue`, `side`, `belly`,
-## `spot`, `lip`, `fin`, `fin_edge`, `fin_pale`, `barbel`, `barbel_chin`, `iris`) and
-## `spots_show` (how strongly its spots show: 0 a big old slate one).
+## `spot`, `lip`, `fin`, `fin_edge`, `fin_pale`, `barbel`, `barbel_chin`, `iris`, `mouth_inside`)
+## and `spots_show` (how strongly its spots show: 0 a big old slate one). (`sway`, `wave` and
+## `gape` given here set the node's own, so that its barbels keep up.)
 func set_shader_parameter(setting: StringName, value: Variant) -> void:
-	if setting == &"sway" or setting == &"wave":
+	if setting == &"sway" or setting == &"wave" or setting == &"gape":
 		set(setting, value)
 	else:
 		_material.set_shader_parameter(setting, value)
@@ -331,10 +350,17 @@ func _unbent(p: Vector3) -> Vector3:
 
 
 ## A barbel's root and the frame its rest is in, now (world): [root, the basis that turns its
-## ways from the still model's to the world's].
-func _held(barbel: Array) -> Array:
+## ways from the still model's to the world's]. One `on_jaw` (the chin's) goes down with the
+## lower jaw as the mouth opens, as the shader swings the jaw.
+func _held(barbel: Array, on_jaw := false) -> Array:
 	var root: Vector3 = barbel[0]
-	var turned := global_basis.orthonormalized() * Basis(Vector3.UP, _turn_at(root.z + LENGTH * 0.5))
+	var jaw := Basis.IDENTITY
+	if on_jaw and gape > 0.0:
+		var xm := root.z + LENGTH * 0.5
+		jaw = Basis(Vector3.RIGHT, -gape * GAPE_TURN * (1.0 - smoothstep(MOUTH_TO - 0.005, JAW_BACK, xm)))
+		var hinge := Vector3(0.0, HINGE.y, HINGE.x - LENGTH * 0.5)
+		root = hinge + jaw * (root - hinge)
+	var turned := global_basis.orthonormalized() * Basis(Vector3.UP, _turn_at(root.z + LENGTH * 0.5)) * jaw
 	return [global_transform * _bent(root), turned, barbel]
 
 
@@ -392,7 +418,7 @@ func _swing_ropes(velocity: Vector3, delta: float) -> void:
 		var base := k * POINTS
 		var long: float = float(barbel[3]) * barbel_long
 		var piece: float = long * size / (POINTS - 1)
-		var held := _held(barbel)
+		var held := _held(barbel, k >= 2 and k <= 5)
 		var rest: Vector3 = held[0]
 		var turned: Basis = held[1]
 		var own := k * 2.399

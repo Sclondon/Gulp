@@ -1,0 +1,207 @@
+shader_type spatial;
+// The ammonite (ammonite.gd): every marking drawn here (no texture files), its rocking and
+// bobbing as it jets, its trailing, curling tentacles and its head pulled into the shell
+// (`withdraw`). What each point is comes from the model (tools/build_ammonite.py): UV2.y the part
+// times 16 plus which one of them it is (0 the shell, 1 the head and funnel, 2 an eye, 3 the hood,
+// 4 a tentacle, 0 to 9); the colour's red, green and blue a place (in the box BOX_MIN to BOX_MAX:
+// a tentacle's root, the hood's hinge, an eye's middle); the colour's alpha how far along a
+// tentacle (0 root, 1 tip) or the hood (0 hinge, 1 front edge); UV.x, UV.y and UV2.x three more
+// numbers: on the shell how far round the coil (radians), how far round its section from the
+// outer edge (0) to the inner side (1), and 0 outside, 1 the inner wall, 2 the lip; on a
+// tentacle, its direction at rest.
+//
+// Its -Z is the way it jets, shell first. All of the motion is a function of `phase` (and
+// `withdraw`) alone, so a picture of it loops exactly. Nothing here needs more than GL
+// Compatibility has.
+render_mode cull_back;
+
+// Kept in step with the model (build_ammonite.py prints them as AS THE SHADER HAS IT).
+const vec3 BOX_MIN = vec3(-0.3, -0.3, -0.3);
+const vec3 BOX_MAX = vec3(0.3, 0.3, 0.3);
+// The coil's axis (along X through this point), the aperture's middle, the way out of it, and
+// down its section towards the outer edge; where the aperture is round the coil (radians); the
+// ribs to a turn.
+const vec3 COIL = vec3(0.0, 0.03827, 0.03553);
+const vec3 APERTURE = vec3(0.0, -0.12104, 0.01145);
+const vec3 OUT_OF = vec3(0.0, -0.28445, 0.95869);
+const vec3 DOWN = vec3(0.0, -0.95869, -0.28445);
+const float PHI_END = 1.42080;
+const float RIBS = 26.0;
+// Withdrawn: how far round the coil the head is drawn back into the body chamber (radians), and
+// how far the hood turns down over the aperture (radians).
+const float BACK = 0.85;
+const float HOOD_SHUT = 1.45;
+
+// How far through one beat (0..1, it wraps): one jet, one rock and bob. Set by Ammonite.
+uniform float phase = 0.0;
+// How strongly it rocks, bobs and jets, and how much its tentacles trail and curl: 1 swimming.
+uniform float sway = 1.0;
+// Its head and tentacles: 0 out, 1 pulled right into the shell behind the hood.
+uniform float withdraw : hint_range(0.0, 1.0) = 0.0;
+
+// The shell: its cream ground, the reddish-brown flames, the sheen of mother-of-pearl, how strongly
+// the flames show and how pearly it is.
+uniform vec3 cream : source_color = vec3(0.86, 0.79, 0.66);
+uniform vec3 flame : source_color = vec3(0.47, 0.17, 0.08);
+uniform float flames_show = 0.9;
+uniform float pearl = 0.6;
+// The soft body: its leathery skin, the hood's darker hide, the tentacles' paler skin.
+uniform vec3 skin : source_color = vec3(0.6, 0.36, 0.25);
+uniform vec3 hide : source_color = vec3(0.36, 0.22, 0.15);
+uniform vec3 tentacle : source_color = vec3(0.84, 0.64, 0.52);
+
+varying vec3 rest;
+varying float part;
+varying float index;
+varying float along;
+varying vec3 kk;
+varying vec3 joint;
+
+float hash2(vec2 p) {
+	vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+	q += dot(q, q.yzx + 33.33);
+	return fract((q.x + q.y) * q.z);
+}
+
+float noise2(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+// `v` turned by `a` about the axis `k` (a unit vector).
+vec3 turned(vec3 v, vec3 k, float a) {
+	float c = cos(a);
+	float s = sin(a);
+	return v * c + cross(k, v) * s + k * dot(k, v) * (1.0 - c);
+}
+
+void vertex() {
+	float code = floor(UV2.y + 0.5);
+	part = floor((code + 0.5) / 16.0);
+	index = code - part * 16.0;
+	along = COLOR.a;
+	kk = vec3(UV.x, UV.y, UV2.x);
+	joint = mix(BOX_MIN, BOX_MAX, COLOR.rgb);
+	rest = VERTEX;
+	vec3 v = VERTEX;
+	vec3 n = NORMAL;
+	int p = int(part + 0.5);
+	float wave = 6.2831853 * phase;
+	// (each beat a jet: the head draws in a little and the tentacles bunch)
+	float pulse = sway * pow(0.5 + 0.5 * sin(wave), 4.0);
+	float w = clamp(withdraw + 0.1 * pulse * (1.0 - withdraw), 0.0, 1.0);
+	if (p == 4) {
+		// A tentacle: it trails and curls down, a wave running out along it, each a little out of
+		// step with the next; at the jet they bunch; withdrawn they draw in to their roots.
+		vec3 dir = normalize(kk);
+		vec3 bend = normalize(cross(dir, DOWN));
+		float curl = 0.15 + sway * (0.3 + 0.3 * sin(wave - 2.5 * along + index * 0.63)) - 0.25 * pulse;
+		v = joint + turned(v - joint, bend, curl * along);
+		n = turned(n, bend, curl * along);
+		float side = sway * 0.18 * sin(wave + index * 1.3) * along;
+		v = joint + turned(v - joint, DOWN, side);
+		n = turned(n, DOWN, side);
+		v = joint + (v - joint) * (1.0 - 0.72 * w);
+	}
+	if (p == 1 || p == 2 || p == 4) {
+		// The head, the eyes, the tentacles and the funnel: withdrawn, a little smaller, back
+		// along the tube and round the coil into the body chamber.
+		v = APERTURE + (v - APERTURE) * (1.0 - 0.22 * w) - OUT_OF * (0.025 * w);
+		float b = BACK * w;
+		v = COIL + turned(v - COIL, vec3(1.0, 0.0, 0.0), b);
+		n = turned(n, vec3(1.0, 0.0, 0.0), b);
+	} else if (p == 3) {
+		// The hood: withdrawn, it stretches and turns down about its hinge over the aperture.
+		float a = HOOD_SHUT * withdraw;
+		vec3 d = v - joint;
+		d += OUT_OF * (dot(d, OUT_OF) * 0.55 * withdraw);
+		v = joint + turned(d, vec3(1.0, 0.0, 0.0), a);
+		n = turned(n, vec3(1.0, 0.0, 0.0), a);
+	}
+	// The whole of it rocks nose up and down and bobs as it jets.
+	float rock = sway * 0.06 * sin(wave + 0.6);
+	v = turned(v, vec3(1.0, 0.0, 0.0), rock);
+	n = turned(n, vec3(1.0, 0.0, 0.0), rock);
+	v.y += sway * 0.006 * sin(wave - 1.0);
+	VERTEX = v;
+	NORMAL = n;
+}
+
+void fragment() {
+	int p = int(part + 0.5);
+	vec3 nn = normalize(NORMAL);
+	float facing = abs(dot(nn, normalize(VIEW)));
+	float glance = 1.0 - facing;
+	vec3 c;
+	float rough = 0.55;
+	float spec = 0.4;
+	if (p == 0) {
+		float phi = kk.x;
+		float round_it = kk.y;
+		float crest = pow(0.5 + 0.5 * cos(RIBS * phi), 4.0);
+		// (the pearly sheen: colours that shift as the surface turns from the eye)
+		vec3 irid = 0.5 + 0.5 * cos(6.2831853 * (glance * 1.3 + phi * 0.03 + vec3(0.0, 0.33, 0.67)));
+		if (kk.z < 0.5) {
+			// The outside: cream, the ribs' crests lighter and the furrows between them darker;
+			// reddish-brown flames across each whorl from its inner side to its outer edge, waving,
+			// wider towards the coil's middle, fading out over the last part of the body chamber.
+			c = cream * (0.82 + 0.22 * crest);
+			float wobble = 0.16 * sin(round_it * 8.0 + phi * 0.7) + 0.05 * sin(round_it * 21.0);
+			float band = 0.5 + 0.5 * sin(13.0 * (phi + wobble));
+			float flames = smoothstep(0.35 - 0.25 * round_it, 0.75 - 0.25 * round_it, band);
+			flames *= (1.0 - smoothstep(PHI_END - 2.4, PHI_END - 1.1, phi)) * (0.55 + 0.45 * smoothstep(0.0, 0.5, round_it));
+			flames *= 0.8 + 0.2 * noise2(vec2(phi * 9.0, round_it * 6.0));
+			c = mix(c, flame * (0.85 + 0.25 * crest), flames * flames_show);
+			// the innermost whorls, old and worn, greyer
+			c = mix(c, c * vec3(0.8, 0.8, 0.85), 1.0 - smoothstep(PHI_END - 16.0, PHI_END - 9.0, phi));
+			c = mix(c, c * 0.65 + irid * 0.45, glance * glance * pearl);
+			rough = 0.28;
+			spec = 0.7;
+		} else if (kk.z < 1.5) {
+			// The inner wall of the body chamber: mother-of-pearl, darker deeper in.
+			c = mix(vec3(0.88, 0.86, 0.84), irid, 0.35 * pearl);
+			c *= mix(1.0, 0.25, smoothstep(0.0, 0.9, PHI_END - phi));
+			rough = 0.2;
+			spec = 0.8;
+		} else {
+			// The lip: cream, a dark band along its edge.
+			c = cream * 0.95;
+			c = mix(c, flame * 0.5, 0.6);
+			rough = 0.4;
+		}
+	} else if (p == 1) {
+		// The head and the funnel: leathery, mottled, paler beneath.
+		float mottle = noise2(rest.xz * 90.0 + rest.y * 40.0) * 0.6 + noise2(rest.zy * 260.0) * 0.4;
+		c = skin * (0.75 + 0.4 * mottle);
+		c = mix(c, tentacle, 0.35 * smoothstep(0.0, 0.6, dot(nn, vec3(0.0, -1.0, 0.0))));
+		rough = 0.6;
+	} else if (p == 2) {
+		// An eye: a dark glossy ball, a golden-brown iris round a black slit of a pupil on its
+		// outer side.
+		vec3 d = normalize(rest - joint);
+		float outer = abs(d.x);
+		vec2 across = vec2(d.y, d.z);
+		float slit = length(across * vec2(1.0, 0.35));
+		c = vec3(0.07, 0.05, 0.05);
+		c = mix(c, vec3(0.55, 0.38, 0.12), smoothstep(0.55, 0.7, outer));
+		c = mix(c, vec3(0.01), (1.0 - smoothstep(0.09, 0.14, slit)) * step(0.0, outer - 0.6));
+		rough = 0.12;
+		spec = 0.8;
+	} else if (p == 3) {
+		// The hood: a thick, warty, dark leathery hide, its edge paler.
+		float warts = smoothstep(0.55, 0.8, noise2(rest.xz * 160.0 + rest.y * 90.0));
+		c = hide * (0.8 + 0.3 * noise2(rest.xy * 60.0)) * (1.0 - 0.25 * warts);
+		c = mix(c, skin, smoothstep(0.75, 1.0, along) * 0.6);
+		rough = 0.85;
+		spec = 0.25;
+	} else {
+		// A tentacle: pale, a little darker towards its tip, faint rings along it.
+		c = mix(tentacle, skin, 0.45 * along) * (0.92 + 0.08 * sin(along * 70.0));
+		rough = 0.5;
+	}
+	ALBEDO = c;
+	ROUGHNESS = rough;
+	SPECULAR = spec;
+}

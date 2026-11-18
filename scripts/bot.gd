@@ -7,6 +7,11 @@ extends RefCounted
 var player: Player
 var life: Life
 
+# When it last ate, and how many meals it had had then: a while with nothing eaten and it gives up
+# on what it is after (something that keeps running, or that it cannot reach) for a school.
+var _meals := -1
+var _hungry := 0.0
+
 
 ## Sets the player's stick and burst for this frame.
 func drive() -> void:

@@ -2,11 +2,14 @@ shader_type spatial;
 // The channel catfish (channel_catfish.gd): every marking drawn here (no texture files), its
 // swimming, and its barbels laid along their ropes. What each point is comes from the model
 // (tools/build_channel_catfish.py): UV2.y the part (0 body, 1 dorsal, 2 adipose, 3 anal, 4 the
-// tail, 5 a pectoral fin, 6 a pelvic fin, 7 an eye, 8 a barbel). UV, on the body: x how far along,
-// y how high on its side (1 the ridge of the back, 0 the keel of the belly); on a fin: x root (0)
-// to tip (1), y leading edge (0) to trailing edge (1); on an eye: x middle (0) to rim (1); on a
-// barbel: x root (0) to tip (1), y how far round it (0..1). UV2.x, on a barbel: which one (0 to 7,
-// the whole part) and how thick it is at its root (the fraction: metres times 100).
+// tail, 5 a pectoral fin, 6 a pelvic fin, 7 an eye, 8 a barbel, 9 the lower jaw, 10 a cheek). UV,
+// on the body and the lower jaw: x how far along, y how high on its side (1 the ridge of the back,
+// 0 the keel of the belly); on a fin: x root (0) to tip (1), y leading edge (0) to trailing edge
+// (1); on an eye: x middle (0) to rim (1); on a barbel: x root (0) to tip (1), y how far round it
+// (0..1); on a cheek: x how far along. UV2.x, on a barbel: which one (0 to 7, the whole part) and
+// how thick it is at its root (the fraction: metres times 100); on the body and the lower jaw, how
+// far inside the mouth (0 skin and lips, 1 the middle of its roof or floor); on a cheek, how far
+// down it from the upper lip (0) to the lower (1).
 //
 // It swims as catfish do: a slow wave runs back along the whole body, small at the head, least
 // just behind it, widest at the tail, and every cross-section is turned to stay square to the
@@ -21,6 +24,12 @@ render_mode cull_back;
 const float LENGTH = 0.6;
 const float HALF = 0.3;
 const float MOUTH_TO = 0.031;
+// Where the lower jaw hinges (metres behind the snout, metres up: the corners of the mouth), where
+// it ends at the belly, and how far it swings down for `gape` 1 (radians: the front of the lower
+// lip drops about 0.013 m). ChannelCatfish has the same numbers, for the chin's barbels.
+const vec2 HINGE = vec2(0.031, -0.02794);
+const float JAW_BACK = 0.043;
+const float GAPE_TURN = 0.55;
 // How many points a barbel's rope has (the picture is this wide, and sixteen high: a row of
 // points for each barbel, then a row for each of which way is "side" at each point).
 const int POINTS = 8;
@@ -37,6 +46,9 @@ uniform float curl = 0.0;
 uniform float sway = 1.0;
 // How long the wave along its body is, in body lengths.
 uniform float wave = 0.95;
+// How far its mouth is open (the user, 2026-11-17: "the fish should be able to open their
+// mouths"): 0 shut, 1 wide open. Set by ChannelCatfish.
+uniform float gape : hint_range(0.0, 1.0) = 0.0;
 // The barbels' ropes (ChannelCatfish sends them).
 // How thick the barbels are drawn, for 1 as the model has them (the user, 2026-11-17: "The catfish
 // whiskers need to be thicker": the model's own are a real catfish's, hair-fine at any distance).
@@ -52,6 +64,8 @@ uniform vec3 belly : source_color = vec3(0.93, 0.92, 0.88);
 uniform vec3 spot : source_color = vec3(0.03, 0.035, 0.04);
 // The lips and the inside of the mouth's line.
 uniform vec3 lip : source_color = vec3(0.7, 0.62, 0.6);
+// The inside of the mouth.
+uniform vec3 mouth_inside : source_color = vec3(0.13, 0.07, 0.075);
 // The fins: their dusky membrane, their dark edges, the paler roots of the lower ones.
 uniform vec3 fin : source_color = vec3(0.2, 0.23, 0.24);
 uniform vec3 fin_edge : source_color = vec3(0.05, 0.06, 0.065);
@@ -91,6 +105,20 @@ float side_at(float xm) {
 	return sway * reach * sin(6.2831853 * (phase - s / wave));
 }
 
+// How much of the jaw's swing a point `xm` metres behind the snout takes: all of it ahead of the
+// corners of the mouth, none at the belly (as the model has it: `jaw_turn`).
+float jaw_turn(float xm) {
+	return 1.0 - smoothstep(MOUTH_TO - 0.005, JAW_BACK, xm);
+}
+
+// `v` (and its normal `n`) swung down about the jaw's hinge by `a` radians.
+void swing(inout vec3 v, inout vec3 n, float a) {
+	vec2 hinge = vec2(HINGE.y, HINGE.x - HALF);
+	vec2 d = v.yz - hinge;
+	v.yz = hinge + vec2(d.x * cos(a) + d.y * sin(a), d.y * cos(a) - d.x * sin(a));
+	n.yz = vec2(n.y * cos(a) + n.z * sin(a), n.z * cos(a) - n.y * sin(a));
+}
+
 vec3 rope_point(int i, int row) {
 	return texelFetch(ropes, ivec2(clamp(i, 0, POINTS - 1), row), 0).xyz;
 }
@@ -116,7 +144,7 @@ void vertex() {
 	rest = VERTEX;
 	rest_normal = NORMAL;
 	whisker = 0.0;
-	if (part > 7.5) {
+	if (part > 7.5 && part < 8.5) {
 		// A barbel: laid along a smooth curve through its rope's points, a tapering round tube.
 		whisker = floor(UV2.x);
 		float thick = fract(UV2.x) * 0.01 * barbel_thick;
@@ -143,6 +171,17 @@ void vertex() {
 		NORMAL = out_way;
 	} else {
 		vec3 v = VERTEX;
+		vec3 n = NORMAL;
+		if (part > 8.5 && part < 9.5) {
+			// The lower jaw swings down about its hinge: all of it ahead of the corners of the
+			// mouth, its back less and less, as the throat stretches.
+			swing(v, n, clamp(gape, 0.0, 1.0) * GAPE_TURN * jaw_turn(v.z + HALF));
+		} else if (part > 9.5) {
+			// A cheek hangs between the lips: the model has it as it is with the mouth wide open;
+			// it folds up along the line of the mouth as the mouth shuts (each point swung as far
+			// as it is down the cheek, UV2.x).
+			swing(v, n, (clamp(gape, 0.0, 1.0) - 1.0) * GAPE_TURN * jaw_turn(UV.x * LENGTH) * UV2.x);
+		}
 		float xm = v.z + HALF;
 		float h = side_at(xm);
 		float slope = (side_at(xm + 0.004) - side_at(xm - 0.004)) / 0.008;
@@ -150,7 +189,7 @@ void vertex() {
 		float c = cos(turn);
 		float sn = sin(turn);
 		VERTEX = vec3(h + v.x * c, v.y, v.z - v.x * sn);
-		NORMAL = vec3(NORMAL.x * c + NORMAL.z * sn, NORMAL.y, -NORMAL.x * sn + NORMAL.z * c);
+		NORMAL = vec3(n.x * c + n.z * sn, n.y, -n.x * sn + n.z * c);
 		vec3 curled = VERTEX;
 		vec3 curled_normal = NORMAL;
 		curl_bend(curled, curled_normal);
@@ -179,7 +218,7 @@ void fragment() {
 	vec3 c;
 	float rough = 0.5;
 	float spec = 0.3;
-	if (p == 0) {
+	if (p == 0 || p == 9) {
 		float xm = rest.z + HALF;
 		float y = rest.y;
 		float h = UV.y;
@@ -243,6 +282,11 @@ void fragment() {
 		// (scaleless, slimy skin: smooth and wet)
 		rough = mix(0.26, 0.36, dark);
 		spec = 0.55;
+		// The inside of the mouth (its roof and floor, which the model marks: seen when it gapes).
+		float lined = smoothstep(0.0, 0.12, UV2.x);
+		c = mix(c, mouth_inside, lined);
+		rough = mix(rough, 0.7, lined);
+		spec = mix(spec, 0.3, lined);
 	} else if (p == 1) {
 		// The dorsal: dusky, darker towards its edge, a pale stiff spine up its front, soft rays.
 		c = mix(fin, fin_edge, smoothstep(0.35, 1.0, UV.x) * 0.8);
@@ -283,6 +327,11 @@ void fragment() {
 		c = mix(c, back * 0.6, smoothstep(0.76, 0.95, r));
 		rough = 0.1;
 		spec = 0.7;
+	} else if (p == 10) {
+		// A cheek: the inside of the mouth.
+		c = mouth_inside * (0.8 + 0.4 * UV2.x);
+		rough = 0.7;
+		spec = 0.3;
 	} else {
 		// A barbel: the mouth's and the nostrils' dark; the chin's four paler, dusky to their tips.
 		float chin = step(1.5, whisker) * (1.0 - step(5.5, whisker));

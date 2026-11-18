@@ -1,10 +1,13 @@
 shader_type spatial;
 // The clown loach (clown_loach.gd): every marking drawn here (no texture files), and all of its
 // moving. What each point is comes from the model (tools/build_clown_loach.py): UV2.y the part
-// (0 body, 1 dorsal, 2 anal, 3 the tail, 4 a pectoral fin, 5 a pelvic fin, 6 an eye, 7 a barbel).
-// UV, on the body: x how far along, y how high on its side (1 the ridge of the back, 0 the keel
-// of the belly); on a fin: x root (0) to tip (1), y leading edge (0) to trailing edge (1); on an
-// eye: x middle (0) to rim (1); on a barbel: x root (0) to tip (1), y which barbel (over 8).
+// (0 body, 1 dorsal, 2 anal, 3 the tail, 4 a pectoral fin, 5 a pelvic fin, 6 an eye, 7 a barbel,
+// 8 the lower jaw, 9 a cheek). UV, on the body and the lower jaw: x how far along, y how high on
+// its side (1 the ridge of the back, 0 the keel of the belly); on a fin: x root (0) to tip (1), y
+// leading edge (0) to trailing edge (1); on an eye: x middle (0) to rim (1); on a barbel: x root
+// (0) to tip (1), y which barbel (over 8); on a cheek: x how far along. UV2.x, on the body and
+// the lower jaw, how far inside the mouth (0 skin and lips, 1 the middle of its roof or floor); on
+// a cheek, how far down it from the upper lip (0) to the lower (1).
 //
 // It swims with a quick wriggle: a wave that runs back along the whole body and grows towards
 // the tail, which swings wide; its pectoral fins fan about their roots; its barbels twitch. All of
@@ -18,6 +21,13 @@ const float LENGTH = 0.2;
 const float HALF = 0.1;
 const vec3 PECTORAL_ROOT = vec3(0.00985, -0.00657, -0.05100);
 const vec3 PECTORAL_AXIS = vec3(-0.4633, -0.8623, -0.2043);
+// Where the lower jaw hinges (metres behind the snout, metres up: the corners of the mouth), where
+// it ends at the belly, and how far it swings down for `gape` 1 (radians: the front lip drops about
+// 3 mm, the mouth opening downwards).
+const float MOUTH_TO = 0.0085;
+const vec2 HINGE = vec2(0.0085, -0.00463);
+const float JAW_BACK = 0.0125;
+const float GAPE_TURN = 0.75;
 
 // How far through a beat it is (0..1, it wraps), and how many times in a beat its tail beats, its
 // pectoral fins fan and its barbels twitch (whole numbers). Set by ClownLoach.
@@ -39,6 +49,9 @@ uniform float wave = 0.85;
 // barbels twitch (1: their tips about 2 mm).
 uniform float fan = 1.0;
 uniform float twitch = 1.0;
+// How far its mouth is open (the user, 2026-11-17: "the fish should be able to open their
+// mouths"): 0 shut, 1 wide open. Set by ClownLoach.
+uniform float gape : hint_range(0.0, 1.0) = 0.0;
 
 // The body: orange above, paler and yellower underneath, browner along the ridge of the back.
 uniform vec3 orange : source_color = vec3(0.93, 0.45, 0.07);
@@ -54,6 +67,8 @@ uniform vec3 fin_orange : source_color = vec3(0.95, 0.36, 0.06);
 uniform vec3 fin_dark : source_color = vec3(0.045, 0.035, 0.045);
 // The lips and the barbels.
 uniform vec3 barbel : source_color = vec3(0.93, 0.66, 0.56);
+// The inside of the mouth.
+uniform vec3 mouth_inside : source_color = vec3(0.16, 0.04, 0.04);
 // How much of each band shows (1 all of it; a loach "greys out" when it squabbles).
 uniform float bands_show = 1.0;
 
@@ -79,6 +94,20 @@ float side_at(float xm) {
 	float s = xm / LENGTH;
 	float reach = LENGTH * (0.016 - 0.062 * s + 0.146 * s * s);
 	return sway * reach * sin(TAU * (tail_beats * phase - s / wave));
+}
+
+// How much of the jaw's swing a point `xm` metres behind the snout takes: all of it ahead of the
+// corners of the mouth, none at the belly (as the model has it: `jaw_turn`).
+float jaw_turn(float xm) {
+	return 1.0 - smoothstep(MOUTH_TO - 0.0015, JAW_BACK, xm);
+}
+
+// `v` (and its normal `n`) swung down about the jaw's hinge by `a` radians.
+void swing(inout vec3 v, inout vec3 n, float a) {
+	vec2 hinge = vec2(HINGE.y, HINGE.x - HALF);
+	vec2 d = v.yz - hinge;
+	v.yz = hinge + vec2(d.x * cos(a) + d.y * sin(a), d.y * cos(a) - d.x * sin(a));
+	n.yz = vec2(n.y * cos(a) + n.z * sin(a), n.z * cos(a) - n.y * sin(a));
 }
 
 // The body behind the head laid round an arc (see `curl`).
@@ -115,12 +144,25 @@ void vertex() {
 		n = n * ca + cross(PECTORAL_AXIS, n) * sa + PECTORAL_AXIS * dot(PECTORAL_AXIS, n) * (1.0 - ca);
 		v.x *= side;
 		n.x *= side;
-	} else if (part > 6.5) {
-		// A barbel twitches, each in its own time, most at its tip.
+	} else if (part > 6.5 && part < 7.5) {
+		// A barbel twitches, each in its own time, most at its tip; the chin's two (6 and 7) go
+		// with the lower jaw.
 		float id = UV.y * 8.0;
 		float a = sin(TAU * twitches * phase + id * 2.4) + 0.5 * sin(TAU * (2.0 * twitches + 1.0) * phase + id * 4.1);
 		float b = sin(TAU * (twitches + 1.0) * phase + id * 1.7);
 		v += vec3(a, 0.3 * b, 0.6 * b) * (UV.x * UV.x * 0.0013 * twitch);
+		if (id > 5.5) {
+			swing(v, n, clamp(gape, 0.0, 1.0) * GAPE_TURN);
+		}
+	} else if (part > 7.5 && part < 8.5) {
+		// The lower jaw swings down about its hinge: all of it ahead of the corners of the mouth,
+		// its back less and less, as the throat stretches.
+		swing(v, n, clamp(gape, 0.0, 1.0) * GAPE_TURN * jaw_turn(v.z + HALF));
+	} else if (part > 8.5) {
+		// A cheek hangs between the lips: the model has it as it is with the mouth wide open; it
+		// folds up along the line of the mouth as the mouth shuts (each point swung as far as it is
+		// down the cheek, UV2.x).
+		swing(v, n, (clamp(gape, 0.0, 1.0) - 1.0) * GAPE_TURN * jaw_turn(UV.x * LENGTH) * UV2.x);
 	}
 	float xm = v.z + HALF;
 	float zc = clamp(xm, 0.0, LENGTH);
@@ -163,7 +205,7 @@ void fragment() {
 	vec3 c;
 	float rough = 0.4;
 	float spec = 0.5;
-	if (p == 0) {
+	if (p == 0 || p == 8) {
 		float xm = rest.z + HALF;
 		float s = xm / LENGTH;
 		float q = UV.y;
@@ -199,6 +241,11 @@ void fragment() {
 		c = mix(c, tail_colour(s) * (0.95 + 0.1 * grain), smoothstep(0.74, 0.785, s) * (1.0 - dark));
 		rough = mix(0.36, 0.5, dark);
 		spec = mix(0.55, 0.4, dark);
+		// The inside of the mouth (its roof and floor, which the model marks: seen when it gapes).
+		float lined = smoothstep(0.0, 0.12, UV2.x);
+		c = mix(c, mouth_inside, lined);
+		rough = mix(rough, 0.7, lined);
+		spec = mix(spec, 0.3, lined);
 	} else if (p == 1) {
 		// The dorsal: dark from its root (the third band runs up into it), its rays and its edge
 		// red-orange.
@@ -238,6 +285,11 @@ void fragment() {
 		c = mix(c, band, smoothstep(0.82, 0.98, r));
 		rough = 0.12;
 		spec = 0.65;
+	} else if (p == 9) {
+		// A cheek: the inside of the mouth.
+		c = mouth_inside * (0.8 + 0.4 * UV2.x);
+		rough = 0.7;
+		spec = 0.3;
 	} else {
 		// A barbel: pale and fleshy.
 		c = barbel * (0.9 + 0.1 * UV.x);

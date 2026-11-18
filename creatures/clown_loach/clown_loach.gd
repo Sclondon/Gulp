@@ -15,7 +15,7 @@ extends Node3D
 ##
 ## It swims with a quick wriggle, drawn by the shader (no bones): a wave down its whole body,
 ## the tail swinging wide; its pectoral fins fan; its barbels twitch. Loaches also loaf on their
-## sides: `tilt` leans it over, `roll` rocks it slowly.
+## sides: `tilt` leans it over, `roll` rocks it slowly. Its small mouth opens downwards: `gape`.
 ##
 ## Everything that moves runs on `phase`, 0 to 1 through one `beat`: in a beat its tail beats
 ## `tail_beats` times, its pectoral fins fan `fans` times, its barbels twitch `twitches` times
@@ -73,6 +73,13 @@ const WIDTH := 0.026
 	set(value):
 		rolls = maxi(value, 0)
 		_lean()
+## How far its mouth is open: 0 shut (as it always was before 2026-11-17), 1 wide open (its
+## lower jaw and the chin's barbels swung down about the corners of the mouth, the front lip about
+## 3 mm, the small mouth opening downwards; the inside of the mouth is dark).
+@export_range(0.0, 1.0) var gape := 0.0:
+	set(value):
+		gape = clampf(value, 0.0, 1.0)
+		_send(&"gape", gape)
 ## The low model (about a tenth of the triangles), for far off or for many of them.
 @export var low := false:
 	set(value):
@@ -103,6 +110,7 @@ func _ready() -> void:
 	for setting: StringName in [&"tail_beats", &"fans", &"twitches"]:
 		_send(setting, float(get(setting)))
 	_send(&"sway", sway)
+	_send(&"gape", gape)
 	_send(&"phase", phase)
 	_lean()
 
@@ -115,7 +123,7 @@ func step(_velocity: Vector3, delta: float) -> void:
 
 
 ## Sets one of the shader's settings: its colours (`orange`, `pale`, `ridge`, `band`,
-## `band_glance`, `fin_red`, `fin_orange`, `fin_dark`, `barbel`), `bands_show` (how much of its
+## `band_glance`, `fin_red`, `fin_orange`, `fin_dark`, `barbel`, `mouth_inside`), `bands_show` (how much of its
 ## bands shows), `wave` (the length of the wave along its body, in body lengths), `fan` (how far
 ## its pectoral fins fan) and `twitch` (how far its barbels twitch).
 func set_shader_parameter(setting: StringName, value: Variant) -> void:

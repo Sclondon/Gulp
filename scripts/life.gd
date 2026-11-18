@@ -33,6 +33,15 @@ const SARDINE_SCHOOLS := 4
 const SARDINES_EACH := 36
 const SARDINE_LENGTH := 0.2
 const JELLIES := 9
+const KRILL := "res://creatures/krill/krill.gd"
+const PLANKTON := "res://creatures/plankton/plankton_cloud.gd"
+## Clouds of plankton: how many, how many specks in each, how wide (m), and how long a speck counts
+## as (m). Only a small fish feeds on them (`PLANKTON_EATER`: no longer than this).
+const PLANKTON_CLOUDS := 8
+const PLANKTON_SPECKS := 260
+const PLANKTON_RADIUS := 2.6
+const PLANKTON_LENGTH := 0.012
+const PLANKTON_EATER := 0.45
 ## Sea nettles: how many, how big beside the creature as built (its bell 1.8 m across, its strands
 ## 5 m), and how long one counts as for the eating rule.
 const NETTLES := 2
@@ -59,6 +68,7 @@ var steps := 0
 var creatures: Array[Creature] = []
 var jellies: Array[MoonJelly] = []
 var nettles: Array[SeaNettle] = []
+var plankton: Array[Node3D] = []
 ## Each: {flock, length, rich, goal, radius, low, high, seen}.
 var schools: Array[Dictionary] = []
 
@@ -91,8 +101,9 @@ func _ready() -> void:
 			var rules := _sardine_rules()
 			rules.size = 1.0
 			rules.count = 44
-			rules.max_speed = 2.0
-			rules.cruise_speed = 1.1
+			# (slow enough in a fright that the smallest fish can run one down)
+			rules.max_speed = 1.3
+			rules.cruise_speed = 0.9
 			rules.bounds_size = Vector3(3.5, 3.0, 3.5)
 			_school(rules, Fish.school_mesh("anchovy"), 0.14, ["sand", "grass", "kelp"][i], 0.4, 0.85, 300 + i)
 	if Species.has("piranha"):
@@ -117,6 +128,15 @@ func _ready() -> void:
 		neons.cruise_speed = 0.8
 		neons.bounds_size = Vector3(2.5, 1.6, 2.5)
 		_school(neons, Fish.school_mesh("neon_tetra"), 0.1, "river", 0.3, 0.8, 600)
+	if ResourceLoader.exists("res://creatures/zebra_danio/zebra_danio.gd"):
+		var danios := _sardine_rules()
+		# (twice life size: a zebra danio is 4.5 cm)
+		danios.size = 2.0
+		danios.count = 26
+		danios.max_speed = 1.6
+		danios.cruise_speed = 0.9
+		danios.bounds_size = Vector3(2.5, 1.6, 2.5)
+		_school(danios, Fish.school_mesh("zebra_danio"), 0.09, "river", 0.4, 0.9, 700)
 	if Species.has("mackerel"):
 		for i in 2:
 			var rules := _sardine_rules()
@@ -126,6 +146,13 @@ func _ready() -> void:
 			rules.cruise_speed = 1.7
 			rules.bounds_size = Vector3(6.0, 5.0, 6.0)
 			_school(rules, Fish.school_mesh("pacific_mackerel"), 0.4, "open", 0.5, 0.9, 200 + i)
+	if ResourceLoader.exists(PLANKTON):
+		for i in PLANKTON_CLOUDS:
+			var cloud: Node3D = (load(PLANKTON) as GDScript).new()
+			add_child(cloud)
+			cloud.global_position = _school_place(["", "kelp", "grass", "open"][i % 4], PLANKTON_RADIUS, 0.4, 0.9)
+			cloud.call(&"fill", Vector3.ZERO, PLANKTON_RADIUS, PLANKTON_SPECKS)
+			plankton.append(cloud)
 	# Every kind Species has, where its creature is installed.
 	for kind: String in Species.ALL:
 		var entry := Species.of(kind)
@@ -179,6 +206,7 @@ func step(delta: float) -> void:
 	var t2 := Time.get_ticks_usec()
 	_step_jellies(delta)
 	_step_nettles(delta)
+	_step_plankton()
 	cost_usec += Vector3(t1 - t0, t2 - t1, Time.get_ticks_usec() - t2)
 	for school in schools:
 		if (school.flock as Flock).visible:
@@ -187,15 +215,26 @@ func step(delta: float) -> void:
 
 
 ## The nearest thing the player could eat just now (world), or Vector3.INF. For the bot.
-func nearest_food() -> Vector3:
+func nearest_food(only_schools := false) -> Vector3:
 	var best := Vector3.INF
 	var near := INF
 	var at := player.global_position
 	for school in schools:
 		if not is_food(player.length, school.length):
 			continue
+		# (given up on what runs: only what drifts, the krill)
+		if only_schools and float(school.length) > 0.06:
+			continue
 		var flock: Flock = school.flock
 		if flock.global_position.distance_to(at) - float(school.radius) > near:
+			continue
+		if not flock.visible:
+			# (too far off to be moved or drawn: its fish are wherever they were left, so make for
+			# the school itself, and count it further off than anything in sight)
+			var off := flock.global_position.distance_to(at) + 20.0
+			if off < near:
+				near = off
+				best = flock.global_position
 			continue
 		var i := flock.nearest(at)
 		if i >= 0:
@@ -203,6 +242,8 @@ func nearest_food() -> Vector3:
 			if far < near:
 				near = far
 				best = flock.boid_position(i)
+	if only_schools:
+		return best
 	for each in creatures:
 		if each.away <= 0.0 and not each.giant and is_food(player.length, each.length):
 			# (a fish that will run is worth less than one the same distance off that will not)
@@ -223,7 +264,8 @@ func nearest_food() -> Vector3:
 func threats() -> Array:
 	var found := []
 	for each in creatures:
-		if each.away <= 0.0 and each.hunts and can_eat(each.length, player.length) and player.length >= each.length * TOO_SMALL:
+		if each.away <= 0.0 and each.hunts and each.visible and can_eat(each.length, player.length) and player.length >= each.length * TOO_SMALL \
+				and (each.mode == Creature.Mode.HUNT or each.global_position.distance_to(player.global_position) < 2.0 + each.length):
 			found.append([each.global_position, each.length])
 	for i in jellies.size():
 		if _jelly_away[i] <= 0.0 and not can_eat(player.length, jellies[i].size * 2.0):
@@ -336,6 +378,22 @@ func _step_jellies(delta: float) -> void:
 			player.die("jelly")
 
 
+## Plankton: a small fish swimming through a cloud with its mouth open takes what its mouth
+## passes. Too far off to be seen, a cloud is not drawn.
+func _step_plankton() -> void:
+	var at := player.global_position
+	for cloud in plankton:
+		var far := cloud.global_position.distance_to(at)
+		var seen := far < KRILL_SEEN + PLANKTON_RADIUS
+		if cloud.visible != seen:
+			cloud.visible = seen
+		if not seen or not player.alive or player.length > PLANKTON_EATER or far > PLANKTON_RADIUS + 1.0:
+			continue
+		var taken: int = cloud.call(&"bite", player.mouth(), player.length * 0.35 + 0.05)
+		for i in mini(taken, 6):
+			player.feed(PLANKTON_LENGTH)
+
+
 ## The nettles drift from place to place, a push with each beat of the bell. Their strands sting
 ## whatever cannot eat them; what can, eats one by reaching its bell.
 func _step_nettles(delta: float) -> void:
@@ -429,6 +487,11 @@ func _krill_rules() -> FlockRules:
 	r.size_variation = 0.3
 	r.colour = Color(1.0, 0.62, 0.56)
 	r.colour_variation = 0.1
+	if ResourceLoader.exists(KRILL):
+		# (GameCommon's krill: life size, 3 cm, and in its own colours)
+		r.size = KRILL_LENGTH / 0.03
+		r.colour = Color.WHITE
+		r.colour_variation = 0.0
 	r.max_speed = 0.5
 	r.min_speed = 0.05
 	r.cruise_speed = 0.22
@@ -448,6 +511,8 @@ func _krill_rules() -> FlockRules:
 
 
 func _krill_mesh() -> Mesh:
+	if ResourceLoader.exists(KRILL):
+		return Fish.school_mesh("krill")
 	var box := BoxMesh.new()
 	box.size = Vector3(0.24, 0.24, 1.0)
 	return box

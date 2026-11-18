@@ -16,6 +16,14 @@ species (the component's README says which pictures were looked at; none was tra
 - THE BODY: a deep, round, rigid torpedo, deepest (0.39 m) and widest (0.28 m) a third of the way back, running
   to a very narrow tail wrist with a keel on each side. A pointed head; the line of the mouth, a groove; the
   gill cover, a step; a big eye, a low dome on each side.
+- THE MOUTH (added 2026-11-17, the user: "the fish should be able to open their mouths"): the head is cut along
+  the line of the mouth from near the tip of the snout back to its corner under the eye, and from there down
+  round the back of the lower jaw to the throat. Above the cut is the body, its underside the roof of the mouth
+  (hollowed up into the head); below it THE LOWER JAW, a part of its own, its top the floor of the mouth
+  (hollowed down). Both are closed skins on the skin the fish had before (the same `body_point`), meeting lip to
+  lip, so that shut it looks as it did; the shader swings the jaw down about its hinge at the corner (`gape`),
+  the back of the jaw bending as the throat stretches. THE CHEEKS, a wall on each side of the mouth from lip to
+  lip, close its sides when it gapes; the shader folds them away inside the head as it shuts.
 - THE FINS, each a thin closed blade (two skins that meet at its edges): the first dorsal (thirteen spines, its
   edge scalloped between them; the shader folds it down); the long sickle second dorsal and anal fins; nine
   finlets above and eight below, from those back to the tail; the tall stiff crescent tail; two long pectoral
@@ -26,13 +34,17 @@ the origin is on its middle line, half way along (0.75 m behind the tip of its s
 behind the tip of the snout.
 
 What a point is, for the shader: UV2.y the part (0 body, 1 first dorsal, 2 the sickle fins, 3 a finlet, 4 the
-tail, 5 a pectoral fin, 6 a pelvic fin, 7 an eye). UV, on the body: x how far along (0 snout to 1 tail tips),
-y how high on its side (1 the ridge of the back, 0.5 its middle line, 0 the keel of the belly); on a fin: x
-from its root (0) to its tip (1), y from its leading edge (0) to its trailing edge (1); on an eye: x from its
-middle (0) to its rim (1). UV2.x, on the first dorsal, how far the point stands above the fin's root (metres),
-for folding it. (The glTF writer flips V: what is written here is 1 - v, so that Godot reads v.)
+tail, 5 a pectoral fin, 6 a pelvic fin, 7 an eye, 8 the lower jaw, 9 a cheek). UV, on the body and the lower jaw: x how far
+along (0 snout to 1 tail tips), y how high on its side (1 the ridge of the back, 0.5 its middle line, 0 the keel
+of the belly); on a fin: x from its root (0) to its tip (1), y from its leading edge (0) to its trailing edge
+(1); on an eye: x from its middle (0) to its rim (1). UV2.x, on the first dorsal, how far the point stands above
+the fin's root (metres), for folding it; on the body and the lower jaw, how far inside the mouth the point is (0
+the skin and the lips, 1 the middle of the mouth's roof or floor), for its dark lining; on a cheek, how far down
+it is from the upper lip (0) to the lower (1). (The glTF writer flips
+V: what is written here is 1 - v, so that Godot reads v.)
 
-The numbers marked "as the shader has it" are in yellowfin_tuna.gdshader too: change one, change the other.
+The numbers marked "as the shader has it" are in yellowfin_tuna.gdshader too (and the jaw's in the component's
+tuna_check.gd): change one, change the other.
 """
 
 import math
@@ -49,7 +61,7 @@ PREVIEW = ARGS[0] if ARGS else ""
 
 LENGTH = 1.5
 HALF = 0.75
-BODY, DORSAL, SICKLE, FINLET, TAIL, PECTORAL, PELVIC, EYE = range(8)
+BODY, DORSAL, SICKLE, FINLET, TAIL, PECTORAL, PELVIC, EYE, JAW, CHEEK = range(10)
 TAU = math.tau
 
 # The body's outline: metres behind the snout, half its depth above its middle line, half its depth below,
@@ -171,6 +183,118 @@ def body_point(xm, angle):
     return Vector((side, y, xm - HALF))
 
 
+# The mouth. The lower jaw runs from JAW_FROM (just behind the tip of the snout) back to JAW_BACK (the throat).
+# As the shader has it: it hinges at the corner of the mouth (HINGE: metres behind the snout, metres up) and
+# swings down GAPE_TURN radians at `gape` 1, all of it ahead of the corner, less and less behind it, none at
+# the throat (`jaw_turn`).
+JAW_FROM = 0.006
+JAW_BACK = 0.172
+HINGE = (MOUTH_TO, mouth_y(MOUTH_TO))
+GAPE_TURN = 0.55
+# How far the roof of the mouth is hollowed up towards the top of the head, and the floor down towards the
+# underside of the jaw, along their middles.
+MOUTH_HOLLOW = 0.35
+JAW_HOLLOW = 0.3
+# The cheeks: how far in from the lips they hang (a share of the half width there), and in how many rows.
+CHEEK_IN = 0.94
+CHEEK_ROWS = 6
+
+
+def roof(xm):
+    """How high the cut between the body and the lower jaw is at `xm`: the line of the mouth as far back as its
+    corner, then down round the back of the lower jaw to the belly by JAW_BACK."""
+    line = mouth_y(min(xm, MOUTH_TO))
+    return line + (bottom(xm) - line) * smooth(MOUTH_TO, JAW_BACK, xm) ** 1.5
+
+
+def jaw_turn(xm):
+    """As the shader has it: how much of the jaw's swing its points `xm` along take."""
+    return 1.0 - smooth(MOUTH_TO - 0.02, JAW_BACK, xm)
+
+
+def swung(p, angle):
+    """`p` swung down about the jaw's hinge by `angle` (radians), as the shader swings the jaw."""
+    hy, hz = HINGE[1], HINGE[0] - HALF
+    dy, dz = p.y - hy, p.z - hz
+    return Vector((p.x, hy + dy * math.cos(angle) + dz * math.sin(angle), hz + dz * math.cos(angle) - dy * math.sin(angle)))
+
+
+def lined_share(xm, of_jaw):
+    """How much of the mouth's dark lining there is at `xm` (none behind the corner of the mouth, nor at the
+    jaw's very tip, where its skin closes over it)."""
+    front = smooth(JAW_FROM, JAW_FROM + 0.012, xm) if of_jaw else 1.0
+    return front * (1.0 - smooth(MOUTH_TO, MOUTH_TO + 0.012, xm))
+
+
+def hollow_share(xm):
+    return smooth(JAW_FROM, JAW_FROM + 0.03, xm) * (1.0 - smooth(MOUTH_TO - 0.03, MOUTH_TO, xm))
+
+
+def lining(side, chord):
+    """How far inside the mouth a point of its roof or floor is: 0 at the lips, 1 along the middle."""
+    if chord < 1e-9 or abs(side) >= chord:
+        return 0.0
+    return (1.0 - (side / chord) ** 2) ** 2
+
+
+def lip(xm, sx):
+    """The point of the skin at `xm` on the cut (`roof`), on the side `sx` (1 its left, -1 its right), and how
+    far round the body from the ridge of the back it is (radians)."""
+    y = roof(xm)
+    lo, hi = 0.0, math.pi
+    for _ in range(50):
+        middle = 0.5 * (lo + hi)
+        if body_point(xm, middle).y > y:
+            lo = middle
+        else:
+            hi = middle
+    angle = 0.5 * (lo + hi)
+    return body_point(xm, sx * angle), angle
+
+
+def skin_normal(xm, angle, around):
+    """Which way the skin the fish had before the mouth was cut faces at `xm` and `angle` (a unit vector), taken
+    across a column of the model either way (as finely as the model itself can show it): what a point of the
+    skin round the mouth is given as its normal, so that it shades across the lips as it did before."""
+    e = 1e-4
+    a = TAU / around
+    n = (body_point(xm + e, angle) - body_point(xm - e, angle)).cross(body_point(xm, angle + a) - body_point(xm, angle - a))
+    p = body_point(xm, angle)
+    if n.dot(Vector((p.x, p.y, 0.0))) < 0.0:
+        n = -n
+    return n.normalized()
+
+
+def mouth_ring(xm, around, of_jaw):
+    """One ring of the body (`of_jaw` False) or of the lower jaw (True) where the cut runs through the head:
+    (point, how far inside the mouth, which lip it is: 1, -1 or 0, where it is round the ring in columns, the
+    normal of a point of the skin or None) for each of the body's `around` angles. The points on the part's own side of the cut are the skin as it was;
+    the first point past the cut on each side is moved onto the lip (the same place for the body and the jaw,
+    so that they meet); the rest are laid across the cut as the roof (or the floor) of the mouth."""
+    raw = [body_point(xm, c / around * TAU) for c in range(around)]
+    cut = roof(xm)
+    lips = {1.0: lip(xm, 1.0), -1.0: lip(xm, -1.0)}
+    chord = abs(lips[1.0][0].x)
+    up, down, _ = outline(xm)
+    gone = [(p.y < cut) != of_jaw for p in raw]
+    ring = []
+    for i, p in enumerate(raw):
+        if not gone[i]:
+            ring.append((p, 0.0, 0, float(i), skin_normal(xm, i / around * TAU, around)))
+            continue
+        sx = 1.0 if p.x >= 0.0 else -1.0
+        if not gone[i - 1] or not gone[(i + 1) % around]:
+            at, angle = lips[sx]
+            column = angle / TAU * around
+            ring.append((at.copy(), 0.0, int(sx), column if sx > 0.0 else around - column, skin_normal(xm, sx * angle, around)))
+            continue
+        side = math.copysign(min(abs(p.x), chord), p.x)
+        deep = lining(side, chord) * hollow_share(xm)
+        y = cut - JAW_HOLLOW * (cut + down) * deep if of_jaw else cut + MOUTH_HOLLOW * (up - cut) * deep
+        ring.append((Vector((side, y, lips[1.0][0].z)), lining(side, chord) * lined_share(xm, of_jaw), 0, float(i), None))
+    return ring
+
+
 class Mesh:
     def __init__(self):
         self.verts = []
@@ -180,6 +304,39 @@ class Mesh:
         # per face: the way it should face
         self.out = []
         self.count = {}
+        # per point on a lip: which lip (1 its left, -1 its right), and its normal; the edges along a lip are made sharp
+        self.lips = {}
+        self.normals = {}
+        self.sharp = set()
+
+    def tri(self, tri, judge):
+        """A triangle of the head round the mouth; `judge(triangle)` says the way it must face and its name.
+        An edge along a lip is marked sharp."""
+        p, q, r = (self.verts[i] for i in tri)
+        if (q - p).cross(r - p).length < 4e-10:
+            # (a sliver where points crowd onto a lip: nothing to see, and its facing is only rounding)
+            return
+        out, name = judge(tri)
+        if all(i in self.normals for i in tri):
+            # (a triangle of the skin: it faces the way the skin there faced before the mouth was cut)
+            out = sum((self.normals[i] for i in tri), Vector())
+        self.face(tri, out, name)
+        for k in range(3):
+            p, q = tri[k], tri[(k + 1) % 3]
+            if self.lips.get(p) and self.lips.get(p) == self.lips.get(q):
+                self.sharp.add((min(p, q), max(p, q)))
+
+    def zip(self, a, b, judge):
+        """Two runs of points (index, where round the ring) on neighbouring rings, which start together and end
+        together, joined by triangles in the order of where they are round the ring."""
+        i = j = 0
+        while i < len(a) - 1 or j < len(b) - 1:
+            if j == len(b) - 1 or (i < len(a) - 1 and a[i + 1][1] <= b[j + 1][1]):
+                self.tri((a[i][0], a[i + 1][0], b[j][0]), judge)
+                i += 1
+            else:
+                self.tri((a[i][0], b[j + 1][0], b[j][0]), judge)
+                j += 1
 
     def add(self, p, uv, part, high=0.0):
         self.verts.append(p)
@@ -212,7 +369,57 @@ def rings(low):
             xs.append(x + (until - x) * i / n)
         x = until
     xs.append(BODY_TO)
-    return xs
+    # (two close rings where the lower jaw starts, so that the step from the whole head to the cut one is short)
+    for extra in (JAW_FROM - 0.0012, JAW_FROM):
+        if min(abs(extra - x) for x in xs) > 0.0004:
+            xs.append(extra)
+    return sorted(xs)
+
+
+def cut_through(xm):
+    return JAW_FROM <= xm <= JAW_BACK
+
+
+def lined(m, tri):
+    return max(m.data[q][1][0] for q in tri) > 0.0
+
+
+def stitch(m, grid, around, judge, roof_first):
+    """Rows of points round the body (each a list of (index, which lip, where round the ring, the index of a
+    lip's twin for the inside of the mouth)) joined ring to ring: where both rings have both lips, each side of
+    the cut is zipped on its own, so that the body and the jaw share the very same line of lip (the cut can
+    cross several columns from one ring to the next); elsewhere point to point. The run from the left lip
+    round by the belly to the right is the inside of the mouth if `roof_first` (the body), else the skin (the
+    jaw); the other run is the other."""
+    def runs(row):
+        left = [k for k, (_, which, _, _) in enumerate(row) if which == 1]
+        right = [k for k, (_, which, _, _) in enumerate(row) if which == -1]
+        if not left or not right:
+            return None
+
+        def run(a, b, inside):
+            out, k, base = [], a, 0.0
+            while True:
+                out.append((row[k][3] if inside else row[k][0], row[k][2] + base))
+                if k == b:
+                    return out
+                k += 1
+                if k == around:
+                    k, base = 0, float(around)
+
+        return run(left[0], right[0], roof_first), run(right[0], left[0], not roof_first)
+
+    for r in range(len(grid) - 1):
+        one, two = runs(grid[r]), runs(grid[r + 1])
+        if one and two:
+            m.zip(one[0], two[0], judge)
+            m.zip(one[1], two[1], judge)
+            continue
+        for c in range(around):
+            n = (c + 1) % around
+            a, b, cc, d = grid[r][c][0], grid[r][n][0], grid[r + 1][n][0], grid[r + 1][c][0]
+            m.tri((a, b, cc), judge)
+            m.tri((a, cc, d), judge)
 
 
 def body(m, low):
@@ -220,21 +427,98 @@ def body(m, low):
     grid = []
     for xm in rings(low):
         row = []
+        ring = mouth_ring(xm, around, False) if cut_through(xm) else None
         for c in range(around):
             angle = c / around * TAU
-            row.append(m.add(body_point(xm, angle), (xm / LENGTH, 0.5 + 0.5 * math.cos(angle)), BODY))
+            uv = (xm / LENGTH, 0.5 + 0.5 * math.cos(angle))
+            if ring:
+                # (the head over the mouth: its underside the roof of the mouth)
+                p, inside, which, where, normal = ring[c]
+                at = m.add(p, uv, BODY, inside)
+                twin = at
+                if which:
+                    # (a lip twice over: once for the skin, with the skin's normal, once for the roof of the mouth)
+                    twin = m.add(p, uv, BODY, inside)
+                    m.lips[at] = m.lips[twin] = which
+                if normal:
+                    m.normals[at] = normal
+                row.append((at, which, where, twin))
+            else:
+                at = m.add(body_point(xm, angle), uv, BODY)
+                row.append((at, 0, float(c), at))
         grid.append(row)
-    for r in range(len(grid) - 1):
-        for c in range(around):
-            n = (c + 1) % around
-            quad = (grid[r][c], grid[r][n], grid[r + 1][n], grid[r + 1][c])
-            middle = sum((m.verts[q] for q in quad), Vector()) * 0.25
-            m.face(quad, Vector((middle.x, middle.y, 0.0)), "body")
+
+    def judge(tri):
+        if lined(m, tri):
+            # (the roof of the mouth faces down, into the mouth)
+            return Vector((0.0, -1.0, 0.0)), "mouth roof"
+        middle = sum((m.verts[q] for q in tri), Vector()) / 3.0
+        return Vector((middle.x, middle.y, 0.0)), "body"
+
+    stitch(m, grid, around, judge, True)
     # the tip of the snout and the end inside the tail: a fan each
     for row, xm, way in ((grid[0], 0.0, -1.0), (grid[-1], BODY_TO + 0.002, 1.0)):
         tip = m.add(Vector((0.0, 0.0, xm - HALF)), (xm / LENGTH, 0.5), BODY)
         for c in range(around):
-            m.face((tip, row[c], row[(c + 1) % around]), Vector((0.0, 0.0, way)), "body")
+            m.face((tip, row[c][0], row[(c + 1) % around][0]), Vector((0.0, 0.0, way)), "body")
+
+
+def jaw(m, low):
+    """The lower jaw: the skin the head had below the cut, on the same rings and angles as the body, closed over
+    by the floor of the mouth; a cap at its tip (its back end comes to nothing at the belly)."""
+    around = 28 if low else 96
+    xs = [xm for xm in rings(low) if cut_through(xm)]
+    grid = []
+    for xm in xs:
+        row = []
+        for c, (p, inside, which, where, normal) in enumerate(mouth_ring(xm, around, True)):
+            at = m.add(p, (xm / LENGTH, 0.5 + 0.5 * math.cos(c / around * TAU)), JAW, inside)
+            twin = at
+            if which:
+                # (a lip twice over: once for the skin, with the skin's normal, once for the floor of the mouth)
+                twin = m.add(p, (xm / LENGTH, 0.5 + 0.5 * math.cos(c / around * TAU)), JAW, inside)
+                m.lips[at] = m.lips[twin] = which
+            if normal:
+                m.normals[at] = normal
+            row.append((at, which, where, twin))
+        grid.append(row)
+
+    def judge(tri):
+        if lined(m, tri):
+            # (the floor of the mouth faces up, into the mouth)
+            return Vector((0.0, 1.0, 0.0)), "mouth floor"
+        middle = sum((m.verts[q] for q in tri), Vector()) / 3.0
+        at = middle.z + HALF
+        return Vector((middle.x, middle.y - (roof(at) + bottom(at)) * 0.5, 0.0)), "lower jaw"
+
+    stitch(m, grid, around, judge, False)
+    xm = xs[0]
+    tip = m.add(Vector((0.0, (roof(xm) + bottom(xm)) * 0.5, xm - HALF)), (xm / LENGTH, 0.25), JAW)
+    for c in range(around):
+        m.face((tip, grid[0][c][0], grid[0][(c + 1) % around][0]), Vector((0.0, 0.0, -1.0)), "lower jaw")
+
+
+def cheeks(m, low):
+    """The cheeks: on each side of the mouth, a little inside the lips, a wall from the upper lip to the lower
+    (two skins back to back, one facing out, one in), the dark inside of the mouth seen from the side when it
+    gapes. Built here as they hang with the mouth wide open, so that their faces have a size and a facing;
+    each point says how far down from the upper lip to the lower it is (UV2.x, 0 to 1), and the shader folds
+    them up to nothing along the line of the mouth, inside the head, as the mouth shuts."""
+    rows = 3 if low else CHEEK_ROWS
+    xs = [xm for xm in rings(low) if cut_through(xm) and xm <= MOUTH_TO]
+    for sx in (1.0, -1.0):
+        for facing in (1.0, -1.0):
+            grid = []
+            for xm in xs:
+                at = lip(xm, sx)[0]
+                base = Vector((at.x * CHEEK_IN, at.y, at.z))
+                grid.append([m.add(swung(base, GAPE_TURN * jaw_turn(xm) * (k / rows)), (xm / LENGTH, k / rows), CHEEK, k / rows)
+                             for k in range(rows + 1)])
+            for r in range(len(grid) - 1):
+                for k in range(rows):
+                    a, b, c, d = grid[r][k], grid[r][k + 1], grid[r + 1][k + 1], grid[r + 1][k]
+                    for tri in ((a, b, c), (a, c, d)):
+                        m.tri(tri, lambda tri, way=Vector((sx * facing, 0.0, 0.0)): (way, "cheeks"))
 
 
 def eye(m, sx, low):
@@ -405,11 +689,17 @@ def fins(m, low):
 def make(name, low):
     m = Mesh()
     body(m, low)
+    jaw(m, low)
+    cheeks(m, low)
     for sx in (1.0, -1.0):
         eye(m, sx, low)
     fins(m, low)
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([to_b(p) for p in m.verts], [], m.faces)
+    # (the lips are sharp: the skin keeps its own smooth shading up to them, as it had before the mouth was cut)
+    for edge in mesh.edges:
+        if tuple(sorted(edge.vertices)) in m.sharp:
+            edge.use_edge_sharp = True
     # (every layer made first, then each looked up by name: making one moves the others)
     mesh.uv_layers.new(name="UVMap")
     mesh.uv_layers.new(name="UV2")
@@ -428,6 +718,8 @@ def make(name, low):
     mesh.materials.append(material)
     for poly in mesh.polygons:
         poly.use_smooth = True
+    # (each point of the skin where the mouth is cut, the lips too, has the normal the skin had there before)
+    mesh.normals_split_custom_set_from_vertices([to_b(m.normals[i]) if i in m.normals else (0.0, 0.0, 0.0) for i in range(len(m.verts))])
     mesh.update()
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
@@ -438,13 +730,16 @@ def make(name, low):
 
 
 def winding(name, mesh, m):
-    """Nothing inside out: the skin of the body faces away from its middle line, each skin of a fin away
+    """Nothing inside out: the skin of the body faces away from its middle line (the roof of the mouth down,
+    into the mouth), the lower jaw's away from its own (the floor of the mouth up), each skin of a fin away
     from the fin's own flat, an eye out from the head (Blender's front is the side a face's normal is on)."""
     bad = {}
     for poly in mesh.polygons:
         out, group = m.out[poly.index]
         if poly.normal.dot(to_b(out)) <= 0.0:
             bad[group] = bad.get(group, 0) + 1
+            if os.environ.get("WHY"):
+                print("  wrong %s area=%.3g at %s" % (group, poly.area, tuple(round(v, 4) for v in poly.center)))
     told = ["%s %d/%d wrong" % (group, bad.get(group, 0), count) for group, count in m.count.items()]
     print("WINDING %s: %s: %s" % (name, "ok" if not bad else "INSIDE OUT", ", ".join(told)))
 
@@ -477,7 +772,8 @@ def render(folder, made):
     views = [("left", (1, 0, 0), (0, 0, 0), 1.7), ("right", (-1, 0, 0), (0, 0, 0), 1.7),
              ("front", (0, 1, 0), (0, 0, 0), 1.1), ("back", (0, -1, 0), (0, 0, 0), 1.1),
              ("top", (0.001, 0, 1), (0, 0, 0), 1.7), ("under", (0.001, 0, -1), (0, 0, 0), 1.7),
-             ("head", (0.8, 0.5, 0.2), (0, 0.5, 0), 0.6), ("tail", (0.7, -0.6, 0.3), (0, -0.55, 0), 0.7)]
+             ("head", (0.8, 0.5, 0.2), (0, 0.5, 0), 0.6), ("tail", (0.7, -0.6, 0.3), (0, -0.55, 0), 0.7),
+             ("chin", (0.4, 0.6, -0.7), (0, 0.63, -0.03), 0.3)]
     for low, obj in ((False, made[0]), (True, made[1])):
         for other in made:
             other.hide_render = other is not obj
@@ -497,6 +793,7 @@ def main():
     bpy.context.preferences.filepaths.save_version = 0
     full = make("yellowfin_tuna", False)
     low = make("yellowfin_tuna_lo", True)
+    print("SHADER HINGE vec2(%.4f, %.4f)" % HINGE)
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, "yellowfin_tuna.glb"))
     export_one(low, os.path.join(OUT, "yellowfin_tuna_lo.glb"))

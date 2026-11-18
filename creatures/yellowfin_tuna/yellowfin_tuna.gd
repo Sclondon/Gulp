@@ -11,7 +11,7 @@ extends Node3D
 ## a bigger or smaller one. No sound.
 ##
 ## It swims stiffly, as tunas do: the body barely bends and the tail does the work, by a bend
-## drawn by the shader (no bones).
+## drawn by the shader (no bones). Its mouth opens: `gape`.
 ##
 ## Everything that moves runs on `phase`, 0 to 1 through one `beat`, in which its tail beats
 ## `tail_beats` times (a whole number), so its motion comes round again exactly every beat.
@@ -48,6 +48,13 @@ const WIDTH := 0.28
 	set(value):
 		first_dorsal = value
 		_send(&"first_dorsal", value)
+## How far its mouth is open: 0 shut (as it always was before 2026-11-17), 1 wide open, as when
+## it bites (its lower jaw swung down about its hinge at the corner of the mouth, its tip about
+## 0.07 m; the inside of the mouth is dark).
+@export_range(0.0, 1.0) var gape := 0.0:
+	set(value):
+		gape = clampf(value, 0.0, 1.0)
+		_send(&"gape", gape)
 ## The low model (about a twelfth of the triangles), for far off or for many of them.
 @export var low := false:
 	set(value):
@@ -77,6 +84,7 @@ func _ready() -> void:
 	_send_phase()
 	_send(&"sway", sway)
 	_send(&"first_dorsal", first_dorsal)
+	_send(&"gape", gape)
 
 
 ## Each frame, for one that is not having its `phase` set for it: moves it on through its beat.
@@ -87,7 +95,7 @@ func step(_velocity: Vector3, delta: float) -> void:
 
 
 ## Sets one of the shader's settings: its colours (`back`, `back_blue`, `line_blue`, `gold`,
-## `silver`, `belly`, `marks`, `fin_yellow`, `fin_edge`, `tail_dark`, `fin_dusk`), `marks_show`
+## `silver`, `belly`, `marks`, `fin_yellow`, `fin_edge`, `tail_dark`, `fin_dusk`, `mouth_inside`), `marks_show`
 ## (how strongly the belly's pale marks show) and `wave` (the length of the wave along its body).
 func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)
