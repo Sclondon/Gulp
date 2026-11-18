@@ -46,6 +46,7 @@ const PAINTS := {
 	"iron": {"base": Color(0.5, 0.25, 0.1), "patch_a": Color(0.3, 0.14, 0.07), "patch_b": Color(0.33, 0.42, 0.3), "patches": 0.9, "patch_size": 1.3, "dents": 1.0},
 	"brass": {"base": Color(0.78, 0.52, 0.17), "patch_a": Color(0.6, 0.37, 0.12), "patch_b": Color(0.5, 0.45, 0.22), "patches": 0.35, "patch_size": 1.1, "shine": 0.8, "dents": 0.5},
 	"copper": {"base": Color(0.8, 0.4, 0.2), "shine": 0.8},
+	"wood": {"base": Color(0.42, 0.28, 0.16), "patch_a": Color(0.3, 0.19, 0.1), "patch_b": Color(0.48, 0.36, 0.22), "patches": 0.6, "patch_size": 0.5},
 	"rubber": {"base": Color(0.1, 0.1, 0.11), "shine": 0.15},
 	"dark": {"base": Color(0.04, 0.03, 0.03)},
 	"paper": {"base": Color(0.9, 0.8, 0.58), "patch_a": Color(0.8, 0.68, 0.45), "patch_b": Color(0.8, 0.68, 0.45), "patches": 0.4, "patch_size": 0.8},
@@ -73,6 +74,48 @@ var _grip := Vector3.ZERO
 var _points := {}
 
 
+static var _paints := {}
+
+
+## The panel's paints by material name (made once; shared by everything painted with them).
+static func paints() -> Dictionary:
+	if _paints.is_empty():
+		var noise := NoiseTexture2D.new()
+		noise.width = 256
+		noise.height = 256
+		noise.seamless = true
+		noise.noise = FastNoiseLite.new()
+		noise.noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		noise.noise.frequency = 0.012
+		noise.noise.fractal_octaves = 3
+		for named: String in PAINTS:
+			var paint := ShaderMaterial.new()
+			paint.shader = load("res://shaders/panel.gdshader")
+			paint.set_shader_parameter(&"noise", noise)
+			for key: String in PAINTS[named]:
+				paint.set_shader_parameter(key, PAINTS[named][key])
+			_paints[named] = paint
+	return _paints
+
+
+## Paints any model built with the panel's material names (the computer on the boat, the helmet).
+## Its lamps are lit if `lit`.
+static func paint(model: Node3D, lit := false) -> void:
+	var all := paints()
+	var lamp: ShaderMaterial = null
+	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		for surface in mesh.mesh.get_surface_count():
+			var named: String = mesh.mesh.surface_get_material(surface).resource_name
+			if named == "lamp" and lit:
+				if lamp == null:
+					lamp = (all[named] as ShaderMaterial).duplicate()
+					lamp.set_shader_parameter(&"base", Color(1.0, 0.5, 0.1))
+					lamp.set_shader_parameter(&"glow", Color(0.35, 0.12, 0.0))
+				mesh.set_surface_override_material(surface, lamp)
+			elif all.has(named):
+				mesh.set_surface_override_material(surface, all[named])
+
+
 func _init() -> void:
 	own_world_3d = true
 	transparent_bg = true
@@ -87,22 +130,7 @@ func _init() -> void:
 	world.environment = Environment.new()
 	world.environment.background_mode = Environment.BG_CLEAR_COLOR
 	add_child(world)
-	var noise := NoiseTexture2D.new()
-	noise.width = 256
-	noise.height = 256
-	noise.seamless = true
-	noise.noise = FastNoiseLite.new()
-	noise.noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	noise.noise.frequency = 0.012
-	noise.noise.fractal_octaves = 3
-	var paints := {}
-	for named: String in PAINTS:
-		var paint := ShaderMaterial.new()
-		paint.shader = load("res://shaders/panel.gdshader")
-		paint.set_shader_parameter(&"noise", noise)
-		for key: String in PAINTS[named]:
-			paint.set_shader_parameter(key, PAINTS[named][key])
-		paints[named] = paint
+	var paints := PanelModel.paints()
 	var model: Node3D = (load(MODEL) as PackedScene).instantiate()
 	add_child(model)
 	helm = model.find_child("Helm")

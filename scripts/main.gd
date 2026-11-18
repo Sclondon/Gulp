@@ -31,6 +31,13 @@ var player: Player
 var camera: Camera3D
 var hud: Hud
 var pad: TouchPad
+## The boat the game starts on (null once the game is under way), its card, and how far the eye
+## has gone on its way down to the fish (-1: not yet started).
+var title: Title
+var _card: Title.Card
+var _dive := -1.0
+var _dive_from := Transform3D()
+var _titled := false
 var bot: Bot
 var arena: Arena
 
@@ -78,6 +85,8 @@ func _ready() -> void:
 			_checking = true
 		elif arg == "--check=touch":
 			_touching = true
+		elif arg == "--title":
+			_titled = true
 		elif arg == "--calm":
 			calm = true
 		elif arg == "--over":
@@ -181,6 +190,9 @@ func _ready() -> void:
 		if kept.load(SAVE) == OK:
 			hud.best = float(kept.get_value("best", "length", 0.0))
 	restart()
+	# The game opens on the boat, unless something is driving it (a test, a bot, a picture).
+	if _titled or not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0 or _role != "" or _near != "" or _end_now):
+		_open_title()
 	if _checking or _touching:
 		var checks: Node = (load("res://tests/checks.gd") as GDScript).new()
 		checks.set(&"main", self)
@@ -240,6 +252,13 @@ func _go_near() -> void:
 func _process(delta: float) -> void:
 	_clock += delta
 	delta = minf(delta, 0.05)
+	if title:
+		_title_step(delta)
+		sea.set_above(camera.global_position.y > Sea.SURFACE)
+		_post.set_shader_parameter(&"underwater", 0.0 if sea.above else 1.0)
+		camera.fov = 72.0 if size.y > size.x else 60.0
+		_finish_frame()
+		return
 	_steer()
 	_frames += 1
 	if _trick == "--feed" and _clock > 0.8:
@@ -291,6 +310,48 @@ func _process(delta: float) -> void:
 		_end_now = false
 		player.safe = 0.0
 		player.die("test")
+	_finish_frame()
+
+
+## Opens on the boat, over where the fish starts.
+func _open_title() -> void:
+	title = Title.new()
+	title.position = Vector3(player.global_position.x, Sea.SURFACE, player.global_position.z + 4.0)
+	_viewport.add_child(title)
+	_card = Title.Card.new()
+	add_child(_card)
+	_card.go.connect(func() -> void:
+		if _dive < 0.0:
+			_dive = 0.0
+			_dive_from = camera.global_transform
+			_card.visible = false)
+	hud.visible = false
+	pad.visible = false
+	_dive = -1.0
+
+
+# A frame of the title: the eye astern of the boat, or on its way down through the surface to
+# the fish. The fish waits; the sea goes on only once the eye is on its way.
+func _title_step(delta: float) -> void:
+	if _dive < 0.0:
+		camera.global_transform = title.eye(size.y > size.x)
+		return
+	_dive += delta / 1.8
+	life.step(delta)
+	var behind := Transform3D(Basis.IDENTITY, _camera_place()).looking_at(player.global_position + player.heading * player.length, Vector3.UP)
+	camera.global_transform = _dive_from.interpolate_with(behind, smoothstep(0.0, 1.0, _dive))
+	if _dive >= 1.0:
+		title.queue_free()
+		title = null
+		_card.queue_free()
+		_card = null
+		hud.visible = true
+		pad.visible = true
+		pad.release()
+
+
+## A picture or the end of a timed run, when its time has come.
+func _finish_frame() -> void:
 	if _shot_at >= 0.0 and _clock >= _shot_at:
 		_shot_at = -1.0
 		await RenderingServer.frame_post_draw
