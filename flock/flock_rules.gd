@@ -121,6 +121,19 @@ const PRESETS := ["Starlings", "Fish school", "Bats", "Crows circling", "Gnats",
 ## How much a wind (Flock.wind) carries them: 1 drifts with the air, 0 ignores it.
 @export_range(0.0, 2.0, 0.01) var wind_carry := 0.3
 
+@export_group("Riders")
+## A swarm (Gulp; not yet in GameCommon's copy): 0 draws one body for each boid. More than 0
+## and the boids (at most Flock.MOST_LEADS) are only guides that are never drawn: this many bodies
+## ride round each one, placed in the vertex shader from the guides' places, so hundreds or
+## thousands cost the CPU no more than the few dozen guides do.
+@export_range(0, 200) var riders := 0
+## How far round its guide a rider keeps (m): the radius of each guide's cloud.
+@export_range(0.0, 20.0, 0.01) var rider_spread := 0.6
+## How far each rider wanders about its place, slowly (m).
+@export_range(0.0, 5.0, 0.01) var rider_drift := 0.08
+## How much a frightened guide's cloud spreads out (×, at full fright).
+@export_range(0.0, 5.0, 0.01) var rider_fright := 0.8
+
 
 ## A copy set to one of the PRESETS by name (or index).
 static func preset(which: Variant) -> FlockRules:

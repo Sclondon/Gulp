@@ -28,8 +28,11 @@ static var _meshes := {}
 static var _mat: StandardMaterial3D
 
 var strength := 1.0
+## How big it is (1: for a salmon 1.8 m long).
+var size := 1.0
 
 var _t := 0.0
+var _slow := 1.0
 var _tubes: Array[MeshInstance3D] = []
 var _ripples: Array[MeshInstance3D] = []
 var _bursts: Array[CPUParticles3D] = []
@@ -94,9 +97,18 @@ func _init() -> void:
 
 
 ## Throws it up at a place on the surface, `how_big` (1: for a salmon), out of water of a colour
-## with foam of another.
-func start(at: Vector3, how_big: float, water: Color, foam: Color) -> void:
-	strength = how_big
+## with foam of another. `how_hard` (1: an ordinary landing) makes it taller and its drops fly
+## further, not wider.
+##
+## (Gulp, tools/WATER_FX.md: here everything is scaled by `size` alone, in proportion: its width,
+## its height, its drops, and its time by the root of it, as a splash of a bigger thing is slower.
+## Salmon Run 2 made it wider by the root of its strength and taller by the strength, which is
+## right for one salmon landing harder or softer; for a sardine and an orca it made one a speck
+## and the other a column of water 40 m high with drops the size of boulders.)
+func start(at: Vector3, how_big: float, water: Color, foam: Color, how_hard := 1.0) -> void:
+	size = how_big
+	strength = how_hard
+	_slow = clampf(sqrt(size), 0.5, 1.9)
 	_t = 0.0
 	water = water.lerp(foam, 0.15)
 	for node in _tubes:
@@ -109,11 +121,15 @@ func start(at: Vector3, how_big: float, water: Color, foam: Color) -> void:
 		node.visible = false
 	for i in _bursts.size():
 		var p := _bursts[i]
-		p.initial_velocity_min = float(BURSTS[i][3]) * sqrt(strength)
-		p.initial_velocity_max = float(BURSTS[i][4]) * sqrt(strength)
-		p.scale_amount_min = float(BURSTS[i][2]) * 0.6 * sqrt(strength)
-		p.scale_amount_max = float(BURSTS[i][2]) * 1.3 * sqrt(strength)
-		p.emission_sphere_radius = 0.5 * sqrt(strength)
+		# (thrown up by the root of size and strength, they rise in proportion to both; drops do
+		# not grow as fast as the splash: a bigger one has more of them, not boulders)
+		var fling := sqrt(size * strength)
+		p.initial_velocity_min = float(BURSTS[i][3]) * fling
+		p.initial_velocity_max = float(BURSTS[i][4]) * fling
+		p.scale_amount_min = float(BURSTS[i][2]) * 0.6 * pow(size, 0.6)
+		p.scale_amount_max = float(BURSTS[i][2]) * 1.3 * pow(size, 0.6)
+		p.emission_sphere_radius = 0.5 * size
+		p.lifetime = 0.8 * _slow * sqrt(clampf(strength, 0.5, 2.0))
 		p.color = water.lerp(Color.WHITE, 0.6)
 		p.restart()
 		p.emitting = true
@@ -150,7 +166,7 @@ func _burst(key: String, amount: int, size: float) -> CPUParticles3D:
 
 
 func _process(delta: float) -> void:
-	_t += delta
+	_t += delta / _slow
 	if _t > LIFE:
 		visible = false
 		set_process(false)
@@ -163,8 +179,8 @@ func _process(delta: float) -> void:
 			continue
 		# up fast, hang at the top, then drop back: the key pose is the top, a fifth of the way in
 		var rise := sin(minf(u / 0.2, 1.0) * PI * 0.5) if u < 0.2 else 1.0 - pow((u - 0.2) / 0.8, 2.0)
-		var r := float(TUBES[i][0]) * sqrt(strength) * (1.0 + 0.3 * u)
-		node.scale = Vector3(r, maxf(float(TUBES[i][1]) * strength * rise, 0.01), r)
+		var r := float(TUBES[i][0]) * size * (1.0 + 0.3 * u)
+		node.scale = Vector3(r, maxf(float(TUBES[i][1]) * size * strength * rise, 0.01), r)
 		(node.material_override as ShaderMaterial).set_shader_parameter("spent", smoothstep(0.3, 1.0, u))
 	for i in _ripples.size():
 		var u := (_t - float(RIPPLES[i][0])) / RIPPLE_TIME
@@ -172,6 +188,6 @@ func _process(delta: float) -> void:
 		node.visible = u > 0.0 and u < 1.0
 		if not node.visible:
 			continue
-		var r := lerpf(0.5, float(RIPPLES[i][1]) * sqrt(strength), 1.0 - pow(1.0 - u, 2.5))
+		var r := lerpf(0.5 * size, float(RIPPLES[i][1]) * size, 1.0 - pow(1.0 - u, 2.5))
 		node.scale = Vector3(r, 1.0, r)
 		(node.material_override as StandardMaterial3D).albedo_color.a = (1.0 - u) * 0.85

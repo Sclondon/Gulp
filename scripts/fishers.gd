@@ -33,7 +33,7 @@ const BOAT := "res://models/shrimp_boat.glb"
 const NET_SHADER := preload("res://shaders/net.gdshader")
 
 ## Where each run starts (Main.restart): nothing of this is put within SPARE metres of it.
-const START := Vector3(-24.0, Sea.SURFACE - 7.0, 6.0)
+const START := Vector3(Sea.START.x, Sea.SURFACE - 7.0, Sea.START.y)
 const SPARE := 30.0
 
 ## The two kinds of rig: how much bigger than life its gear is drawn, how long its bait counts as
@@ -47,7 +47,7 @@ const BEND := Vector3(0.009, -0.036, 0.0)
 ## How far above the hook its sinker is (m).
 const SINKER_UP := 0.4
 ## Rigs under floats, by zone, and the zones of the two anglers' skiffs (two rods each).
-const FLOATS := ["river", "grass", "grass", "sand", "sand", "open"]
+const FLOATS := ["river", "grass", "grass", "sand", "sand", "open", "beach", "beach", "docks", "docks"]
 const SKIFFS := ["kelp", "reef"]
 ## The skiff's rod tips (Godot, its own space: tools/build_fishing_gear.py ROD_TIPS).
 const ROD_TIPS := [Vector3(-1.55, 1.62, 0.55), Vector3(1.55, 1.62, 0.55)]
@@ -71,9 +71,9 @@ const SHAKEN := 2.0
 ## off the floor), how tall (m), and the lengths of fish they hold (smaller swim through, bigger
 ## tear through).
 const NETS := [
-	[Vector2(108.0, -48.0), Vector2(116.0, -18.0), "drift", 5.0, 0.3, 1.6],
-	[Vector2(126.0, 12.0), Vector2(140.0, 36.0), "drift", 5.0, 0.3, 1.6],
-	[Vector2(18.0, 6.0), Vector2(40.0, 16.0), "bottom", 3.5, 0.25, 1.2],
+	[Vector2(-141.0, -88.0), Vector2(-136.0, -64.0), "drift", 5.0, 0.3, 1.6],
+	[Vector2(-144.0, 50.0), Vector2(-138.0, 74.0), "drift", 5.0, 0.3, 1.6],
+	[Vector2(-98.0, -66.0), Vector2(-82.0, -59.0), "bottom", 3.5, 0.25, 1.2],
 ]
 ## Seconds a fish can hang in a net before it is hauled.
 const NET_HOLD := 10.0
@@ -85,8 +85,8 @@ const NET_CATCH := 4
 ## The trawlers' loops (a racetrack: its middle, the radius of its turns, half its straight) and
 ## how deep each trawl's mouth goes (m under the surface; never nearer the floor than 2.2 m).
 const LOOPS := [
-	{"at": Vector2(120.0, 0.0), "radius": 30.0, "half": 40.0, "depth": 8.0},
-	{"at": Vector2(60.0, 0.0), "radius": 12.0, "half": 60.0, "depth": 13.0},
+	{"at": Vector2(-141.0, -16.0), "radius": 12.0, "half": 48.0, "depth": 8.0},
+	{"at": Vector2(-28.0, 50.0), "radius": 10.0, "half": 18.0, "depth": 13.0},
 ]
 ## The tow (m/s); how far behind the boat, along its way, the trawl's mouth is (m); where on the boat
 ## the warps leave it (its stern, its own space); how far apart the otter doors are (m).
@@ -783,6 +783,12 @@ func _tear(net: Net, at: Vector3, radius: float) -> void:
 
 
 func _net_scan(net: Net) -> void:
+	# (schooling, 2026-11-18: a swarm or school swimming into the net loses a few to it, and scatters)
+	for t: float in [0.2, 0.5, 0.8]:
+		var at := net.a.lerp(net.b, t)
+		at.y = lerpf(net.top, net.bottom, 0.5)
+		if life.catch_schools(at, 1.5, 1) > 0:
+			_count("school fish netted")
 	if net.catch.size() >= NET_CATCH:
 		return
 	for each in life.creatures:
@@ -1022,6 +1028,10 @@ func _trawl_catch(trawler: Trawler, delta: float, scanning: bool) -> void:
 	var mouth := trawler.trawl.global_position
 	if mouth.distance_to(player.global_position) > 50.0:
 		return
+	# (schooling, 2026-11-18: the trawl takes from a swarm or school its mouth passes through, and
+	# the rest of it scatters)
+	if life.catch_schools(mouth, 2.0, 3) > 0:
+		_count("school fish trawled")
 	for each in life.creatures:
 		if each.away > 0.0 or each.giant or not each.visible or each.length > TRAWL_BIG or _held.has(each.get_instance_id()):
 			continue

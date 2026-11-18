@@ -32,6 +32,11 @@ func _initialize() -> void:
 	for piece: MeshInstance3D in gear.find_children("*", "MeshInstance3D", true, false):
 		bad += _judge("fishing gear %s" % piece.name, piece.mesh, not String(piece.name) in ["NetPanel", "Trawl"])
 	gear.free()
+	# The docks (tools/build_docks.py): every piece a solid.
+	var docks := (load("res://models/docks.glb") as PackedScene).instantiate()
+	for piece: MeshInstance3D in docks.find_children("*", "MeshInstance3D", true, false):
+		bad += _judge("docks %s" % piece.name, piece.mesh, true)
+	docks.free()
 	print("WINDING PASSED" if bad == 0 else "WINDING FAILED (%d)" % bad)
 	quit()
 

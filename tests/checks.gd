@@ -36,7 +36,11 @@ func _run() -> void:
 	var meals := player.meals
 	var progress := player.progress
 	for n in 30:
-		cloud.move_boid(0, player.mouth())
+		if cloud.rider_count() > 0:
+			# (a swarm: its first rider's guide put so that the rider is at the mouth)
+			cloud.move_boid(cloud.rider_lead(0), player.mouth() - cloud.rider_place(0))
+		else:
+			cloud.move_boid(0, player.mouth())
 		await _frames(1)
 		if player.meals > meals:
 			break
@@ -101,9 +105,196 @@ func _run() -> void:
 		if not player.alive:
 			break
 	_check("a big jelly stings it", not player.alive)
+	await _schooling()
 	await _fishing()
 	print("GULP SMOKE PASSED" if _bad == 0 else "GULP SMOKE FAILED (%d)" % _bad)
 	get_tree().quit()
+
+
+## Schooling (tools/SCHOOLING.md): a swarm loses the one fish at the mouth and has it back later,
+## scatters round the player and gathers again; a group keeps together; an ambusher warns before it
+## lunges; a pufferfish blows up and cannot be eaten; a seal goes up for air; a lionfish stings
+## without killing; pack hunters at a swarm take from it and ball it up.
+func _schooling() -> void:
+	var life: Life = main.life
+	var player: Player = main.player
+	life.hunting = false
+	main.restart()
+	await _frames(3)
+	player.begin(player.global_position, "smolt")
+	# A swarm: the fish at the mouth is taken, and the swarm parts round the player.
+	var ball: Dictionary = life.schools[Life.KRILL_CLOUDS]
+	var flock: Flock = ball.flock
+	var at := flock.global_position
+	player.global_position = at + Vector3(12.0, 0.0, 0.0)
+	await _frames(5)
+	var spread_before := _spread(flock)
+	var meals := player.meals
+	var gone := flock.riders_gone()
+	var taken := -1
+	for n in 20:
+		var i := flock.nearest_rider(flock.boid_position(0), 1.0)
+		if i < 0:
+			await _frames(1)
+			continue
+		_aim(player, Vector3.FORWARD)
+		player.global_position = flock.rider_position(i) - player.heading * player.length * 0.42
+		await _frames(1)
+		if player.meals > meals:
+			taken = i
+			break
+	_check("the fish of a swarm at its mouth is eaten, and not drawn", player.meals > meals and taken >= 0 and flock.rider_gone(taken) and flock.riders_gone() > gone,
+			"%d riders, %d gone, meals %d to %d" % [flock.rider_count(), flock.riders_gone(), meals, player.meals])
+	var frightened := 0
+	for n in 60:
+		player.global_position = flock.middle()
+		await _frames(1)
+	for g in flock.boid_count():
+		if flock.fear_of(g) > 0.05:
+			frightened += 1
+	var spread_during := _spread(flock)
+	_check("a swarm scatters from the player in it", frightened > 0 and spread_during > spread_before * 1.05,
+			"%d guides frightened, spread %.2f m to %.2f m" % [frightened, spread_before, spread_during])
+	for n in 900:
+		player.global_position = at + Vector3(30.0, 0.0, 0.0)
+		await _frames(1)
+	player.global_position = flock.middle() + Vector3(10.0, 0.0, 0.0)
+	await _frames(2)
+	var spread_after := _spread(flock)
+	_check("it gathers again, and the eaten one comes back", spread_after < spread_during and not flock.rider_gone(taken),
+			"spread %.2f m, gone %d" % [spread_after, flock.riders_gone()])
+	# A group keeps together (and lines up, a school).
+	var group: Creature.Group
+	for g: Creature.Group in life.groups:
+		if g.social == "school" and g.members.size() >= 3 and g.members[0].length > 0.3:
+			group = g
+			break
+	var lead: Creature = group.members[0]
+	player.global_position = lead.global_position + Vector3(0.0, 0.0, 14.0)
+	for n in 600:
+		player.global_position = group.mid + Vector3(0.0, 0.0, 14.0)
+		await _frames(1)
+	var far_out := 0.0
+	var lined := 0.0
+	for m in group.members:
+		far_out = maxf(far_out, m.global_position.distance_to(group.mid) / m.length)
+		lined += m.heading.dot(group.way)
+	lined /= group.members.size()
+	_check("a school keeps together, lined up", far_out < group.space * 4.0 and lined > 0.6,
+			"%s ×%d: furthest %.1f lengths from the middle, lined up %.2f" % [lead.kind, group.members.size(), far_out, lined])
+	# An ambusher warns (mouth wide open) before it lunges.
+	life.hunting = true
+	player.begin(player.global_position, "smolt")
+	player.safe = 0.0
+	var lurker := _one_of(["grouper"])
+	lurker._tired = 0.0
+	var warned_at := -1
+	var lunged_at := -1
+	var gaped := false
+	for n in 120:
+		_aim(player, lurker.heading)
+		player.global_position = lurker.global_position + lurker.heading * (Creature.LUNGE_REACH + lurker.length * 0.9)
+		player.safe = 0.0
+		await _frames(1)
+		if warned_at < 0 and lurker._warn > 0.0:
+			warned_at = n
+		if warned_at >= 0 and lurker.bite > 0.5:
+			gaped = true
+		if lurker._lunge > 0.0:
+			lunged_at = n
+			break
+		if not player.alive:
+			break
+	_check("an ambusher opens wide before it lunges", warned_at >= 0 and gaped and lunged_at > warned_at + 20,
+			"%s: warned at frame %d, lunged at %d" % [lurker.kind, warned_at, lunged_at])
+	life.hunting = false
+	main.restart()
+	await _frames(3)
+	# A pufferfish near a fish that could eat it blows up, and cannot be eaten.
+	player.begin(player.global_position, "salmon")
+	var puffer := _one_of(["pufferfish"])
+	if puffer:
+		for n in 90:
+			_aim(player, puffer.global_position - player.global_position)
+			player.global_position = puffer.global_position - player.heading * 1.0
+			await _frames(1)
+		for n in 30:
+			player.global_position = puffer.global_position - player.heading * player.length * 0.42
+			await _frames(1)
+		_check("a pufferfish blows up and cannot be eaten", puffer.guarded() and puffer.away <= 0.0, "puffed %s" % puffer.guarded())
+	# A seal out of breath goes up for air.
+	var seal := _one_of(["seal", "sea_lion", "dolphin"])
+	if seal:
+		player.global_position = seal.global_position + Vector3(0.0, 0.0, 6.0)
+		seal._air = 0.0
+		var top := -INF
+		for n in 900:
+			player.global_position = seal.global_position + Vector3(0.0, 0.0, 6.0)
+			await _frames(1)
+			top = maxf(top, seal.global_position.y)
+		_check("a %s goes up for air" % seal.kind, top > Sea.SURFACE - 0.5 - seal.length * 0.4, "reached %.1f m, the surface at %.1f" % [top, Sea.SURFACE])
+	# A lionfish's spines hurt a fish too small to eat it, and do not kill it.
+	main.restart()
+	await _frames(3)
+	life.hunting = true
+	var lion := _one_of(["lionfish"])
+	if lion:
+		lion.back_off()
+		lion._tired = 99.0
+		var stings := life.stings
+		for n in 20:
+			player.safe = 0.0
+			player.global_position = lion.global_position + lion.global_basis.x * (lion.length * 0.3)
+			await _frames(1)
+			if life.stings > stings:
+				break
+		_check("a lionfish stings: a hurt, not a death", life.stings > stings and player.alive and player.stamina < 0.2,
+				"stings %d, alive %s, burst %.2f" % [life.stings - stings, player.alive, player.stamina])
+		lion._tired = 0.0
+	life.hunting = false
+	# Pack hunters at a swarm take from it and ball it up.
+	var pack: Array[Creature] = []
+	for each in life.creatures:
+		if each.kind == "barracuda" and pack.size() < 3:
+			pack.append(each)
+	var swarm: Dictionary = life.schools[Life.KRILL_CLOUDS + 1]
+	var prey: Flock = swarm.flock
+	var gone_before := prey.riders_gone()
+	var most_gone := 0
+	var balled := false
+	for n in 600:
+		player.global_position = prey.middle() + Vector3(0.0, 4.0, 9.0)
+		for k in pack.size():
+			if n == 0:
+				pack[k].place(prey.middle() + Vector3(4.0 + k, 0.0, 0.0))
+		await _frames(1)
+		most_gone = maxi(most_gone, prey.riders_gone())
+		balled = balled or prey.rules.orbit > 0.0
+	_check("pack hunters at a swarm take from it and ball it up", most_gone > gone_before and balled,
+			"%d barracuda, at most %d gone, balled %s" % [pack.size(), most_gone, balled])
+	main.restart()
+	await _frames(3)
+
+
+# How far a flock's guides are from its middle, on average.
+func _spread(flock: Flock) -> float:
+	var mid := flock.centre()
+	var sum := 0.0
+	for g in flock.boid_count():
+		sum += flock.boid_position(g).distance_to(mid)
+	return sum / maxf(flock.boid_count(), 1.0)
+
+
+# The first creature of one of some kinds, dressed and about.
+func _one_of(kinds: Array) -> Creature:
+	for kind: String in kinds:
+		for each: Creature in main.life.creatures:
+			if each.kind == kind and each.away <= 0.0:
+				if not each.dressed:
+					each.dress()
+				each.visible = true
+				return each
+	return null
 
 
 ## Hooks, nets and trawls (scripts/fishers.gd): a bait hooks it and the struggle frees it; left on

@@ -1,5 +1,8 @@
 """Builds the rocks of the sea floor (models/sea_floor.glb) for Godot.
 
+RETIRED (2026-11-18): nothing loads sea_floor.glb or sea_rocks.json any more, and its `ground` is the old coast's;
+the sea is now Monterey Bay, whose floor is scripts/bay.gd (tools/MONTEREY.md). Kept, unused.
+
 Gulp: this is Moon Jellies' tools/build_sea_floor.py (as of its 642f9bd) with the outcrops spread
 over a sea 44 m in radius, Gulp's own ground, lighter rocks (320 triangles each), and a list of
 each rock as a sphere (models/sea_rocks.json) for the fish to swim round.

@@ -22,7 +22,14 @@ const LANDMARKS := {
 	"grass": {"strokes": [[Vector2(-0.6, -0.8), Vector2(-0.8, 0.5)], [Vector2(0.0, -0.8), Vector2(0.0, 0.9)], [Vector2(0.6, -0.8), Vector2(0.8, 0.5)]], "colour": Color(0.55, 1.0, 0.5)},
 	"sand": {"strokes": [[Vector2(-0.9, -0.5), Vector2(-0.3, 0.2), Vector2(0.3, -0.2), Vector2(0.9, 0.4)], [Vector2(-0.5, -0.8), Vector2(0.5, -0.8)]], "colour": Color(1.0, 0.9, 0.55)},
 	"kelp": {"strokes": [[Vector2(0.0, -0.9), Vector2(0.25, -0.3), Vector2(-0.25, 0.3), Vector2(0.0, 0.9)], [Vector2(0.2, -0.4), Vector2(0.75, -0.1)], [Vector2(-0.2, 0.2), Vector2(-0.75, 0.5)]], "colour": Color(0.75, 0.95, 0.35)},
-	"reef": {"strokes": [[Vector2(0.0, -0.9), Vector2(0.0, 0.1)], [Vector2(0.0, 0.1), Vector2(-0.6, 0.8)], [Vector2(0.0, 0.1), Vector2(0.6, 0.8)], [Vector2(0.0, -0.3), Vector2(0.7, 0.1)], [Vector2(0.0, -0.3), Vector2(-0.7, 0.1)]], "colour": Color(1.0, 0.6, 0.7)},
+	# (the reef is the sunken liner's now: a hull with two funnels)
+	"reef": {"strokes": [[Vector2(-0.9, 0.0), Vector2(0.9, 0.0), Vector2(0.6, -0.5), Vector2(-0.7, -0.5), Vector2(-0.9, 0.0)], [Vector2(-0.3, 0.0), Vector2(-0.3, 0.55)], [Vector2(0.2, 0.0), Vector2(0.2, 0.55)]], "colour": Color(1.0, 0.6, 0.7)},
+	# (an anchor)
+	"docks": {"strokes": [[Vector2(0.0, 0.9), Vector2(0.0, -0.8)], [Vector2(-0.4, 0.55), Vector2(0.4, 0.55)], [Vector2(-0.7, -0.25), Vector2(-0.45, -0.7), Vector2(0.0, -0.85), Vector2(0.45, -0.7), Vector2(0.7, -0.25)]], "colour": Color(0.7, 0.92, 0.95)},
+	# (a temple front: Atlantis)
+	"ruins": {"strokes": [[Vector2(-0.8, -0.8), Vector2(0.8, -0.8)], [Vector2(-0.55, -0.8), Vector2(-0.55, 0.35)], [Vector2(0.0, -0.8), Vector2(0.0, 0.35)], [Vector2(0.55, -0.8), Vector2(0.55, 0.35)], [Vector2(-0.8, 0.35), Vector2(0.0, 0.9), Vector2(0.8, 0.35), Vector2(-0.8, 0.35)]], "colour": Color(1.0, 0.85, 0.45)},
+	# (crossed cutlasses: the pirate ship)
+	"pirate": {"strokes": [[Vector2(-0.75, -0.8), Vector2(0.7, 0.85)], [Vector2(0.75, -0.8), Vector2(-0.7, 0.85)], [Vector2(-0.95, -0.45), Vector2(-0.45, -0.95)], [Vector2(0.95, -0.45), Vector2(0.45, -0.95)]], "colour": Color(0.95, 0.75, 0.6)},
 	"open": {"strokes": [[Vector2(-0.9, 0.0), Vector2(-0.45, 0.45), Vector2(0.0, 0.0), Vector2(0.45, 0.45), Vector2(0.9, 0.0)]], "colour": Color(0.6, 0.8, 1.0)},
 	"trench": {"strokes": [[Vector2(-0.9, 0.7), Vector2(-0.3, 0.7), Vector2(0.0, -0.9), Vector2(0.3, 0.7), Vector2(0.9, 0.7)]], "colour": Color(0.8, 0.65, 1.0)},
 }

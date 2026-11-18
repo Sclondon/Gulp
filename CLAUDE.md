@@ -59,9 +59,11 @@ Keep it that way.
 - **A web build has not been made since, and would be far too big as it stands**: the models are about 105 MB of
   `.glb` (each creature loads its full and its low model). Before a push: export low models only for the web, or
   cut the list of kinds there. Phones are untried (about 6 ms a frame at the reef on the desktop).
-- Unused so far: lionfish spines do not sting; the betta's `flare`, cuttlefish patterns, the otter's `afloat`, the
-  gar's `snap`, the arowana's and whales' `arch`, the manta's `scoops`, the anglerfish's `lure` are never driven;
-  nothing but the player leaps; air-breathers do not go up for air.
+- Schooling and habits (2026-11-18, `tools/SCHOOLING.md`): krill, sardines, anchovies, lanternfish and mackerel are
+  swarms of 160 to 1,600 (Flock's riders mode: a few dozen guides simulated, the rest placed by flock.gdshader);
+  creatures keep together in groups by Species' `social`/`group`/`mix`, and live by a `habit` (ambush, stalk, pack,
+  filter, graze, cleaner, shy, hop, cling, home, drift, sting, display, strike, float) plus `breathes`, `leaps`,
+  `visits`, `nocturnal`. Lionfish sting (a hurt, not a death). Still never driven: cuttlefish patterns.
 - Bot (tests): from sardine to an 8 m orca in 300 s with no deaths, so the sea is too easy as tuned.
 - Learned: Godot's importer makes automatic LOD meshes, and a body bent in its vertex shader then bends in straight
   pieces far off; `Fish._wear` sets `lod_bias` 64 on every creature mesh to stop it (some newer components also

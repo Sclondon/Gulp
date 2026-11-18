@@ -67,7 +67,7 @@ All silent (`--audio-driver Dummy`), each prints PASSED or FAILED.
 | `shaders/water.gdshader`, `post.gdshader`, `psx_common.gdshaderinc`, `bubble.gdshader`, `textures/foam_noise.png` | Salmon Run 2's water, underwater picture and bubble, copied (the water as Moon Jellies has it) |
 | `shaders/fish.gdshader` | Salmon Run 2's fish shader, changed to fit a fish of any length (the changes are listed at its top) |
 | `shaders/sea_floor.gdshader`, `models/sea_floor.glb`, `models/sea_rocks.json` | The rocks: Moon Jellies' rock shader; the model built by `tools/build_sea_floor.py` |
-| `flock/` | GameCommon's `godot/flock` (one method added: `move_boid`) |
+| `flock/` | GameCommon's `godot/flock`, with `move_boid` and a riders mode for swarms of thousands added (`tools/SCHOOLING.md`) |
 | `scripts/sand*.gd`, `scripts/dust.gd` | GameCommon's `godot/sand`, unchanged |
 
 ## Models

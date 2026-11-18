@@ -63,9 +63,17 @@ const BOOST_FILLS := 5.0
 const SLOWEST := 0.3
 ## A leap: how fast it must be going up through the surface (as a share of its cruising pace),
 ## how much the water lets go of it, and how it falls.
-const LEAP_PACE := 0.9
+## (0.9 was more than its cruising speed at the speed lever's starting place (0.3 + 0.85 x 0.7 =
+## 0.895 of its pace): without the burst it only ever stuck under the surface. tools/WATER_FX.md)
+const LEAP_PACE := 0.75
 const LEAP_KICK := 1.35
 const GRAVITY := 9.0
+## How high a leap takes it at least (metres above where it left the water): `LEAP_LEAST` and
+## `LEAP_PER_LENGTH` of its length, on a burst; three quarters of that without. (Thrown out only
+## by its own speed, big fish, being slow for their size, never got clear of the water: an orca
+## rose 1.6 m, under a third of its length.)
+const LEAP_LEAST := 0.25
+const LEAP_PER_LENGTH := 0.9
 
 ## How many times it has become something bigger this run.
 var stage := 0
@@ -197,11 +205,20 @@ func step(delta: float) -> void:
 			pitch = asin(clampf(heading.y, -1.0, 1.0))
 			yaw = atan2(-heading.x, -heading.z)
 			_speed = velocity.length() * 0.75
+			_landed = 0.9
 			splashed.emit(Vector3(global_position.x, Sea.SURFACE, global_position.z))
 		pose(delta, 0.4, stick.x)
+		# (still blinking if it is: it was left hidden for the whole leap when it went up hidden)
+		_body.visible = safe <= 0.0 or fmod(safe, 0.3) > 0.1
 		return
 	yaw -= stick.x * 2.3 * nimble * delta
 	pitch = clampf(pitch + stick.y * 1.7 * nimble * delta, -1.15, 1.15)
+	if _landed > 0.0:
+		# (back in from a leap it comes out of its dive by itself, unless steered: it went
+		# straight on down to the floor)
+		_landed -= delta
+		if absf(stick.y) < 0.3 and pitch < -0.3:
+			pitch = move_toward(pitch, -0.3, 1.6 * delta)
 	heading = _way()
 	boosting = boost_held and stamina > 0.0
 	if boosting:
@@ -220,6 +237,9 @@ func step(delta: float) -> void:
 		# Up through the surface, fast enough: out it comes.
 		in_air = true
 		velocity *= LEAP_KICK
+		# (at least high enough to be seen clear of the water, in proportion to its length)
+		var least := sqrt(2.0 * GRAVITY * (LEAP_LEAST + length * LEAP_PER_LENGTH)) * (1.0 if boosting else 0.75)
+		velocity.y = maxf(velocity.y, least)
 		global_position = next
 		leapt.emit(Vector3(next.x, Sea.SURFACE, next.z))
 	else:
@@ -236,6 +256,8 @@ func step(delta: float) -> void:
 ## Something it can eat is right ahead of its mouth (Life says): it opens wide.
 var near_food := false
 var _snap := 0.0
+# Seconds since it came back in from a leap (counting down from 0.9).
+var _landed := 0.0
 
 
 func _way() -> Vector3:

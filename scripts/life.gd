@@ -54,6 +54,23 @@ const JELLY_SEEN := 32.0
 const FISH_SEEN := 55.0
 ## How many steps apart kinds new to the run are given their models.
 const NEW_EVERY := 3
+## The swarms (tools/SCHOOLING.md): each a Flock of a few dozen guides that are not drawn, with
+## riders round each one, all drawn by one MultiMesh and placed by its shader, so the CPU pays for
+## the guides only. Each: [guides, riders round each, how far round its guide a rider keeps (m)].
+const KRILL_SWARM := [16, 18, 0.45]
+## The first school of sardines is a bait ball of 1,600 in the open water; the others 640 each.
+const SARDINE_BALL := [40, 40, 0.75]
+const SARDINE_SWARM := [32, 20, 0.7]
+const ANCHOVY_SWARM := [28, 16, 0.5]
+const LANTERN_SWARM := [24, 14, 0.6]
+const MACKEREL_SWARM := [20, 8, 0.9]
+## A swarm draws all its riders nearer than the first of these (m), 60% of them nearer than the
+## second, and 35% beyond (thinned evenly).
+const SWARM_NEAR := Vector2(12.0, 22.0)
+## Cleaning stations on the reef.
+const STATIONS := 3
+## Seconds between two fish the player takes from a swarm.
+const GULP := 0.12
 
 var player: Player
 ## Off: nothing hunts (for trying things out: `-- --calm`).
@@ -71,8 +88,27 @@ var creatures: Array[Creature] = []
 var jellies: Array[MoonJelly] = []
 var nettles: Array[SeaNettle] = []
 var plankton: Array[Node3D] = []
-## Each: {flock, length, rich, goal, radius, low, high, seen}.
+## Each: {flock, length, rich, goal, radius, low, high, seen, swarm (it has riders), mid (its
+## middle, swarms only), gather (its rules' own), hunters (where the hunters at it are: they make it
+## ball up, and it flees them)}.
 var schools: Array[Dictionary] = []
+## The groups the creatures keep together in (Creature.Group).
+var groups: Array = []
+## The cleaning stations on the reef, and the fish being cleaned at each (or null).
+var stations: Array[Vector3] = []
+var station_client: Array = []
+## How many times a lionfish has stung the player this run (for the tests).
+var stings := 0
+
+const DAY := "res://scripts/day.gd"
+static var _day: GDScript
+static var _day_looked := false
+static var _night := 0.0
+static var _night_read := -100000
+
+# Each station's cleaners.
+var _cleaners: Array = []
+var _gulp := 0.0
 
 var _rng := RandomNumberGenerator.new()
 # The kinds that have been given their models this run, and the step at which another new kind
@@ -99,19 +135,18 @@ static func is_food(eater: float, prey: float) -> bool:
 func _ready() -> void:
 	_rng.seed = 5
 	for i in KRILL_CLOUDS:
-		_school(_krill_rules(), _krill_mesh(), KRILL_LENGTH, "", 0.55, 0.92, i)
+		_school(_swarm_rules(_krill_rules(), KRILL_SWARM), _krill_mesh(), KRILL_LENGTH, "", 0.55, 0.92, i)
 	for i in SARDINE_SCHOOLS:
-		_school(_sardine_rules(), Fish.school_mesh(), SARDINE_LENGTH, "open" if i % 2 == 0 else "kelp", 0.4, 0.85, 100 + i)
+		_school(_swarm_rules(_sardine_rules(), SARDINE_BALL if i == 0 else SARDINE_SWARM), Fish.school_mesh(), SARDINE_LENGTH,
+				"open" if i % 2 == 0 else "kelp", 0.4, 0.85, 100 + i)
 	if ResourceLoader.exists("res://creatures/anchovy/anchovy.gd"):
 		for i in 3:
 			var rules := _sardine_rules()
 			rules.size = 1.0
-			rules.count = 44
 			# (slow enough in a fright that the smallest fish can run one down)
 			rules.max_speed = 1.3
 			rules.cruise_speed = 0.9
-			rules.bounds_size = Vector3(3.5, 3.0, 3.5)
-			_school(rules, Fish.school_mesh("anchovy"), 0.14, ["sand", "grass", "kelp"][i], 0.4, 0.85, 300 + i)
+			_school(_swarm_rules(rules, ANCHOVY_SWARM), Fish.school_mesh("anchovy"), 0.14, ["sand", "grass", "kelp"][i], 0.4, 0.85, 300 + i)
 	if Species.has("piranha"):
 		var pack := _sardine_rules()
 		pack.size = 1.0
@@ -122,9 +157,8 @@ func _ready() -> void:
 		for i in 2:
 			var lights := _sardine_rules()
 			lights.size = 2.0
-			lights.count = 40
-			lights.bounds_size = Vector3(4.0, 3.0, 4.0)
-			_school(lights, Fish.school_mesh("lanternfish"), 0.16, "trench", 0.1, 0.6, 500 + i)
+			_school(_swarm_rules(lights, LANTERN_SWARM), Fish.school_mesh("lanternfish"), 0.16, "trench", 0.1, 0.6, 500 + i)
+			schools[-1].nocturnal = true
 	if ResourceLoader.exists("res://creatures/neon_tetra/neon_tetra.gd"):
 		var neons := _sardine_rules()
 		# (three times life size: a neon tetra is 3.5 cm)
@@ -147,11 +181,9 @@ func _ready() -> void:
 		for i in 2:
 			var rules := _sardine_rules()
 			rules.size = 0.4 / 0.4
-			rules.count = 24
 			rules.max_speed = 3.0
 			rules.cruise_speed = 1.7
-			rules.bounds_size = Vector3(6.0, 5.0, 6.0)
-			_school(rules, Fish.school_mesh("pacific_mackerel"), 0.4, "open", 0.5, 0.9, 200 + i)
+			_school(_swarm_rules(rules, MACKEREL_SWARM), Fish.school_mesh("pacific_mackerel"), 0.4, "open", 0.5, 0.9, 200 + i)
 	if ResourceLoader.exists(PLANKTON):
 		for i in PLANKTON_CLOUDS:
 			var cloud: Node3D = (load(PLANKTON) as GDScript).new()
@@ -159,7 +191,9 @@ func _ready() -> void:
 			cloud.global_position = _school_place(["", "kelp", "grass", "open"][i % 4], PLANKTON_RADIUS, 0.4, 0.9)
 			cloud.call(&"fill", Vector3.ZERO, PLANKTON_RADIUS, PLANKTON_SPECKS)
 			plankton.append(cloud)
-	# Every kind Species has, where its creature is installed.
+	# Every kind Species has, where its creature is installed; those that keep together are put
+	# in groups of their own kind, or of every kind with the same `mix`.
+	var pools := {}
 	for kind: String in Species.ALL:
 		var entry := Species.of(kind)
 		if int(entry.count) == 0 or not Species.has(kind):
@@ -173,6 +207,14 @@ func _ready() -> void:
 			made.visible = false
 			made.place(made.somewhere())
 			creatures.append(made)
+			if entry.get("social", "solo") != "solo":
+				var key: String = entry.get("mix", kind)
+				if not pools.has(key):
+					pools[key] = []
+				pools[key].append(made)
+	for key: String in pools:
+		_make_groups(pools[key])
+	_make_stations()
 	for i in JELLIES:
 		var jelly := MoonJelly.new()
 		# (its bell's radius: the smallest are food for the youngest fish)
@@ -258,7 +300,7 @@ func nearest_food(only_schools := false) -> Vector3:
 	if only_schools:
 		return best
 	for each in creatures:
-		if each.away <= 0.0 and not each.giant and is_food(player.length, each.length):
+		if each.away <= 0.0 and not each.giant and not each.guarded() and is_food(player.length, each.length):
 			# (a fish that will run is worth less than one the same distance off that will not)
 			var far := each.global_position.distance_to(at) * 1.5
 			if far < near:
@@ -278,7 +320,7 @@ func threats() -> Array:
 	var found := []
 	for each in creatures:
 		if each.away <= 0.0 and each.hunts and each.visible and can_eat(each.length, player.length) and player.length >= each.length * TOO_SMALL \
-				and (each.mode == Creature.Mode.HUNT or each.global_position.distance_to(player.global_position) < 2.0 + each.length):
+				and (each.mode == Creature.Mode.HUNT or each.mode == Creature.Mode.STALK or each.global_position.distance_to(player.global_position) < 2.0 + each.length):
 			found.append([each.global_position, each.length])
 	for i in jellies.size():
 		if _jelly_away[i] <= 0.0 and not can_eat(player.length, jellies[i].size * 2.0):
@@ -291,31 +333,77 @@ func threats() -> Array:
 
 
 func _step_schools(delta: float) -> void:
+	_gulp -= delta
 	var at := player.global_position
 	var mouth := player.mouth()
 	for school in schools:
 		var flock: Flock = school.flock
+		var hunters_at: Array = school.hunters
 		# Too far off to be seen through the water, it is left as it is: not moved, not drawn.
-		var seen := flock.global_position.distance_to(at) < float(school.seen)
+		var far := flock.global_position.distance_to(at)
+		var seen := far < float(school.seen)
 		if seen != flock.visible:
 			flock.visible = seen
 			flock.set_process(seen)
 		if not seen:
+			hunters_at.clear()
 			continue
-		# The school roams: its bounds drift after a place that changes now and then.
-		var goal: Vector3 = school.goal
-		if flock.global_position.distance_to(goal) < 2.0:
-			goal = _school_place(school.zone, float(school.radius), float(school.low), float(school.high))
-			school.goal = goal
-		flock.global_position = flock.global_position.move_toward(goal, 0.35 * delta)
+		var swarm: bool = school.swarm
+		var hunted := not hunters_at.is_empty()
+		if hunted:
+			# Hunted, it holds where it is and is driven up towards the light, balled up and turning.
+			flock.global_position.y = move_toward(flock.global_position.y, Sea.SURFACE - float(school.radius) * 0.6 - 0.5, 0.25 * delta)
+		else:
+			# The school roams: its bounds drift after a place that changes now and then.
+			var goal: Vector3 = school.goal
+			if flock.global_position.distance_to(goal) < 2.0:
+				var zone: String = "open" if school.nocturnal and night() > 0.5 else school.zone
+				goal = _school_place(zone, float(school.radius), float(school.low), float(school.high))
+				school.goal = goal
+			flock.global_position = flock.global_position.move_toward(goal, 0.35 * delta)
+		if swarm:
+			school.mid = flock.middle()
+			var rules := flock.rules
+			rules.gather = float(school.gather) + (1.4 if hunted else 0.0)
+			rules.orbit = 1.2 if hunted else 0.0
+			rules.orbit_radius = float(school.radius) * 0.3
+			# (fewer drawn the further off it is, thinned evenly)
+			var layers: int = rules.riders
+			if far > SWARM_NEAR.y:
+				layers = ceili(layers * 0.35)
+			elif far > SWARM_NEAR.x:
+				layers = ceili(layers * 0.6)
+			flock.rider_layers = layers
+			# (they part round the player's body)
+			flock.shove[0] = Vector4.ZERO
+			if player.alive:
+				var hole := at - player.heading * player.length * 0.2
+				flock.shove[0] = Vector4(hole.x, hole.y, hole.z, player.length * 0.55 + 0.05)
 		if not player.alive:
-			flock.predators = PackedVector3Array()
+			flock.predators = PackedVector3Array(hunters_at)
+			hunters_at.clear()
 			continue
 		var edible := is_food(player.length, school.length)
-		flock.predators = PackedVector3Array([at]) if edible else PackedVector3Array()
-		if not edible or flock.global_position.distance_to(at) > float(school.radius) + 3.0:
+		# (a swarm keeps clear of anything that could eat it; a small school only of a player that would)
+		var feared := edible or (swarm and can_eat(player.length, school.length))
+		var flee_from := PackedVector3Array(hunters_at)
+		if feared:
+			flee_from.append(at)
+		flock.predators = flee_from
+		hunters_at.clear()
+		if not edible or far > float(school.radius) + 3.0:
 			continue
 		var reach := player.length * 0.3 + float(school.length) * 0.5 + 0.03
+		if swarm:
+			# the one nearest the mouth is taken, and comes back a while later on the far side (one a
+			# gulp: in the middle of a ball of a thousand there is always another at the mouth)
+			if _gulp <= 0.0:
+				var i := flock.nearest_rider(mouth, reach)
+				if i >= 0:
+					player.feed(school.length, school.rich)
+					flock.take_rider(i, _rng.randf_range(6.0, 14.0))
+					_gulp = GULP
+			continue
 		var all := flock.positions()
 		for i in all.size():
 			if all[i].distance_squared_to(mouth) < reach * reach:
@@ -325,15 +413,64 @@ func _step_schools(delta: float) -> void:
 				flock.move_boid(i, flock.global_position + behind * (float(school.radius) + reach + 2.0))
 
 
+## Takes from a swarm or school whatever is within `reach` of a mouth (a hunter, a whale, a net):
+## at most `most`. Returns how many.
+func take_from(school: Dictionary, mouth: Vector3, reach: float, most := 1) -> int:
+	var flock: Flock = school.flock
+	if not flock.visible:
+		return 0
+	var taken := 0
+	if school.swarm:
+		for n in most:
+			var i := flock.nearest_rider(mouth, reach)
+			if i < 0:
+				break
+			flock.take_rider(i, _rng.randf_range(6.0, 14.0))
+			taken += 1
+		return taken
+	var all := flock.positions()
+	for i in all.size():
+		if taken < most and all[i].distance_squared_to(mouth) < reach * reach:
+			flock.move_boid(i, flock.global_position + (flock.global_position - mouth).normalized() * (float(school.radius) + 2.0))
+			taken += 1
+	return taken
+
+
+## For Fishers (a trawl's mouth, a net): whatever of the schools is within `reach` of a point is
+## caught (at most `most` from each), and the rest scatter. Returns how many.
+func catch_schools(at: Vector3, reach: float, most := 2) -> int:
+	var taken := 0
+	for school in schools:
+		var flock: Flock = school.flock
+		if not flock.visible or flock.global_position.distance_to(at) > float(school.radius) + reach + 2.0:
+			continue
+		var got := take_from(school, at, reach, most)
+		if got > 0:
+			flock.scatter(at, 1.0, reach + 1.5)
+		taken += got
+	return taken
+
+
 func _step_creatures(delta: float) -> void:
 	hunters = 0
 	var mouth := player.mouth()
+	for group: Creature.Group in groups:
+		group.update(delta)
+	_step_stations()
+	# (a fifteenth of them each frame look about for a swarm to hunt or a cleaner to visit)
+	var slice := steps % 15
+	for k in range(slice, creatures.size(), 15):
+		_look_about(creatures[k])
 	for each in creatures:
 		if each.away > 0.0:
 			each.away -= delta
 			if each.away <= 0.0:
-				each.place(each.somewhere(player.global_position, 24.0))
+				each.place(_back_place(each))
 			continue
+		if each.prey is Dictionary:
+			each.prey_at = each.prey.mid
+		elif each.prey is Node3D:
+			each.prey_at = (each.prey as Node3D).global_position
 		var apart := each.global_position.distance_to(player.global_position)
 		# Too far off to be seen through the water: not drawn, and moved only now and then.
 		var seen := apart < FISH_SEEN + each.length * 2.0
@@ -357,20 +494,195 @@ func _step_creatures(delta: float) -> void:
 			continue
 		each.step(delta, player, hunting)
 		each.detail(apart < 5.0 + each.length * 4.0)
+		# A pack hunter or a filter feeder at a swarm or a cloud: the swarm balls up and flees it,
+		# and what its open mouth passes is taken.
+		if each.prey_r > 0.0 and each.prey is Dictionary:
+			var school: Dictionary = each.prey
+			school.hunters.append(each.global_position)
+			if each.feeding:
+				var flock: Flock = school.flock
+				flock.shove[1] = Vector4(each.global_position.x, each.global_position.y, each.global_position.z, each.length * 0.45 + 0.2)
+				if _rng.randf() < delta * (12.0 if each.habit == "filter" else 4.0):
+					take_from(school, each.mouth(), each.length * 0.35 + float(school.length), 3 if each.habit == "filter" else 1)
+		elif each.feeding and each.prey is Node3D:
+			(each.prey as Node3D).call(&"bite", each.mouth(), each.length * 0.3)
 		if not player.alive:
 			continue
-		if each.mode == Creature.Mode.HUNT:
+		if each.mode == Creature.Mode.HUNT or each.mode == Creature.Mode.STALK:
 			hunters += 1
 		if each.giant:
 			continue
 		if is_food(player.length, each.length):
-			if each.global_position.distance_to(mouth) < player.length * 0.3 + each.length * 0.35:
+			if not each.guarded() and each.global_position.distance_to(mouth) < player.length * 0.3 + each.length * 0.35:
 				player.feed(each.length)
 				each.visible = false
 				each.away = _rng.randf_range(5.0, 12.0)
-		elif hunting and each.hunts and not player.in_air and can_eat(each.length, player.length):
+		elif hunting and each.hunts and not player.in_air and not each.airborne and can_eat(each.length, player.length):
 			if each.mouth().distance_to(player.global_position) < each.length * 0.22 + player.length * 0.3:
 				player.die(each.kind)
+		if each.stings() and hunting and not player.in_air and not can_eat(player.length, each.length) \
+				and apart < each.length * 0.45 + player.length * 0.35:
+			_sting(each)
+
+
+# A lionfish's spines: touching one costs the player its burst and most of its speed, and pushes
+# it off (Claude's call: a hurt, not a death, since nothing warns a new player that it stings but
+# its fanned spines).
+func _sting(by: Creature) -> void:
+	by.stung()
+	player.stamina = 0.0
+	player._speed *= 0.2
+	var off := player.global_position - by.global_position
+	player.global_position = Sea.keep_in(player.global_position + off.normalized() * 0.3, maxf(player.length * 0.3, 0.12))
+	stings += 1
+
+
+# Where a creature that was eaten comes back: with its group, if the group is out of the player's
+# sight, or else somewhere far from the player (it rejoins its group from there).
+func _back_place(each: Creature) -> Vector3:
+	var g: Creature.Group = each.group
+	if g and g.present > 0 and g.mid.distance_to(player.global_position) > 24.0:
+		var spread := maxf(each.length * g.space, 0.3) * 2.0
+		var at := g.mid + Vector3(_rng.randf_range(-1.0, 1.0), _rng.randf_range(-0.5, 0.5), _rng.randf_range(-1.0, 1.0)) * spread
+		return Sea.clear_of_rocks(Sea.keep_in(at, maxf(each.length * 0.5, 0.3)), maxf(each.length * 0.5, 0.3))
+	return each.somewhere(player.global_position, 24.0)
+
+
+# A creature now and then looks about: a pack hunter or a filter feeder for the nearest swarm or
+# cloud it could feed on (only those in sight: the others are not being moved), a client for a free
+# cleaning station near it.
+func _look_about(each: Creature) -> void:
+	if each.away > 0.0 or not each.visible:
+		each.prey_r = 0.0
+		each.prey = null
+		return
+	if each.habit == "pack" or each.habit == "filter":
+		var best: Variant = null
+		var best_r := 0.0
+		var near := 30.0
+		var at := each.global_position
+		for school in schools:
+			var flock: Flock = school.flock
+			if not flock.visible or not school.swarm:
+				continue
+			var fits: bool = school.length <= 0.25 if each.habit == "filter" else \
+					(can_eat(each.length, school.length) and school.length >= each.length * 0.04)
+			if not fits:
+				continue
+			var d: float = (school.mid as Vector3).distance_to(at)
+			if d < near:
+				near = d
+				best = school
+				best_r = float(school.radius) * 0.6
+		if each.habit == "filter":
+			for cloud in plankton:
+				var d := cloud.global_position.distance_to(at)
+				if cloud.visible and d < near:
+					near = d
+					best = cloud
+					best_r = PLANKTON_RADIUS
+		each.prey = best
+		each.prey_r = best_r if best != null else 0.0
+		if best is Dictionary:
+			each.prey_at = best.mid
+		elif best is Node3D:
+			each.prey_at = (best as Node3D).global_position
+	if each.visits and each.visit_at == Vector3.INF and each._visit_t <= 0.0:
+		for i in stations.size():
+			if station_client[i] == null and stations[i].distance_to(each.global_position) < 30.0:
+				station_client[i] = each
+				each.visit_at = stations[i]
+				return
+		each._visit_t = _rng.randf_range(10.0, 20.0)
+
+
+# The cleaning stations: a client that has gone (cleaned, eaten, called off) frees its station; the
+# station's cleaners attend to whoever is there.
+func _step_stations() -> void:
+	for i in stations.size():
+		var client: Creature = station_client[i]
+		if client and (client.away > 0.0 or client.visit_at != stations[i]):
+			station_client[i] = null
+			client = null
+		_cleaners_at(i, client)
+
+
+func _cleaners_at(i: int, client: Creature) -> void:
+	for each: Creature in _cleaners[i]:
+		each.client = client if client and client.global_position.distance_to(stations[i]) < client.length + 1.0 else null
+
+
+# Groups of `pool` (of one kind, or of the kinds of one mix): as many as the counts make, each of a
+# size Species gives, placed together.
+func _make_groups(pool: Array) -> void:
+	for k in range(pool.size() - 1, 0, -1):
+		var j := _rng.randi_range(0, k)
+		var swap: Variant = pool[k]
+		pool[k] = pool[j]
+		pool[j] = swap
+	var first := Species.of((pool[0] as Creature).kind)
+	var social: String = first.get("social", "school")
+	var sizes: Array = first.get("group", [3, 5])
+	var k := 0
+	while k < pool.size():
+		var n := _rng.randi_range(int(sizes[0]), int(sizes[1]))
+		var some := pool.slice(k, k + n)
+		k += n
+		if some.size() < 2:
+			continue
+		some.sort_custom(func(a: Creature, b: Creature) -> bool: return a.length > b.length)
+		var group := Creature.Group.new(social)
+		var lead: Creature = some[0]
+		var at := lead.global_position
+		for m: Creature in some:
+			group.members.append(m)
+			m.group = group
+			if m != lead:
+				var room := maxf(m.length * 0.5, 0.3)
+				var off := Vector3(_rng.randf_range(-1.0, 1.0), _rng.randf_range(-0.4, 0.4), _rng.randf_range(-1.0, 1.0)) * maxf(m.length * group.space, 0.3) * 1.5
+				m.place(Sea.clear_of_rocks(Sea.keep_in(at + off, room), room))
+				m.heading = lead.heading
+		group.goal = at
+		group.mid = at
+		groups.append(group)
+
+
+# The cleaning stations, on the reef (over the floor, where a cleaner bobs to show it is open), and
+# which cleaners keep each.
+func _make_stations() -> void:
+	for i in STATIONS:
+		var at := Sea.place(_rng, "reef", 0.6)
+		at.y = Sea.ground(at.x, at.z) + 0.5
+		stations.append(Sea.clear_of_rocks(at, 0.4))
+		station_client.append(null)
+		_cleaners.append([])
+	var n := 0
+	for each in creatures:
+		if each.habit == "cleaner":
+			var i := n % STATIONS
+			n += 1
+			each.station_at = stations[i]
+			(_cleaners[i] as Array).append(each)
+			each.place(stations[i] + Vector3(_rng.randf_range(-0.5, 0.5), 0.2, _rng.randf_range(-0.5, 0.5)))
+
+
+## How dark it is (0 day, 1 night), from scripts/day.gd's `Day.now()` (0..1 through the day, taken
+## to be midnight at 0 and noon at 0.5) when that script is there; always day without it. Read
+## once a second at most.
+static func night() -> float:
+	var now := Time.get_ticks_msec()
+	if now - _night_read < 1000:
+		return _night
+	_night_read = now
+	if not _day_looked:
+		_day_looked = true
+		if ResourceLoader.exists(DAY):
+			_day = load(DAY)
+	if _day == null:
+		return 0.0
+	var t := float(_day.call(&"now"))
+	_night = clampf((absf(t - 0.5) - 0.3) / 0.1, 0.0, 1.0)
+	return _night
 
 
 func _step_jellies(delta: float) -> void:
@@ -490,14 +802,37 @@ func _school(rules: FlockRules, mesh: Mesh, length: float, zone: String, low: fl
 	flock.rules = rules
 	flock.custom_mesh = mesh
 	flock.flock_seed = 31 + seed_of
-	# (a little thinking each a frame: there are ten of them)
-	flock.budget_ms = 0.4
+	# (a little thinking each a frame: there are ten of them; a swarm's few guides less still)
+	flock.budget_ms = 0.05 if rules.riders > 0 else 0.4
 	flock.ground_at = func(p: Vector3) -> float: return Sea.ground(p.x, p.z)
 	var at := _school_place(zone, rules.bounds_size.x, low, high)
 	flock.position = at
 	add_child(flock)
 	schools.append({"flock": flock, "length": length, "rich": 1.0, "goal": at, "zone": zone, "radius": rules.bounds_size.x, "low": low, "high": high,
-			"seen": KRILL_SEEN if length < 0.1 else SARDINES_SEEN})
+			"seen": KRILL_SEEN if length < 0.1 else SARDINES_SEEN, "swarm": rules.riders > 0, "mid": at, "gather": rules.gather,
+			"hunters": [], "nocturnal": false})
+
+
+## A school's rules made a swarm's: `spec` [guides, riders round each, how far round its guide a
+## rider keeps]. The guides keep a cloud's width apart and all together in one body.
+func _swarm_rules(r: FlockRules, spec: Array) -> FlockRules:
+	r.count = int(spec[0])
+	r.riders = int(spec[1])
+	var spread: float = spec[2]
+	r.rider_spread = spread
+	r.rider_drift = spread * 0.12
+	r.rider_fright = 0.7
+	r.separation_distance = spread * 1.25
+	r.perception = spread * 3.0
+	r.max_neighbours = 6
+	r.gather = maxf(r.gather, 0.8)
+	r.bounds = FlockRules.Bounds.SPHERE
+	r.bounds_size = Vector3.ONE * (spread * sqrt(float(spec[0])) * 0.9 + 1.5)
+	r.bounds_margin = r.bounds_size.x * 0.4
+	if r.flee > 0.0:
+		r.flee_radius = maxf(r.flee_radius, 3.5)
+		r.alarm_spread = 0.85
+	return r
 
 
 ## Krill: a loose cloud of tiny pink shrimps that takes no notice of anything (after Salmon
@@ -561,3 +896,4 @@ func _sardine_rules() -> FlockRules:
 	r.flee_radius = 3.0
 	r.panic_speed = 1.4
 	return r
+

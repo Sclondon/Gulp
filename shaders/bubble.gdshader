@@ -6,8 +6,15 @@ render_mode unshaded, cull_disabled, shadows_disabled, fog_disabled;
 uniform vec4 colour : source_color = vec4(0.88, 0.97, 1.0, 1.0);
 // How thick the ring is, as a part of the bubble's radius.
 uniform float rim = 0.26;
+// Nothing of it is drawn above this height (the sea's surface: a bubble that reaches it is gone).
+uniform float ceiling = 100000.0;
+// Nothing nearer the eye than this (metres).
+uniform float near_cut = 0.0;
+
+varying float v_height;
 
 void vertex() {
+	v_height = MODEL_MATRIX[3].y;
 	// (turned to face the eye, and kept the size it was set down at)
 	vec3 size = vec3(length(MODEL_MATRIX[0].xyz), length(MODEL_MATRIX[1].xyz), length(MODEL_MATRIX[2].xyz));
 	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0] * size.x, INV_VIEW_MATRIX[1] * size.y, INV_VIEW_MATRIX[2] * size.z, MODEL_MATRIX[3]);
@@ -18,7 +25,8 @@ void fragment() {
 	float d = length(from_middle);
 	float ring = step(d, 1.0) * step(1.0 - rim, d);
 	float glint = step(length(from_middle - vec2(-0.32, -0.32)), 0.2);
-	if (max(ring, glint) < 0.5) {
+	// (none right in the eye's face, where one bubble would fill the picture)
+	if (max(ring, glint) < 0.5 || v_height > ceiling || -VERTEX.z < near_cut) {
 		discard;
 	}
 	ALBEDO = colour.rgb * mix(1.0, 0.5, smoothstep(25.0, 120.0, -VERTEX.z));

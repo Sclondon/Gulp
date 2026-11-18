@@ -22,6 +22,8 @@ extends Node3D
 signal scattered(at: Vector3)
 
 const BUCKETS := 4096
+## The most guides a swarm (rules.riders > 0) has: the shader's arrays hold this many.
+const MOST_LEADS := 48
 const _P1 := 73856093
 const _P2 := 19349663
 const _P3 := 83492791
@@ -96,11 +98,28 @@ var _us_per := 8.0
 var _rng := RandomNumberGenerator.new()
 var _mm: MultiMeshInstance3D
 var _material: ShaderMaterial
-var _built := [-1, -1, -1.0, null]
+var _built := [-1, -1, -1.0, null, 0]
 var _all_predators := PackedVector3Array()
 var _all_obstacles := PackedVector4Array()
 var _goal := Vector3.ZERO
 var _middle := Vector3.ZERO
+
+## A swarm's riders (rules.riders > 0), pushed aside round up to two things each frame: xyz where,
+## w how far (0: nothing). Set by the game.
+var shove := PackedVector4Array([Vector4.ZERO, Vector4.ZERO])
+## How many riders round each guide are drawn (-1: all): fewer far off. Rider k of guide g is
+## instance k * guides + g, so fewer layers thin the whole swarm evenly.
+var rider_layers := -1
+var _lead_at := PackedVector4Array()
+var _lead_way := PackedVector4Array()
+var _rider_place := PackedVector3Array()
+var _rider_seed := PackedFloat32Array()
+var _rider_back := PackedFloat32Array()
+var _riders_gone := PackedInt32Array()
+var _rider_lead := PackedInt32Array()
+var _lead_riders: Array[PackedInt32Array] = []
+var _riders_n := 0
+var _box := AABB()
 
 
 func _ready() -> void:
@@ -155,6 +174,169 @@ func move_boid(i: int, at: Vector3) -> void:
 	_pos[i] = at
 
 
+# --- riders (Gulp: a swarm; not yet in GameCommon's copy) ---------------------------------
+# A swarm's boids are a few dozen guides, never drawn; each drawn body rides one of them at a place
+# of its own in a cloud round it, set once, and the vertex shader puts it there each frame from
+# the guides' places (lead_at, lead_way). The CPU's cost is the guides', however many ride.
+
+## How many riders there are in all (0: not a swarm).
+func rider_count() -> int:
+	return _riders_n
+
+
+## Which guide a rider rides.
+func rider_lead(i: int) -> int:
+	return _rider_lead[i]
+
+
+## Where a rider is (world), as near as the CPU knows: its guide and its place round it (not its
+## own slow drift, nor the shove).
+func rider_position(i: int) -> Vector3:
+	var g := _rider_lead[i]
+	return _pos[g] + _rider_place[i] * (1.0 + _fear[g] * rules.rider_fright)
+
+
+## A rider's place round its guide.
+func rider_place(i: int) -> Vector3:
+	return _rider_place[i]
+
+
+## The drawn rider nearest a point and within `within` of it, or -1. Only the guides near the
+## point are looked into, and only their own riders.
+func nearest_rider(point: Vector3, within: float) -> int:
+	if _riders_n == 0:
+		return -1
+	var reach := within + rules.rider_spread * (1.0 + rules.rider_fright) + 0.1
+	var reach2 := reach * reach
+	var best := -1
+	var near := within * within
+	var drawn := _drawn()
+	for g in _n:
+		if _pos[g].distance_squared_to(point) > reach2:
+			continue
+		var widen := 1.0 + _fear[g] * rules.rider_fright
+		var at := _pos[g]
+		for i: int in _lead_riders[g]:
+			if i >= drawn or _rider_back[i] > 0.0:
+				continue
+			var d := (at + _rider_place[i] * widen).distance_squared_to(point)
+			if d < near:
+				near = d
+				best = i
+	return best
+
+
+## Takes a rider away (eaten, caught): it is not drawn for `seconds`, then comes back on the guide
+## furthest from `shove[0]` (the far side of the swarm from whatever took it), so it is seen
+## coming back, not popping up in front of the mouth that took it.
+func take_rider(i: int, seconds: float) -> void:
+	if i < 0 or i >= _riders_n or _rider_back[i] > 0.0:
+		return
+	_rider_back[i] = maxf(seconds, 0.01)
+	_riders_gone.append(i)
+	_send_rider(i, true)
+
+
+## How many riders are away just now.
+func riders_gone() -> int:
+	return _riders_gone.size()
+
+
+## Whether a rider is away just now.
+func rider_gone(i: int) -> bool:
+	return _rider_back[i] > 0.0
+
+
+# How many riders are drawn (the first so many).
+func _drawn() -> int:
+	return _riders_n if rider_layers < 0 else mini(rider_layers, rules.riders) * _n
+
+
+func _send_rider(i: int, gone: bool) -> void:
+	var p := _rider_place[i]
+	var w := float(_rider_lead[i]) + _rider_seed[i]
+	_mm.multimesh.set_instance_custom_data(i, Color(p.x, p.y, p.z, -w if gone else w))
+
+
+# Riders taken come back when their time is up.
+func _riders_back(dt: float) -> void:
+	var k := _riders_gone.size() - 1
+	while k >= 0:
+		var i := _riders_gone[k]
+		_rider_back[i] -= dt
+		if _rider_back[i] <= 0.0:
+			_rider_back[i] = 0.0
+			_riders_gone.remove_at(k)
+			if shove[0].w > 0.0:
+				var from := Vector3(shove[0].x, shove[0].y, shove[0].z)
+				var far_g := _rider_lead[i]
+				var far := -1.0
+				for h in _n:
+					var d := _pos[h].distance_squared_to(from)
+					if d > far:
+						far = d
+						far_g = h
+				var g := _rider_lead[i]
+				if far_g != g:
+					var list: PackedInt32Array = _lead_riders[g]
+					list.remove_at(list.find(i))
+					_lead_riders[g] = list
+					list = _lead_riders[far_g]
+					list.append(i)
+					_lead_riders[far_g] = list
+					_rider_lead[i] = far_g
+			_send_rider(i, false)
+		k -= 1
+
+
+func _build_riders() -> void:
+	var r := rules
+	var shown := r.riders
+	_riders_n = _n * shown
+	_rider_place.resize(_riders_n)
+	_rider_seed.resize(_riders_n)
+	_rider_back.resize(_riders_n)
+	_rider_back.fill(0.0)
+	_riders_gone.clear()
+	_rider_lead.resize(_riders_n)
+	_lead_riders.clear()
+	for g in _n:
+		_lead_riders.append(PackedInt32Array())
+	_lead_at.resize(_n)
+	_lead_way.resize(_n)
+	_mm.multimesh.instance_count = _riders_n
+	var b := PackedFloat32Array()
+	b.resize(_riders_n * 20)
+	for i in _riders_n:
+		# (rider k of guide g is instance k * guides + g: drawing fewer thins every cloud evenly)
+		var g := i % _n
+		_rider_lead[i] = g
+		var list: PackedInt32Array = _lead_riders[g]
+		list.append(i)
+		_lead_riders[g] = list
+		# (denser at the middle of each cloud than at its edge)
+		var p := _rng_unit() * r.rider_spread * pow(_rng.randf(), 0.6)
+		_rider_place[i] = p
+		_rider_seed[i] = _rng.randf_range(0.01, 0.98)
+		var k := i * 20
+		b[k] = 1.0
+		b[k + 5] = 1.0
+		b[k + 10] = 1.0
+		var tone := 1.0 - _rng.randf() * r.colour_variation
+		b[k + 12] = tone
+		b[k + 13] = tone
+		b[k + 14] = tone
+		b[k + 15] = 1.0
+		b[k + 16] = p.x
+		b[k + 17] = p.y
+		b[k + 18] = p.z
+		b[k + 19] = float(g) + _rider_seed[i]
+	_mm.multimesh.buffer = b
+	_material.set_shader_parameter("riders", 1)
+	_material.set_shader_parameter("rider_size", r.size)
+	_material.set_shader_parameter("rider_vary", r.size_variation)
+
+
 ## How frightened one is (0..1).
 func fear_of(i: int) -> float:
 	return _fear[i]
@@ -175,6 +357,11 @@ func centre() -> Vector3:
 	for p in _pos:
 		sum += p
 	return sum / _n
+
+
+## The middle of the flock as of this frame's thinking (no new sum).
+func middle() -> Vector3:
+	return _middle
 
 
 ## The boid nearest a point.
@@ -234,7 +421,7 @@ func _rebuild() -> void:
 		_mm.multimesh.mesh = mesh
 		_shape_uniforms(mesh)
 	var old := _n
-	_n = r.count
+	_n = mini(r.count, MOST_LEADS) if r.riders > 0 else r.count
 	_pos.resize(_n)
 	_vel.resize(_n)
 	_acc.resize(_n)
@@ -256,10 +443,16 @@ func _rebuild() -> void:
 	if _built[2] != r.size or _built[1] != r.body:
 		for i in _n:
 			_scale[i] = r.size * (1.0 + _rng.randf_range(-1.0, 1.0) * r.size_variation)
-	_mm.multimesh.instance_count = _n
-	_buffer.resize(_n * 20)
+	if r.riders > 0:
+		_build_riders()
+	else:
+		_riders_n = 0
+		_material.set_shader_parameter("riders", 0)
+		_mm.multimesh.instance_count = _n
+		_buffer.resize(_n * 20)
 	_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if cast_shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_built = [r.count, r.body, r.size, custom_mesh]
+	_built = [r.count, r.body, r.size, custom_mesh, r.riders]
+	_middle = centre()
 	_cursor = 0
 	watched.clear()
 	_draw_all(0.0)
@@ -323,7 +516,7 @@ func _shape_uniforms(mesh: Mesh) -> void:
 func _process(delta: float) -> void:
 	if rules == null or _mm == null:
 		return
-	if _built[0] != rules.count or _built[1] != rules.body or _built[2] != rules.size or _built[3] != custom_mesh:
+	if _built[0] != rules.count or _built[1] != rules.body or _built[2] != rules.size or _built[3] != custom_mesh or _built[4] != rules.riders:
 		_rebuild()
 	if frozen:
 		_draw_all(0.0)
@@ -335,6 +528,8 @@ func _process(delta: float) -> void:
 	_think()
 	_move(dt)
 	_draw_all(dt)
+	if not _riders_gone.is_empty():
+		_riders_back(dt)
 	sim_ms = lerpf(sim_ms, (Time.get_ticks_usec() - t0) / 1000.0, 0.1)
 
 
@@ -367,6 +562,9 @@ func _think() -> void:
 		_head[h] = i
 	var start := Time.get_ticks_usec()
 	var least := maxi(_n / 8, mini(_n, 32))
+	if _riders_n > 0:
+		# (a swarm's guides each think again every few frames: they are few, and slow to change)
+		least = maxi(_n / 6, 4)
 	var most := maxi(least, int(budget_ms * 1000.0 / maxf(_us_per, 0.5)))
 	var todo := mini(_n, most)
 	var found_sum := 0
@@ -599,6 +797,9 @@ func _draw_all(dt: float) -> void:
 	if _n == 0:
 		return
 	var r := rules
+	if _riders_n > 0:
+		_draw_riders(dt)
+		return
 	var swim := r.motion == FlockRules.Motion.SWIM
 	var walk := r.motion == FlockRules.Motion.WALK
 	var flap := r.motion == FlockRules.Motion.FLAP
@@ -674,6 +875,45 @@ func _draw_all(dt: float) -> void:
 	_material.set_shader_parameter("motion", int(r.motion))
 	_material.set_shader_parameter("amount", r.flap_amount)
 	_material.set_shader_parameter("sheen", 0.5 if r.body == FlockRules.Body.FISH else 0.25)
+
+
+# A swarm: only its guides' places, headings, frights and beats go to the shader (two small
+# arrays); the riders' own buffer is not touched. The box it is culled by is the guides' box.
+func _draw_riders(dt: float) -> void:
+	var r := rules
+	var rate := r.flap_rate * TAU * dt
+	var cruise := maxf(r.cruise_speed, 0.1)
+	var lo := _pos[0]
+	var hi := _pos[0]
+	for i in _n:
+		var p := _pos[i]
+		var f := _fwd[i]
+		var effort := clampf(0.4 + _vel[i].length() / cruise * 0.6, 0.3, 2.0)
+		_phase[i] = fmod(_phase[i] + rate * effort, TAU * 64.0)
+		_lead_at[i] = Vector4(p.x, p.y, p.z, _fear[i])
+		_lead_way[i] = Vector4(f.x, f.y, f.z, _phase[i])
+		lo = lo.min(p)
+		hi = hi.max(p)
+	var grow := Vector3.ONE * (r.rider_spread * (1.0 + r.rider_fright) + r.rider_drift + r.size * 0.6 + 0.5)
+	_box = AABB(lo - grow, hi - lo + grow * 2.0)
+	_mm.custom_aabb = _box
+	var drawn := _drawn()
+	if _mm.multimesh.visible_instance_count != (drawn if drawn < _riders_n else -1):
+		_mm.multimesh.visible_instance_count = drawn if drawn < _riders_n else -1
+	_material.set_shader_parameter("lead_at", _lead_at)
+	_material.set_shader_parameter("lead_way", _lead_way)
+	_material.set_shader_parameter("shove", shove)
+	_material.set_shader_parameter("colour", r.colour)
+	_material.set_shader_parameter("motion", int(r.motion))
+	_material.set_shader_parameter("amount", r.flap_amount)
+	_material.set_shader_parameter("rider_drift", r.rider_drift)
+	_material.set_shader_parameter("rider_fright", r.rider_fright)
+	_material.set_shader_parameter("sheen", 0.25)
+
+
+## The box the riders are in (world), as last drawn.
+func rider_box() -> AABB:
+	return _box
 
 
 # --- built-in bodies (1 m long, nose at -z) -----------------------------------------

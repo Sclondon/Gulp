@@ -88,7 +88,7 @@ var _accept_was := false
 var _p_was := false
 var _grazed := 0.0
 # Where a run starts (x and z): by the kelp, or (from the title) under the boat.
-var _start := Vector2(-24.0, 6.0)
+var _start := Sea.START
 var _near := ""
 
 
@@ -179,6 +179,9 @@ func _ready() -> void:
 	sea.sand.focus = camera
 	effects = Effects.new()
 	effects.player = player
+	# (water fx, tools/WATER_FX.md: the trail's shimmer and the burst's streaks are drawn by the post shader)
+	effects.camera = camera
+	effects.post = _post
 	_viewport.add_child(effects)
 	# (fishers: hooks, nets, trawlers; its meter shows the struggle over the sea)
 	fishers = Fishers.new()
@@ -255,7 +258,7 @@ func _go_near() -> void:
 	var what := Vector3.ZERO
 	var big := 1.0
 	match _near:
-		"kelp", "grass", "reef", "sand", "river", "open", "trench":
+		"kelp", "grass", "reef", "sand", "river", "open", "trench", "docks", "ruins", "pirate", "beach":
 			var zone: Vector2 = Sea.ZONES[_near].at
 			what = Vector3(zone.x, Sea.ground(zone.x, zone.y) + 3.0, zone.y)
 			big = 4.0
@@ -333,11 +336,12 @@ func _process(delta: float) -> void:
 	sea.set_above(camera.global_position.y > Sea.SURFACE)
 	_post.set_shader_parameter(&"underwater", 0.0 if sea.above else 1.0)
 	if player.alive:
-		camera.global_position = camera.global_position.lerp(_camera_place(), 1.0 - exp(-(12.0 if player.in_air else 5.0) * delta))
+		# (water fx: quicker in a leap, and back under the water after one; tools/WATER_FX.md)
+		camera.global_position = camera.global_position.lerp(_camera_place(), 1.0 - exp(-(8.0 if player.in_air or camera.global_position.y > Sea.SURFACE - 0.4 else 5.0) * delta))
 		_aim_camera()
 		hud.reached = maxf(hud.reached, player.length)
-	# (wider in an upright window, where the picture is narrow)
-	camera.fov = 72.0 if size.y > size.x else 60.0
+	# (wider in an upright window, where the picture is narrow; wider still in a burst: water fx)
+	camera.fov = (72.0 if size.y > size.x else 60.0) + effects.fov_kick
 	hud.danger = lerpf(hud.danger, 1.0 if (life.hunters > 0 or (arena and arena.hunters() > 0)) and player.alive else 0.0, 1.0 - exp(-6.0 * delta))
 	pad.stamina = player.stamina
 	pad.speed = lerpf(pad.speed, player.velocity.length() / (Fish.pace(player.length) * 1.15 * Player.BOOST), 1.0 - exp(-8.0 * delta)) if player.alive else 0.0
@@ -374,6 +378,7 @@ func _open_title() -> void:
 			pad.visible = false
 			_dive = 0.0
 			_dive_from = camera.global_transform
+			title.logo.visible = false
 			_card.visible = false)
 	hud.visible = false
 	pad.visible = false
@@ -612,16 +617,29 @@ func _camera_place() -> Vector3:
 	# (above as well as behind: from straight behind a fish is only as big as it is thick)
 	var behind := player.global_position - player.heading * (0.25 + long * 1.9) + Vector3.UP * (0.2 + long * 1.1)
 	if player.in_air:
-		# (out of the water with it, and looking a little down on it)
-		behind.y = maxf(behind.y, player.global_position.y) + 0.3 + long * 0.6
-		return behind
-	if behind.y > Sea.SURFACE:
-		return behind
-	return Sea.keep_in(behind, 0.3)
+		# (water fx, tools/WATER_FX.md: out of the water with it, behind it along its way (not
+		# along its nose, which swings from up to down), a little above the water and rising
+		# with it, so that the leap is seen against the sky)
+		var flat := Vector3(player.velocity.x, 0.0, player.velocity.z)
+		if flat.length() < 0.01:
+			flat = Vector3(player.heading.x, 0.0, player.heading.z) + Vector3.FORWARD * 0.001
+		# (and a little to one side, so that its arc is seen and not only its tail)
+		flat = flat.normalized().rotated(Vector3.UP, 0.45)
+		var after := player.global_position - flat * (0.6 + long * 1.9)
+		after.y = Sea.SURFACE + 0.35 + long * 0.5 + maxf(player.global_position.y - Sea.SURFACE, 0.0) * 0.55
+		return after
+	# (water fx: in the water the eye stays under it, below the waves; it used to rise out of it
+	# whenever the fish swam near the top, and looked down through the surface at nothing)
+	behind = Sea.keep_in(behind, 0.3)
+	behind.y = minf(behind.y, Sea.SURFACE - 0.5)
+	return behind
 
 
 func _aim_camera() -> void:
 	var at := player.global_position + player.heading * player.length * 0.6
+	if player.in_air:
+		# (water fx: a little under it, so that it flies in the top half of the picture, clear of the panel)
+		at = player.global_position + Vector3.DOWN * (0.15 + player.length * 0.35)
 	if at.distance_to(camera.global_position) > 0.05:
 		camera.look_at(at, Vector3.UP)
 
