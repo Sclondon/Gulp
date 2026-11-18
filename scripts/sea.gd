@@ -39,7 +39,7 @@ const EDGE := Bay.EDGE * Bay.K
 ## along the shore (`Bay.BEACH`); "trench" is the canyon's water deeper than `deeper`. World metres.
 const ZONES := {
 	"beach": {"at": Vector2(60.0, -125.0), "radius": 0.0},
-	"river": {"at": Vector2(106.0, -38.0), "radius": 9.0},
+	"river": {"at": Vector2(107.0, -66.0), "radius": 32.0},
 	"kelp": {"at": Vector2(42.4, 48.6), "radius": 16.0, "also": [[Vector2(35.0, -130.0), 13.0]]},
 	"docks": {"at": Vector2(66.0, 68.0), "radius": 16.0, "also": [[Vector2(3.0, -123.0), 12.0]]},
 	"sand": {"at": Vector2(-10.0, -105.0), "radius": 22.0},

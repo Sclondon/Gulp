@@ -35,10 +35,11 @@ const BEACH_DEEP := 5.0
 
 const DATA := "res://data/monterey.bin"
 
-## Elkhorn Slough: a channel winding inland from Moss Landing, half this wide, this deep.
-const SLOUGH := [Vector2(99.0, -40.0), Vector2(106.0, -41.0), Vector2(111.0, -37.0), Vector2(116.0, -40.0), Vector2(121.0, -35.0)]
-const SLOUGH_HALF := 5.0
-const SLOUGH_DEEP := 4.0
+## Elkhorn Slough: a channel winding inland from Moss Landing, half this wide, this deep. Wider, and winding north
+## further inland, as the real slough does (the user, 2026-11-18: "The river should be wider and go further inland").
+const SLOUGH := [Vector2(98.0, -40.0), Vector2(105.0, -42.0), Vector2(110.0, -50.0), Vector2(107.0, -60.0), Vector2(111.0, -70.0), Vector2(108.0, -82.0), Vector2(110.0, -90.0)]
+const SLOUGH_HALF := 9.0
+const SLOUGH_DEEP := 5.0
 ## Harbours dredged level behind their walls: middle, radius, depth.
 const HARBOURS := [
 	[Vector2(66.0, 70.0), 20.0, 6.0],  # Monterey harbour (east of the wharf, off Del Monte: where the shore faces north)
