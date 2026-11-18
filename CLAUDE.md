@@ -481,3 +481,8 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   `concept_brother_tpose.jpg` and `concept_brother_outfits.jpg` (four fishing rigs, four diving suits: these replace
   `concept_diving_suits.jpg`, which drew them on the younger boy); `concept_boy_tpose.jpg`; a trial with faces is
   `concept_faces_trial.jpg` when made.
+- THE STORY, the user's corrections to the writing room's first version (2026-11-18, fixed): "the captain should have
+  been in the navy and thats where he met fell in love, not named teo (they are white italian and irish scottish),
+  the boys are his biological grandkids, the captain and his buddy didnt truly didnt get together until later after
+  captains wife dies". STORY.md is being rewritten to this; its first version (Teo the inventor, the baby from the
+  liner, a loss in 1898) is superseded.
