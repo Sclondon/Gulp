@@ -46,6 +46,8 @@ foot_pts = [p for p in pts if p.z < lo.z + tall * 0.07 and p.x > mid.x]
 foot = sum(foot_pts, Vector()) / len(foot_pts)
 
 sc.render.engine = "BLENDER_WORKBENCH"
+# plain colour: the default AgX transform darkens and browns the paint (a critic then calls the skin muddy)
+sc.view_settings.view_transform = "Standard"
 sh = sc.display.shading
 sh.light = "STUDIO"
 sh.show_cavity = True

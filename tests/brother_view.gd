@@ -12,6 +12,9 @@ const MODEL := "res://models/brother.glb"
 var _out := ""
 var _pose := false
 var _winding := false
+var _persp := false
+var _posed := false
+var _grey: StandardMaterial3D
 var _cam: Camera3D
 var _sun: DirectionalLight3D
 var _env: Environment
@@ -28,6 +31,10 @@ func _initialize() -> void:
 			_pose = true
 		if a == "--winding":
 			_winding = true
+		if a == "--persp":
+			_persp = true
+		if a == "--posed":
+			_posed = true
 	var world := Node3D.new()
 	root.add_child(world)
 	_env = Environment.new()
@@ -60,6 +67,36 @@ func _initialize() -> void:
 	_cam = Camera3D.new()
 	_cam.projection = Camera3D.PROJECTION_ORTHOGONAL
 	world.add_child(_cam)
+	if _persp or _posed:
+		# As the game would show him: a perspective lens of 35 degrees at about eye height, a sun from the upper
+		# front-left (as the camera sees him from the front) with shadows, a soft pale ambient.
+		_cam.projection = Camera3D.PROJECTION_PERSPECTIVE
+		_cam.fov = 35.0
+		_sun.basis = Basis.looking_at(Vector3(0.55, -0.7, -0.45).normalized(), Vector3.UP)
+		_sun.shadow_enabled = true
+		_sun.directional_shadow_max_distance = 12.0
+		_grey = StandardMaterial3D.new()
+		_grey.albedo_color = Color(0.5, 0.5, 0.52)
+		_grey.roughness = 0.75
+		var eye := Vector3(0, 1.62, 0)
+		if _persp:
+			# [name, direction from him to the camera, look-at point, distance, pose, grey]
+			for v in [["p_front", Vector3(0, 0, 1)], ["p_q", Vector3(-0.64, 0, 0.77)], ["p_side", Vector3(-1, 0, 0)], ["p_qb", Vector3(-0.64, 0, -0.77)]]:
+				_shots.append({"name": v[0], "dir": v[1], "at": Vector3(0, 0.98, 0), "dist": 3.45, "eye": eye.y, "pose": "", "grey": false})
+			_shots.append({"name": "p_head", "dir": Vector3(-0.6, 0, 0.8), "at": Vector3(0, 1.72, 0.05), "dist": 1.35, "eye": 1.76, "pose": "", "grey": false})
+			_shots.append({"name": "p_head_grey", "dir": Vector3(-0.6, 0, 0.8), "at": Vector3(0, 1.72, 0.05), "dist": 1.35, "eye": 1.76, "pose": "", "grey": true})
+			_shots.append({"name": "p_headf_grey", "dir": Vector3(0, 0, 1), "at": Vector3(0, 1.79, 0.06), "dist": 1.0, "eye": 1.8, "pose": "", "grey": true})
+			_shots.append({"name": "p_heads_grey", "dir": Vector3(-1, 0, 0.05), "at": Vector3(0, 1.79, 0.06), "dist": 1.0, "eye": 1.8, "pose": "", "grey": true})
+			_shots.append({"name": "p_eyes", "dir": Vector3(-0.25, 0, 1), "at": Vector3(0, 1.81, 0.12), "dist": 0.42, "eye": 1.82, "pose": "", "grey": false})
+			_shots.append({"name": "p_eyes_grey", "dir": Vector3(-0.25, 0, 1), "at": Vector3(0, 1.81, 0.12), "dist": 0.42, "eye": 1.82, "pose": "", "grey": true})
+			_shots.append({"name": "p_feet", "dir": Vector3(-0.6, 0, 0.8), "at": Vector3(0.0, 0.1, 0.0), "dist": 1.25, "eye": 0.75, "pose": "", "grey": true})
+			_shots.append({"name": "p_hand", "dir": Vector3(-0.2, 0, 1), "at": _hand_at() + Vector3(0, 0.02, 0), "dist": 0.6, "eye": _hand_at().y + 0.15, "pose": "", "grey": false})
+		if _posed:
+			for v in [["lift", Vector3(-0.64, 0, 0.77), false], ["lift", Vector3(-1, 0, 0), true], ["lift", Vector3(-0.64, 0, 0.77), true],
+					["walk", Vector3(-1, 0, 0), true], ["walk", Vector3(-0.64, 0, 0.77), true], ["sit", Vector3(-1, 0, 0), true], ["sit", Vector3(-0.64, 0, 0.77), true],
+					["reach", Vector3(-0.64, 0, 0.77), true]]:
+				_shots.append({"name": "x_%s_%s%s" % [v[0], "side" if v[1].x < -0.9 else "q", "_grey" if v[2] else ""], "dir": v[1], "at": Vector3(0, 0.92, 0), "dist": 3.45, "eye": eye.y, "pose": v[0], "grey": v[2]})
+		return
 	if _pose:
 		_bend()
 		for b in [["pose_front", Vector3(0, 0, 1)], ["pose_side", Vector3(-1, 0, 0)], ["pose_q", Vector3(0.7, 0, 0.7)], ["pose_back", Vector3(0, 0, -1)]]:
@@ -108,6 +145,64 @@ func _bend() -> void:
 	turn.call("spine", Vector3(1, 0, 0), -15.0)
 
 
+## A turn `d` (in the bone's parent's frame) put on a bone, kept at `at` (its rest place if null).
+func _put(bone: String, d: Basis, at = null) -> void:
+	var sk := _skeleton()
+	var i := sk.find_bone(bone)
+	var rest := sk.get_bone_rest(i)
+	sk.set_bone_pose_rotation(i, Quaternion((d * rest.basis).orthonormalized()))
+	sk.set_bone_pose_position(i, rest.origin if at == null else at)
+
+
+## A leg posed as scripts/title_figures.gd poses one: the thigh, shin and foot all hang from the hips (the rig's way),
+## so the knee's and the ankle's places are worked out here and the shin and foot moved there. `lift` is the thigh
+## forward of hanging, `knee` the bend, `foot` the foot's own turn (degrees; null: the shin's).
+func _leg(side: String, lift: float, knee: float, foot = null) -> void:
+	var sk := _skeleton()
+	var H := sk.get_bone_rest(sk.find_bone("thigh_" + side)).origin
+	var K0 := sk.get_bone_rest(sk.find_bone("shin_" + side)).origin
+	var A0 := sk.get_bone_rest(sk.find_bone("foot_" + side)).origin
+	var dt := Basis(Vector3.RIGHT, deg_to_rad(-lift))
+	var ds := Basis(Vector3.RIGHT, deg_to_rad(-lift + knee))
+	var K := H + dt * (K0 - H)
+	var A := K + ds * (A0 - K0)
+	_put("thigh_" + side, dt)
+	_put("shin_" + side, ds, K)
+	_put("foot_" + side, ds if foot == null else Basis(Vector3.RIGHT, deg_to_rad(-float(foot))), A)
+
+
+func _arm_pose(side: String, down: float, fwd: float, elbow: float) -> void:
+	var s := 1.0 if side == "l" else -1.0
+	_put("upper_arm_" + side, Basis(Vector3.RIGHT, deg_to_rad(-fwd)) * Basis(Vector3.BACK, deg_to_rad(-s * down)))
+	_put("forearm_" + side, Basis(Vector3.RIGHT, deg_to_rad(-elbow)))
+
+
+func _set_pose(pose: String) -> void:
+	var sk := _skeleton()
+	sk.reset_bone_poses()
+	match pose:
+		"lift":
+			_leg("l", 60.0, 90.0)
+			_arm_pose("l", 38.0, 0.0, 0.0)
+			_arm_pose("r", 38.0, 30.0, 70.0)
+		"walk":
+			_leg("l", 28.0, 12.0, 0.0)
+			_leg("r", -18.0, 35.0, -30.0)
+			_arm_pose("l", 36.0, -22.0, 15.0)
+			_arm_pose("r", 36.0, 25.0, 30.0)
+		"sit":
+			var h := sk.find_bone("hips")
+			sk.set_bone_pose_position(h, sk.get_bone_rest(h).origin + Vector3(0, -0.42, -0.1))
+			_leg("l", 85.0, 85.0, 0.0)
+			_leg("r", 85.0, 85.0, 0.0)
+			_arm_pose("l", 30.0, 35.0, 50.0)
+			_arm_pose("r", 30.0, 35.0, 50.0)
+		"reach":
+			_arm_pose("l", 38.0, 0.0, 0.0)
+			_arm_pose("r", 30.0, 80.0, 100.0)
+			_put("head", Basis(Vector3.UP, deg_to_rad(30.0)))
+
+
 func _set_lit(lit: bool) -> void:
 	_sun.visible = lit
 	_sun.light_energy = 0.9
@@ -126,6 +221,30 @@ func _process(_delta: float) -> bool:
 	var i := f / 3
 	if i >= _shots.size():
 		return true
+	if _shots[i] is Dictionary:
+		var d: Dictionary = _shots[i]
+		if f % 3 == 0:
+			_set_lit(true)
+			_sun.light_energy = 0.7
+			_env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+			_env.ambient_light_energy = 0.3
+			_set_pose(d["pose"])
+			for mesh: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
+				if not String(mesh.name).begins_with("brother_body_under"):
+					mesh.material_override = _grey if d["grey"] else null
+					if d["grey"] and String(mesh.name).contains("ink"):
+						mesh.visible = false
+					elif String(mesh.name).contains("ink"):
+						mesh.visible = true
+			var at: Vector3 = d["at"]
+			var dir: Vector3 = d["dir"]
+			_cam.near = 0.02
+			_cam.position = at + dir.normalized() * float(d["dist"])
+			_cam.position.y = float(d["eye"])
+			_cam.look_at(at, Vector3.UP)
+		elif f % 3 == 2 and _out != "":
+			root.get_texture().get_image().save_png("%s/%s.png" % [_out, d["name"]])
+		return false
 	var shot: Array = _shots[i]
 	if f % 3 == 0:
 		_set_lit(shot[4])
