@@ -41,15 +41,19 @@ const TABLES := {
 	# understory, red weed, urchins on pink barrens, stars, fans and sponges by the rocks.
 	"kelp": {"region": "kelp", "layers": [
 		{"what": "prop", "pieces": ["rock_boulder", "rock_split", "rock_ledge", "rock_stack", "rock_boulder_small"], "on": [1, 4], "depth": [3.0, 28.0],
-		 "density": [1.4, 0.5], "spacing": 3.8, "clump": [1, 2, 3.0], "size": [0.8, 1.5], "lift": -0.25, "tint": Color(0.6, 0.55, 0.5)},
+		 "density": [1.4, 0.5], "spacing": 3.8, "clump": [1, 2, 3.0], "size": [0.8, 1.5], "lift": -0.25, "tint": Color(0.66, 0.53, 0.52)},
+		# (the kelp's rock and slabs tinted pinker: the coralline crust of the photographs, at no cost)
 		{"what": "prop", "pieces": ["reef_slab_a", "reef_slab_b", "reef_slab_c"], "on": [1, 4], "depth": [3.0, 28.0], "slope_max": 0.6, "density": [2.6, 1.2],
-		 "spacing": 4.2, "size": [0.8, 1.3], "lift": -0.35, "tint": Color(0.62, 0.57, 0.52)},
-		{"what": "kelp", "on": [1], "depth": [5.0, 28.0], "slope_max": 0.8, "density": [3.2, 0.6], "noise": [0.04, 3, -0.12],
-		 "spacing": 3.4, "clump": [4, 7, 1.2, 0.3], "reach": [1.05, 1.3], "edge_reach": [0.55, 0.9], "canopy": [3, 7.0]},
+		 "spacing": 4.2, "size": [0.8, 1.3], "lift": -0.35, "tint": Color(0.68, 0.54, 0.53)},
+		# (Monterey's giant kelp, after real photographs: a wall of columns 1 to 3 m apart in the groves, each a
+		# bundle of many stipes (a clump of 2 or 3 wide plants: `width`), with narrow lanes of light between
+		# them, the rock ridges' sand channels and the grove noise's gaps left open to swim. 2026-11-18)
+		{"what": "kelp", "on": [1], "depth": [5.0, 28.0], "slope_max": 0.8, "density": [19.0, 4.0], "noise": [0.04, 3, -0.24],
+		 "spacing": 2.3, "clump": [2, 3, 0.55, 0.2], "width": [1.3, 1.9], "reach": [1.05, 1.3], "edge_reach": [0.55, 0.9], "canopy": [3, 7.0]},
 		{"what": "prop", "pieces": ["bull_kelp"], "on": [1], "depth": [4.0, 12.0], "slope_max": 0.7, "density": [1.0, 3.0], "spacing": 2.5, "to_surface": 8.0},
-		{"what": "prop", "pieces": ["understory_kelp", "understory_kelp", "understory_kelp_b"], "on": [1], "depth": [3.0, 28.0], "density": [14.0, 4.0],
+		{"what": "prop", "pieces": ["understory_kelp", "understory_kelp", "understory_kelp_b"], "on": [1], "depth": [3.0, 28.0], "density": [20.0, 5.0],
 		 "noise": [0.15, 4, -0.2], "spacing": 1.0, "clump": [2, 5, 1.6], "size": [0.8, 1.4], "lift": -0.03},
-		{"what": "seaweed", "kind": 2, "on": [1, 4], "depth": [3.0, 28.0], "density": [16.0, 6.0], "noise": [0.2, 5, -0.25],
+		{"what": "seaweed", "kind": 2, "on": [1, 4], "depth": [3.0, 28.0], "density": [24.0, 8.0], "noise": [0.2, 5, -0.25],
 		 "spacing": 0.8, "clump": [2, 6, 1.0], "size": [0.16, 0.3]},
 		{"what": "seaweed", "kind": 3, "on": [1], "depth": [2.0, 9.0], "density": [6.0, 2.0], "spacing": 1.6, "size": [1.8, 3.0]},
 		{"what": "prop", "pieces": ["urchin_purple"], "on": [4], "depth": [4.0, 28.0], "density": [30.0, 20.0], "spacing": 0.8,
@@ -95,7 +99,7 @@ const TABLES := {
 		 "spacing": 3.0, "size": [0.8, 1.4], "lift": -0.25, "tint": Color(0.62, 0.57, 0.52)},
 		{"what": "prop", "pieces": ["reef_slab_a", "reef_slab_b", "reef_slab_c"], "on": [1], "depth": [2.5, 15.0], "slope_max": 0.6, "density": [4.0, 2.0],
 		 "spacing": 3.6, "size": [0.7, 1.2], "lift": -0.35, "tint": Color(0.64, 0.6, 0.55)},
-		{"what": "kelp", "on": [1], "depth": [5.0, 15.0], "density": [4.0, 1.5], "spacing": 3.0, "clump": [3, 5, 0.8, 0.25], "reach": [1.2, 1.5], "edge_reach": [0.6, 0.95], "canopy": [1, 6.0]},
+		{"what": "kelp", "on": [1], "depth": [5.0, 15.0], "density": [14.0, 4.0], "spacing": 2.4, "clump": [2, 3, 0.55, 0.2], "width": [1.2, 1.7], "reach": [1.2, 1.5], "edge_reach": [0.6, 0.95], "canopy": [1, 6.0]},
 		{"what": "prop", "pieces": ["bull_kelp"], "on": [1], "depth": [4.0, 13.0], "density": [0.0, 5.0], "spacing": 2.2, "to_surface": 8.0},
 		{"what": "prop", "pieces": ["understory_kelp", "understory_kelp_b"], "on": [1], "depth": [3.0, 14.0], "density": [25.0, 8.0], "spacing": 1.0, "clump": [2, 5, 1.6], "size": [0.7, 1.2], "lift": -0.03},
 		{"what": "seaweed", "kind": 2, "on": [1], "depth": [2.0, 15.0], "density": [40.0, 10.0], "spacing": 0.8, "clump": [2, 5, 1.0], "size": [0.16, 0.3]},
@@ -201,6 +205,8 @@ const WHOLE := [Vector2(Bay.WEST, Bay.NORTH), Vector2(Bay.EAST, Bay.SOUTH)]
 var pieces := {}
 var kelp_places := PackedVector3Array()
 var kelp_lengths := PackedFloat32Array()
+## How many times as wide each kelp plant's bundle is (KelpForest.plant's `widths`).
+var kelp_widths := PackedFloat32Array()
 ## The eelgrass layers ([table, layer]), drawn as SeaGrassBed fields (`grass_fields`), not as points.
 var grass_layers: Array = []
 var weed_places := PackedVector3Array()
@@ -443,6 +449,8 @@ func _put(layer: Dictionary, p: Vector2, edge: float) -> void:
 			var reach: Array = layer.reach if edge > 0.6 else layer.get("edge_reach", layer.reach)
 			kelp_places.append(Vector3(p.x, floor_y - 0.1, p.y))
 			kelp_lengths.append(minf(deep * _rng.randf_range(float(reach[0]), float(reach[1])), 25.0))
+			var wide: Array = layer.get("width", [1.0, 1.0])
+			kelp_widths.append(_rng.randf_range(float(wide[0]), float(wide[1])))
 		"seaweed":
 			weed_places.append(Vector3(p.x, floor_y - 0.02, p.y))
 			weed_sizes.append(_rng.randf_range(float(size[0]), float(size[1])) * lerpf(0.75, 1.0, edge))

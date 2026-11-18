@@ -438,6 +438,8 @@ func _process(delta: float) -> void:
 	# Above the surface the air is clear; under it the water is blue and thick.
 	sea.set_above(camera.global_position.y > Sea.SURFACE)
 	_post.set_shader_parameter(&"underwater", 0.0 if sea.above else 1.0)
+	# (the picture's water tint: green-teal in the kelp forest, Sea.post_tint)
+	_post.set_shader_parameter(&"water_tint", sea.post_tint)
 	if player.alive:
 		# (water fx: quicker in a leap, and back under the water after one; tools/WATER_FX.md)
 		camera.global_position = camera.global_position.lerp(_camera_place(), 1.0 - exp(-(8.0 if player.in_air or camera.global_position.y > Sea.SURFACE - 0.4 else 5.0) * delta))

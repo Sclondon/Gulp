@@ -77,6 +77,17 @@ const MARKETS := {"monterey": Vector2(82.0, 56.0), "santa_cruz": Vector2(-8.0, -
 ## Where a run starts (x, z): over the sand off Santa Cruz, east of the pirate ship, with room east of it
 ## for the title boat's circle (45 m round a middle 45 m east: Title.COURSE).
 const START := Vector2(-40.0, -55.0)
+## The kelp forest's water (BiomeRegions' kelp, near the eye): the green-teal it leans to and how far, the
+## ambient light there, and how much stronger the light shafts are (tools/BIOMES.md, "The dense kelp").
+const KELP_WATER := Color(0.03, 0.2, 0.16)
+const KELP_TINT := 0.75
+const KELP_AMBIENT := Color(0.42, 0.62, 0.5)
+const KELP_SHAFTS := 1.5
+## The tint Main lays over the whole picture under water (post.gdshader's `water_tint`), and the kelp forest's.
+const POST_TINT := Color(0.06, 0.2, 0.5)
+const KELP_POST_TINT := Color(0.1, 0.36, 0.3)
+## The water's surface seen from under it in the kelp forest (water.gdshader's `shallow`).
+const KELP_SURFACE := Color(0.22, 0.42, 0.36)
 
 ## The rocks, each as a sphere: x, y, z, radius (Scenery adds them: `add_rock`). They are kept
 ## twice (tools/PERF.md, "Decision: two grids for the rocks"): by the square of floor they could be
@@ -110,6 +121,8 @@ var _water: ShaderMaterial
 var _caustic_pass: Caustics
 var _look_wait := 0.0
 var _shaft_strength := 0.0
+## What Main tints the picture with under water (POST_TINT, leaning to KELP_POST_TINT in the kelp forest).
+var post_tint := POST_TINT
 
 
 ## The height of the sea floor at a point: Monterey Bay (scripts/bay.gd has the one sum; this
@@ -395,16 +408,22 @@ func _look() -> void:
 		if eye:
 			warm = 1.0 - smoothstep(30.0, 50.0, Vector2(eye.global_position.x - WRECK_AT.x, eye.global_position.z - WRECK_AT.z).length())
 		water = water.lerp(Color(0.03, 0.17, 0.19) * lerpf(0.5, 1.0, day), 0.35 * warm)
+		# (inside the kelp forest the water is green-teal, as Monterey's is in photographs and as the concept is:
+		# BiomeRegions' kelp weight at the eye, faded in over its edge. Claude's pick, 2026-11-18)
+		water = water.lerp(KELP_WATER * lerpf(0.5, 1.0, day), KELP_TINT * _kelp_at(eye))
+		post_tint = POST_TINT.lerp(KELP_POST_TINT, _kelp_at(eye))
 		_env.background_mode = Environment.BG_COLOR
 		_env.fog_sky_affect = 1.0
 		_env.background_color = water
 		_env.fog_light_color = water
 		_env.fog_density = lerpf(0.03, 0.04, down_far) * lerpf(1.0, 0.8, warm)
 		_env.ambient_light_color = Color(0.22, 0.34, 0.62).lerp(Color(0.3, 0.5, 0.8), day).lerp(Color(0.42, 0.42, 0.62), glow * 0.3).lerp(Color(0.5, 0.72, 0.7) * lerpf(0.6, 1.0, day), 0.6 * (1.0 - down_far))
+		_env.ambient_light_color = _env.ambient_light_color.lerp(KELP_AMBIENT * lerpf(0.6, 1.0, day), 0.5 * _kelp_at(eye))
 	# (the surface overhead dims at night; seen from under it, it is the brightest thing there is)
 	var dim := lerpf(0.5, 1.0, maxf(day, glow * 0.7))
 	_water.set_shader_parameter(&"deep", Color(0.02, 0.1, 0.28) * dim)
-	_water.set_shader_parameter(&"shallow", Color(0.1, 0.3, 0.56).lerp(Color(0.4, 0.32, 0.42), glow * 0.15) * dim)
+	# (green-gold over the kelp forest, where the canopy and the teal water are)
+	_water.set_shader_parameter(&"shallow", Color(0.1, 0.3, 0.56).lerp(Color(0.4, 0.32, 0.42), glow * 0.15).lerp(KELP_SURFACE, 0.6 * _kelp_at(eye)) * dim)
 	# The shafts: the light comes down through the surface bent steeper (water bends it by 1.33).
 	var down := -to
 	var flat := Vector2(down.x, down.z)
@@ -413,8 +432,17 @@ func _look() -> void:
 	shafts.slant = Vector3(aside.x, -sqrt(1.0 - bent * bent), aside.y)
 	shafts.colour = lit.lerp(Color.WHITE, 0.3)
 	_shaft_strength = 0.2 * lerpf(0.3, 1.0, day)
+	# (the kelp forest's cathedral light: stronger shafts in the lanes between the columns)
+	_shaft_strength *= 1.0 + KELP_SHAFTS * _kelp_at(get_viewport().get_camera_3d())
 	if _caustic_pass:
 		_caustic_pass.set_light(0.85 * lerpf(0.35, 1.0, day), _env.fog_light_color, _env.fog_density)
+
+
+## How far the eye is in the kelp forest, 0 to 1 (BiomeRegions' weight, full 5 m in from the forest's edge).
+func _kelp_at(eye: Node3D) -> float:
+	if eye == null:
+		return 0.0
+	return minf(BiomeRegions.weight(BiomeRegions.KELP, eye.global_position.x, eye.global_position.z) * 1.6, 1.0)
 
 
 ## Caustics: the rippling net of light the surface throws on everything under it in the shallows

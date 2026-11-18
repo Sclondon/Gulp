@@ -493,6 +493,12 @@ choices below are Claude's.
   placer no longer walks the grass grids, so every later layer's random draws shifted: the same rules, other spots.
   `tools/bay_shot.gd` fills the grass before each picture; its grass views look at `GRASS_SPOT`. Decision record:
   GameCommon's `godot/sea-grass/README.md`; numbers: tools/BIOMES.md, "The eight biomes".
+- **The kelp forest made dense** (2026-11-18, the user: "The kelp forest needs to be much denser look up real images to
+  reference and try to match that look and vibe"): about 700 giant kelp plants in place of 275, each drawn 1.3 to 1.9
+  times as wide, columns about 2 m apart with lanes; amber colours; teal water, a green surface and stronger shafts
+  inside the forest (`Sea._kelp_at`, `Sea.post_tint`); a far level in GameCommon's kelp (`KelpForest.far_piece`) and
+  blades dithered away near the camera (`eye_clear`). The reference, numbers, budget and decision: tools/BIOMES.md, "The
+  dense kelp". All Claude's picks.
 - **A second rocky islet** (2026-11-18, the user: "lets add another rocky outcrop island just south south west of the
   pirate ship to fill in that empty spot a bit as well"): `Scenery.OUTCROP_SOUTH` (-74, -14), built by the same
   `_build_outcrop` (now taking its middle, a name, the islet's turn and whether seals lie on it: these have none;

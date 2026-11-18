@@ -31,6 +31,9 @@ uniform float flutter = 1.0;
 uniform float teeth = 1.0;
 // How much light shows through a blade (seen from below against the surface, or against a light).
 uniform float translucency = 0.55;
+// Blades and stipes nearer the camera than this (metres) fade out in a fine dither, so that a camera following
+// something through a thick forest is not blinded by a blade across the lens (0: off).
+uniform float eye_clear = 0.0;
 
 uniform vec3 blade : source_color = vec3(0.47, 0.37, 0.09);
 uniform vec3 blade_amber : source_color = vec3(0.68, 0.43, 0.08);
@@ -109,6 +112,13 @@ void vertex() {
 }
 
 void fragment() {
+	if (eye_clear > 0.0) {
+		float close = 1.0 - smoothstep(eye_clear * 0.4, eye_clear, length(VERTEX));
+		float grain = fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))));
+		if (grain < close) {
+			discard;
+		}
+	}
 	vec3 colour = stipe;
 	if (v_part > 1.5) {
 		float side = abs(UV.x * 2.0 - 1.0);

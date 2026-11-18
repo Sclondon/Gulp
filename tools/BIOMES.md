@@ -233,7 +233,7 @@ garibaldi also live in "crags"; bat rays and leopard sharks in "grass" too.
 
 | biome | floor (FloorTypes) | what stands and grows (Biomes table, Scenery) | in the sea (desktop count) |
 | --- | --- | --- | --- |
-| kelp | rock ridges across the current with sand channels between (noise stretched 0.45 x 1.6, turned 0.32), breaking up towards the edge; pink crust barrens; damp dark sand between | giant kelp in clumps of 4 to 7 on rock 5 to 28 m, groves and lanes by a slow noise (0.04), 1.05 to 1.3 times the depth (to the canopy, capped 25 m), canopy mats over the core clumps; boulders, reef slabs, understory kelp, red weed, feather boa shallow, urchins on the barrens and by rocks, fans, sponges, strawberry anemones, stars | 275 kelp plants, 1,237 understory, 1,886 red weed |
+| kelp | rock ridges across the current with sand channels between (noise stretched 0.45 x 1.6, turned 0.32), breaking up towards the edge; pink crust barrens; damp dark sand between | giant kelp in clumps of 4 to 7 on rock 5 to 28 m, groves and lanes by a slow noise (0.04), 1.05 to 1.3 times the depth (to the canopy, capped 25 m), canopy mats over the core clumps; boulders, reef slabs, understory kelp, red weed, feather boa shallow, urchins on the barrens and by rocks, fans, sponges, strawberry anemones, stars | 275 kelp plants, 1,237 understory, 1,886 red weed (since "The dense kelp" below: about 700 plants, drawn wider) |
 | dunes | clean sand painted the sand's PALE kind (paler, more ripples); **the floor's own shape**: `Bay.dune_height` | open and bare: sea pen meadows in patches, sand dollars, scallops, a few lone boulders; garden eels in three colonies (`Scenery.EEL_COLONIES`: the old ridge off Santa Cruz and the liner's colony moved in); two half-buried anchors with chain runs (`DUNE_ANCHORS`, the docks kit's Anchor and Chain scaled 1.6 and 2.2) | 712 sea pens, 260 eels |
 | grass | sand with silty mud patches | eelgrass thick at the core, thinning to the edge (the layer's `density` 520 / 110 at `spacing` 0.55, as a chance), bare blowouts where the noise is low, five sandy paths (`keep`), sea lettuce; olive and straw colours and a stronger lean (`Scenery._plant_grass`). Since 2026-11-18 a SeaGrassBed **field** (see below), not a list of tufts | was 11,632 tufts; now filled near the eye |
 | crags | rock nearly everywhere, sand pockets, crust patches | leaning pinnacles (`lean` 0.4) and hard-leaning ones as shards (0.75), stacks and ledges, rare arches, boulder piles in clumps, reef slabs: all kept 2 m under the surface, off the islets' columns (`avoid`) and 10 m round the pirate ship's lane (`keep`); on them (`grow` -> `Biomes.grow_spheres`, grown in `Scenery._grow_on_structures`) white plumose anemones, pink strawberry anemone sheets for coralline, stars and urchins; on the floor plumose clumps, strawberry sheets, stars, urchins, hydrocoral, fans, red weed. The outcrops' own stacks and shards now wear the kit's rock, tinted dark (`CRAG_ROCK`) | 15 + 5 pinnacles, 12 stacks, 1 arch, 81 plumose clumps on the floor (more grown on the rocks) |
@@ -313,6 +313,72 @@ its ledges' anemones well; the beach's turquoise water, surf foam and the river'
 is thinner than the concept's; the grass reads greener than the concept under the game's light. Phones untried.
 `tests/setpiece_hits.gd --only=docks` (or kit) prints script errors on the sea's own kit pieces (`Dictionary` has no key
 `reef_slab_a`...): not looked at (the test is another agent's, being changed).
+
+### The dense kelp (2026-11-18, later)
+
+The user: "The kelp forest needs to be much denser look up real images to reference and try to match that look and
+vibe". **The reference** (about 40 real photographs of Monterey's giant kelp: Monterey Bay Aquarium, NOAA's sanctuary
+pages https://sanctuaries.noaa.gov/vr/monterey-bay/serengeti/ and https://montereybay.noaa.gov/visitor/dive/divehabitats.html,
+https://oceanographicmagazine.com/features/exploring-montereys-kelp-forests/, divers' pictures): a wall of tall columns,
+each plant a bundle of many stipes hung with golden-olive blades to the surface, 1 to 3 m apart in the thick and
+receding in rows into haze, with only narrow vertical lanes of light between; a thick canopy at the top with light
+shafts through it ("a cathedral"); teal, green-blue water inside (not the open sea's deep blue); amber blades glowing
+where lit, dark brown in shade; a rocky floor crusted pink with coralline, a thick understory of stalked kelps.
+
+**What changed** (all Claude's picks):
+- *Many more plants, each a fuller column.* The kelp layer (`Biomes.TABLES.kelp`) plants clumps of 2 or 3 plants within
+  0.55 m (one column) on a 2.3 m grid, near certain in the core (`density` 19 per 100 m²), so columns stand about 2 m
+  apart in the groves; the grove noise (0.04) leaves lanes below -0.24 and the rock ridges' sand channels stay open.
+  Each plant is drawn 1.3 to 1.9 times as wide (`width` -> `Biomes.kelp_widths` -> `KelpForest.plant`'s new
+  `widths`): a bundle of many stipes, its blades reaching farther out. Carmel's cove the same way (density 14).
+  Counts (`tools/kelp_count.gd`, headless): **275 -> about 700 plants in the forest (2.6 to 2.8 times)**, 6,200 ->
+  15,500 metres of frond; with the widths, about four times the blade cover. (The kelp region itself is 7,320 or
+  8,480 m² depending on the trench's floor as other work changes it; with the larger region it came to about 960.)
+- *Colours* (`Scenery.KELP_COLOURS`, the shader's own settings): amber and golden olive blades, dark brown stipes,
+  a gold glow where lit from behind, in place of the component's mustard yellow.
+- *Teal water in the forest* (`Sea._look`, `Sea._kelp_at`: BiomeRegions' kelp weight at the eye, full 5 m in from the
+  edge): the fog and background lean to `KELP_WATER` (0.75 of the way), the ambient to a green `KELP_AMBIENT`, the
+  surface seen from below to green-gold `KELP_SURFACE`, the picture's own tint (post.gdshader's `water_tint`, now set
+  each frame by Main from `Sea.post_tint`) to `KELP_POST_TINT`, and the light shafts are 2.5 times as strong
+  (`KELP_SHAFTS`): the cathedral lanes. No new shader, no new draw.
+- *Understory and floor:* stalked understory kelp 14 -> 20 per 100 m² at the core, red weed 16 -> 24; the forest's rock
+  pieces and reef slabs tinted pinker for coralline. (A layer of the strawberry anemone sheets as coralline was tried
+  and dropped: 888 triangles each in its light model, 108,000 for 122 of them.)
+- *The camera is not blinded*: blades nearer the camera than `eye_clear` (1.6 m) dither away (kelp.gdshader), so a
+  camera following the fish through a grove sees the fish, not a blade across the lens.
+
+**Decision: a third, far level for the kelp** (`KelpForest.far_piece`, `mid`, `far_cell`; GameCommon's kelp, changed
+there and reinstalled). What: each plant is drawn three ways: full one-metre pieces within `Scenery.KELP_NEAR` (5 m),
+the light piece (30 triangles a metre) to `KELP_MID` (15 m), and beyond that each 24 m block of the forest draws its
+plants as the light piece stretched 4 m long (`KELP_FAR_PIECE`: a quarter of its triangles), one draw a block, no
+holdfasts, to `SEEN`. Why: three times the plants would have sent three times the triangles and draws. The practice:
+distance LOD with coarser batches for far instances (hierarchical LOD: farther, fewer and bigger batches with simpler
+meshes), as Godot's own HLOD advice and open-world foliage systems do. Alternatives: impostor cards for far plants (a
+new texture and a billboard shader to match the sway; the forest is mostly seen from inside, where cards turn badly),
+a new far piece built in Blender (fewer, bigger blades; worth doing if the stretched light piece reads badly), thinning
+far plants (the far groves would look sparse, the opposite of the ask). Looks: far plants have blades four times as long
+and a quarter as many, inside the fog; near, nothing changed.
+
+**Budget, measured** (`--perf=kelp,start,docks`, 390x844, the sea's picture, back to back in a clean worktree at
+2cd6243 with and without these changes; the desktop was busy with other sessions, so frame times swung 7 to 12 ms at
+the unchanged start and docks too):
+
+| at the kelp | before | after |
+| --- | --- | --- |
+| frame ms (95th) | 10.6 (14.4) | 8.5 to 10.0 (10.4 to 15.8) |
+| draws in the sea's picture | 114 | 107 to 108 |
+| KelpForest: triangles sent / draws | 129k / 33 | 155k / 31 |
+| LodField light pieces sent (the understory's share grew) | 231k | 310k |
+| GPU ms | 0.47 | 0.44 to 1.37 |
+
+The kelp forest itself costs about a fifth more triangles for nearly three times the plants, in fewer draws; the
+heavier understory adds about 80,000 light-piece triangles before culling. Within the noise of a busy desktop the frame
+did not get slower. Phones untried: the old proxy (150k triangles) was already exceeded by what is sent before culling.
+
+**Rough**: from a view inside a column (bay_shot's kelp_up_to_canopy now starts inside one) it is all blade; the canopy
+mats (`kelp_canopy`) still show straight edges from below; the floor's crust is a tint, not a crust; the stretched far
+pieces were not looked at closely beyond the fog; nobody has swum it. Pictures were compared with the concept and the
+photographs' description in two passes (blue water and mustard blades in the first; teal, amber and lanes in the second).
 
 ---
 

@@ -50,6 +50,16 @@ const GRASS_DENSITY := 1.8
 ## How many fish nearest the player lay the grass aside besides it, and within how far of it (m).
 const GRASS_FISH := 3
 const GRASS_FISH_NEAR := 12.0
+## The giant kelp's levels (KelpForest): full pieces within KELP_NEAR of the eye, the light piece to
+## KELP_MID, beyond it 24 m blocks of the light piece stretched KELP_FAR_PIECE m long, none past SEEN (m).
+const KELP_NEAR := 5.0
+const KELP_MID := 15.0
+const KELP_FAR_PIECE := 4.0
+## The giant kelp's colours and other settings (kelp.gdshader's), after Monterey photographs and concept_biome_kelp.png.
+const KELP_COLOURS := [[&"blade", Color(0.27, 0.16, 0.05)], [&"blade_amber", Color(0.5, 0.28, 0.07)],
+		[&"blade_lit", Color(0.92, 0.6, 0.2)], [&"bulb", Color(0.4, 0.27, 0.08)], [&"stipe", Color(0.18, 0.11, 0.04)],
+		# (blades within 1.6 m of the camera dither away: a camera following the fish through the groves is not blinded)
+		[&"eye_clear", 1.6]]
 ## The tint the outcrops' stacks and shards wear on the kit's rock.
 const CRAG_ROCK := Color(0.32, 0.3, 0.3)
 ## The kit's pieces (rocks, cliffs, the reef's life): full models within PIECES_NEAR of the eye,
@@ -373,9 +383,18 @@ func _plant_kelp() -> void:
 	forest.set(&"far", SEEN)
 	# (blocks of 12 m, not 8: half the draws in a forest, a few more full pieces near the eye; tools/BIOMES.md budget)
 	forest.set(&"cell", 12.0)
+	# (the dense forest's three levels, tools/BIOMES.md "The dense kelp": full pieces within KELP_NEAR, the
+	# light piece to KELP_MID, then 24 m blocks of the light piece stretched KELP_FAR_PIECE m long)
+	forest.set(&"near", KELP_NEAR)
+	forest.set(&"mid", KELP_MID)
+	forest.set(&"far_cell", 24.0)
+	forest.set(&"far_piece", KELP_FAR_PIECE)
 	forest.set(&"current", Vector2(0.3, 0.1))
 	add_child(forest)
-	forest.call(&"plant", _biomes.kelp_places, _biomes.kelp_lengths, Sea.SURFACE)
+	# (the photographs' and the concept's colours: amber and golden olive, dark brown in shade, glowing where lit)
+	for setting: Array in KELP_COLOURS:
+		forest.call(&"set_shader_parameter", setting[0], setting[1])
+	forest.call(&"plant", _biomes.kelp_places, _biomes.kelp_lengths, Sea.SURFACE, _biomes.kelp_widths)
 
 
 # The sea grass, by the placer's rules (BIOMES.md 5.8 and 5.14): the meadows of the grass biome,

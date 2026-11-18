@@ -18,6 +18,10 @@ extends Node3D
 ## `plant` again after moving it up or down). A plant longer than the water over it is deep lies
 ## its extra length along the surface.
 ##
+## For thousands of plants, set `far_piece` (and `mid`, `far_cell`) before `plant`: beyond `mid`
+## the plants are drawn by bigger blocks of the light piece stretched `far_piece` metres long (a
+## third or less of its triangles, one draw a block, no holdfasts).
+##
 ## The shader reads the global shader uniform `water_clock` (seconds). If the project declares
 ## none (Project Settings > Shader Globals), the first forest adds one and runs it; if it declares
 ## one, the game sets it.
@@ -46,6 +50,14 @@ const VARIANTS := ["a", "b", "c"]
 ## The side of a block of water whose pieces are drawn together (metres; blocks are twice as tall).
 ## Set it before `plant`.
 @export var cell := 8.0
+## The far level (0: none, every block draws the light piece out to `far`): how long each far piece
+## is (metres; the light piece stretched, so 3 is a third of its triangles). Set before `plant`.
+@export var far_piece := 0.0
+## With a far level: the big blocks (`far_cell` across, the water's whole height) whose plants'
+## middle lines are all farther than this draw the far pieces instead of their small blocks (metres).
+@export var mid := 20.0
+## With a far level: the side of its big blocks (metres; a whole number of `cell`s). Set before `plant`.
+@export var far_cell := 24.0
 ## Changes which variant and which way round each piece is.
 @export var seed := 1
 
@@ -59,6 +71,7 @@ static var _clock_frame := -1
 var _material: ShaderMaterial
 var _surface_y := 0.0
 var _blocks: Array = []
+var _bigs: Array = []
 var _pieces := 0
 var _plants := 0
 
@@ -107,12 +120,18 @@ func _init() -> void:
 
 ## Plants the forest (taking up whatever was planted before): a holdfast at each of `places`
 ## (the forest's own space), each plant `heights[i]` metres long (4 to 25 is what it is made
-## for), under a surface at world height `surface_y`.
-func plant(places: PackedVector3Array, heights: PackedFloat32Array, surface_y: float) -> void:
+## for), under a surface at world height `surface_y`. `widths` (optional, 1 each if left out)
+## makes a plant's bundle that many times as wide, its blades reaching that much farther out: a
+## plant of many stipes.
+func plant(places: PackedVector3Array, heights: PackedFloat32Array, surface_y: float, widths := PackedFloat32Array()) -> void:
 	for block: Dictionary in _blocks:
 		for part: Node in block.parts:
 			part.queue_free()
+	for big: Dictionary in _bigs:
+		if big.part != null:
+			big.part.queue_free()
 	_blocks.clear()
+	_bigs.clear()
 	_surface_y = surface_y
 	_material.set_shader_parameter(&"surface_y", surface_y)
 	_send(&"sway", sway)
@@ -123,9 +142,11 @@ func plant(places: PackedVector3Array, heights: PackedFloat32Array, surface_y: f
 	rng.seed = seed
 	var lift := global_position.y if is_inside_tree() else position.y
 	var found := {}
+	var found_big := {}
 	for i in places.size():
 		var at := places[i]
 		var tall := maxf(heights[i] if i < heights.size() else 10.0, 1.0)
+		var wide := widths[i] if i < widths.size() else 1.0
 		var count := maxi(roundi(tall), 1)
 		var stretch := tall / count
 		var depth := maxf(surface_y - 0.05 - (at.y + lift), 0.5)
@@ -133,20 +154,38 @@ func plant(places: PackedVector3Array, heights: PackedFloat32Array, surface_y: f
 		var own := rng.randf()
 		# (how far its top may be carried: along the surface, and by the lean)
 		var carried := 2.0 + 0.3 * minf(tall, depth)
+		var big: Dictionary = {}
+		if far_piece > 0.0:
+			big = _big_at(found_big, at)
 		for k in count:
 			var base := k * stretch
 			var rest := Vector3(at.x, at.y + minf(base + 0.5 * stretch, depth), at.z)
 			var block := _block_at(found, rest)
-			var basis := Basis(Vector3.UP, turn + (rng.randi() % 3) * TAU / 3.0).scaled_local(Vector3(1.0, stretch, 1.0))
+			if not big.is_empty():
+				big.blocks[block.id] = true
+			var basis := Basis(Vector3.UP, turn + (rng.randi() % 3) * TAU / 3.0).scaled_local(Vector3(wide, stretch, wide))
 			var piece := [Transform3D(basis, at + Vector3(0.0, base, 0.0)), Color(base, tall, own, 0.0)]
 			(block.pieces[rng.randi() % 3] as Array).append(piece)
-			_grow(block, rest, maxf(base + stretch - depth, 0.0) + carried * (base + stretch) / tall + 0.8, 1.3)
+			_grow(block, rest, maxf(base + stretch - depth, 0.0) + carried * (base + stretch) / tall + 0.8 * wide, 1.3)
 			block.core = (block.core as AABB).expand(rest)
 			_pieces += 1
+		if not big.is_empty():
+			# (the far level: the same plant in fewer, longer pieces of the light one)
+			var far_count := maxi(roundi(tall / far_piece), 1)
+			var far_stretch := tall / far_count
+			for k in far_count:
+				var base := k * far_stretch
+				var rest := Vector3(at.x, at.y + minf(base + 0.5 * far_stretch, depth), at.z)
+				var basis := Basis(Vector3.UP, turn + k * TAU / 3.0).scaled_local(Vector3(wide, far_stretch, wide))
+				(big.pieces as Array).append([Transform3D(basis, at + Vector3(0.0, base, 0.0)), Color(base, tall, own, 0.0)])
+				_grow(big, rest, maxf(base + far_stretch - depth, 0.0) + carried * (base + far_stretch) / tall + 0.8 * wide, far_stretch * 0.5 + 0.3)
+				big.core = (big.core as AABB).expand(rest)
 		var low := _block_at(found, at)
-		var size := clampf(tall / 14.0, 0.7, 1.5)
+		if not big.is_empty():
+			big.blocks[low.id] = true
+		var size := clampf(tall / 14.0, 0.7, 1.5) * sqrt(wide)
 		(low.holdfasts as Array).append([Transform3D(Basis(Vector3.UP, turn).scaled(Vector3.ONE * size), at), Color(0.0, tall, own, 1.0)])
-		_grow(low, at, 0.6, 0.6)
+		_grow(low, at, 0.6 * size, 0.6)
 	for block: Dictionary in found.values():
 		var all: Array = []
 		for v in 3:
@@ -166,6 +205,12 @@ func plant(places: PackedVector3Array, heights: PackedFloat32Array, surface_y: f
 		block.triangles_holdfast = (block.holdfasts as Array).size() * triangles_of(mesh_of(-1))
 		block.erase("pieces")
 		_blocks.append(block)
+	for big: Dictionary in found_big.values():
+		if not (big.pieces as Array).is_empty():
+			big.part = _part(big.pieces, mesh_of(0, true), big.box)
+			big.triangles = (big.pieces as Array).size() * triangles_of(mesh_of(0, true))
+		big.erase("pieces")
+		_bigs.append(big)
 	_choose()
 
 
@@ -186,10 +231,14 @@ func counts() -> Dictionary:
 		if block.holdfast != null:
 			triangles += block.triangles_holdfast
 			draws += 1
-	return {"plants": _plants, "pieces": _pieces, "triangles": triangles, "draws": draws, "blocks": _blocks.size()}
+	for big: Dictionary in _bigs:
+		if big.shown and big.part != null:
+			triangles += big.triangles
+			draws += 1
+	return {"plants": _plants, "pieces": _pieces, "triangles": triangles, "draws": draws, "blocks": _blocks.size() + _bigs.size()}
 
 
-## Sets one of the shader's settings (`surge_period`, `surge_length`, `flutter`, `teeth`,
+## Sets one of the shader's settings (`surge_period`, `surge_length`, `flutter`, `teeth`, `eye_clear`,
 ## `translucency`, and the colours `blade`, `blade_amber`, `blade_lit`, `bulb`, `stipe`).
 func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)
@@ -207,20 +256,34 @@ func _process(delta: float) -> void:
 	_choose()
 
 
-## Each block draws its full pieces near the camera, its low ones farther off, nothing past `far`.
+## Each block draws its full pieces near the camera, its low ones farther off, nothing past `far`;
+## with a far level, a big block wholly beyond `mid` draws its far pieces in place of its small ones.
 func _choose() -> void:
 	if not is_inside_tree():
 		return
 	var camera := get_viewport().get_camera_3d()
 	var eye := to_local(camera.global_position) if camera != null else Vector3.ZERO
-	for block: Dictionary in _blocks:
-		var box: AABB = (block.core as AABB).grow(1.0)
-		var nearest := eye.clamp(box.position, box.end)
-		var gap := eye.distance_to(nearest) if camera != null else 0.0
-		var shown: int = block.shown
+	var off := {}
+	for big: Dictionary in _bigs:
+		var gap := _gap(eye, big.core) if camera != null else 0.0
 		# (a metre of give, so that a block on the line does not flicker between the two)
+		var wanted: bool = gap > mid + (0.0 if big.shown else 1.0)
+		if far > 0.0 and gap > far + (1.0 if big.shown else 0.0):
+			wanted = false
+		if wanted or (far > 0.0 and gap > far):
+			for id: int in big.blocks:
+				off[id] = true
+		if wanted != big.shown:
+			big.shown = wanted
+			if big.part != null:
+				big.part.visible = wanted
+	for block: Dictionary in _blocks:
+		var gap := _gap(eye, block.core) if camera != null else 0.0
+		var shown: int = block.shown
 		var wanted := 2 if gap < near - (0.0 if shown == 2 else 1.0) else 1
 		if far > 0.0 and gap > far + (1.0 if shown != 0 else 0.0):
+			wanted = 0
+		if off.has(block.id):
 			wanted = 0
 		if wanted == shown:
 			continue
@@ -233,11 +296,24 @@ func _choose() -> void:
 			block.holdfast.visible = wanted != 0
 
 
+func _gap(eye: Vector3, core: AABB) -> float:
+	var box := core.grow(1.0)
+	return eye.distance_to(eye.clamp(box.position, box.end))
+
+
 func _block_at(found: Dictionary, at: Vector3) -> Dictionary:
 	var key := Vector3i((at / Vector3(cell, cell * 2.0, cell)).floor())
 	if not found.has(key):
-		found[key] = {"pieces": [[], [], []], "holdfasts": [], "full": [], "low": null, "holdfast": null, "parts": [],
+		found[key] = {"id": found.size(), "pieces": [[], [], []], "holdfasts": [], "full": [], "low": null, "holdfast": null, "parts": [],
 				"box": AABB(at, Vector3.ZERO), "core": AABB(at, Vector3.ZERO), "shown": -1, "triangles_full": 0, "triangles_low": 0, "triangles_holdfast": 0}
+	return found[key]
+
+
+func _big_at(found: Dictionary, at: Vector3) -> Dictionary:
+	var key := Vector2i(floori(at.x / far_cell), floori(at.z / far_cell))
+	if not found.has(key):
+		found[key] = {"pieces": [], "blocks": {}, "part": null, "box": AABB(at, Vector3.ZERO), "core": AABB(at, Vector3.ZERO),
+				"shown": false, "triangles": 0}
 	return found[key]
 
 
