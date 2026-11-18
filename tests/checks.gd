@@ -101,8 +101,169 @@ func _run() -> void:
 		if not player.alive:
 			break
 	_check("a big jelly stings it", not player.alive)
+	await _fishing()
 	print("GULP SMOKE PASSED" if _bad == 0 else "GULP SMOKE FAILED (%d)" % _bad)
 	get_tree().quit()
+
+
+## Hooks, nets and trawls (scripts/fishers.gd): a bait hooks it and the struggle frees it; left on
+## the line it is hauled out; too big, it snaps the line; a net holds a fish of its size until it
+## struggles free, lets a smaller one through and is torn by a bigger one; a trawl catches a fish
+## that stays in it, not one that swims out of its mouth, and lets a big one through.
+func _fishing() -> void:
+	var life: Life = main.life
+	var player: Player = main.player
+	var fishers: Fishers = main.fishers
+	var by := [""]
+	player.died.connect(func(what: String) -> void: by[0] = what)
+	life.hunting = false
+	fishers.always = true
+	# A hook.
+	main.restart()
+	await _frames(3)
+	var rig: Fishers.Rig = fishers.rigs[0]
+	await _to_bait(rig)
+	_check("a bait hooks it", fishers.holding == "hook" and player.caught, "%s, %s %.2f m, bait %.2f m" % [fishers.holding, player.kind, player.length, rig.bait_long])
+	player.boost_held = true
+	_aim(player, Vector3.DOWN + Vector3.RIGHT * 0.3)
+	var hooked_for := 0
+	for n in 400:
+		await _frames(1)
+		hooked_for = n
+		if fishers.holding == "":
+			break
+	player.boost_held = false
+	_check("struggling frees it from the hook", fishers.holding == "" and player.alive and not player.caught and rig.away > 0.0, "%.1f s" % (hooked_for / 60.0))
+	main.restart()
+	await _frames(3)
+	rig = fishers.rigs[1]
+	await _to_bait(rig)
+	by[0] = ""
+	for n in 1200:
+		await _frames(1)
+		if not player.alive:
+			break
+	_check("left on the line it is hauled out", not player.alive and by[0] == "hook" and main.over, "hauled at %.2f m/s, caught by %s" % [fishers.rigs[1].haul, by[0]])
+	main.restart()
+	await _frames(3)
+	rig = fishers.rigs[5]
+	player.begin(player.global_position, "bluefin")
+	await _to_bait(rig)
+	_check("a fish too big for the hook snaps the line", fishers.holding == "" and rig.away > 0.0 and player.alive, "%s %.2f m, snaps over %.2f m" % [player.kind, player.length, rig.snap])
+	main.restart()
+	await _frames(3)
+	rig = fishers.rigs[5]
+	rig.away = 0.01
+	await _frames(2)
+	await _to_bait(rig, 20)
+	_check("a fish too small for the bait leaves it", fishers.holding == "", "%s %.2f m, bait %.2f m" % [player.kind, player.length, rig.bait_long])
+	# A net.
+	var net: Fishers.Net = fishers.nets[0]
+	main.restart()
+	await _frames(3)
+	player.begin(player.global_position, "smolt")
+	await _into_net(net, 0.3)
+	_check("a net holds a fish of its size", fishers.holding == "net" and player.caught, "%s %.2f m, holds %.2f to %.2f m" % [player.kind, player.length, net.lo, net.hi])
+	player.boost_held = true
+	var held_for := 0
+	for n in 400:
+		await _frames(1)
+		held_for = n
+		if fishers.holding == "":
+			break
+	player.boost_held = false
+	_check("struggling frees it from the net, through a hole", fishers.holding == "" and player.alive and net.side(player.global_position) < 0.0 and net.holes.size() > 0,
+			"%.1f s, %d holes" % [held_for / 60.0, net.holes.size()])
+	main.restart()
+	await _frames(3)
+	await _into_net(net, 0.5)
+	await _frames(30)
+	_check("a fish too small swims through the net", fishers.holding == "" and net.side(player.global_position) < 0.0, "%s %.2f m" % [player.kind, player.length])
+	main.restart()
+	await _frames(3)
+	player.begin(player.global_position, "white_shark")
+	var holes := net.holes.size()
+	await _into_net(net, 0.75)
+	await _frames(40)
+	_check("a fish too big tears through the net", fishers.holding == "" and net.holes.size() > holes and net.side(player.global_position) < 0.0, "%s %.2f m" % [player.kind, player.length])
+	# A trawl.
+	var trawler: Fishers.Trawler = fishers.trawlers[0]
+	main.restart()
+	await _frames(3)
+	player.begin(player.global_position, "smolt")
+	player.throttle = 0.0
+	await _into_trawl(trawler)
+	var got_in := fishers.holding == "trawl"
+	by[0] = ""
+	for n in 1200:
+		await _frames(1)
+		if not player.alive:
+			break
+	player.throttle = 1.0
+	_check("a trawl catches a fish that stays in it", got_in and not player.alive and by[0] == "trawl", "in %s, %s" % [got_in, by[0]])
+	main.restart()
+	await _frames(3)
+	player.begin(player.global_position, "smolt")
+	await _into_trawl(trawler)
+	got_in = fishers.holding == "trawl"
+	_aim(player, -trawler.trawl.global_basis.z)
+	player.boost_held = true
+	await _frames(150)
+	player.boost_held = false
+	_check("a fish swims out of a trawl's mouth", got_in and fishers.holding == "" and player.alive and trawler.frame_of(player.global_position).z < 0.0,
+			"in %s, %.1f m ahead of its mouth" % [got_in, -trawler.frame_of(player.global_position).z])
+	main.restart()
+	await _frames(3)
+	player.begin(player.global_position, "white_shark")
+	await _into_trawl(trawler)
+	await _frames(30)
+	_check("a fish too big goes through a trawl", fishers.holding == "" and player.alive, "%s %.2f m" % [player.kind, player.length])
+	fishers.always = false
+
+
+# Holds the player's mouth at a rig's bait until it bites (or `frames` go by).
+func _to_bait(rig: Fishers.Rig, frames := 60) -> void:
+	var player: Player = main.player
+	_aim(player, Vector3(1.0, -0.2, 0.0))
+	for n in frames:
+		player.global_position = rig.bait_at() - player.heading * (player.length * 0.42 + 0.02)
+		await _frames(1)
+		if main.fishers.holding != "" or rig.away > 0.0:
+			return
+
+
+# Puts the player a little in front of a net (on its +normal side, a share of the way along it),
+# swimming into it.
+func _into_net(net: Fishers.Net, along: float) -> void:
+	var player: Player = main.player
+	var at := net.a.lerp(net.b, along)
+	at.y = lerpf(net.top, net.bottom, 0.4)
+	player.global_position = at + net.normal * (0.6 + player.length * 0.5)
+	_aim(player, -net.normal)
+	main.fishers.restart()
+	for n in 90:
+		await _frames(1)
+		if main.fishers.holding != "" or net.side(player.global_position) < 0.0:
+			return
+
+
+# Puts the player just in front of a trawl's mouth, facing back into it, until it is in.
+func _into_trawl(trawler: Fishers.Trawler) -> void:
+	var player: Player = main.player
+	player.global_position = trawler.trawl.global_transform * Vector3(0.0, 0.0, -0.4)
+	_aim(player, trawler.trawl.global_basis.z)
+	main.fishers.restart()
+	for n in 30:
+		await _frames(1)
+		if main.fishers.holding != "" or trawler.frame_of(player.global_position).z > 1.0:
+			return
+
+
+func _aim(player: Player, way: Vector3) -> void:
+	way = way.normalized()
+	player.yaw = atan2(-way.x, -way.z)
+	player.pitch = asin(clampf(way.y, -1.0, 1.0))
+	player.heading = way
 
 
 func _frames(count: int) -> void:

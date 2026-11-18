@@ -27,6 +27,11 @@ func _initialize() -> void:
 		bad += _judge(name, meshes[name], true)
 	bad += _judge("rocks (sea_floor.glb)", _model("res://models/sea_floor.glb"), true)
 	bad += _judge("moon jelly (moon_jelly.glb)", _model("res://models/moon_jelly.glb"), false)
+	# The fishing gear (tools/build_fishing_gear.py): every piece a solid but the nets, which are sheets.
+	var gear := (load("res://models/fishing_gear.glb") as PackedScene).instantiate()
+	for piece: MeshInstance3D in gear.find_children("*", "MeshInstance3D", true, false):
+		bad += _judge("fishing gear %s" % piece.name, piece.mesh, not String(piece.name) in ["NetPanel", "Trawl"])
+	gear.free()
 	print("WINDING PASSED" if bad == 0 else "WINDING FAILED (%d)" % bad)
 	quit()
 

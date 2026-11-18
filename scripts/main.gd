@@ -51,6 +51,8 @@ var total_meals := 0
 
 var _viewport: SubViewport
 var effects: Effects
+## Hooks, nets and trawlers (tools/FISHERS.md).
+var fishers: Fishers
 var _clock := 0.0
 var _over_for := 0.0
 var _start_kind := "sardine"
@@ -75,6 +77,7 @@ var _end_now := false
 var _saves := true
 var _accept_was := false
 var _p_was := false
+var _grazed := 0.0
 var _near := ""
 
 
@@ -166,6 +169,12 @@ func _ready() -> void:
 	effects = Effects.new()
 	effects.player = player
 	_viewport.add_child(effects)
+	# (fishers: hooks, nets, trawlers; its meter shows the struggle over the sea)
+	fishers = Fishers.new()
+	fishers.player = player
+	fishers.life = life
+	_viewport.add_child(fishers)
+	add_child(fishers.meter)
 	hud = Hud.new()
 	hud.player = player
 	hud.restart.connect(restart)
@@ -192,6 +201,7 @@ func _ready() -> void:
 		bot = Bot.new()
 		bot.player = player
 		bot.life = life
+		bot.fishers = fishers
 	if _saves:
 		var kept := ConfigFile.new()
 		if kept.load(SAVE) == OK:
@@ -224,6 +234,7 @@ func restart() -> void:
 	pad.release()
 	if _near != "":
 		_go_near()
+	fishers.restart()
 	camera.global_position = _camera_place()
 	_aim_camera()
 
@@ -244,6 +255,9 @@ func _go_near() -> void:
 			big = 3.0
 		"krill":
 			what = (life.schools[0].flock as Flock).global_position
+		"hook", "skiff", "net", "trawl":
+			what = fishers.near(_near)
+			big = 0.6 if _near == "hook" or _near == "skiff" else 4.0
 		_:
 			for each in life.creatures:
 				if each.kind == _near:
@@ -282,7 +296,15 @@ func _process(delta: float) -> void:
 	_p_was = Input.is_physical_key_pressed(KEY_P)
 	if not player.choosing and not paused:
 		player.step(delta)
+		# (the plankton that drifts everywhere feeds the smallest fish a little as it swims through
+		# it: the user, "that you can eat maybe??"; the plankton clouds are the rich feeding)
+		if player.alive and not player.in_air and player.length < Life.PLANKTON_EATER:
+			_grazed += player.velocity.length() * delta
+			if _grazed > 3.0:
+				_grazed = 0.0
+				player.feed(Life.PLANKTON_LENGTH)
 		life.step(delta)
+		fishers.step(delta)
 	if arena:
 		arena.step(delta)
 		if _role != "":

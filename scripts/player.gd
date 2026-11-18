@@ -81,6 +81,8 @@ var meals := 0
 var choosing := false
 ## Out of the water, in the middle of a leap.
 var in_air := false
+## On a hook or in a net (Fishers holds it where it is; it can only struggle).
+var caught := false
 
 var stick := Vector2.ZERO
 var boost_held := false
@@ -104,6 +106,7 @@ func begin(at: Vector3, as_kind := "sardine") -> void:
 	alive = true
 	choosing = false
 	in_air = false
+	caught = false
 	visible = true
 	global_position = at
 	# (looking out to sea)
@@ -208,6 +211,10 @@ func step(delta: float) -> void:
 	var want := Fish.pace(length) * lerpf(SLOWEST, 1.15, throttle) * (BOOST if boosting else 1.0)
 	_speed = lerpf(_speed, want, 1.0 - exp(-4.0 * delta))
 	velocity = heading * _speed
+	if caught:
+		# (Fishers: on a hook or in a net it stays where it is held, and only struggles)
+		pose(delta, 2.0 if boosting else 1.0, stick.x)
+		return
 	var next := global_position + velocity * delta
 	if next.y > Sea.SURFACE - room and heading.y > 0.2 and _speed > Fish.pace(length) * LEAP_PACE:
 		# Up through the surface, fast enough: out it comes.
