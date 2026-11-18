@@ -372,6 +372,14 @@ choices below are Claude's.
   hour in `Sea._look`, shown only with the eye above water (under it the background is the water colour as before). It
   lights nothing (ambient stays a colour, reflections off) and is redrawn into its small radiance only when `_look`
   changes it (the drift is a uniform, not TIME).
+- The user (2026-11-18, of the overhead chart): "The giant monsters should not just spawn, those will need special
+  conditions, and the map needs a lot of work, should be based on a real topography of the bay". So the leviathan, sea
+  serpent and ghost whale (Species `monster`) and the old one and reef-back (`Scenery.MONSTERS` off) are no longer in
+  the sea; what calls them up is not designed yet. Which kinds count as monsters is Claude's reading (the mermaids,
+  kelpies, mosasaur and other marine reptiles are still stocked). The real topography: `tools/bay_real.gd` previews
+  GMRT's grid of the bay (MBARI multibeam, about 60 m a sample; the download URL is in the tool) fitted to the game at
+  180 real m a game m and depths squeezed by `game_depth`; it replaces MONTEREY.md's "real bathymetry: rejected".
+  Not yet built into `Bay`; the grid file is not in the repo.
 - `tests/overhead.gd` draws the whole bay from straight above as a labelled chart (no water, fog or culling; tiles
   stitched): `godot --path . --audio-driver Dummy --resolution 400x400 -s res://tests/overhead.gd -- --out=<folder>`.
 - **The web pack** (62.5 MB -> 33 MB): `tools/web_excludes.sh` also turns off automatic LODs and shadow meshes in every
