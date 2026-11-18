@@ -420,3 +420,8 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   (a base body in heart-print boxers, outfits modelled over it); "his eyes should just be wrinkly slits" (not the
   blank mask: creased squints, no eyeballs). "their boat needs an antenna sticking off the bottom from the vr
   machine": done in `tools/build_shrimp_boat.py` (marker `Aerial` at its tip).
+- Gemini's image limit ran out at about 3 AM on 2026-11-18 ("Limit reached, resets 3:15 AM") after some twenty
+  pictures: the captain's T-pose base-body sheet (heart boxers, slit eyes "added on as afacial feature", stout build)
+  is still owed as `tools/art_src/concept_captain_tpose.jpg`; ask for it in the figures conversation. Clicking a
+  download button on a picture that failed to appear opened Google's upgrade page instead: check the picture is
+  there first.
