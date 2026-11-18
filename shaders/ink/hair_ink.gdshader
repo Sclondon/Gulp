@@ -39,6 +39,17 @@ uniform float flick_gain = 0.55;
 uniform float flick_gloss = 26.0;
 uniform float flick_ragged = 0.45;
 uniform float print_grain = 0.06;
+// Added in Gulp for the captain's beard (2026-11-18), each off at 0 so other hair draws as before:
+// - tip_ragged: the last share of each lock (0..1) is cut into its strands, each strand ending at a length of its
+//   own and thinning to a point, so a lock's end breaks into hair instead of a clean edge (game hair cards' alpha
+//   tips, done here with a discard so it needs no sorting); strand_cover is how much of a strand's width is hair
+//   where the cutting starts.
+// - layer_shade: the vertex colour's red darkens the lock (under-layers of a beard darker than the top).
+// - root_dark: darker toward the root, lighter toward the tip.
+uniform float tip_ragged = 0.0;
+uniform float strand_cover = 0.8;
+uniform float layer_shade = 0.0;
+uniform float root_dark = 0.0;
 
 varying float strand_phase;
 varying float strand;
@@ -49,11 +60,21 @@ void fragment() {
 	along = UV.x;
 	strand_phase = metres > 0.5 ? UV2.y / strand_gap : UV.y * strands_round;
 	strand = ink_hash(vec2(floor(strand_phase), 1.0));
+	if (tip_ragged > 0.0) {
+		float ends = 1.0 - tip_ragged * ink_hash(vec2(floor(strand_phase), 7.3));
+		float zone = ends - tip_ragged;
+		float across = abs(fract(strand_phase) - 0.5) * 2.0;
+		float k = clamp((along - zone) / tip_ragged, 0.0, 1.0);
+		if (along > ends || (along > zone && across > strand_cover * (1.0 - k))) {
+			discard;
+		}
+	}
 	// Lines in the light: thin, and broken into dashes along the strand.
 	float run = metres > 0.5 ? UV2.x * 55.0 : UV.x * 6.0;
 	float dash = step(0.45, ink_noise(vec2(floor(strand_phase) * 3.1, run + strand * 5.0)));
 	float lines = mix(1.0, hatch(strand_phase, lit_lines * (0.6 + strand)), dash);
 	vec3 colour = mix(albedo, pale, lighten) * (0.92 + 0.16 * strand);
+	colour *= mix(1.0, COLOR.r, layer_shade) * mix(1.0 - root_dark, 1.0, smoothstep(0.0, 0.75, along));
 	colour = mix(colour, ink, (1.0 - lines) * 0.75);
 	// (the root is inked: a jagged dark tongue up each strand)
 	float root = 1.0 - smoothstep(0.0, root_ink * (0.4 + strand), UV.x);
