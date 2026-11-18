@@ -9,6 +9,9 @@ tools/wahoo.blend (this folder has a .gdignore). Each is one still mesh with one
 (wahoo.gdshader) draws every marking, swims it and works its jaw. It prints a WINDING line for each: the check
 that nothing is inside out.
 
+It also writes models/wahoo_game.glb, the game model (a third, at about Twilight Princess weight: the GAME table
+below says how its triangles are spent), kept in the .blend beside the others.
+
 A wahoo (Acanthocybium solandri), 1.8 m from the tip of its lower jaw to the tips of its tail, built from the
 species (no picture was traced or copied):
 
@@ -122,6 +125,13 @@ PELVIC = {"s": 0.27, "out": 0.008, "long": 0.045, "wide": 0.018}
 TEETH = [(upper, 0.012 + 0.0045 * i, 0.0045, 0.78) for upper in (True, False) for i in range(21)]
 # (the low model keeps one tooth in this many)
 LOW_TEETH = 3
+# The game model (a third, at about Twilight Princess weight, built from the same outline with its triangles
+# where the eye sees them): points over the back and under the belly on each ring; how far the outline between
+# two rings may stray from the true curve, from above, the side and below (body lengths), and the longest gap
+# between rings (for the swimming bend); the rows across the inside of the mouth; the eye's spokes and its rings
+# (as fractions of its radius); the rows of the tail, the pectoral and the pelvic fins from root to tip.
+GAME = {"nu": 18, "nl": 12, "tol": 0.0004, "step": 0.04, "mouth": 2, "spokes": 28, "eye": (0.3, 0.56, 0.8, 1.0),
+        "tail": 8, "pectoral": 6, "pelvic": 4}
 
 
 import math
@@ -139,6 +149,13 @@ PREVIEW = ARGS[0] if ARGS else ""
 P_BODY, P_DORSAL1, P_DORSAL2, P_ANAL, P_TAIL, P_PECTORAL, P_PELVIC, P_EYE, P_MOUTH, P_TEETH, P_FINLET = range(11)
 TAU = math.tau
 SIDE = Vector((1.0, 0.0, 0.0))
+# Which model is being built: `low` is False for the full one, True for the low one, GAME_MODEL for the game one.
+GAME_MODEL = 2
+
+
+def pick(low, full, lo, game):
+    """The full model's number, the low one's, or the game one's."""
+    return game if low == GAME_MODEL else (lo if low else full)
 
 
 def to_b(p):
@@ -307,7 +324,54 @@ class Mesh:
         self.count[name] = self.count.get(name, 0) + 1
 
 
+def game_rings():
+    """The game model's rings: as few as keep the outline from the side and from above within GAME["tol"] of the
+    true curve (so they crowd where it bends, at the snout, the jaws' tips, the gill cover and the tail's wrist,
+    and spread over the long straight flanks), never further apart than GAME["step"] (half as far again at the front); one on the jaw's hinge."""
+    def shape(s):
+        return (body_point(s, 0.0).y, body_point(s, math.pi, True).y, body_point(s, 0.5 * math.pi).x,
+                body_point(s, 0.5 * math.pi, True).x if s < HINGE_S else body_point(s, 0.5 * math.pi).x)
+
+    def fits(a, b):
+        fa, fb = shape(a), shape(b)
+        for i in range(1, 8):
+            t = i / 8
+            f = shape(lerp(a, b, t))
+            if max(abs(f[k] - lerp(fa[k], fb[k], t)) for k in range(4)) > GAME["tol"]:
+                return False
+        return True
+
+    def longest(s):
+        """The longest gap between rings at `s`: longer at the front, which hardly bends as it swims."""
+        return GAME["step"] * (1.6 - 0.6 * smooth(0.25, 0.55, s))
+
+    def march(a, b):
+        """From `a` to `b`: each next ring as far on as the outline allows."""
+        xs = [a]
+        fine = 0.0005
+        while b - xs[-1] > 1e-9:
+            at = xs[-1]
+            n = 1
+            while at + (n + 1) * fine < b and (n + 1) * fine <= longest(at) and fits(at, at + (n + 1) * fine):
+                n += 1
+            nxt = at + n * fine
+            # (the last gap split evenly with the one before it, rather than left a sliver)
+            if b - nxt < 1e-9 or not fits(at, b) or b - at > longest(at):
+                xs.append(min(nxt, b) if b - nxt > 0.25 * n * fine else b)
+            else:
+                xs.append(b)
+        return xs[:-1]
+
+    stations = sorted({BODY_FROM, HINGE_S, BODY_TO} | ({UP_FROM + 0.0012} if UP_FROM > 0.0 else set()))
+    xs = []
+    for a, b in zip(stations, stations[1:]):
+        xs += march(a, b)
+    return xs + [BODY_TO]
+
+
 def rings(low):
+    if low == GAME_MODEL:
+        return game_rings()
     xs = []
     x = BODY_FROM
     for until, step in RING_STEPS:
@@ -347,10 +411,41 @@ def mouth_row(m, s, lower, k, shared=False):
     return row
 
 
+def fr(i, n, low, a=None):
+    """How far across a half ring (seam to seam) its `i`th point of `n` is. Even, but for the game model, whose
+    points crowd where the outline is seen: at the ridge of the back and the keel of the belly (from the side
+    and the front) and, on the upper half (`a`, the seam's angle, given), at the widest point of each side, a
+    quarter turn round from the ridge (from above), which always has a point; they spread over the flanks
+    between."""
+    if low != GAME_MODEL:
+        return i / n
+    half = n // 2
+    if a is None:
+        # (the lower half: seam, keel, seam)
+        knots = [0.0, 0.5]
+        steps = [half]
+    else:
+        # (the upper half: seam, the widest point, ridge; its share of the points from the hinge's seam, so that
+        # every ring has the same)
+        side = max(0.0, (math.radians(SEAM_A1) - 0.5 * math.pi) / (2.0 * math.radians(SEAM_A1)))
+        first = max(1, min(half - 1, round(half * side / 0.5)))
+        knots = [0.0, max((a - 0.5 * math.pi) / (2.0 * a), 0.25 * first / n), 0.5]
+        steps = [first, half - first]
+    j = i if i <= half else n - i
+    for k, count in enumerate(steps):
+        if j <= count:
+            t = j / count
+            t -= GAME.get("crowd", 0.6) * math.sin(2.0 * math.pi * t) / (2.0 * math.pi)
+            u = lerp(knots[k], knots[k + 1], t)
+            break
+        j -= count
+    return u if i <= half else 1.0 - u
+
+
 def body(m, low):
-    nu = NU_LOW if low else NU
-    nl = NL_LOW if low else NL
-    k = 2 if low else 8
+    nu = pick(low, NU, NU_LOW, GAME["nu"])
+    nl = pick(low, NL, NL_LOW, GAME["nl"])
+    k = pick(low, 8, 2, GAME["mouth"])
     before = {}
     for s in rings(low):
         a = seam_angle(s)
@@ -358,11 +453,11 @@ def body(m, low):
         if s >= HINGE_S - 1e-9:
             upper = []
             for i in range(nu + 1):
-                angle = lerp(-a, a, i / nu)
+                angle = lerp(-a, a, fr(i, nu, low, a))
                 upper.append(m.add(body_point(s, angle), (s, 0.5 + 0.5 * math.cos(angle)), P_BODY))
             lower = [upper[nu]]
             for i in range(1, nl):
-                angle = lerp(a, TAU - a, i / nl)
+                angle = lerp(a, TAU - a, fr(i, nl, low))
                 lower.append(m.add(body_point(s, angle), (s, 0.5 + 0.5 * math.cos(angle)), P_BODY))
             lower.append(upper[0])
             now["upper"] = upper
@@ -372,11 +467,11 @@ def body(m, low):
                 now["roof"] = now["floor"] = mouth_row(m, s, False, k, True)
         else:
             if s > UP_FROM + 0.0009:
-                now["upper"] = [m.add(body_point(s, lerp(-a, a, i / nu)), (s, 0.5 + 0.5 * math.cos(lerp(-a, a, i / nu))), P_BODY, upper_weight(s))
+                now["upper"] = [m.add(body_point(s, lerp(-a, a, fr(i, nu, low, a))), (s, 0.5 + 0.5 * math.cos(lerp(-a, a, fr(i, nu, low, a)))), P_BODY, upper_weight(s))
                                 for i in range(nu + 1)]
                 now["roof"] = mouth_row(m, s, False, k)
             if s > LOW_FROM + 0.0009:
-                now["lower"] = [m.add(body_point(s, lerp(a, TAU - a, i / nl), True), (s, 0.5 + 0.5 * math.cos(lerp(a, TAU - a, i / nl))), P_BODY, jaw_weight(s))
+                now["lower"] = [m.add(body_point(s, lerp(a, TAU - a, fr(i, nl, low)), True), (s, 0.5 + 0.5 * math.cos(lerp(a, TAU - a, fr(i, nl, low)))), P_BODY, jaw_weight(s))
                                 for i in range(nl + 1)]
                 now["floor"] = mouth_row(m, s, True, k)
         whole = s >= HINGE_S - 1e-9
@@ -422,7 +517,8 @@ def body(m, low):
 
 def teeth(m, low):
     """Each tooth a small cone standing in from a lip: hidden inside the other jaw while the mouth is shut."""
-    sides = 3 if low else 6
+    # (the game model's teeth are the low model's: three-sided, one in LOW_TEETH)
+    sides = pick(low, 6, 3, 3)
     for n, (upper, s, high, lat) in enumerate(TEETH):
         if low and n % LOW_TEETH:
             continue
@@ -454,8 +550,9 @@ def teeth(m, low):
 
 def eye(m, sx, low):
     """A low dome lying on the skin of the head."""
-    spokes = 10 if low else 28
-    steps = 2 if low else 8
+    spokes = pick(low, 28, 10, GAME["spokes"])
+    steps = pick(low, 8, 2, 0)
+    radii = GAME["eye"] if low == GAME_MODEL else [k / steps for k in range(1, steps + 1)]
     xe, ye = EYE_AT
     d = EYE_R * 0.12
     here = skin(xe, ye, sx)
@@ -465,8 +562,7 @@ def eye(m, sx, low):
         out = -out
     middle = m.add(here + out * EYE_DOME, (0.0, 0.0), P_EYE, upper_weight(xe))
     last = None
-    for k in range(1, steps + 1):
-        r = k / steps
+    for r in radii:
         row = []
         for sp in range(spokes):
             a = sp / spokes * TAU
@@ -552,12 +648,18 @@ def middle_fin(m, f, low):
         edge = top(s) - sink if f["top"] else bottom(s) + sink
         return (s + math.sin(lean) * high, edge + way * (math.cos(lean) * high + sink * t))
 
+    if low == GAME_MODEL:
+        # (the game model: its outline is its top edge, along its base, so the rows go there; root to edge
+        # it is straight)
+        blade(m, f["part"], f["name"], point, upright, SIDE, f["thick"], 2, f.get("game_nu", max(4, round(0.6 * f["nu"]))))
+        return
     d = 3 if low else 1
     blade(m, f["part"], f["name"], point, upright, SIDE, f["thick"], f["nt"] // d, f["nu"] // d)
 
 
 def fins(m, low):
     d = 3 if low else 1
+    game = low == GAME_MODEL
     for f in MIDDLE_FINS:
         middle_fin(m, f, low)
     for row in FINLETS:
@@ -566,14 +668,15 @@ def fins(m, low):
             size = lerp(row["high"], row["high_end"], i / max(row["count"] - 1, 1))
             middle_fin(m, {"part": P_FINLET, "name": "finlets", "shape": "finlet", "top": row["top"], "from": at,
                            "long": row["long"], "high": size, "lean": 58.0, "thick": 0.0022, "nt": 2 if low else 4, "nu": 2 if low else 5,
-                           "sink": 0.002}, False)
-    # The tail: two lobes that meet along the middle line.
+                           "sink": 0.002, "game_nu": 3}, low if game else False)
+    # The tail: two lobes that meet along the middle line. (The game model's rows run root to tip, where its
+    # edges curve; across, a lobe is straight.)
     t = TAIL
     for way in (1.0, -1.0):
         tip = (t["tip"][0], t["tip"][1] * way)
         blade(m, P_TAIL, "tail", swept(((t["root"], 0.0), (t["lead"][0], t["lead"][1] * way), tip),
                                       ((t["notch"], 0.0), (t["trail"][0], t["trail"][1] * way), tip)),
-              upright, SIDE, t["thick"], 20 // d, 8 // max(d - 1, 1))
+              upright, SIDE, t["thick"], GAME["tail"] if game else 20 // d, 2 if game else 8 // max(d - 1, 1))
     for sx in (1.0, -1.0):
         # The pectoral fins: behind the gill covers, lying back and a little down and out.
         f = PECTORAL
@@ -592,7 +695,7 @@ def fins(m, low):
 
         blade(m, P_PECTORAL, "pectorals", pectoral_point,
               lambda p, root=root, span=span, chord=chord: root + span * p[0] + chord * p[1],
-              facing, 0.004, 12 // d, 8 // max(d - 1, 1))
+              facing, 0.004, GAME["pectoral"] if game else 12 // d, 2 if game else 8 // max(d - 1, 1))
         # The pelvic fins: under the body, pointing back and down.
         f = PELVIC
         root = Vector((sx * f["out"], bottom(f["s"]) + 0.005, f["s"] - 0.5))
@@ -608,7 +711,7 @@ def fins(m, low):
 
         blade(m, P_PELVIC, "pelvics", pelvic_point,
               lambda p, root=root, span=span, chord=chord: root + span * p[0] + chord * p[1],
-              facing, 0.003, 8 // d, 6 // d)
+              facing, 0.003, GAME["pelvic"] if game else 8 // d, 2 if game else 6 // d)
 
 
 def material_of(name, colour):
@@ -724,16 +827,19 @@ def main():
     made = [make(NAME, False), make(NAME + "_lo", True)]
     if "make_school" in globals():
         made.append(globals()["make_school"](NAME + "_school"))
+    game = make(NAME + "_game", GAME_MODEL)
     os.makedirs(OUT, exist_ok=True)
     export_one(made[0], os.path.join(OUT, NAME + ".glb"))
     export_one(made[1], os.path.join(OUT, NAME + "_lo.glb"))
     if len(made) > 2:
         export_one(made[2], os.path.join(OUT, NAME + "_school.glb"), True)
-    for index, obj in enumerate(made):
+    export_one(game, os.path.join(OUT, NAME + "_game.glb"))
+    for index, obj in enumerate(made + [game]):
         obj.location.x = 0.4 * LENGTH * index
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))
-    for obj in made:
+    for obj in made + [game]:
         obj.location.x = 0.0
+    game.hide_render = True
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
         render(PREVIEW, made)

@@ -61,6 +61,34 @@ uniform vec3 fin : source_color = vec3(0.7, 0.75, 0.74);
 uniform vec3 fin_dusk : source_color = vec3(0.2, 0.28, 0.29);
 // The inside of the mouth.
 uniform vec3 mouth_inside : source_color = vec3(0.1, 0.035, 0.04);
+// The cartoon eye: 0 the eye as in life, 1 a bigger cartoon eye (a white, an iris, a pupil, a
+// highlight, a dark outline and lids of its own character); where its pupils look (x forward,
+// towards the snout, y up, -1..1, in each eye's own plane); a blink (0 open, 1 shut: lids the
+// colour of the skin close over the eye, the cartoon one and the one in life alike).
+uniform float cartoon_eyes : hint_range(0.0, 1.0) = 0.0;
+uniform vec2 eye_look = vec2(0.0);
+uniform float blink : hint_range(0.0, 1.0) = 0.0;
+
+// The anchovy's cartoon eye: big, soft and shy (an anchovy's eye is big for its size). A large
+// deep sea-green iris filling most of it, a big round pupil, and a soft upper lid that droops a
+// little towards the back: a gentle, timid look. No lower lid. (Kept in step with the model: the
+// eye's radius, and the point it grows about, a little above its middle so that it does not grow
+// over the top of the head: out, up, along, in metres.)
+const float EYE_R = 0.0043;
+const vec3 EYE_PIVOT = vec3(0.003517, 0.00518, 0.0155);
+const float EYE_BIG = 1.5;
+const vec3 SCLERA = vec3(0.96, 0.96, 0.94);
+const vec3 IRIS_IN = vec3(0.3, 0.68, 0.6);
+const vec3 IRIS_OUT = vec3(0.04, 0.24, 0.28);
+const float IRIS_R = 0.66;
+// The pupil's half width and half height, in eye radii.
+const vec2 PUPIL = vec2(0.4, 0.4);
+// The upper lid's edge (eye radii up from the middle) and its slant (up per radius forward); the
+// lower lid's (beyond 1 or -1: none).
+const float LID_TOP = 0.6;
+const float LID_SLANT = 0.14;
+const float LID_LOW = -1.3;
+const float LID_LOW_SLANT = 0.0;
 
 varying vec3 rest;
 varying vec3 rest_normal;
@@ -110,6 +138,11 @@ void vertex() {
 	rest_normal = NORMAL;
 	inside = UV2.x;
 	vec3 v = VERTEX;
+	// The cartoon eye is bigger: the eye grows about a point near its middle.
+	if (abs(part - 6.0) < 0.5 && cartoon_eyes > 0.0) {
+		vec3 pivot = vec3(sign(v.x) * EYE_PIVOT.x, EYE_PIVOT.y, EYE_PIVOT.z - HALF);
+		v = pivot + (v - pivot) * mix(1.0, EYE_BIG, cartoon_eyes);
+	}
 	float xm = v.z + HALF;
 	if (part > 6.5) {
 		// The lower jaw swings down about its hinge; its end inside the head stays where it is.
@@ -147,6 +180,39 @@ float mouth_y(float xm) {
 
 float gill_x(float y) {
 	return 0.036 - 30.0 * (y + 0.001) * (y + 0.001);
+}
+
+// The cartoon eye at `e`: a point of the eye in its own plane, in eye radii (x forward, towards
+// the snout; y up). A white shaded towards its rim, an iris (darker at its edge) and a pupil that
+// slide together as far as `eye_look` asks and the white allows, and highlights that stay put,
+// up and forward, towards the light.
+vec3 cartoon_eye(vec2 e) {
+	vec2 d = e - clamp(eye_look, vec2(-1.0), vec2(1.0)) * (0.86 - IRIS_R);
+	float ir = length(d) / IRIS_R;
+	vec3 c = SCLERA * (1.0 - 0.2 * smoothstep(0.45, 0.95, length(e)));
+	vec3 iris = mix(IRIS_IN, IRIS_OUT, smoothstep(0.25, 1.0, ir));
+	iris = mix(iris, iris * 0.3, smoothstep(0.8, 0.95, ir));
+	c = mix(c, iris, 1.0 - smoothstep(0.96, 1.0, ir));
+	c = mix(c, vec3(0.01, 0.01, 0.015), 1.0 - smoothstep(0.88, 1.0, length(d / PUPIL)));
+	float shine = 1.0 - smoothstep(0.1, 0.135, length(e - vec2(0.22, 0.3)));
+	shine = max(shine, 1.0 - smoothstep(0.04, 0.065, length(e - vec2(-0.14, -0.2))));
+	return mix(c, vec3(1.0), shine);
+}
+
+// The lids over an eye at `e` (as above), the colour of the skin: in the cartoon eye, where its
+// character puts them, with a dark line along each edge and a dark outline round the eye; in the
+// eye in life, out of sight. `blink` brings them together.
+vec3 eye_lids(vec3 c, vec2 e, vec3 lid) {
+	float top = mix(1.3, LID_TOP + LID_SLANT * e.x, cartoon_eyes);
+	float low = mix(-1.3, LID_LOW + LID_LOW_SLANT * e.x, cartoon_eyes);
+	float meet = mix(top, low, 0.7);
+	top = mix(top, meet, blink);
+	low = mix(low, meet, blink);
+	float over = max(smoothstep(-0.02, 0.02, e.y - top), smoothstep(-0.02, 0.02, low - e.y));
+	c = mix(c, lid, over);
+	float line = max(1.0 - smoothstep(0.035, 0.07, abs(e.y - top)), 1.0 - smoothstep(0.025, 0.05, abs(e.y - low)));
+	c = mix(c, vec3(0.02, 0.02, 0.03), line * mix(0.5, 1.0, cartoon_eyes) * step(0.001, max(cartoon_eyes, blink)));
+	return mix(c, vec3(0.02, 0.02, 0.03), smoothstep(0.84, 0.92, length(e)) * cartoon_eyes);
 }
 
 void fragment() {
@@ -246,6 +312,9 @@ void fragment() {
 		vec3 iris = mix(vec3(0.72, 0.75, 0.74), vec3(0.8, 0.7, 0.4), smoothstep(0.55, 0.7, r) * (1.0 - smoothstep(0.7, 0.95, r)) * 0.4) * (0.85 + 0.15 * noise2(vec2(round_it * 9.0, r * 3.0)));
 		c = mix(vec3(0.004, 0.005, 0.008), iris, smoothstep(0.5, 0.56, r));
 		c = mix(c, back * 1.5, smoothstep(0.86, 1.0, r) * 0.85);
+		vec2 e = vec2(EYE_AT.x - (rest.z + HALF), rest.y - EYE_AT.y) / EYE_R;
+		c = mix(c, cartoon_eye(e), cartoon_eyes);
+		c = eye_lids(c, e, mix(silver, back_green, 0.35));
 		rough = 0.14;
 		spec = 0.6;
 	}

@@ -28,6 +28,11 @@ Everything here is in Godot space (metres, Y up, X to its left side, its nose at
 origin is on its middle line, half way along (0.40 m behind the tip of its snout). `xm` below is metres behind the
 tip of the snout.
 
+It also writes models/gulper_eel_game.glb, the GAME MODEL (2026-11-18): a few triangles, spent unevenly as a Twilight
+Princess model spends them, on the outline, the eye, the mouth and the lights, from the same curves (see
+GAME_CUTS, fitted() and pick(): `low` is False, True or GAME for the full, low and game models). The full and
+low models are built exactly as before.
+
 What a point is, for the shader: UV2.y the part (0 body, 1 the dorsal fin, 2 the anal fin, 3 the tail organ, 4 a
 pectoral fin, 6 an eye, 7 the lower jaw and pouch). UV2.x: 1 inside the mouth (its roof, floor and throat), 0
 elsewhere. UV, on the body and the jaw: x how far along (0 snout to 1 tail tip), y how high on its side (1 the ridge
@@ -86,6 +91,13 @@ JAW_TO = 0.16
 SLOPE = 0.02
 EYE_AT = (0.0105, 0.0022)
 EYE_RADIUS = 0.0017
+# The game model: rings wherever the outline bends more than GAME_TOL metres off a straight line, at most
+# GAME_MOST apart (so that the whip still bends smoothly), and always at GAME_CUTS (the jaw's hinge among them);
+# GAME_AROUND points round each.
+GAME_CUTS = [BODY_FROM, 0.02, JAW_TO, 0.26, 0.74, BODY_TO]
+GAME_TOL = 0.0003
+GAME_MOST = 0.024
+GAME_AROUND = 14
 
 
 def smooth(a, b, x):
@@ -117,7 +129,49 @@ def body_point(xm, angle):
     return Vector((side, y, xm - HALF))
 
 
+GAME = "game"
+
+
+def pick(low, full, game, lo):
+    """How finely a part is cut: `low` is False for the full model, True for the low one, GAME for the game model."""
+    return game if low is GAME else (lo if low else full)
+
+
+def fitted(cuts, tol, most, curves):
+    """The game model's rings: as few as keep each of `curves` (functions of xm) within `tol` metres of a straight
+    line between rings, never more than `most` apart, with a ring at each of `cuts`. Where the outline bends
+    (the snout, the jaw, the tail's wrist) they crowd; along the smooth flanks they spread."""
+    xs = []
+    for a, b in zip(cuts, cuts[1:]):
+        x = a
+        while x < b - 1e-9:
+            best = min(b, x + 0.0004)
+            e = best
+            while e < b - 1e-9 and e - x < most:
+                e = min(b, e + 0.0004)
+                ok = True
+                for f in curves:
+                    fa = f(x)
+                    fb = f(e)
+                    for i in range(1, 12):
+                        t = i / 12.0
+                        if abs(f(x + (e - x) * t) - (fa + (fb - fa) * t)) > tol:
+                            ok = False
+                            break
+                    if not ok:
+                        break
+                if not ok:
+                    break
+                best = e
+            xs.append(x)
+            x = best if b - best > 0.25 * (best - x) else b
+    xs.append(cuts[-1])
+    return xs
+
+
 def rings(low):
+    if low is GAME:
+        return fitted(GAME_CUTS, GAME_TOL, GAME_MOST, [top, bottom, lambda x: outline(x)[2], lambda x: 0.04 * lip_angle(x)])
     xs = []
     x = BODY_FROM
     for until, step in ((0.02, 0.001), (JAW_TO, 0.002), (0.26, 0.003), (0.74, 0.0045), (BODY_TO, 0.002)):
@@ -204,6 +258,7 @@ class Mesh:
         self.data = []
         self.out = []
         self.count = {}
+        self.tris = {}
 
     def add(self, p, uv, part, inside=0.0):
         self.verts.append(p)
@@ -223,6 +278,7 @@ class Mesh:
         self.faces.append(tuple(points))
         self.out.append((Vector(out), name))
         self.count[name] = self.count.get(name, 0) + 1
+        self.tris[name] = self.tris.get(name, 0) + len(points) - 2
 
 
 def lip_angle(xm):
@@ -259,7 +315,7 @@ def inside_point(xm, across, hollow):
 
 
 def body(m, low):
-    around = 12 if low else 48
+    around = pick(low, 48, GAME_AROUND, 12)
     xs = rings(low)
     head = [xm for xm in xs if xm < JAW_TO - 1e-9]
     xs = xs[len(head):]
@@ -316,10 +372,10 @@ def body(m, low):
 def jaw(m, low):
     """The lower jaw: the body's own skin below the line of the mouth, ahead of the hinge, closed over by the floor
     of the mouth, with an end inside the head."""
-    around = 12 if low else 48
+    around = pick(low, 48, GAME_AROUND, 12)
     half = round(lip_angle(JAW_TO) / (TAU / around))
     under = around - 2 * half
-    across = 4 if low else 10
+    across = pick(low, 10, 4, 4)
     xs = [xm for xm in rings(low) if xm < JAW_TO + 1e-9]
     skins = []
     floors = []
@@ -467,7 +523,7 @@ def side_fin(m, part, name, xm, y, sx, span, chord, size, low, d):
         t *= 0.975
         return (long * t, 0.15 * wide * t * t + (wide * (1.0 - t) ** 0.7 + 0.0003) * u)
 
-    blade(m, part, name, point, lambda p: root + span * p[0] + chord * p[1], facing, 0.0007, 8 // d, 6 // d)
+    blade(m, part, name, point, lambda p: root + span * p[0] + chord * p[1], facing, 0.0007, pick(low, 8, 2, 8 // 3), pick(low, 6, 3, 6 // 3))
 
 
 
@@ -475,8 +531,8 @@ def side_fin(m, part, name, xm, y, sx, span, chord, size, low, d):
 def organ(m, low):
     """The tail organ: a small bulb on the tip of the whip, and a few short filaments from its end."""
     centre = Vector((0.0, 0.0, BODY_TO + 0.0015 - HALF))
-    lats = 3 if low else 8
-    lons = 6 if low else 12
+    lats = pick(low, 8, 4, 3)
+    lons = pick(low, 12, 8, 6)
     rx, rz = 0.0024, 0.0042
     rows = []
     for i in range(1, lats):
@@ -495,7 +551,7 @@ def organ(m, low):
         for k in range(lons):
             m.face((pole, row[k], row[(k + 1) % lons]), Vector((0.0, 0.0, way)), "tail organ")
     # the filaments: short, fanning back and out from the bulb's end
-    count = 3 if low else 6
+    count = pick(low, 6, 6, 3)
     for k in range(count):
         a = k / count * TAU + 0.4
         out = Vector((math.cos(a) * 0.9, math.sin(a), 0.0))
@@ -505,7 +561,7 @@ def organ(m, low):
             return start + out * (0.007 * t) + Vector((0.0, 0.0, 0.018 * t + 0.004 * t * t))
 
         first = len(m.verts)
-        tube(m, ORGAN, path, lambda t: 0.0005 * (1.0 - 0.7 * t), 3 if low else 5, 3 if low else 8, "tail organ")
+        tube(m, ORGAN, path, lambda t: 0.0005 * (1.0 - 0.7 * t), pick(low, 5, 3, 3), pick(low, 8, 3, 3), "tail organ")
         # (the filaments' UV.x runs from 0.6 at their roots to 1 at their tips, past the bulb's 0 to 0.6)
         for i in range(first, len(m.verts)):
             (u, v), second = m.data[i]
@@ -513,19 +569,19 @@ def organ(m, low):
 
 
 def fins(m, low):
-    d = 3 if low else 1
+    d = 3 if low is True else 1
     # The dorsal fin: low, along nearly the whole back, fading out before the tail organ.
     def dorsal_point(t, u):
         xm = 0.175 + (0.755 - 0.175) * u
         high = (0.0016 + 0.0042 * outline(xm)[0] / 0.012) * (0.3 + 0.7 * smooth(0.0, 0.05, u)) * (1.0 - smooth(0.8, 1.0, u) * 0.85) * t
         return (xm + 0.004 * t, top(xm) - 0.0004 + high)
-    blade(m, DORSAL, "dorsal", dorsal_point, upright, SIDE, 0.0006, 3 if low else 4, 30 if low else 150)
+    blade(m, DORSAL, "dorsal", dorsal_point, upright, SIDE, 0.0006, pick(low, 4, 1, 3), pick(low, 150, 30, 30))
     # The anal fin: along most of the underside.
     def anal_point(t, u):
         xm = 0.25 + (0.755 - 0.25) * u
         high = (0.0014 + 0.0036 * outline(xm)[1] / 0.012) * (0.3 + 0.7 * smooth(0.0, 0.06, u)) * (1.0 - smooth(0.8, 1.0, u) * 0.85) * t
         return (xm + 0.004 * t, bottom(xm) + 0.0004 - high)
-    blade(m, ANAL, "anal", anal_point, upright, SIDE, 0.0006, 3 if low else 4, 26 if low else 130)
+    blade(m, ANAL, "anal", anal_point, upright, SIDE, 0.0006, pick(low, 4, 1, 3), pick(low, 130, 26, 26))
     for sx in (1.0, -1.0):
         # tiny pectoral fins just behind the head
         side_fin(m, PECTORAL, "pectorals", 0.185, -0.004, sx, (0.4, -0.1, 0.9), (0.05, -1.0, 0.2), (0.008, 0.005), low, d)
@@ -545,7 +601,7 @@ def make(name, low):
     body(m, low)
     jaw(m, low)
     for sx in (1.0, -1.0):
-        dome(m, EYE, EYE_AT[0], EYE_AT[1], EYE_RADIUS, 0.0006, sx, 8 if low else 16, 1 if low else 4, "eyes")
+        dome(m, EYE, EYE_AT[0], EYE_AT[1], EYE_RADIUS, 0.0006, sx, pick(low, 16, 12, 8), pick(low, 4, 2, 1), "eyes")
     organ(m, low)
     fins(m, low)
     mesh = bpy.data.meshes.new(name)
@@ -567,6 +623,7 @@ def make(name, low):
     bpy.context.collection.objects.link(obj)
     tris = sum(len(p.vertices) - 2 for p in mesh.polygons)
     print("BUILT %s verts=%d tris=%d" % (name, len(mesh.vertices), tris))
+    print("TRIS %s: %s" % (name, ", ".join("%s %d" % (k, v) for k, v in m.tris.items())))
     winding(name, mesh, m)
     return obj
 
@@ -629,16 +686,21 @@ def main():
     bpy.context.preferences.filepaths.save_version = 0
     full = make(NAME, False)
     low = make(NAME + "_lo", True)
+    print("EYE base %s" % (tuple(round(v, 5) for v in skin(EYE_AT[0], EYE_AT[1], 1.0)),))
+    game = make(NAME + "_game", GAME)
     print("HINGE y=%.5f" % mouth_y(JAW_TO))
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, NAME + ".glb"))
+    export_one(game, os.path.join(OUT, NAME + "_game.glb"))
     export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
     low.location.x = 0.06
+    game.location.x = 2 * 0.06
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low])
+        render(PREVIEW, [full, low, game])
 
 
 if __name__ == "__main__":

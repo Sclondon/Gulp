@@ -63,10 +63,32 @@ const LURE_AT := Vector3(0.0, 0.1147, -0.1929)
 	set(value):
 		flick = clampf(value, 0.0, 1.0)
 		_send(&"flick", flick)
+## The cartoon eye (0 the eye as made, 1 the cartoon one: a tiny mean dot under a scowling lid).
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send(&"cartoon_eyes", cartoon_eyes)
+## Where the cartoon eye looks: x towards the snout (more than 0) or the tail, y up or down; -1..1.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value.clamp(Vector2(-1.0, -1.0), Vector2(1.0, 1.0))
+		_send(&"eye_look", eye_look)
+## The cartoon eye's lid: 0 open, 1 shut.
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send(&"blink", blink)
 ## The low model (about a twelfth of the triangles), for far off or for several of them.
 @export var low := false:
 	set(value):
 		low = value
+		_show()
+## The game model (about a ninth of the full model's triangles, spent on the outline, the eye, the mouth and the
+## lure) in place of the full one: what a game draws near. `low` still shows the low model. With it on, the full
+## model is never loaded (each model is loaded when it is first shown).
+@export var game := false:
+	set(value):
+		game = value
 		_show()
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set it yourself.
 var phase := 0.0:
@@ -79,12 +101,19 @@ static var _meshes := {}
 var _material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
+var _started := false
 
 
 ## The full model's mesh, or the low one's (each one surface, to wear `new_material()`): for drawing one
 ## without this node.
 static func mesh_of(low_wanted := false) -> Mesh:
 	return _mesh_at(MODEL % ("_lo" if low_wanted else ""))
+
+
+## The game model's mesh (one surface, to wear `new_material()`): for drawing one without this node.
+static func game_mesh() -> Mesh:
+	return _mesh_at(MODEL % "_game")
 
 
 ## A new material for `mesh_of()`'s meshes. Its shader settings are the game's to set: `phase` (0..1 through one
@@ -101,8 +130,7 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
+	_started = true
 	_show()
 	_send_phase()
 	_send(&"sway", sway)
@@ -110,6 +138,9 @@ func _ready() -> void:
 	_send(&"lure", lure)
 	_send(&"glow", glow)
 	_send(&"flick", flick)
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 
 
 ## Each frame, for one that is not having its `phase` set for it: moves it on through its beat. (`velocity` is
@@ -141,26 +172,49 @@ func _send_phase() -> void:
 
 
 func _show() -> void:
+	if not _started:
+		return
+	var which := "_lo" if low else ("_game" if game else "")
+	# (each model is loaded the first time it is shown, so that a game with `game` on never loads the full one)
+	if which == "" and _full == null:
+		_full = _instance_of(which)
+	if which == "_lo" and _low == null:
+		_low = _instance_of(which)
+	if which == "_game" and _game == null:
+		_game = _instance_of(which)
 	if _full:
-		_full.visible = not low
-		_low.visible = low
+		_full.visible = which == ""
+	if _low:
+		_low.visible = which == "_lo"
+	if _game:
+		_game.visible = which == "_game"
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of(which: String) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
+	mesh.mesh = _mesh_at(MODEL % which)
 	mesh.material_override = _material
 	# (its tail and rod swing out past where the still model ends, and the jaw drops below it)
 	mesh.extra_cull_margin = 0.08
-	mesh.name = "DeepAnglerfishLo" if low_wanted else "DeepAnglerfish"
+	mesh.name = "DeepAnglerfish" + which
 	add_child(mesh)
 	return mesh
+
+
+## The mesh as imported but without the thinned LOD meshes Godot's importer adds: those were made from the still
+## model, and a body bent in the shader then bends in straight pieces far off.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return plain
 
 
 static func _mesh_at(path: String) -> Mesh:
 	if not _meshes.has(path):
 		var made := (load(path) as PackedScene).instantiate()
 		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
-		_meshes[path] = found.mesh
+		# (the game model without the importer's LODs; the full and low ones as they always were)
+		_meshes[path] = without_lods(found.mesh) if path.ends_with("_game.glb") else found.mesh
 		made.free()
 	return _meshes[path]

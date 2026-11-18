@@ -35,6 +35,11 @@ Everything here is in Godot space (metres, Y up, X to its left side, its nose at
 origin is on its middle line at the height of the tail, half way along (0.15 m behind the tip of its jaw). `xm`
 below is metres behind the tip of the jaw.
 
+It also writes models/deep_anglerfish_game.glb, the GAME MODEL (2026-11-18): a few triangles, spent unevenly as a Twilight
+Princess model spends them, on the outline, the eye, the mouth and the lights, from the same curves (see
+GAME_CUTS, fitted() and pick(): `low` is False, True or GAME for the full, low and game models). The full and
+low models are built exactly as before.
+
 What a point is, for the shader: UV2.y the part (0 body, 1 the dorsal fin, 2 the anal fin, 3 the tail, 4 a
 pectoral fin, 5 the rod, 6 an eye, 7 the lower jaw, 8 a tooth of the roof, 9 a tooth of the lower jaw, 10 the
 lure's bulb). UV2.x: 1 inside the mouth (its roof, floor and throat), 0 elsewhere. UV, on the body and the jaw: x
@@ -97,6 +102,11 @@ EYE_AT = (0.058, 0.033)
 EYE_RADIUS = 0.003
 # As the shader has it: where the rod rises from the top of the snout (metres behind the jaw).
 ROD_FROM = 0.02
+# The game model: rings wherever the outline bends more than GAME_TOL metres off a straight line, at most
+# GAME_MOST apart, and always at GAME_CUTS (the jaw's hinge among them).
+GAME_CUTS = [BODY_FROM, JAW_TO, 0.20, BODY_TO]
+GAME_TOL = 0.001
+GAME_MOST = 0.025
 
 
 def smooth(a, b, x):
@@ -199,6 +209,7 @@ class Mesh:
         self.data = []
         self.out = []
         self.count = {}
+        self.tris = {}
 
     def add(self, p, uv, part, inside=0.0):
         self.verts.append(p)
@@ -218,9 +229,52 @@ class Mesh:
         self.faces.append(tuple(points))
         self.out.append((Vector(out), name))
         self.count[name] = self.count.get(name, 0) + 1
+        self.tris[name] = self.tris.get(name, 0) + len(points) - 2
+
+
+GAME = "game"
+
+
+def pick(low, full, game, lo):
+    """How finely a part is cut: `low` is False for the full model, True for the low one, GAME for the game model."""
+    return game if low is GAME else (lo if low else full)
+
+
+def fitted(cuts, tol, most, curves):
+    """The game model's rings: as few as keep each of `curves` (functions of xm) within `tol` metres of a straight
+    line between rings, never more than `most` apart, with a ring at each of `cuts`. Where the outline bends
+    (the snout, the jaw, the tail's wrist) they crowd; along the smooth flanks they spread."""
+    xs = []
+    for a, b in zip(cuts, cuts[1:]):
+        x = a
+        while x < b - 1e-9:
+            best = min(b, x + 0.0004)
+            e = best
+            while e < b - 1e-9 and e - x < most:
+                e = min(b, e + 0.0004)
+                ok = True
+                for f in curves:
+                    fa = f(x)
+                    fb = f(e)
+                    for i in range(1, 12):
+                        t = i / 12.0
+                        if abs(f(x + (e - x) * t) - (fa + (fb - fa) * t)) > tol:
+                            ok = False
+                            break
+                    if not ok:
+                        break
+                if not ok:
+                    break
+                best = e
+            xs.append(x)
+            x = best if b - best > 0.25 * (best - x) else b
+    xs.append(cuts[-1])
+    return xs
 
 
 def rings(low):
+    if low is GAME:
+        return fitted(GAME_CUTS, GAME_TOL, GAME_MOST, [top, bottom, lambda x: outline(x)[2], lambda x: 0.04 * lip_angle(x)])
     xs = []
     x = BODY_FROM
     for until, step in ((JAW_TO, 0.0016), (0.20, 0.0028), (BODY_TO, 0.0018)):
@@ -268,7 +322,7 @@ def col_angle(c, around):
 
 
 def body(m, low):
-    around = 12 if low else 48
+    around = pick(low, 48, 16, 12)
     xs = rings(low)
     head = [xm for xm in xs if xm < JAW_TO - 1e-9]
     xs = xs[len(head):]
@@ -326,10 +380,10 @@ def body(m, low):
 def jaw(m, low):
     """The lower jaw: the body's own skin below the line of the mouth, ahead of the hinge, closed over by the floor
     of the mouth, with an end inside the head."""
-    around = 12 if low else 48
+    around = pick(low, 48, 16, 12)
     half = round(lip_angle(JAW_TO) / (TAU / around))
     under = around - 2 * half
-    across = 4 if low else 12
+    across = pick(low, 12, 4, 4)
     xs = [xm for xm in rings(low) if xm < JAW_TO + 1e-9]
     skins = []
     floors = []
@@ -366,8 +420,8 @@ def jaw(m, low):
 
 def dome(m, part, xe, ye, radius, height, sx, low, group):
     """A low dome lying on the skin: an eye."""
-    spokes = 8 if low else 20
-    steps = 2 if low else 5
+    spokes = pick(low, 20, 12, 8)
+    steps = pick(low, 5, 2, 2)
     here = skin(xe, ye, sx)
     out = (skin(xe + 0.0007, ye, sx) - skin(xe - 0.0007, ye, sx)).cross(skin(xe, ye + 0.0007, sx) - skin(xe, ye - 0.0007, sx))
     out.normalize()
@@ -425,8 +479,8 @@ def tube(m, part, path, radius, sides, segs, group, inside=0.0):
 
 def tooth(m, part, root, direction, back, length, r0, low):
     """A long thin needle: a cone from `root` along `direction`, curved towards `back` along its length."""
-    sides = 4 if low else 6
-    segs = 2 if low else 5
+    sides = pick(low, 6, 3, 4)
+    segs = pick(low, 5, 2, 2)
     a, b = frame_of(direction)
     centres = []
     rows = []
@@ -448,13 +502,17 @@ def tooth(m, part, root, direction, back, length, r0, low):
     for k in range(sides):
         p = (m.verts[rows[-1][k]] + m.verts[rows[-1][(k + 1) % sides]]) * 0.5
         m.face((tip, rows[-1][k], rows[-1][(k + 1) % sides]), p - centres[-1], "teeth")
+    if low is GAME:
+        # (the game model's root, buried in the gum: one face)
+        m.face(tuple(rows[0]), -direction, "teeth")
+        return
     base = m.add(root - direction * r0, (0.0, 0.0), part)
     for k in range(sides):
         m.face((base, rows[0][k], rows[0][(k + 1) % sides]), -direction, "teeth")
 
 
 def teeth(m, low):
-    step = 2 if low else 1
+    step = pick(low, 1, 2, 2)
     for sx in (1.0, -1.0):
         # the lower jaw's: long needles standing up and a little out from its lip, the longest at the front
         count = 12
@@ -493,15 +551,15 @@ def rod_path(t):
 
 
 def rod(m, low):
-    tube(m, ROD, rod_path, lambda t: 0.0017 - 0.0007 * t, 5 if low else 8, 5 if low else 24, "rod")
+    tube(m, ROD, rod_path, lambda t: 0.0017 - 0.0007 * t, pick(low, 8, 4, 5), pick(low, 24, 8, 5), "rod")
     # the bulb: an egg on the end of the rod, its base along the rod's last stretch
     end = rod_path(1.0)
     d = (rod_path(1.0) - rod_path(0.97)).normalized()
     centre = end + d * 0.0072
     print("LURE centre %s" % (tuple(round(v, 4) for v in centre),))
     a, b = frame_of(d)
-    lats = 4 if low else 12
-    lons = 8 if low else 20
+    lats = pick(low, 12, 5, 4)
+    lons = pick(low, 20, 8, 8)
     rows = []
     for i in range(1, lats):
         u = i / lats
@@ -533,7 +591,7 @@ def rod(m, low):
         high = 0.005 * (1.0 - (2.0 * p[0] - 1.0) ** 2) * p[1] + 0.0
         base = centre + d * along + up * (math.sqrt(max(0.0, 1.0 - (along / 0.0085) ** 2)) * 0.0070 - 0.0008)
         return base + up * high
-    blade(m, ESCA, "lure", crest, place, side, 0.0007, 3 if low else 6, 4 if low else 10, uv_part=lambda t, u: (1.0, 0.0))
+    blade(m, ESCA, "lure", crest, place, side, 0.0007, pick(low, 6, 1, 3), pick(low, 10, 3, 4), uv_part=lambda t, u: (1.0, 0.0))
 
 
 def blade(m, part, name, point, place, facing, thick, nt, nu, round_foil=False, uv_part=None):
@@ -569,25 +627,27 @@ JOINT = 0.228
 
 
 def fins(m, low):
-    d = 3 if low else 1
+    d = 3 if low is True else 1
+    # (the game model's fins: few rows from root to tip, more along their rounded edges)
+    g = low is GAME
     # The dorsal fin: small and rounded, far back on the back.
     def dorsal_point(t, u):
         xm = 0.168 + 0.036 * u
         high = 0.024 * math.sin(math.pi * (0.15 + 0.85 * u)) ** 0.8 * t
         return (xm + 0.012 * t * t, top(xm) - 0.002 + high + 0.002 * t)
-    blade(m, DORSAL, "dorsal", dorsal_point, upright, SIDE, 0.0016, 8 // d, 14 // d, True)
+    blade(m, DORSAL, "dorsal", dorsal_point, upright, SIDE, 0.0016, 2 if g else 8 // d, 6 if g else 14 // d, True)
     # The anal fin: smaller, under the dorsal's rear half.
     def anal_point(t, u):
         xm = 0.182 + 0.026 * u
         high = 0.018 * math.sin(math.pi * (0.15 + 0.85 * u)) ** 0.8 * t
         return (xm + 0.01 * t * t, bottom(xm) + 0.002 - high - 0.002 * t)
-    blade(m, ANAL, "anal", anal_point, upright, SIDE, 0.0014, 6 // d, 10 // d, True)
+    blade(m, ANAL, "anal", anal_point, upright, SIDE, 0.0014, 2 if g else 6 // d, 5 if g else 10 // d, True)
     # The tail: one rounded fan.
     def tail_point(t, u):
         w = 2.0 * u - 1.0
         reach = 0.072 * (1.0 - 0.2 * w * w)
         return (0.224 + reach * t, w * (0.012 + 0.03 * smooth(0.0, 0.8, t)) * (1.0 - 0.25 * t ** 6) + mid(0.23))
-    blade(m, TAIL, "tail", tail_point, upright, SIDE, 0.003, 16 // d, 14 // d, True)
+    blade(m, TAIL, "tail", tail_point, upright, SIDE, 0.003, 4 if g else 16 // d, 8 if g else 14 // d, True)
     for sx in (1.0, -1.0):
         # The pectoral fins: small and rounded on short stalks low on the sides, lying back and out.
         root = skin(0.135, -0.006, sx)
@@ -606,7 +666,7 @@ def fins(m, low):
 
         blade(m, PECTORAL, "pectorals", pectoral_point,
               lambda p, root=root, span=span, chord=chord: root + span * p[0] + chord * p[1],
-              facing, 0.0025, 10 // d, 10 // d, True)
+              facing, 0.0025, 2 if g else 10 // d, 4 if g else 10 // d, True)
 
 
 def material_of(name, colour):
@@ -646,6 +706,7 @@ def make(name, low):
     bpy.context.collection.objects.link(obj)
     tris = sum(len(p.vertices) - 2 for p in mesh.polygons)
     print("BUILT %s verts=%d tris=%d" % (name, len(mesh.vertices), tris))
+    print("TRIS %s: %s" % (name, ", ".join("%s %d" % (k, v) for k, v in m.tris.items())))
     winding(name, mesh, m)
     return obj
 
@@ -710,16 +771,21 @@ def main():
     bpy.context.preferences.filepaths.save_version = 0
     full = make(NAME, False)
     low = make(NAME + "_lo", True)
+    game = make(NAME + "_game", GAME)
+    print("EYE base %s" % (tuple(round(v, 5) for v in skin(EYE_AT[0], EYE_AT[1], 1.0)),))
     print("ROD root y=%.5f z=%.5f  lure at %s" % (rod_path(0.0).y, rod_path(0.0).z, tuple(round(v, 4) for v in rod_path(1.0))))
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, NAME + ".glb"))
+    export_one(game, os.path.join(OUT, NAME + "_game.glb"))
     export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
     low.location.x = 0.2
+    game.location.x = 0.4
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low])
+        render(PREVIEW, [full, low, game])
 
 
 if __name__ == "__main__":

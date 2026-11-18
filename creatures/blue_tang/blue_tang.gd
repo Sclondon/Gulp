@@ -22,7 +22,11 @@ extends Node3D
 ## For a school of hundreds, do not make hundreds of these nodes: draw `BlueTang.school_mesh()`
 ## with one MultiMesh (GameCommon's Flock takes it as its `custom_mesh`).
 ##
-## The models are creatures/blue_tang/models/blue_tang.glb (and _lo, and _school), built by
+## Three models besides the school one: the full one, the game one (`game`: about 1,590
+## triangles, the outline kept, for games) and the low one (`low`). Each is loaded only when first
+## shown, so a game that sets `game` never loads the full model.
+##
+## The models are creatures/blue_tang/models/blue_tang.glb (and _game, _lo, and _school), built by
 ## tools/build_blue_tang.py; blue_tang.gdshader draws the markings and swims it.
 
 const MODEL := "res://creatures/blue_tang/models/blue_tang%s.glb"
@@ -67,6 +71,30 @@ static var _meshes := {}
 	set(value):
 		low = value
 		_show()
+## The game model (about 1,590 triangles, spent on the outline, the eye, the mouth and the fins'
+## edges) in place of the full one: for games. With it set the full model is never loaded. `low`
+## wins over it.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye: 0 the eye as it is in life, 1 big and cartoon-like: a friendly, eager
+## eye, a little anxious, its brow raised towards its snout.
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send(&"cartoon_eyes", cartoon_eyes)
+## Where its eyes look: x towards its snout (less than 0 back), y up, each -1..1 (the cartoon eye's
+## iris and pupil slide that way).
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value.clamp(Vector2(-1.0, -1.0), Vector2(1.0, 1.0))
+		_send(&"eye_look", eye_look)
+## A blink: 0 open, 1 shut (the eye squashes flat and the lid comes down over it).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send(&"blink", blink)
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set it
 ## yourself.
 var phase := 0.0:
@@ -75,14 +103,28 @@ var phase := 0.0:
 		_send(&"phase", phase)
 
 var _material: ShaderMaterial
-var _full: MeshInstance3D
-var _low: MeshInstance3D
+var _body: MeshInstance3D
 
 
 ## The full model's mesh, or the low one's (each one surface, to wear `new_material()`): for drawing
 ## a blue tang without this node.
 static func mesh_of(low_wanted := false) -> Mesh:
 	return _mesh_at(MODEL % ("_lo" if low_wanted else ""))
+
+
+## The game model's mesh (one surface, to wear `new_material()`), for drawing a blue tang without this
+## node: loaded once and kept, without the importer's thinned LOD meshes (the shader bends it, and
+## a thinned one would bend in straight pieces far off).
+static func game_mesh() -> Mesh:
+	return _mesh_at(MODEL % "_game", true)
+
+
+## The same mesh without the importer's LOD meshes.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return plain
 
 
 ## The school model's mesh: about 420 triangles, the same size and the same way round as the others
@@ -109,12 +151,11 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
+	_body = _instance_of()
 	_show()
 	for setting: StringName in [&"tail_beats", &"strokes"]:
 		_send(setting, float(get(setting)))
-	for setting: StringName in [&"sway", &"row", &"gape", &"phase"]:
+	for setting: StringName in [&"sway", &"row", &"gape", &"phase", &"cartoon_eyes", &"eye_look", &"blink"]:
 		_send(setting, get(setting))
 
 
@@ -132,7 +173,7 @@ func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_send(setting, value)
 
 
-## Its one material (both models wear it).
+## Its one material (every model wears it).
 func material() -> ShaderMaterial:
 	return _material
 
@@ -142,27 +183,31 @@ func _send(setting: StringName, value: Variant) -> void:
 		_material.set_shader_parameter(setting, value)
 
 
+## (one mesh shown, loaded only now: a game that sets `game` never loads the full model)
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if _body:
+		if low:
+			_body.mesh = mesh_of(true)
+		elif game:
+			_body.mesh = game_mesh()
+		else:
+			_body.mesh = mesh_of(false)
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of() -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
 	mesh.material_override = _material
 	# (its tail and fins swing out past the still model's box)
 	mesh.extra_cull_margin = LENGTH * 0.2
-	mesh.name = "BlueTangLo" if low_wanted else "BlueTang"
+	mesh.name = "BlueTang"
 	add_child(mesh)
 	return mesh
 
 
-static func _mesh_at(path: String) -> Mesh:
+static func _mesh_at(path: String, plain := false) -> Mesh:
 	if not _meshes.has(path):
 		var made := (load(path) as PackedScene).instantiate()
 		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
-		_meshes[path] = found.mesh
+		_meshes[path] = without_lods(found.mesh) if plain else found.mesh
 		made.free()
 	return _meshes[path]

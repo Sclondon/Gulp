@@ -10,6 +10,9 @@ one MultiMesh), and the editable creatures/anchovy/tools/anchovy.blend (this fol
 and the low model are one still mesh with one surface each: the shader (anchovy.gdshader) draws every marking
 and swims it. It prints a WINDING line for each: the check that nothing is inside out.
 
+It also writes models/anchovy_game.glb, the game model (a third, at about Twilight Princess weight: the GAME table
+below says how its triangles are spent), kept in the .blend beside the others.
+
 A northern anchovy (Engraulis mordax), 0.14 m from the tip of its snout to the tips of its tail, built from the
 species (no picture was traced or copied):
 
@@ -62,6 +65,22 @@ LENGTH = 0.14
 HALF = 0.07
 BODY, DORSAL, ANAL, TAIL, PECTORAL, PELVIC, EYE = range(7)
 TAU = math.tau
+# The game model (a third, at about Twilight Princess weight, built from the same outline with its triangles
+# where the eye sees them): points round each ring (a multiple of four, so that the ridge, the keel and the
+# widest point of each side are points of it); how far the outline between two rings may stray from the true
+# curve, from above, the side and below, and the longest gap between rings (for the swimming bend), both in
+# body lengths; the rows across the floor of the mouth; the eye's spokes and its rings (as fractions of its
+# radius); the rows along the dorsal and anal fins' edges, and from root to tip of the tail, the pectoral and
+# the pelvic fins.
+GAME = {"around": 12, "tol": 0.0008, "step": 0.065, "jaw": 2, "spokes": 24, "eye": (0.45, 1.0), "eye_lift": 0.06,
+        "dorsal": 4, "anal": 3, "tail": 4, "pectoral": 3, "pelvic": 2}
+# Which model is being built: `low` is False for the full one, True for the low one, GAME_MODEL for the game one.
+GAME_MODEL = 2
+
+
+def pick(low, full, lo, game):
+    """The full model's number, the low one's, or the game one's."""
+    return game if low == GAME_MODEL else (lo if low else full)
 
 # The body's outline: metres behind the snout, half its depth above its middle line, half its depth below,
 # half its width.
@@ -240,7 +259,52 @@ class Mesh:
         self.count[name] = self.count.get(name, 0) + 1
 
 
+def game_rings():
+    """The game model's rings: as few as keep the outline from the side and from above within GAME["tol"] of the
+    true curve (so they crowd where it bends, at the snout, the jaw, the gill cover and the tail's wrist, and
+    spread over the flanks), never further apart than GAME["step"] (half as far again at the front, which
+    hardly bends as it swims); one where the jaw ends."""
+    def shape(xm):
+        return (body_point(xm, 0.0).y, body_point(xm, math.pi).y, body_point(xm, 0.5 * math.pi).x)
+
+    def fits(a, b):
+        fa, fb = shape(a), shape(b)
+        for i in range(1, 8):
+            t = i / 8
+            f = shape(a + (b - a) * t)
+            if max(abs(f[k] - (fa[k] + (fb[k] - fa[k]) * t)) for k in range(3)) > GAME["tol"] * LENGTH:
+                return False
+        return True
+
+    def longest(xm):
+        return GAME["step"] * LENGTH * (1.6 - 0.6 * smooth(0.25, 0.55, xm / LENGTH))
+
+    def march(a, b):
+        """From `a` to `b`: each next ring as far on as the outline allows."""
+        xs = [a]
+        fine = 0.0005 * LENGTH
+        while b - xs[-1] > 1e-9:
+            at = xs[-1]
+            n = 1
+            while at + (n + 1) * fine < b and (n + 1) * fine <= longest(at) and fits(at, at + (n + 1) * fine):
+                n += 1
+            nxt = at + n * fine
+            if b - nxt < 1e-9 or not fits(at, b) or b - at > longest(at):
+                xs.append(min(nxt, b) if b - nxt > 0.25 * n * fine else b)
+            else:
+                xs.append(b)
+        return xs[:-1]
+
+    stations = [BODY_FROM, JAW_TO, BODY_TO]
+    xs = []
+    for a, b in zip(stations, stations[1:]):
+        xs += march(a, b)
+    return xs + [BODY_TO]
+
+
 def rings(low):
+    if low == GAME_MODEL:
+        return game_rings()
     xs = []
     x = BODY_FROM
     for until, step in ((JAW_TO, 0.0007), (0.040, 0.0009), (0.115, 0.0021), (BODY_TO, 0.0008)):
@@ -271,7 +335,7 @@ def inside_point(xm, across, hollow):
 
 
 def body(m, low):
-    around = 16 if low else 64
+    around = pick(low, 64, 16, GAME["around"])
     xs = rings(low)
     head = [xm for xm in xs if xm < JAW_TO - 1e-9]
     xs = xs[len(head):]
@@ -332,11 +396,11 @@ def body(m, low):
 def jaw(m, low):
     """The lower jaw: the body's own skin below the line of the mouth, ahead of the hinge, closed over by
     the floor of the mouth, with an end inside the head."""
-    around = 16 if low else 64
+    around = pick(low, 64, 16, GAME["around"])
     # (as many columns as the body has below the line of the mouth, so that its end meets the body point for point)
     half = round(lip_angle(JAW_TO) / (TAU / around))
     under = around - 2 * half
-    across = 4 if low else 12
+    across = pick(low, 12, 4, GAME["jaw"])
     xs = [xm for xm in rings(low) if xm < JAW_TO + 1e-9]
     skins = []
     floors = []
@@ -374,23 +438,26 @@ def jaw(m, low):
 
 def eye(m, sx, low):
     """A low dome lying on the skin of the head."""
-    spokes = 10 if low else 28
-    steps = 2 if low else 8
+    spokes = pick(low, 28, 10, GAME["spokes"])
+    steps = pick(low, 8, 2, 0)
+    radii = GAME["eye"] if low == GAME_MODEL else [k / steps for k in range(1, steps + 1)]
     xe, ye = EYE_AT
     here = skin(xe, ye, sx)
     out = (skin(xe + 0.0007, ye, sx) - skin(xe - 0.0007, ye, sx)).cross(skin(xe, ye + 0.0007, sx) - skin(xe, ye - 0.0007, sx))
     out.normalize()
     if out.x * sx < 0.0:
         out = -out
-    middle = m.add(here + out * 0.001, (0.0, 0.0), EYE)
+    # (the game model lifts its eye a little off the skin, whose coarser rings would otherwise show through the
+    # top of it)
+    lift = out * (GAME["eye_lift"] * EYE_RADIUS) if low == GAME_MODEL else Vector((0.0, 0.0, 0.0))
+    middle = m.add(here + out * 0.001 + lift if low == GAME_MODEL else here + out * 0.001, (0.0, 0.0), EYE)
     last = None
-    for k in range(1, steps + 1):
-        r = k / steps
+    for r in radii:
         row = []
         for s in range(spokes):
             a = s / spokes * TAU
             p = skin(xe + math.cos(a) * EYE_RADIUS * r, ye + math.sin(a) * EYE_RADIUS * r, sx)
-            row.append(m.add(p + out * (0.0009 * (1.0 - r * r) + 0.0001 * (1.0 - r)), (r, 0.0), EYE))
+            row.append(m.add(p + out * (0.0009 * (1.0 - r * r) + 0.0001 * (1.0 - r)) + lift if low == GAME_MODEL else p + out * (0.0009 * (1.0 - r * r) + 0.0001 * (1.0 - r)), (r, 0.0), EYE))
         for s in range(spokes):
             n = (s + 1) % spokes
             if last is None:
@@ -462,6 +529,9 @@ def anal_high(u):
 
 def fins(m, low):
     d = 3 if low else 1
+    # (the game model: the dorsal and anal fins' outline is their top edge, along their base, so their rows go
+    # there; the tail and the paired fins' edges curve from root to tip, and across they are straight)
+    game = low == GAME_MODEL
     # The dorsal fin: one small triangle at the middle of the body, tallest at its front, leaning back.
     lean = math.radians(28.0)
 
@@ -470,7 +540,7 @@ def fins(m, low):
         high = dorsal_high(u) * t
         return (xm + math.sin(lean) * high, top(xm) - 0.0007 + math.cos(lean) * high + 0.0007 * t)
 
-    blade(m, DORSAL, "dorsal", dorsal_point, upright, SIDE, 0.0006, 10 // d, 14 // d)
+    blade(m, DORSAL, "dorsal", dorsal_point, upright, SIDE, 0.0006, 2 if game else 10 // d, GAME["dorsal"] if game else 14 // d)
     # The anal fin: low, far back.
     lean_a = math.radians(38.0)
 
@@ -479,13 +549,13 @@ def fins(m, low):
         high = anal_high(u) * t
         return (xm + math.sin(lean_a) * high, bottom(xm) + 0.0006 - math.cos(lean_a) * high - 0.0006 * t)
 
-    blade(m, ANAL, "anal", anal_point, upright, SIDE, 0.00045, 6 // d, 10 // d)
+    blade(m, ANAL, "anal", anal_point, upright, SIDE, 0.00045, 2 if game else 6 // d, GAME["anal"] if game else 10 // d)
     # The tail: deeply forked, two pointed lobes that meet along the middle line.
     for way in (1.0, -1.0):
         tip = (TAIL_TIP[0], TAIL_TIP[1] * way)
         blade(m, TAIL, "tail", swept(((0.1185, 0.0), (0.127, 0.0118 * way), tip),
                                       ((TAIL_NOTCH, 0.0), (0.1365, 0.0052 * way), tip)),
-              upright, SIDE, 0.0009, 18 // d, 8 // max(d - 1, 1))
+              upright, SIDE, 0.0009, GAME["tail"] if game else 18 // d, 2 if game else 8 // max(d - 1, 1))
     for sx in (1.0, -1.0):
         # The pectoral fins: set low behind the gill covers, lying back and a little down and out.
         root = skin(0.0345, -0.0074, sx)
@@ -503,7 +573,7 @@ def fins(m, low):
 
         blade(m, PECTORAL, "pectorals", pectoral_point,
               lambda p, root=root, span=span, chord=chord: root + span * p[0] + chord * p[1],
-              facing, 0.0006, 12 // d, 8 // max(d - 1, 1))
+              facing, 0.0006, GAME["pectoral"] if game else 12 // d, 2 if game else 8 // max(d - 1, 1))
         # The pelvic fins: small, under the dorsal, pointing back and down.
         root = Vector((sx * 0.0022, bottom(0.049) + 0.0009, 0.049 - HALF))
         span = Vector((sx * 0.26, -0.5, 0.83)).normalized()
@@ -518,7 +588,7 @@ def fins(m, low):
 
         blade(m, PELVIC, "pelvics", pelvic_point,
               lambda p, root=root, span=span, chord=chord: root + span * p[0] + chord * p[1],
-              facing, 0.00045, 8 // d, 6 // d)
+              facing, 0.00045, GAME["pelvic"] if game else 8 // d, 2 if game else 6 // d)
 
 
 def material_of(name, colour):
@@ -747,15 +817,20 @@ def main():
     full = make("anchovy", False)
     low = make("anchovy_lo", True)
     school = make_school("anchovy_school")
+    game = make("anchovy_game", GAME_MODEL)
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, "anchovy.glb"))
     export_one(low, os.path.join(OUT, "anchovy_lo.glb"))
     export_one(school, os.path.join(OUT, "anchovy_school.glb"), True)
+    export_one(game, os.path.join(OUT, "anchovy_game.glb"))
     low.location.x = 0.05
     school.location.x = 0.1
+    game.location.x = 1.5 * 0.1
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "anchovy.blend"))
     low.location.x = 0.0
     school.location.x = 0.0
+    game.location.x = 0.0
+    game.hide_render = True
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
         render(PREVIEW, [full, low, school])

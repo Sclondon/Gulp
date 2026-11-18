@@ -10,7 +10,8 @@ the disc, and a few hundred finger-like tentacles with blunt tips crowded over t
 leaning out and down at the margin. About 0.52 m across the tentacles, 0.17 m high; its base at y = 0, its middle
 on the Y axis.
 
-It writes creatures/clownfish/models/clownfish_anemone.glb (250 tentacles) and clownfish_anemone_lo.glb (50
+It writes creatures/clownfish/models/clownfish_anemone.glb (250 tentacles), clownfish_anemone_game.glb (for
+games: 165 four-sided tentacles of two rings, a little thicker, about 2,650 triangles) and clownfish_anemone_lo.glb (50
 fewer, thicker, coarser tentacles), and the editable creatures/clownfish/tools/clownfish_anemone.blend (this folder has a
 .gdignore). Each is one still mesh with one surface; the shader (clownfish_anemone.gdshader) sways the tentacles
 and draws the colours. Every part (the column with its disc, each tentacle) is a closed solid, and the script
@@ -50,6 +51,21 @@ FOOT_RADIUS = 0.14     # the column's foot, on the ground
 DISC_HEIGHT = 0.1      # how high the disc's margin stands
 FOLDS = 5              # how many times the margin rises and falls round the disc
 MOUTH = 0.035          # the mouth's lips, how far out from the middle
+
+# The game model (Claude's numbers, 2026-11-18): about 2,650 triangles against the full model's 13,824 (the
+# Twilight Princess yardstick: 1,800 to 3,000 for something 0.5 to 1.5 m across). The mass of tentacles is the
+# look, so most of them go there: 165 tentacles (the full model's 250 at 48 triangles each) of four sides and
+# two rings and a blunt tip (14 triangles each), 1.15 times as thick so that they cover the disc as the 250 do,
+# spread over the disc as the full model's are (`spread` 1; more than 1 would crowd them to the middle, less to
+# the margin); the column and disc with 24 points
+# round and fewer rings (most of the disc is under the tentacles). Set while it is built; None for the full and
+# low models, which are built exactly as they were before it.
+GAME_MODEL = {
+    "count": 165, "thick": 1.15, "sides": 4, "stations": [0.0, 0.88], "radii": [1.0, 0.88],
+    "spread": 1.0,
+    "around": 24, "foot": [0.0, 1.0], "up": 3, "across": 4,
+}
+GAME = None
 
 
 def to_b(p):
@@ -145,13 +161,13 @@ def column_and_disc(low):
     the Y axis, from the middle of the foot out and up the column, over the margin and in across the disc to the
     mouth."""
     part = Part("column")
-    around = 16 if low else 48
+    around = GAME["around"] if GAME else (16 if low else 48)
     rings = []
     # (the foot, from its middle out: flat on the ground)
     centre = part.add((0.0, 0.0, 0.0), (1.6, 0.0), (0.0, 0.0), (COLUMN / 10.0, 0.0, 0.0))
-    foot = [0.0, 1.0] if low else [0.0, 0.5, 1.0]
-    up = 2 if low else 7
-    across = 3 if low else 11
+    foot = GAME["foot"] if GAME else ([0.0, 1.0] if low else [0.0, 0.5, 1.0])
+    up = GAME["up"] if GAME else (2 if low else 7)
+    across = GAME["across"] if GAME else (3 if low else 11)
     profile = []
     for t in foot[1:]:
         profile.append(("foot", t))
@@ -202,7 +218,7 @@ def tentacle(index, count, rng, low):
     angle = index * golden + rng.uniform(-0.08, 0.08)
     inner = MOUTH + 0.022
     reach = (index + 0.5) / count
-    r = inner + (margin(angle) - 0.012 - inner) * math.sqrt(reach)
+    r = inner + (margin(angle) - 0.012 - inner) * (reach ** (0.5 * GAME["spread"]) if GAME else math.sqrt(reach))
     out_k = r / margin(angle)
     root = Vector((r * math.cos(angle), disc_y(r, angle) - 0.004, r * math.sin(angle)))
     outward = Vector((math.cos(angle), 0.0, math.sin(angle)))
@@ -211,7 +227,7 @@ def tentacle(index, count, rng, low):
     lean.normalize()
     long = rng.uniform(0.06, 0.082) * (0.85 + 0.2 * out_k)
     # (the low model has fewer, thicker ones, to cover the disc as well)
-    thick = rng.uniform(0.0068, 0.0082) * (1.5 if low else 1.0)
+    thick = rng.uniform(0.0068, 0.0082) * (GAME["thick"] if GAME else (1.5 if low else 1.0))
     droop = 0.5 * out_k ** 1.5 + rng.uniform(0.0, 0.15)
     wander = Vector((rng.uniform(-1.0, 1.0), rng.uniform(-0.3, 0.3), rng.uniform(-1.0, 1.0))) * 0.18
     seed = rng.random()
@@ -219,9 +235,9 @@ def tentacle(index, count, rng, low):
     def line(u):
         return root + lean * (long * u) + Vector((0.0, -1.0, 0.0)) * (long * droop * u * u) + outward * (long * 0.12 * out_k * u * u) + wander * (long * u * u)
 
-    sides = 3 if low else 6
-    stations = [0.0, 0.85] if low else [0.0, 0.35, 0.68, 0.9]
-    radii = [1.0, 0.8] if low else [1.0, 0.92, 0.86, 0.72]
+    sides = GAME["sides"] if GAME else (3 if low else 6)
+    stations = GAME["stations"] if GAME else ([0.0, 0.85] if low else [0.0, 0.35, 0.68, 0.9])
+    radii = GAME["radii"] if GAME else ([1.0, 0.8] if low else [1.0, 0.92, 0.86, 0.72])
     rings = []
     for u, k in zip(stations, radii):
         at = line(u)
@@ -246,14 +262,18 @@ def tentacle(index, count, rng, low):
     last = rings[-1]
     for j in range(sides):
         part.faces.append((last[j], last[(j + 1) % sides], tip))
-        part.faces.append((rings[0][(j + 1) % sides], rings[0][j], base))
+        if not GAME:
+            part.faces.append((rings[0][(j + 1) % sides], rings[0][j], base))
+    if GAME:
+        # (the game model's root, sunk in the disc where nothing sees it, is closed flat)
+        part.faces.append(tuple(reversed(rings[0])))
     return part
 
 
 def make(name, low):
     rng = random.Random(11)
     parts = [column_and_disc(low)]
-    count = 50 if low else 250
+    count = GAME["count"] if GAME else (50 if low else 250)
     for i in range(count):
         parts.append(tentacle(i, count, rng, low))
     verts, faces, corners = [], [], []
@@ -316,6 +336,15 @@ def make(name, low):
     return obj
 
 
+def make_game(name):
+    global GAME
+    GAME = GAME_MODEL
+    try:
+        return make(name, False)
+    finally:
+        GAME = None
+
+
 def export_one(obj, path):
     bpy.ops.object.select_all(action="DESELECT")
     obj.select_set(True)
@@ -363,14 +392,18 @@ def main():
     bpy.context.preferences.filepaths.save_version = 0
     full = make(NAME, False)
     low = make(NAME + "_lo", True)
+    game = make_game(NAME + "_game")
     export_one(full, os.path.join(OUT, NAME + ".glb"))
     export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
+    export_one(game, os.path.join(OUT, NAME + "_game.glb"))
     low.location.x = 0.7
+    game.location.x = 1.4
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low])
+        render(PREVIEW, [full, low, game])
 
 
 if __name__ == "__main__":
