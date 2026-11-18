@@ -465,3 +465,7 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   younger boy (13, blond) is only the fish. Claude had written the younger boy as the diver, from the user's earlier
   "diving as the boy". `tools/art_src/concept_diving_suits.jpg` shows the suits on the younger boy: redo them on the
   older brother. DESIGN.md has a "Who does what" section.
+- `STORY.md` (2026-11-18): the writing room's story bible: the captain's love story as twelve photographs and a
+  thirteenth taken at the ending, eight side stories, a catalogue of things to find, the three markets, staging briefs
+  for capturing each photograph in the game in sepia, the new models it needs, and twelve questions for the user.
+  ALL of it is a proposal (names included) until the user has read it: nothing in it is the user's decision yet.
