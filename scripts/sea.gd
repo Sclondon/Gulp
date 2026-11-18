@@ -28,48 +28,49 @@ const EAST := Bay.EAST
 const NORTH := Bay.NORTH
 const SOUTH := Bay.SOUTH
 ## (the larger of NORTH and SOUTH, for anything that wants one half-width)
-const SIDE := 194.0 * Bay.K
+const SIDE := 160.0
 ## Where the shelf ends and the floor drops away (x, wavering along z: see `edge_at`); the open
 ## ocean is to the west of it.
 const EDGE := Bay.EDGE * Bay.K
-## The places in it (the user's drawing, 2026-11-18), each round a middle (x, z) out to a radius,
-## and some with more patches (`also`: [middle, radius] each). "open" is everything west of the
-## shelf's edge (and the deep water over the canyon's basin); "beach" is the strip of shallows
-## all along the shore (`Bay.BEACH`); "trench" is the canyon's water deeper than `deeper`.
-## In world metres (the chart in scripts/bay.gd times Bay.K).
+## The places in it, each round a middle (x, z) out to a radius, and some with more patches
+## (`also`: [middle, radius] each), at their real places in the bay (CLAUDE.md, "Decision: the real
+## bay"; the user's layout of 2026-11-18 kept where the real floor allows). "open" is everything west
+## of the shelf's edge (and the deep water over the canyon); "beach" is the strip of shallows all
+## along the shore (`Bay.BEACH`); "trench" is the canyon's water deeper than `deeper`. World metres.
 const ZONES := {
-	"beach": {"at": Vector2(78.0, -56.0), "radius": 0.0},
-	"river": {"at": Vector2(99.0, -19.0), "radius": 10.0},
-	"kelp": {"at": Vector2(53.0, 42.0), "radius": 30.0, "also": [[Vector2(54.4, -64.0), 19.0]]},
-	"docks": {"at": Vector2(35.2, 78.4), "radius": 14.0, "also": [[Vector2(-27.2, -107.2), 13.0]]},
-	"sand": {"at": Vector2(-74.0, -78.0), "radius": 34.0},
-	"pirate": {"at": Vector2(-80.0, -12.8), "radius": 20.0},
-	"trench": {"at": Vector2(-40.0, 26.0), "radius": 38.0, "deeper": 45.0},
-	"ruins": {"at": Vector2(-75.2, 73.6), "radius": 36.0},
-	"grass": {"at": Vector2(-11.2, 78.4), "radius": 15.0},
-	"reef": {"at": Vector2(-40.0, 129.6), "radius": 32.0},
-	"open": {"at": Vector2(-138.0, -16.0), "radius": 24.0},
+	"beach": {"at": Vector2(60.0, -125.0), "radius": 0.0},
+	"river": {"at": Vector2(106.0, -38.0), "radius": 9.0},
+	"kelp": {"at": Vector2(44.0, 55.0), "radius": 16.0, "also": [[Vector2(35.0, -130.0), 13.0]]},
+	"docks": {"at": Vector2(66.0, 68.0), "radius": 16.0, "also": [[Vector2(3.0, -123.0), 12.0]]},
+	"sand": {"at": Vector2(-10.0, -105.0), "radius": 22.0},
+	"pirate": {"at": Vector2(-20.0, -62.0), "radius": 18.0},
+	"trench": {"at": Vector2(30.0, -36.0), "radius": 45.0, "deeper": 45.0},
+	"ruins": {"at": Vector2(-30.0, -15.0), "radius": 30.0},
+	"grass": {"at": Vector2(82.0, 52.0), "radius": 12.0},
+	"reef": {"at": Vector2(2.0, 125.0), "radius": 24.0},
+	"open": {"at": Vector2(-95.0, 10.0), "radius": 24.0},
 }
 ## The liner's wreck (scripts/wreck.gd, another agent's): where the middle of its keel rests on the
-## bottom, and its turn (rotation.y; the hull's length lies along the node's own Z). On the shelf
-## off Point Lobos at the head of the Carmel Canyon: the user's red X.
-const WRECK_AT := Vector3(-40.0, 10.0, 129.6)
-const WRECK_HEADING := 1.4
+## bottom, and its turn (rotation.y; the hull's length lies along the node's own Z). On a ledge at the
+## head of the Carmel Canyon off Point Lobos (the user's red X), along the coast: the real floor there
+## drops 60 m within a few metres of the shore, so its shelf is a ledge with the canyon beside it.
+const WRECK_AT := Vector3(2.0, 10.0, 125.0)
+const WRECK_HEADING := 0.32
 ## Atlantis (scripts/ruins.gd, another agent's): the middle of its terrace on the bottom, and its
-## turn (its front, the node's -Z, faces north-east, up the canyon). In the lower end of the canyon.
-const RUINS_AT := Vector3(-75.2, -2.0, 73.6)
-const RUINS_HEADING := -0.785
+## turn (its front, the node's -Z, faces east, up the canyon). In the canyon's deep lower reach.
+const RUINS_AT := Vector3(-30.0, -2.0, -15.0)
+const RUINS_HEADING := -1.4
 ## The pirate ship (scripts/pirate_wreck.gd, another agent's): the middle of its sandy hollow, and
-## its turn (its length along the node's own Z). On the canyon's western rim.
-const PIRATE_AT := Vector3(-80.0, 19.0, -12.8)
-const PIRATE_HEADING := 0.3
+## its turn (its length along the node's own Z). On the canyon's north rim, along it.
+const PIRATE_AT := Vector3(-20.0, 19.0, -62.0)
+const PIRATE_HEADING := 1.57
 ## The fish markets' landings (the user: "the fish markets should be at monteray, santa cruz, and carmel";
-## the places are Claude's, tools/BIOMES.md): the end of Monterey's commercial wharf, the end of the
-## Santa Cruz wharf, the end of Carmel's pier (world x, z). Selling there is another stage's.
-const MARKETS := {"monterey": Vector2(51.2, 66.4), "santa_cruz": Vector2(-38.2, -91.2), "carmel": Vector2(30.0, 137.0)}
-## Where a run starts (x, z): over the sand, between the north kelp and the pirate ship, with
-## room east of it for the title boat's circle (45 m round a middle 45 m east: Title.COURSE).
-const START := Vector2(-52.8, -36.8)
+## the places are Claude's): the end of Monterey's commercial wharf, the end of the Santa Cruz wharf,
+## the end of Carmel's pier at Stillwater Cove (world x, z). Selling there is another stage's.
+const MARKETS := {"monterey": Vector2(82.0, 56.0), "santa_cruz": Vector2(-8.0, -107.0), "carmel": Vector2(27.0, 121.0)}
+## Where a run starts (x, z): over the sand off Santa Cruz, by the pirate ship, with room east of it
+## for the title boat's circle (45 m round a middle 45 m east: Title.COURSE).
+const START := Vector2(-40.0, -55.0)
 
 ## The rocks, each as a sphere: x, y, z, radius (Scenery adds them: `add_rock`). They are kept
 ## twice (tools/PERF.md, "Decision: two grids for the rocks"): by the square of floor they could be
@@ -258,7 +259,12 @@ static func _spot(rng: RandomNumberGenerator, zone: String) -> Vector2:
 	var z := rng.randf_range(NORTH + 6.0, SOUTH - 6.0)
 	if zone == "open":
 		if rng.randf() < 0.5:
-			return Vector2(rng.randf_range(WEST + 6.0, edge_at(z) - 10.0), z)
+			# (the real shelf is wide in the north: there the deep water does not reach the world's
+			# west side at all, so a row of it is picked again)
+			for tries in 8:
+				if edge_at(z) - 10.0 > WEST + 6.0:
+					return Vector2(rng.randf_range(WEST + 6.0, edge_at(z) - 10.0), z)
+				z = rng.randf_range(NORTH + 6.0, SOUTH - 6.0)
 		zone = "trench"
 	if zone == "beach":
 		# (a point on the shelf, walked in to the shore's strip)

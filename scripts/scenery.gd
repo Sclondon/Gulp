@@ -34,8 +34,8 @@ const MANGROVES := true
 const EEL_COUNT := 260
 ## The garden's ridge in the sand off Santa Cruz (world, its two ends), and the small colony beside the
 ## liner (its middle; how many).
-const EEL_RIDGE: Array[Vector2] = [Vector2(-88.0, -72.0), Vector2(-62.0, -84.0)]
-const REEF_EEL_AT := Vector2(-22.0, 118.0)
+const EEL_RIDGE: Array[Vector2] = [Vector2(-25.0, -100.0), Vector2(5.0, -110.0)]
+const REEF_EEL_AT := Vector2(-14.0, 118.0)
 const REEF_EELS := 50
 ## How long a garden eel counts as for the eating rule (m), and how long one stays gone (s).
 const EEL_LENGTH := 0.6
@@ -58,26 +58,28 @@ const PIRATE_LANE := Vector2(34.0, 12.0)
 const DECK_UP := 0.9
 const PILE_DOWN := 0.7
 ## Where the two docks are (world): the middles of the docks zone's two patches.
-const MONTEREY := Vector2(35.2, 78.4)
-const SANTA_CRUZ := Vector2(-27.2, -107.2)
+const MONTEREY := Vector2(66.0, 68.0)
+const SANTA_CRUZ := Vector2(3.0, -123.0)
 ## The outcrop the pirate ship struck, and its island (world).
-const OUTCROP := Vector2(-98.0, -24.0)
+const OUTCROP := Vector2(-48.0, -72.0)
 ## The south kelp forest's landmark: the arch across its main channel (world x, z; BIOMES.md 5.2).
-const ARCH := Vector2(43.0, 49.0)
+const ARCH := Vector2(44.0, 55.0)
 ## Where Carmel's pier starts at the shore (world; it runs north, BIOMES.md 5.12).
-const CARMEL_PIER := Vector2(30.0, 145.0)
+const CARMEL_PIER := Vector2(27.0, 111.0)
 const OLD_ONE := "res://creatures/old_one/old_one.gd"
 const REEF_BACK := "res://creatures/reef_back/reef_back.gd"
 ## Where the old one lies asleep (world x, z: the canyon's deep floor north-east of Atlantis, 85 m).
-const OLD_ONE_AT := Vector2(-40.0, 26.0)
+const OLD_ONE_AT := Vector2(10.0, -38.0)
 ## The reef back's loop on the deep floor past the shelf's edge (middle x, z; radius), and its pace (m/s).
-const REEF_BACK_LOOP := Vector3(-138.0, -62.0, 15.0)
+const REEF_BACK_LOOP := Vector3(-90.0, 40.0, 15.0)
 const REEF_BACK_PACE := 0.45
 ## Beyond this the two giants are their light models (m).
 const GIANT_LOW := 60.0
 ## The old one and the reef-back are put in the sea (off: they wait for the special conditions that
 ## call the sea monsters up; Species `monster` holds the swimming ones back the same way).
 const MONSTERS := false
+## The old wall of cliff pieces along the drawn map's shelf edge (off: the real floor has its own).
+const CLIFF_WALL := false
 
 ## Who lays the grass aside and frightens the eels (the player).
 var player: Player
@@ -110,7 +112,10 @@ func _ready() -> void:
 	_place_biomes()
 	if _props:
 		_place_reef()
-		_place_cliffs()
+		# (no wall of cliffs along the shelf's edge since the floor is the real bay's: its shelf break
+		# is a slope of its own, and the "walls" biome puts rock on whatever is steep)
+		if CLIFF_WALL:
+			_place_cliffs()
 		_place_breakwater()
 	if ResourceLoader.exists(KELP):
 		_plant_kelp()
@@ -556,10 +561,11 @@ func _build_docks() -> void:
 	# wooden pier out into the cove dredged off Carmel Beach (Bay.HARBOURS), two skiffs at it, after
 	# the small pier at Stillwater Cove (Claude's default, BIOMES.md 5.12). The fish shed is not built.
 	site = _Site.new()
-	_wharf(site, CARMEL_PIER, 3, deck_y)
-	_boat(site, "Skiff", CARMEL_PIER + Vector2(-5.0, -4.0), 0.4)
-	_boat(site, "Skiff", CARMEL_PIER + Vector2(5.5, -6.0), -0.3)
-	_litter(site, "CrabPot", CARMEL_PIER + Vector2(-3.0, -7.0))
+	# (the cove opens to the south: the pier runs out that way)
+	_wharf(site, CARMEL_PIER, 3, deck_y, true)
+	_boat(site, "Skiff", CARMEL_PIER + Vector2(-5.0, 4.0), 0.4)
+	_boat(site, "Skiff", CARMEL_PIER + Vector2(5.5, 6.0), -0.3)
+	_litter(site, "CrabPot", CARMEL_PIER + Vector2(-3.0, 7.0))
 	_draw_site(site, kit, "Carmel")
 	_build_outcrop(kit)
 	_paint_shells()

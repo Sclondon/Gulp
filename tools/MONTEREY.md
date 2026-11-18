@@ -1,5 +1,9 @@
 # The sea as Monterey Bay (decision record, 2026-11-18)
 
+**Superseded the same day for the floor and every position**: the user asked for the bay's real topography, and the
+floor is now baked from real depths (CLAUDE.md, "Decision: the real bay"). What follows is the first, hand-drawn map:
+the user's layout (which place goes where) still stands where the real floor allows; its coordinates and shapes do not.
+
 ## What the user asked
 
 With a picture of a carved wooden chart of Monterey Bay (north up; Santa Cruz at the top, the Monterey Peninsula and

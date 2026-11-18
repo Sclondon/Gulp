@@ -379,7 +379,28 @@ choices below are Claude's.
   kelpies, mosasaur and other marine reptiles are still stocked). The real topography: `tools/bay_real.gd` previews
   GMRT's grid of the bay (MBARI multibeam, about 60 m a sample; the download URL is in the tool) fitted to the game at
   180 real m a game m and depths squeezed by `game_depth`; it replaces MONTEREY.md's "real bathymetry: rejected".
-  Not yet built into `Bay`; the grid file is not in the repo.
+  Built the same day (below).
+- **Decision: the real bay** (2026-11-18; the user picked "whole bay as shown" and "real shape, tuned for play"). What:
+  `tools/bake_bay.gd` bakes GMRT's grid (lon -122.25 to -121.75, lat 36.48 to 37.0; the curl line is in the tool)
+  into `data/monterey.bin` (depth and shore distance every 1 m, 630 KB; the web export includes `data/*.bin`), and
+  `Bay` reads it in place of its drawn shapes (its public names are kept; `K` is 1). 180 real m a game m, 244 x 320 m;
+  depths squeezed by `game_depth` (true to 10 m, 100 m real is 25, 2,000 m is about 100). Tuned for play in the bake:
+  canyons widened 2 m, smoothed (GMRT's survey seams showed as steps once squeezed), the near shore eased (5 m deep
+  14 m out, no steeper than 0.6 to 25 to 40 m out, but a canyon dropping far below that keeps its depth). Over it, in
+  `Bay`: Elkhorn Slough's channel, the harbours, and the three shelves (uneven sides, never right up to a shore; the
+  liner's is long along its hull). Everything placed moved to its real place (Sea's ZONES, set pieces, markets,
+  START; Scenery's docks, outcrop, pier, eels; Biomes' areas; FloorTypes' rocky points; Fishers' nets and loops):
+  the liner on a ledge at the head of the Carmel Canyon (the real coast there drops 60 m within metres), Atlantis in
+  the canyon's deep reach west of the bend, the pirate ship on its north rim, Monterey's docks east of the wharf
+  off Del Monte (wharves run only north or south, and there the shore faces north), Carmel's pier at Stillwater
+  Cove, the kelp off Point Pinos to Cannery Row and off Capitola, the grass off Seaside. The old wall of cliffs along
+  the drawn shelf edge is off (`Scenery.CLIFF_WALL`). The practice: a real DEM resampled to the game's grid, with
+  vertical exaggeration/compression and hand fixes over it, as games built on real places do. Alternatives: the
+  old hand-drawn sum (the user asked for real topography), the real depths unsmoothed and unwidened (the canyon
+  head and slough are under a game metre wide), a bigger map (the user chose this size). Tools: `tools/bay_chart.gd`
+  (the floor with a 20 m grid, `--zones`), `tools/bay_probe.gd` (depth and shore at points). Not yet tuned to the new
+  floor: the floor painting (`FloorTypes`: blocky 2 m patches, rock over every steep wall, which the real canyons
+  make much more of), the biomes' depth bands, the land's look; nobody has swum it.
 - `tests/overhead.gd` draws the whole bay from straight above as a labelled chart (no water, fog or culling; tiles
   stitched): `godot --path . --audio-driver Dummy --resolution 400x400 -s res://tests/overhead.gd -- --out=<folder>`.
 - **The web pack** (62.5 MB -> 33 MB): `tools/web_excludes.sh` also turns off automatic LODs and shadow meshes in every

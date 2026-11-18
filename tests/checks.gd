@@ -193,6 +193,8 @@ func _schooling() -> void:
 	player.begin(player.global_position, "smolt")
 	player.safe = 0.0
 	var lurker := _one_of(["grouper"])
+	# (one small enough to take notice of a smolt: Life.TOO_SMALL)
+	lurker.length = 1.0
 	lurker._tired = 0.0
 	var warned_at := -1
 	var lunged_at := -1

@@ -14,16 +14,16 @@ extends RefCounted
 ## squeezed by `stretch`, so reefs run as fingers) is above `above`, rising towards `rise` at the
 ## rim (so the reef breaks up towards its edge); never in its `channels` (polylines, half width).
 const REEFS := [
-	{"name": "kelp_south", "at": Vector2(53.0, 42.0), "r": 34.0, "depth": [4.5, 17.5], "freq": 0.07, "seed": 21, "above": -0.3, "rise": 0.35,
+	{"name": "kelp_south", "at": Vector2(44.0, 55.0), "r": 18.0, "depth": [4.5, 17.5], "freq": 0.07, "seed": 21, "above": -0.3, "rise": 0.35,
 	 "turn": 0.05, "stretch": 0.35,
-	 "channels": [[[Vector2(92.0, 47.0), Vector2(62.0, 47.0), Vector2(43.0, 49.0), Vector2(16.0, 52.0)], 3.2],
-			[[Vector2(90.0, 28.0), Vector2(60.0, 27.0), Vector2(24.0, 22.0)], 2.6]],
-	 "barrens": [[Vector2(60.0, 37.0), 6.0]]},
-	{"name": "kelp_north", "at": Vector2(54.4, -64.0), "r": 22.0, "depth": [3.0, 12.5], "freq": 0.09, "seed": 22, "above": -0.15, "rise": 0.4,
+	 "channels": [[[Vector2(60.0, 56.0), Vector2(46.0, 58.0), Vector2(36.0, 60.0), Vector2(24.0, 62.0)], 2.6],
+			[[Vector2(56.0, 48.0), Vector2(42.0, 48.0), Vector2(28.0, 52.0)], 2.2]],
+	 "barrens": [[Vector2(46.0, 54.0), 4.0]]},
+	{"name": "kelp_north", "at": Vector2(35.0, -130.0), "r": 14.0, "depth": [3.0, 12.5], "freq": 0.09, "seed": 22, "above": -0.15, "rise": 0.4,
 	 "turn": -0.5, "stretch": 0.3, "channels": [], "barrens": []},
-	{"name": "outcrop", "at": Vector2(-98.0, -24.0), "r": 20.0, "depth": [0.0, 26.0], "freq": 0.12, "seed": 23, "above": -0.5, "rise": 0.4,
+	{"name": "outcrop", "at": Vector2(-48.0, -72.0), "r": 20.0, "depth": [0.0, 26.0], "freq": 0.12, "seed": 23, "above": -0.5, "rise": 0.4,
 	 "turn": 0.0, "stretch": 1.0, "channels": [], "barrens": []},
-	{"name": "carmel", "at": Vector2(14.0, 151.0), "r": 13.0, "depth": [2.5, 15.0], "freq": 0.1, "seed": 24, "above": -0.25, "rise": 0.4,
+	{"name": "carmel", "at": Vector2(26.0, 128.0), "r": 12.0, "depth": [2.5, 15.0], "freq": 0.1, "seed": 24, "above": -0.25, "rise": 0.4,
 	 "turn": 0.0, "stretch": 0.6, "channels": [], "barrens": []},
 ]
 
@@ -35,7 +35,7 @@ const REEFS := [
 ## plants); reach / edge_reach (kelp: its length as a share of the water's depth); lift (m);
 ## near_rock: only within this of a floor piece already placed; keep: [[polyline, half]...] clear.
 const TABLES := {
-	"kelp_south": {"area": [Vector2(53.0, 42.0), 34.0], "edge": 8.0, "layers": [
+	"kelp_south": {"area": [Vector2(44.0, 55.0), 18.0], "edge": 8.0, "layers": [
 		{"what": "prop", "pieces": ["rock_boulder", "rock_split", "rock_ledge", "rock_stack", "rock_boulder_small"], "on": [1, 4], "depth": [5.0, 17.0],
 		 "density": [2.6, 0.8], "spacing": 3.2, "clump": [1, 2, 3.0], "size": [0.8, 1.5], "lift": -0.25, "tint": Color(0.6, 0.55, 0.5)},
 		{"what": "prop", "pieces": ["reef_slab_a", "reef_slab_b", "reef_slab_c"], "on": [1, 4], "depth": [4.5, 17.0], "slope_max": 0.6, "density": [4.4, 2.5],
@@ -57,7 +57,7 @@ const TABLES := {
 		{"what": "prop", "pieces": ["ochre_star", "bat_star", "green_anemone"], "on": [1, 4], "depth": [4.0, 17.0], "density": [3.0, 1.0],
 		 "spacing": 1.4, "size": [0.9, 1.5], "lift": -0.02},
 	]},
-	"kelp_north": {"area": [Vector2(54.4, -64.0), 22.0], "edge": 6.0, "layers": [
+	"kelp_north": {"area": [Vector2(35.0, -130.0), 14.0], "edge": 6.0, "layers": [
 		{"what": "prop", "pieces": ["rock_ledge", "rock_slab", "rock_split"], "on": [1], "depth": [3.0, 12.5], "density": [2.0, 0.8],
 		 "spacing": 3.5, "size": [0.8, 1.3], "lift": -0.35, "tint": Color(0.68, 0.64, 0.58)},
 		{"what": "prop", "pieces": ["reef_slab_a", "reef_slab_b", "reef_slab_c"], "on": [1], "depth": [3.0, 12.5], "slope_max": 0.6, "density": [4.0, 2.0],
@@ -74,7 +74,7 @@ const TABLES := {
 		{"what": "prop", "pieces": ["ochre_star", "bat_star", "urchin_purple", "green_anemone", "puffball_sponges"], "on": [1], "depth": [3.0, 12.5],
 		 "density": [3.0, 1.0], "spacing": 1.4, "size": [0.9, 1.4], "lift": -0.02},
 	]},
-	"outcrop": {"area": [Vector2(-98.0, -24.0), 20.0], "edge": 6.0, "layers": [
+	"outcrop": {"area": [Vector2(-48.0, -72.0), 20.0], "edge": 6.0, "layers": [
 		{"what": "prop", "pieces": ["rock_boulder", "rock_boulder_small", "rock_split"], "on": [1], "depth": [16.0, 26.0], "density": [5.0, 0.5],
 		 "spacing": 2.6, "clump": [1, 3, 2.5], "size": [0.9, 1.6], "lift": -0.25},
 		{"what": "prop", "pieces": ["reef_slab_a", "reef_slab_b", "reef_slab_c"], "on": [1], "depth": [14.0, 26.0], "slope_max": 0.6, "density": [3.0, 1.0],
@@ -85,7 +85,7 @@ const TABLES := {
 		 "depth": [10.0, 26.0], "density": [4.0, 1.0], "spacing": 1.3, "near_rock": 2.5, "size": [0.9, 1.6], "lift": -0.02},
 		{"what": "seaweed", "kind": 2, "on": [1], "depth": [3.0, 24.0], "density": [18.0, 6.0], "spacing": 0.9, "clump": [2, 5, 1.0], "size": [0.16, 0.28]},
 	]},
-	"carmel": {"area": [Vector2(14.0, 151.0), 13.0], "edge": 4.0, "layers": [
+	"carmel": {"area": [Vector2(26.0, 128.0), 12.0], "edge": 4.0, "layers": [
 		{"what": "prop", "pieces": ["rock_boulder", "rock_split", "rock_stack"], "on": [1], "depth": [2.5, 15.0], "density": [3.0, 1.0],
 		 "spacing": 3.0, "size": [0.8, 1.4], "lift": -0.25, "tint": Color(0.62, 0.57, 0.52)},
 		{"what": "prop", "pieces": ["reef_slab_a", "reef_slab_b", "reef_slab_c"], "on": [1], "depth": [2.5, 15.0], "slope_max": 0.6, "density": [4.0, 2.0],
@@ -97,18 +97,18 @@ const TABLES := {
 	]},
 	# The eelgrass meadow: on sand and mud 1.5 to 8 m (the zone's circle reaches the canyon's lip:
 	# the depth band stops it), thick at its core, bare blowouts where the noise is low, a trail.
-	"grass": {"area": [Vector2(-11.2, 78.4), 18.0], "edge": 5.0, "keep": [[[Vector2(-26.0, 84.0), Vector2(-12.0, 80.0), Vector2(2.0, 86.0)], 1.0]], "layers": [
+	"grass": {"area": [Vector2(82.0, 52.0), 12.0], "edge": 4.0, "keep": [[[Vector2(76.0, 50.0), Vector2(85.0, 46.0), Vector2(94.0, 50.0)], 1.0]], "layers": [
 		{"what": "grass", "on": [0, 2], "depth": [1.5, 8.0], "slope_max": 0.35, "density": [380.0, 70.0], "noise": [0.12, 7, -0.5],
 		 "spacing": 0.5, "clump": [1, 3, 0.6], "size": [0.85, 1.2], "edge_size": [0.4, 0.7]},
 		{"what": "seaweed", "kind": 0, "on": [0, 2], "depth": [1.0, 8.0], "density": [8.0, 3.0], "spacing": 1.0, "clump": [1, 3, 0.8], "size": [0.25, 0.5]},
 	]},
 	# The slough: eelgrass along the channel's shallow edges, sea lettuce on the mud.
-	"slough": {"area": [Vector2(108.0, -18.0), 26.0], "edge": 3.0, "layers": [
+	"slough": {"area": [Vector2(110.0, -38.0), 16.0], "edge": 3.0, "layers": [
 		{"what": "grass", "on": [2], "depth": [1.0, 2.8], "slope_max": 0.6, "density": [250.0, 100.0], "spacing": 0.5, "clump": [1, 3, 0.6], "size": [0.45, 0.8]},
 		{"what": "seaweed", "kind": 0, "on": [2], "depth": [0.6, 4.5], "density": [10.0, 4.0], "spacing": 1.0, "clump": [1, 3, 0.8], "size": [0.25, 0.45]},
 	]},
 	# The harbours' floors and the breakwater's foot.
-	"docks_monterey": {"area": [Vector2(35.2, 78.4), 16.0], "edge": 3.0, "layers": [
+	"docks_monterey": {"area": [Vector2(66.0, 68.0), 18.0], "edge": 3.0, "layers": [
 		{"what": "seaweed", "kind": 0, "on": [2, 0], "depth": [1.0, 7.0], "density": [5.0, 2.0], "spacing": 1.2, "clump": [1, 3, 0.8], "size": [0.25, 0.45]},
 		{"what": "seaweed", "kind": 1, "on": [1], "depth": [0.0, 3.0], "density": [40.0, 15.0], "spacing": 0.6, "clump": [2, 5, 0.8], "size": [0.25, 0.4]},
 	]},
@@ -127,7 +127,7 @@ const TABLES := {
 		 "spacing": 2.0, "clump": [1, 3, 1.6, 1.0], "size": [0.8, 1.3], "lift": -0.01},
 	]},
 	# The sand flats off Santa Cruz (BIOMES.md 5.4): the sea pen meadow on the deeper, finer half.
-	"sand_flats": {"area": [Vector2(-74.0, -78.0), 34.0], "edge": 6.0, "keep": [[[Vector2(-88.0, -72.0), Vector2(-62.0, -84.0)], 5.0]], "layers": [
+	"sand_flats": {"area": [Vector2(-10.0, -105.0), 26.0], "edge": 6.0, "keep": [[[Vector2(-25.0, -100.0), Vector2(5.0, -110.0)], 5.0]], "layers": [
 		{"what": "prop", "pieces": ["sea_pen"], "on": [0, 2], "depth": [14.5, 22.0], "slope_max": 0.3, "density": [25.0, 3.0], "noise": [0.07, 31, -0.15],
 		 "spacing": 1.3, "clump": [3, 8, 1.5], "size": [0.8, 1.3], "lift": -0.04},
 	]},
@@ -151,7 +151,7 @@ const CURRENT := Vector2(0.3, 0.1)
 ## The places' order (big things first in each; the tables above).
 const ORDER := ["kelp_south", "kelp_north", "outcrop", "carmel", "grass", "slough", "docks_monterey", "points", "beach", "sand_flats", "canyon_floor", "walls"]
 ## The whole map's corners for the tables without an area of their own ("points", "walls").
-const WHOLE := [Vector2(-157.0, -136.0), Vector2(120.0, 155.0)]
+const WHOLE := [Vector2(-122.0, -160.0), Vector2(122.0, 160.0)]
 
 # What came out: floor pieces (name -> [transforms, colours]), kelp (places, lengths), grass
 # (places, heights), seaweed (places, sizes, kinds), and how many of each layer (for the checks).

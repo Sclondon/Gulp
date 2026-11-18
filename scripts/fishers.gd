@@ -71,9 +71,9 @@ const SHAKEN := 2.0
 ## off the floor), how tall (m), and the lengths of fish they hold (smaller swim through, bigger
 ## tear through).
 const NETS := [
-	[Vector2(-141.0, -88.0), Vector2(-136.0, -64.0), "drift", 5.0, 0.3, 1.6],
-	[Vector2(-144.0, 50.0), Vector2(-138.0, 74.0), "drift", 5.0, 0.3, 1.6],
-	[Vector2(-98.0, -66.0), Vector2(-82.0, -59.0), "bottom", 3.5, 0.25, 1.2],
+	[Vector2(-100.0, -40.0), Vector2(-96.0, -16.0), "drift", 5.0, 0.3, 1.6],
+	[Vector2(-112.0, 60.0), Vector2(-106.0, 84.0), "drift", 5.0, 0.3, 1.6],
+	[Vector2(-22.0, -108.0), Vector2(-6.0, -101.0), "bottom", 3.5, 0.25, 1.2],
 ]
 ## Seconds a fish can hang in a net before it is hauled.
 const NET_HOLD := 10.0
@@ -85,8 +85,8 @@ const NET_CATCH := 4
 ## The trawlers' loops (a racetrack: its middle, the radius of its turns, half its straight) and
 ## how deep each trawl's mouth goes (m under the surface; never nearer the floor than 2.2 m).
 const LOOPS := [
-	{"at": Vector2(-141.0, -16.0), "radius": 12.0, "half": 48.0, "depth": 8.0},
-	{"at": Vector2(-28.0, 50.0), "radius": 10.0, "half": 18.0, "depth": 13.0},
+	{"at": Vector2(-95.0, -10.0), "radius": 12.0, "half": 48.0, "depth": 8.0},
+	{"at": Vector2(10.0, -30.0), "radius": 10.0, "half": 18.0, "depth": 13.0},
 ]
 ## The tow (m/s); how far behind the boat, along its way, the trawl's mouth is (m); where on the boat
 ## the warps leave it (its stern, its own space); how far apart the otter doors are (m).

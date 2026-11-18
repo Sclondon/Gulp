@@ -25,13 +25,13 @@ const WHITE_COLOUR := Color(0.86, 0.85, 0.8)
 ## along the shore from it the rock goes).
 const SHORE_ROCK := 7.0
 const ROCKY_POINTS := [
-	[Vector2(-68.0, -136.0), Vector2(-68.0, -136.0), 26.0],  # Lighthouse Point, Santa Cruz
-	[Vector2(9.6, 99.0), Vector2(17.6, 120.0), 14.0],  # Point Pinos to Cypress Point
-	[Vector2(40.0, 104.0), Vector2(9.6, 99.0), 8.0],  # Cannery Row and Pacific Grove (behind the south kelp)
-	[Vector2(9.6, 150.0), Vector2(9.6, 164.0), 18.0],  # Point Lobos
+	[Vector2(-13.0, -133.0), Vector2(-28.0, -133.0), 12.0],  # Lighthouse Point to Natural Bridges, Santa Cruz
+	[Vector2(32.0, 64.0), Vector2(11.0, 98.0), 14.0],  # Point Pinos to Cypress Point
+	[Vector2(49.0, 76.0), Vector2(32.0, 64.0), 8.0],  # Cannery Row and Pacific Grove (behind the south kelp)
+	[Vector2(24.0, 110.0), Vector2(24.0, 150.0), 14.0],  # Pescadero Point to Point Lobos
 ]
 ## Carmel's beach (world): white sand within this.
-const CARMEL_BEACH := [Vector2(42.0, 144.0), 20.0]
+const CARMEL_BEACH := [Vector2(34.0, 118.0), 10.0]
 ## Steep ground (rise over run) that may be rock, where the noise allows: canyon walls, the shelf's edge.
 const STEEP := 0.6
 
@@ -143,7 +143,7 @@ static func _type_at(p: Vector2, deep: float, steep: float, walls: FastNoiseLite
 		return SAND
 	var chart := p / Bay.K
 	# The slough and the harbours: mud.
-	if Bay._line_distance(chart, Bay.SLOUGH) < Bay.SLOUGH_HALF + 2.0 and chart.x > 104.0:
+	if Bay._line_distance(chart, Bay.SLOUGH) < Bay.SLOUGH_HALF + 2.0 and chart.x > 98.0:
 		return MUD
 	for harbour: Array in Bay.HARBOURS:
 		if chart.distance_to(harbour[0]) < float(harbour[1]) * 0.75:

@@ -46,6 +46,10 @@ func _initialize() -> void:
 
 
 func _plain() -> void:
+	# (Sea's own frame turns its light shafts and its light back on: stopped, for a still chart)
+	_sea.set_process(false)
+	_sea.shafts.visible = false
+	_sea.shafts.process_mode = Node.PROCESS_MODE_DISABLED
 	var env: Environment = _sea._env
 	env.fog_enabled = false
 	env.background_color = Color(0.05, 0.08, 0.12)
@@ -72,9 +76,13 @@ func _uncull() -> void:
 			(node as LodField).eye = _focus
 			(node as LodField).far = INF
 		if node is Wreck:
+			# (only what it hides by distance: its halves and their reef; it keeps other things hidden)
 			node.set_process(false)
-			for child: Node in node.find_children("*", "Node3D", true, false):
-				(child as Node3D).visible = true
+			for half: Node3D in node.get(&"_halves"):
+				half.visible = true
+			var reef: Variant = node.get(&"_reef")
+			if reef is Node3D:
+				(reef as Node3D).visible = true
 
 
 func _shoot() -> void:
