@@ -24,6 +24,8 @@ const MODEL := "res://models/atlantis_ruins.glb"
 const ATLAS := "res://textures/ruins_atlas.png"
 const STATUE_ATLAS := "res://textures/ruins_atlas_statue.png"
 const SHADER := "res://shaders/ruins.gdshader"
+## Collision spheres added over what the build's own fitting left open (its own space: x, y, z, radius).
+const EXTRA := "res://models/ruins_extra.json"
 const PROPS := "res://scenery/sea_floor_props/sea_floor_props.gd"
 ## Beyond this (from a part's middle, plus its own size) the water hides it, as Scenery's plants.
 const SEEN := 60.0
@@ -90,6 +92,13 @@ func _ready() -> void:
 		gone.append(node)
 	for node in gone:
 		node.free()
+	# (and the extra ones over what the build's fitting left open, its thin paving slabs above all:
+	# tests/setpiece_hits.gd --fit-ruins makes them, which leaves them out itself with --no-ruins-extra)
+	if FileAccess.file_exists(EXTRA) and not OS.get_cmdline_user_args().has("--no-ruins-extra"):
+		var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(EXTRA))
+		if data is Dictionary:
+			for s: Array in data.spheres:
+				_rocks.append(Vector4(s[0], s[1], s[2], s[3]))
 	for rock in _rocks:
 		var middle := global_transform * Vector3(rock.x, rock.y, rock.z)
 		Sea.add_rock(Vector4(middle.x, middle.y, middle.z, rock.w * global_basis.get_scale().x))

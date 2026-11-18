@@ -1250,6 +1250,8 @@ def route_room(p):
 
 BULGE = 0.62
 R_MAX = 1.5
+# (how far a sphere may stand out past the nearest skin: quality pass 2026-11-18)
+STANDOFF = 0.4
 SPACING = 0.42
 
 
@@ -1319,6 +1321,11 @@ def spheres():
         depth = min(thick * 0.5, R_MAX - BULGE)
         radius = max(0.55, min(R_MAX, thick * 0.5 + BULGE))
         middle = q - n * depth
+        # (quality pass, 2026-11-18: no further out than STANDOFF past the nearest skin of any part, so that a
+        # sphere near a part's edge or on a thin plate does not stand off into open water: up to 1.5 m did, and
+        # tests/setpiece_hits.gd found a third of the spheres standing proud)
+        near = min((f[3] for f in (body[0].find_nearest(middle) for body in bodies) if f[0] is not None), default=0.0)
+        radius = min(radius, near + STANDOFF)
         radius = min(radius, route_room(middle))
         if radius < depth + 0.06:
             continue

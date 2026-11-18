@@ -69,8 +69,10 @@ HOARD = Vector((0.3, 9.8, HOLD[0]))   # the middle of the treasure's heap, on th
 # --- Collision: spheres.
 GRID = 0.3
 SLACK_IN = 0.6       # how far a sphere may reach into a cabin, deck or hold
-BULGE = 1.2          # how far into open sea
+BULGE = 0.45         # how far into open sea (1.2 until the quality pass of 2026-11-18: spheres stood up to 1.3 m proud of
+                     # masts, yards and the hull, so fish stopped short of nothing; tests/setpiece_hits.gd)
 COVER = 0.08         # a solid point counts as covered this far outside a sphere (no fish is this thin)
+SAND_DOWN = -1.5     # how far under her sand line the solid is still covered (the floor falls away round her in places)
 # the parts that stop a swimmer (by name, less its number): the hull and its big timbers, masts and spars, guns,
 # the figurehead, the rocks, the drift, barrels and the anchor; small trim does not
 SOLID_NAMES = {"Hull", "Keel", "Stem", "Sternpost", "Rudder", "Rib", "Knee", "MermaidBody", "MermaidTail", "Gallery",
@@ -1366,7 +1368,9 @@ def fit_spheres(solids, cutters, routes):
     xs = [v.x for v in verts]
     ys = [v.y for v in verts]
     zs = [v.z for v in verts]
-    lo = Vector((min(xs) - 1.0, min(ys) - 1.0, 0.05))
+    # (down to SAND_DOWN under her sand line: the sea floor round her hollow falls away below it in places, and her
+    # ends stood there uncovered: tests/setpiece_hits.gd, quality pass 2026-11-18)
+    lo = Vector((min(xs) - 1.0, min(ys) - 1.0, SAND_DOWN))
     hi = Vector((max(xs) + 1.0, max(ys) + 1.0, max(zs)))
     # the solid's points on the grid
     inside = []
@@ -1398,7 +1402,7 @@ def fit_spheres(solids, cutters, routes):
             if u + v > 1.0:
                 u, v = 1.0 - u, 1.0 - v
             p = a + (b - a) * u + (c - a) * v
-            if p.z < -0.05:
+            if p.z < SAND_DOWN - 0.05:
                 continue
             q = p + n * 0.12
             if depth_at(tree, q) > 0:
@@ -1442,7 +1446,7 @@ def fit_spheres(solids, cutters, routes):
         for k in (0.2, 0.45, 0.7):
             q = p + nrm * k
             key = (round(q.x / 0.25), round(q.y / 0.25), round(q.z / 0.25))
-            if key in seen or q.z < 0.0:
+            if key in seen or q.z < SAND_DOWN:
                 continue
             seen.add(key)
             if depth_at(cut_tree, q) > 0 or depth_at(tree, q) > 0:

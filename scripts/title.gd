@@ -105,12 +105,7 @@ func _ready() -> void:
 	if ResourceLoader.exists(BOAT):
 		var hull: Node3D = (load(BOAT) as PackedScene).instantiate()
 		boat.add_child(hull)
-		# (its plank lines and grime are vertex colours)
-		for mesh: MeshInstance3D in hull.find_children("*", "MeshInstance3D", true, false):
-			for surface in mesh.mesh.get_surface_count():
-				var paint := mesh.mesh.surface_get_material(surface) as StandardMaterial3D
-				if paint:
-					paint.vertex_color_use_as_albedo = true
+		# (its paint, plank lines and grime are one baked picture in the model: tools/build_shrimp_boat.py)
 		for named: String in SPOTS:
 			var marker := hull.find_child(named) as Node3D
 			if marker:

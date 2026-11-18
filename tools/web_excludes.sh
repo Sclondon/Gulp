@@ -6,7 +6,7 @@
 #   sh tools/web_excludes.sh        (from the project folder; then export as usual)
 # A full model is creatures/<x>/models/<name>.glb beside a <name>_game.glb.
 set -e
-list="tools/*,tests/*,shots/*,conceptart/*,textures/panel/retired_1/*,textures/controls/*,creatures/*/tools/*,models/sea_floor.glb"
+list="tools/*,tests/*,shots/*,conceptart/*,textures/panel/retired_1/*,textures/controls/*,creatures/*/tools/*,models/sea_floor.glb,models/*_old.json"
 # (the flat panel's pictures, retired when the panel became a model: tools/PERF.md)
 for old in engine_module gauge_module helm_module knob lever needle plunger plunger_lit rivet spark switch_closed tube_lit; do
 	list="$list,textures/panel/$old.png"

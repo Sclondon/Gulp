@@ -12,6 +12,11 @@ const Props := preload("res://scripts/world/props.gd")
 const SHADER := preload("res://shaders/fish.gdshader")
 ## How far a fish's body bends into its tightest turn (radians, gills to tail).
 const CURL := 0.7
+## Where a mouth is, as a share of the length behind the nose (most kinds: Species `mouth` says
+## otherwise), and a body's half-thickness as a share of its length (tools/QUALITY.md: the drawn
+## bodies are 0.15 to 0.3 of their length across, not counting fins).
+const MOUTH := 0.08
+const THICK := 0.1
 
 ## What it is: a name in Species.ALL.
 var kind := ""
@@ -29,6 +34,7 @@ var _material: ShaderMaterial
 # How long the look is as built, and how far its nose is ahead of its own origin.
 var _long := 1.0
 var _front := 0.5
+var _mouth_back := MOUTH
 # The look's own seconds a beat, whether its shader bends into a turn, and whether it is near
 # enough to be drawn in full.
 var _beat := 0.0
@@ -80,6 +86,7 @@ func set_kind(to: String) -> void:
 	_material = null
 	_curls = true
 	_near = true
+	_mouth_back = float(Species.of(to).get("mouth", MOUTH))
 	var made := Species.make(to) if Species.has(to) else null
 	if made:
 		var entry := Species.of(to)
@@ -100,9 +107,18 @@ func set_length(to: float) -> void:
 		_body.scale = Vector3.ONE * (length / _long)
 
 
-## Where its mouth is (world).
+## Where its mouth is (world): `MOUTH` of its length behind its nose, or its kind's own `mouth`
+## (a bill, a squid's arms: tests/hitboxes.gd measures them, tools/QUALITY.md).
 func mouth() -> Vector3:
-	return global_position + heading * length * 0.42
+	return global_position + heading * length * (0.5 - _mouth_back)
+
+
+## How far a point is from its body (from the line down its middle, nose to tail, less its
+## half-thickness): 0 inside it. What a mouth is measured against (Life: who eats whom).
+func gap_to(point: Vector3) -> float:
+	var half := length * (0.5 - THICK)
+	var along := clampf((point - global_position).dot(heading), -half, half)
+	return maxf(point.distance_to(global_position + heading * along) - length * THICK, 0.0)
 
 
 ## A flash over it (it has just grown into something new).

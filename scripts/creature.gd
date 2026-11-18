@@ -204,6 +204,7 @@ func become(of_kind: String, bare := false) -> void:
 	nocturnal = bool(entry.get("nocturnal", false))
 	var sets: Dictionary = entry.get("set", {})
 	_base_open = float(sets.get("open", -1.0))
+	_mouth_back = float(entry.get("mouth", MOUTH))
 	if bare:
 		kind = of_kind
 		dressed = false
@@ -228,6 +229,30 @@ func dress(of_kind := "") -> void:
 		for k in _LOOKS.size():
 			if _LOOKS[k] in _look:
 				_has |= 1 << k
+	if on_floor and _look and not _belows.has(kind):
+		_belows[kind] = _reach_below()
+
+
+## What keeps to the floor stands on it: how far its drawn body reaches below its middle, as a share
+## of its length, by kind (tools/QUALITY.md: they were held 0.1 m up whatever their size, so a shrimp
+## or a nudibranch hovered and a big crab or a horseshoe crab sank in).
+static var _belows := {}
+
+
+func _reach_below() -> float:
+	var lowest := 0.0
+	var to_me := global_transform.affine_inverse()
+	for mesh: MeshInstance3D in _look.find_children("*", "MeshInstance3D", true, false):
+		if mesh.mesh == null or not mesh.visible:
+			continue
+		var box: AABB = to_me * mesh.global_transform * mesh.mesh.get_aabb()
+		lowest = minf(lowest, box.position.y)
+	return -lowest / maxf(length, 0.001)
+
+
+## How high its middle stands over the floor when it keeps to it.
+func _stands() -> float:
+	return maxf(float(_belows.get(kind, 0.15)) * length, 0.005) + 0.005
 
 
 ## Puts it somewhere, wandering.
@@ -397,12 +422,17 @@ func step(delta: float, player: Player, hunting: bool) -> void:
 	velocity = heading * _speed + _hop
 	var room := maxf(length * 0.3, 0.12)
 	if on_floor:
-		room = minf(room, 0.1)
+		room = minf(room, _stands())
 	var next := global_position + velocity * delta
 	if habit == "hop" and _hop.length_squared() < 0.0001:
 		# (a scallop sinks back to the floor after a hop)
 		next.y = maxf(_floor_at(next.x, next.z), next.y - 0.6 * delta)
-	global_position = Sea.clear_of_rocks(Sea.keep_in(next, room), room)
+	var kept := Sea.keep_in(next, room)
+	global_position = Sea.clear_of_rocks(kept, room)
+	if on_floor and mode != Mode.HUNT and _hop.length_squared() < 0.0001 and global_position == kept:
+		# (what keeps to the floor walks on it: down a slope or off a ledge it stays on the floor, not
+		# in the water over it; on a rock it is left where the rock holds it. tools/QUALITY.md)
+		global_position.y = minf(global_position.y, _floor_at(global_position.x, global_position.z))
 	if _has & (1 << L_DIG) and _alarm > 0.0:
 		# (a razor clam digs itself into the sand)
 		global_position.y -= _alarm * length * 0.6
@@ -413,7 +443,21 @@ func step(delta: float, player: Player, hunting: bool) -> void:
 		_leap_start()
 	var side := before.cross(heading).y
 	pose(delta, _speed / Fish.pace(length), -side / maxf(nimble * delta, 0.0001))
+	if on_floor and global_position.y < Sea.ground(global_position.x, global_position.z) + _stands() + 0.05:
+		_lie_on_floor()
 	_show(delta, to_player, far, player)
+
+
+## Resting on the floor it lies along the floor's slope (tools/QUALITY.md: level on a slope, a
+## starfish's or a crab's far side went into the sand and its near side stood off it).
+func _lie_on_floor() -> void:
+	var p := global_position
+	var r := maxf(length * 0.4, 0.1)
+	var up := Vector3(Sea.ground(p.x - r, p.z) - Sea.ground(p.x + r, p.z), 2.0 * r, Sea.ground(p.x, p.z - r) - Sea.ground(p.x, p.z + r)).normalized()
+	var ahead := (heading - up * heading.dot(up))
+	if ahead.length_squared() < 0.0001:
+		return
+	global_basis = Basis.looking_at(ahead.normalized(), up)
 
 
 # Its clocks.
@@ -830,7 +874,7 @@ func _put(which: int, value: float) -> void:
 
 # The lowest it goes at a place: the floor, and room for itself over it.
 func _floor_at(x: float, z: float) -> float:
-	return Sea.ground(x, z) + (0.03 if on_floor else maxf(length * 0.3, 0.3))
+	return Sea.ground(x, z) + (_stands() if on_floor else maxf(length * 0.3, 0.3))
 
 
 # The middle of where it lives.

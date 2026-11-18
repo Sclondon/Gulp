@@ -201,7 +201,9 @@ class ChoiceCard:
 		env.ambient_light_energy = 0.9
 		var eye := Camera3D.new()
 		eye.environment = env
-		eye.position = Vector3(0.0, 0.18, 1.05)
+		# (far enough back that a metre-long animal turned broadside, fins and all, stays inside the
+		# card's ring: from 1.05 m a tuna's tail was cut off by the picture's square edge)
+		eye.position = Vector3(0.0, 0.31, 1.8)
 		eye.fov = 38.0
 		view.add_child(eye)
 		eye.look_at(Vector3.ZERO)

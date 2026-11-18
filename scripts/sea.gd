@@ -399,6 +399,9 @@ func _caustics() -> void:
 	code = code.replace(anchors[1], CAUSTIC_NET + anchors[1])
 	code = code.replace(anchors[2], "	caustic_k = caustics * caustic_net(at) * (1.0 - smoothstep(5.0, 12.0, caustic_surface - at.y)) * (1.0 - smoothstep(16.0, 34.0, length(VERTEX)));\n" + anchors[2])
 	code = code.replace(anchors[3], "	DIFFUSE_LIGHT += lit * sun * (LIGHT_IS_DIRECTIONAL ? 1.0 + caustic_k : 1.0) + (LIGHT_IS_DIRECTIONAL ? sky : vec3(0.0));")
+	# (and the sea floor's rock (the sand's sandstone kind, scripts/floor_types.gd) without the strong
+	# beds of colour a desert's sandstone has: under the sea they read as stripes. Same program.)
+	code = code.replace("stone_colour * mix(vec3(0.66, 0.58, 0.55), vec3(1.2, 1.17, 1.08)", "stone_colour * mix(vec3(0.88, 0.86, 0.84), vec3(1.07, 1.06, 1.04)")
 	var shader := Shader.new()
 	shader.code = code
 	material.shader = shader

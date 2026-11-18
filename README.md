@@ -47,6 +47,7 @@ All silent (`--audio-driver Dummy`), each prints PASSED or FAILED.
 | `sh tests/touch.sh` | A small window for a few seconds (headless puts touches in the wrong place). Fingers work the stick, the burst button and the start-again button |
 | `godot --headless --path . --audio-driver Dummy -s res://tests/winding.gd` | Inside-out check of every mesh drawn (the fish, the rocks, the jelly) |
 | `sh tests/shots.sh <new folder>` | Pictures of the game and the run-over screen at phone and desktop sizes, and a jelly close up |
+| `tests/hitboxes.gd`, `giants_solid.gd`, `camera_clear.gd`, `floor_clip.gd`, `setpiece_hits.gd` | Hit boxes and clipping against what is drawn (headless `-s`; how to run each and what it prints: `tools/QUALITY.md`) |
 
 `godot --path . --audio-driver Dummy --disable-vsync -- --bot --seconds=12` prints what a frame costs (`GULP COST`, `GULP RAN`).
 

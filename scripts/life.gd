@@ -23,6 +23,20 @@ const TOO_SMALL := 0.3
 ## The player takes no notice of food smaller than this share of its own length (a shark does not
 ## graze on krill).
 const WORTH := 0.08
+## How far a mouth reaches round its point, as a share of its owner's length, measured to the
+## nearest of the other's body (`Fish.gap_to`): the player's mouth (`TAKES`, and `TAKES_LEAST` metres
+## more for the smallest: a little suction) and a hunter's (`JAWS`: a hunter's mouth must be on the
+## player, as drawn). tools/QUALITY.md: they were 0.3 of the player's length plus 0.35 of the other's,
+## and 0.22 of a hunter's length plus 0.3 of the player's, from the middles, so that a big shark's mouth
+## could take a sardine a metre off and a fish crossing ahead was eaten by its middle.
+const TAKES := 0.2
+const TAKES_LEAST := 0.03
+const JAWS := 0.1
+## What is this many times the player's length (and cannot be eaten) is solid to it; its body is a
+## rounded rod `BODY` of its length thick (the whales, the leviathan and the submarine are drawn
+## 0.2 to 0.3 of their length across, not counting fins: tests/hitboxes.gd).
+const SOLID := 1.5
+const BODY := 0.11
 ## How much food a jelly is for its size (it is mostly water), and krill and fish.
 const JELLY_RICH := 0.35
 
@@ -263,6 +277,7 @@ func step(delta: float) -> void:
 	_step_schools(delta)
 	var t1 := Time.get_ticks_usec()
 	_step_creatures(delta)
+	_step_solids()
 	var t2 := Time.get_ticks_usec()
 	_step_jellies(delta)
 	_step_nettles(delta)
@@ -520,19 +535,64 @@ func _step_creatures(delta: float) -> void:
 			continue
 		if each.mode == Creature.Mode.HUNT or each.mode == Creature.Mode.STALK:
 			hunters += 1
+		# (an animal much bigger than the player that it cannot eat is solid: it is swum round, not
+		# through. CLAUDE.md, "Decision: solid giants")
+		if each.length >= player.length * SOLID and not player.in_air and not each.airborne \
+				and apart < each.length * 0.6 + player.length \
+				and not (hunting and each.hunts and can_eat(each.length, player.length)):
+			push_off(each.global_position, each.heading, each.length * (0.5 - BODY), each.length * BODY)
 		if each.giant:
 			continue
 		if is_food(player.length, each.length):
-			if not each.guarded() and each.global_position.distance_to(mouth) < player.length * 0.3 + each.length * 0.35:
+			if not each.guarded() and each.gap_to(mouth) < player.length * TAKES + TAKES_LEAST:
 				player.feed(each.length)
 				each.visible = false
 				each.away = _rng.randf_range(5.0, 12.0)
 		elif hunting and each.hunts and not player.in_air and not each.airborne and can_eat(each.length, player.length):
-			if each.mouth().distance_to(player.global_position) < each.length * 0.22 + player.length * 0.3:
+			if player.gap_to(each.mouth()) < each.length * JAWS:
 				player.die(each.kind)
 		if each.stings() and hunting and not player.in_air and not can_eat(player.length, each.length) \
 				and apart < each.length * 0.45 + player.length * 0.35:
 			_sting(each)
+
+
+## Pushes the player out of a body: a rounded rod from `middle` `half` metres either way along
+## `along`, `radius` thick (and the player's own room more). Its way into the body is lost, its way
+## along it kept.
+func push_off(middle: Vector3, along: Vector3, half: float, radius: float) -> void:
+	var p := player.global_position
+	var on := clampf((p - middle).dot(along), -half, half)
+	var axis := middle + along * on
+	var off := p - axis
+	var clear := radius + player.length * 0.25
+	var far_sq := off.length_squared()
+	if far_sq >= clear * clear:
+		return
+	var far := sqrt(far_sq)
+	var out := off / far if far > 0.001 else Vector3.UP
+	player.global_position = Sea.keep_in(axis + out * clear, maxf(player.length * 0.3, 0.12))
+	pushed += 1
+
+
+## The set-piece giants that move (the reef-back): each [node, its body's middle in its own space,
+## the half-length along its -z, the radius]. Main fills it.
+var solids: Array = []
+## How many times the player was pushed off a body (for tests).
+var pushed := 0
+
+
+func _step_solids() -> void:
+	if not player.alive or player.in_air:
+		return
+	for solid: Array in solids:
+		var node: Node3D = solid[0]
+		if node == null or not is_instance_valid(node):
+			continue
+		var t := node.global_transform
+		var middle: Vector3 = t * (solid[1] as Vector3)
+		if middle.distance_to(player.global_position) > float(solid[2]) + float(solid[3]) + 6.0:
+			continue
+		push_off(middle, -t.basis.z.normalized(), float(solid[2]) * t.basis.get_scale().z, float(solid[3]) * t.basis.get_scale().x)
 
 
 # A lionfish's spines: touching one costs the player its burst and most of its speed, and pushes

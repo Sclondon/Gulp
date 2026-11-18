@@ -28,8 +28,18 @@ start scene, and the pc against the portside wall", "And hooked up to a monitor"
 open to starboard and aft, and nothing on the starboard side hangs between that camera and the cabin or the people.
 tools/SHRIMP_BOAT.md holds the design sheet this follows.
 
-Materials are plain colours with names (no image textures). A colour attribute "Col" multiplies them (plank tints,
-grime at the boot top, the dark seams between planks, the mesh pattern of the nets) and is exported as COLOR_0.
+The paint (the quality pass, 2026-11-18: the user, "make sure things have textures that fit our art style"): as the
+control panel's and the wrecks' are, it is ONE baked picture. Each material is first a procedural Blender paint
+(weathered white paint chipped to primer and streaked with dirt, wood grain along the planks, mottled red bottom
+paint, rust, brass going green), times the colour attribute "Col" (plank tints, grime at the boot top, the dark
+seams between planks, rust weeping from scuppers and fittings, the mesh pattern of the nets), with grime in the
+corners (an ambient-occlusion mask). Every part is unwrapped into one atlas and Cycles bakes it, with the light of an
+even sky (brighter above than below: contact shadow under ledges and in corners, but no sun: the boat turns on its
+circle and the game's sun lights it, by day and night). The baked picture is textures/boat/boat_atlas.png (that
+folder is ignored by Godot: the copy the game uses is embedded in the .glb), and every material keeps its name and
+draws that picture, lit as before (Godot's standard material). `-- --no-bake` skips the bake (and keeps plain
+colours, as before). Atlas 2048 (BAKE_SIZE): the half-size picture of the title shows the boat at about 40 pixels a
+metre, and the atlas gives about 75 texels a metre, so it holds up at the docks too.
 
 Every part is a closed solid; each is checked for inside-out faces here (a ray out of every triangle must leave the
 part's skin an even number of times) and the count is printed as the INSIDE-OUT line.
@@ -38,6 +48,8 @@ import bpy
 import math
 import os
 import random
+import sys
+import time
 from mathutils import Vector, Matrix
 from mathutils.bvhtree import BVHTree
 from mathutils.geometry import tessellate_polygon
@@ -1844,13 +1856,223 @@ for b in [boat, wheel, pump_wheel] + outriggers:
         hi = Vector(map(max, hi, v))
 print("BOUNDS blender: x %.2f..%.2f, y %.2f..%.2f, z %.2f..%.2f" % (lo.x, hi.x, lo.y, hi.y, lo.z, hi.z))
 
+# ---------------------------------------------------------------------------------------------- the paint
+BAKE = "--no-bake" not in sys.argv
+BAKE_SIZE = 2048
+ATLAS = os.path.normpath(os.path.join(HERE, "..", "textures", "boat", "boat_atlas.png"))
+PAINT_KIND = {
+    "hull_white": "paint", "mast_white": "paint", "roof": "paint", "name_board": "paint", "hull_stripe": "paint",
+    "bottom_red": "bottom", "primer_red": "bottom",
+    "deck_wood": "wood_y", "crate_wood": "wood_y", "trim": "wood_y", "spar_wood": "wood_y",
+    "cabin_wood": "wood_z", "door_wood": "wood_z", "basket": "weave",
+    "metal_rust": "rust", "rust": "rust", "metal_dark": "rust", "wire": "rust",
+    "brass": "brass", "copper": "brass",
+    "glass": "skip",
+}
+
+
+def _node(nt, kind, **inputs):
+    made = nt.nodes.new(kind)
+    for key, value in inputs.items():
+        made.inputs[key].default_value = value
+    return made
+
+
+def _noise(nt, coords, scale, stretch=(1.0, 1.0, 1.0), detail=3.0, rough=0.55, shift=(0.0, 0.0, 0.0)):
+    """A noise's Fac at object coordinates, stretched (a small number along an axis draws it out that way)."""
+    mapping = _node(nt, "ShaderNodeMapping")
+    mapping.inputs["Scale"].default_value = stretch
+    mapping.inputs["Location"].default_value = shift
+    nt.links.new(coords, mapping.inputs["Vector"])
+    noise = _node(nt, "ShaderNodeTexNoise", Scale=scale, Detail=detail, Roughness=rough)
+    nt.links.new(mapping.outputs["Vector"], noise.inputs["Vector"])
+    return noise.outputs["Fac"]
+
+
+def _ramp(nt, value, low, high):
+    """0 below `low`, 1 above `high`, smooth between."""
+    ramp = _node(nt, "ShaderNodeMapRange")
+    ramp.interpolation_type = "SMOOTHSTEP"
+    ramp.inputs["From Min"].default_value = low
+    ramp.inputs["From Max"].default_value = high
+    nt.links.new(value, ramp.inputs["Value"])
+    return ramp.outputs["Result"]
+
+
+def _mix(nt, a, b, fac, blend="MIX", amount=1.0):
+    """`a` mixed towards `b` (sockets or colours) by `fac` (a socket) times `amount`."""
+    mix = nt.nodes.new("ShaderNodeMixRGB")
+    mix.blend_type = blend
+    if amount != 1.0:
+        scaled = _node(nt, "ShaderNodeMath")
+        scaled.operation = "MULTIPLY"
+        nt.links.new(fac, scaled.inputs[0])
+        scaled.inputs[1].default_value = amount
+        fac = scaled.outputs[0]
+    nt.links.new(fac, mix.inputs["Fac"])
+    for slot, value in (("Color1", a), ("Color2", b)):
+        if isinstance(value, tuple):
+            mix.inputs[slot].default_value = (*value[:3], 1.0)
+        else:
+            nt.links.new(value, mix.inputs[slot])
+    return mix.outputs["Color"]
+
+
+def paint_for_bake(mat, rgb):
+    """The material's procedural paint, for Cycles to bake: its colour times "Col", worn by kind, grimed in corners."""
+    kind = PAINT_KIND.get(mat.name, "plain")
+    nt = mat.node_tree
+    nt.nodes.clear()
+    out = _node(nt, "ShaderNodeOutputMaterial")
+    bsdf = _node(nt, "ShaderNodeBsdfPrincipled", Roughness=1.0, Metallic=0.0)
+    nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    where = _node(nt, "ShaderNodeTexCoord").outputs["Object"]
+    vc = nt.nodes.new("ShaderNodeVertexColor")
+    vc.layer_name = "Col"
+    one = _node(nt, "ShaderNodeValue")
+    one.outputs[0].default_value = 1.0
+    col = _mix(nt, tuple(rgb), vc.outputs["Color"], one.outputs[0], "MULTIPLY")
+    # (a broad unevenness of tone everywhere: nothing is one flat colour)
+    col = _mix(nt, col, tuple(c * 0.82 for c in rgb), _ramp(nt, _noise(nt, where, 1.4, detail=2.0), 0.35, 0.75), amount=0.6)
+    if kind == "paint":
+        # chips to the dark primer and wood under the white, and dirt run down from the top
+        chips = _ramp(nt, _noise(nt, where, 3.2, detail=3.0, rough=0.5, shift=(2.0, 5.0, 1.0)), 0.69, 0.71)
+        col = _mix(nt, col, (0.30, 0.24, 0.19), chips, amount=0.85)
+        runs = _ramp(nt, _noise(nt, where, 5.0, (5.0, 5.0, 0.35), 4.0, 0.6, (7.0, 3.0, 0.0)), 0.52, 0.72)
+        col = _mix(nt, col, tuple(c * 0.62 + d for c, d in zip(rgb, (0.04, 0.03, 0.0))), runs, amount=0.55)
+    elif kind == "bottom":
+        blot = _ramp(nt, _noise(nt, where, 3.0, detail=5.0, rough=0.65), 0.45, 0.7)
+        col = _mix(nt, col, tuple(c * 0.55 for c in rgb), blot, amount=0.6)
+        fade = _ramp(nt, _noise(nt, where, 9.0, detail=3.0, shift=(4.0, 1.0, 2.0)), 0.6, 0.72)
+        col = _mix(nt, col, (0.52, 0.36, 0.29), fade, amount=0.5)
+    elif kind in ("wood_y", "wood_z"):
+        stretch = (14.0, 0.5, 14.0) if kind == "wood_y" else (14.0, 14.0, 0.5)
+        grain = _noise(nt, where, 6.0, stretch, 6.0, 0.62)
+        col = _mix(nt, col, tuple(c * 0.66 for c in rgb), _ramp(nt, grain, 0.42, 0.62), amount=0.7)
+        knots = _ramp(nt, _noise(nt, where, 4.0, (1.0, 1.0, 1.0), 2.0, 0.5, (9.0, 2.0, 5.0)), 0.74, 0.78)
+        col = _mix(nt, col, tuple(c * 0.5 for c in rgb), knots, amount=0.6)
+        # (weathered: greyer where the sea and sun reach)
+        grey = _ramp(nt, _noise(nt, where, 2.0, detail=3.0, shift=(1.0, 8.0, 3.0)), 0.45, 0.75)
+        col = _mix(nt, col, (0.42, 0.40, 0.36), grey, amount=0.35)
+    elif kind == "weave":
+        weave = _noise(nt, where, 40.0, (1.0, 1.0, 3.0), 2.0, 0.5)
+        col = _mix(nt, col, tuple(c * 0.7 for c in rgb), _ramp(nt, weave, 0.4, 0.6), amount=0.6)
+    elif kind == "rust":
+        flake = _ramp(nt, _noise(nt, where, 8.0, detail=6.0, rough=0.7), 0.45, 0.65)
+        col = _mix(nt, col, (0.36, 0.16, 0.07), flake, amount=0.6)
+        dark = _ramp(nt, _noise(nt, where, 3.0, detail=3.0, shift=(5.0, 5.0, 5.0)), 0.5, 0.7)
+        col = _mix(nt, col, (0.09, 0.06, 0.05), dark, amount=0.45)
+    elif kind == "brass":
+        green = _ramp(nt, _noise(nt, where, 6.0, (1.0, 1.0, 0.5), 4.0, 0.6), 0.55, 0.72)
+        col = _mix(nt, col, (0.16, 0.24, 0.18), green, amount=0.6)
+    if kind != "skip":
+        # grime where things meet: an occlusion mask, a brown dirt in the closed corners
+        ao = _node(nt, "ShaderNodeAmbientOcclusion", Distance=0.3)
+        ao.samples = 16
+        inv = _node(nt, "ShaderNodeMath")
+        inv.operation = "SUBTRACT"
+        inv.inputs[0].default_value = 1.0
+        nt.links.new(ao.outputs["AO"], inv.inputs[1])
+        col = _mix(nt, col, (0.10, 0.08, 0.06), inv.outputs[0], amount=0.7)
+    nt.links.new(col, bsdf.inputs["Base Color"])
+
+
+def paint_from_atlas(mat, image, rgb):
+    """After the bake: the material draws the picture (its name kept; glass stays a plain see-through colour)."""
+    nt = mat.node_tree
+    nt.nodes.clear()
+    out = _node(nt, "ShaderNodeOutputMaterial")
+    bsdf = _node(nt, "ShaderNodeBsdfPrincipled", Roughness=0.85, Metallic=0.0)
+    nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    if mat.name == "glass":
+        bsdf.inputs["Base Color"].default_value = (*rgb, 1.0)
+        bsdf.inputs["Roughness"].default_value = 0.35
+        bsdf.inputs["Alpha"].default_value = 0.22
+        return
+    if mat.name in ("brass", "copper"):
+        bsdf.inputs["Metallic"].default_value = 0.4
+        bsdf.inputs["Roughness"].default_value = 0.45
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = image
+    nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+
+
+if BAKE:
+    started = time.time()
+    meshes = [o for o in objects]
+    # one atlas for every part, at one scale
+    bpy.ops.object.select_all(action="DESELECT")
+    for obj in meshes:
+        obj.select_set(True)
+    bpy.context.view_layer.objects.active = meshes[0]
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(60.0), island_margin=0.0015)
+    bpy.ops.uv.average_islands_scale()
+    bpy.ops.uv.pack_islands(margin=0.0015)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    for name, rgb in MATERIALS:
+        paint_for_bake(bpy.data.materials[name], rgb)
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    scene.cycles.samples = 96
+    scene.cycles.device = "CPU"
+    # an even sky, brighter above than below; no sun (the game's lights the boat)
+    world = bpy.data.worlds.new("sky")
+    world.use_nodes = True
+    wt = world.node_tree
+    bg = next(n for n in wt.nodes if n.type == "BACKGROUND")
+    up = wt.nodes.new("ShaderNodeSeparateXYZ")
+    wt.links.new(wt.nodes.new("ShaderNodeTexCoord").outputs["Generated"], up.inputs[0])
+    sky = wt.nodes.new("ShaderNodeMapRange")
+    sky.inputs["From Min"].default_value = -1.0
+    sky.inputs["From Max"].default_value = 1.0
+    sky.inputs["To Min"].default_value = 0.4
+    sky.inputs["To Max"].default_value = 1.12
+    wt.links.new(up.outputs["Z"], sky.inputs["Value"])
+    wt.links.new(sky.outputs["Result"], bg.inputs["Strength"])
+    bg.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+    scene.world = world
+    image = bpy.data.images.new("boat_atlas", BAKE_SIZE, BAKE_SIZE, alpha=False)
+    for name, _rgb in MATERIALS:
+        nt = bpy.data.materials[name].node_tree
+        node = nt.nodes.new("ShaderNodeTexImage")
+        node.image = image
+        nt.nodes.active = node
+    scene.render.bake.margin = 4
+    scene.render.bake.use_pass_direct = True
+    scene.render.bake.use_pass_indirect = True
+    scene.render.bake.use_pass_color = True
+    bpy.ops.object.select_all(action="DESELECT")
+    for obj in meshes:
+        obj.select_set(True)
+    bpy.context.view_layer.objects.active = meshes[0]
+    bpy.ops.object.bake(type="DIFFUSE", use_clear=True)
+    os.makedirs(os.path.dirname(ATLAS), exist_ok=True)
+    image.filepath_raw = ATLAS
+    image.file_format = "PNG"
+    image.save()
+    for name, rgb in MATERIALS:
+        paint_from_atlas(bpy.data.materials[name], image, rgb)
+    print("BAKED %s (%d px) in %.0f s" % (ATLAS, BAKE_SIZE, time.time() - started))
+
 os.makedirs(os.path.dirname(BLEND), exist_ok=True)
 bpy.ops.wm.save_as_mainfile(filepath=BLEND)
 bpy.ops.object.select_all(action="DESELECT")
 kw = dict(filepath=GLB, export_format="GLB", export_apply=True, export_yup=True, export_cameras=False,
           export_lights=False)
-try:
-    bpy.ops.export_scene.gltf(**kw, export_vertex_color="ACTIVE")
-except TypeError:
-    bpy.ops.export_scene.gltf(**kw, export_colors=True)
+if BAKE:
+    # (the picture goes in the .glb as a JPEG; the colours are in it, so the colour attribute is not written)
+    kw["export_image_format"] = "JPEG"
+    for quality_key in ("export_image_quality", "export_jpeg_quality"):
+        try:
+            bpy.ops.export_scene.gltf(**kw, **{quality_key: 90}, export_vertex_color="NONE")
+            break
+        except TypeError:
+            continue
+else:
+    try:
+        bpy.ops.export_scene.gltf(**kw, export_vertex_color="ACTIVE")
+    except TypeError:
+        bpy.ops.export_scene.gltf(**kw, export_colors=True)
 print("WROTE", GLB)

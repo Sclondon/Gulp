@@ -586,3 +586,34 @@ overlay, `TitleFigures.lay_tattoos`); the game has the earlier recorded captain 
 The method from here: build each figure's body FROM ITS OWN SHEET, cross-section by cross-section from the front and
 side silhouettes, as the head was, on its own skeleton fitted to that body, never by warping another figure's mesh.
 Pushed 2026-11-18: game 0864fe9, site PR #212 (the push does not include the failed captain).
+
+## The quality pass on clipping, hit boxes and textures (2026-11-18)
+
+The user: "also do a quality pass on clipping adn hit boxes"; "and make sure things have textures that fit our art
+style". `tools/QUALITY.md` has the tables, the checks (`tests/hitboxes.gd`, `giants_solid.gd`, `camera_clear.gd`,
+`floor_clip.gd`, `setpiece_hits.gd` and four picture tools), the art verdicts and what is left. Every choice below is
+Claude's.
+
+- **Decision: touch is measured to the body as drawn.** What: a mouth (`Fish.mouth()`, at the kind's `mouth` share
+  behind the nose: billfish at the bill's root, squids among their arms) reaches `Life.TAKES` (0.2) of the player's
+  length + 0.03 m (eating) or `Life.JAWS` (0.1) of a hunter's length (being eaten) to the nearest of the other's body
+  (`Fish.gap_to`: the line nose to tail, less 0.1 of the length). Why: measured from the middles, a white shark took a
+  sardine a metre off and an orca ate a fish 2.7 m from its mouth. The practice: a capsule along the body against a
+  sphere at the mouth (the usual cheap hit volume for long bodies), and generous to the player (a little suction when
+  eating, a strict bite when being eaten). Alternatives: per-kind boxes from the models (more data, little gain at
+  these sizes), physics shapes (the game has no physics). The bot grew the same under both rules.
+- **Decision: solid giants.** What: anything 1.5 times the player's length (`Life.SOLID`), unless it is hunting the
+  player and could eat it, is a rounded rod down its middle 0.11 of its length thick (`Life.BODY`), and the player is
+  pushed out each frame (`Life.push_off`); the reef-back's trunk is one in `Life.solids`. Why: the player swam through
+  whales, the leviathan, the submarine and the reef-back. Practice: a capsule per moving body with a push-out (a
+  character controller's depenetration), measured as a few multiplications for the animals in sight. Alternatives:
+  spheres along each body moved every frame into `Sea`'s rock grids (re-gridding moving spheres each frame costs more
+  and the grids are built for still rocks), or per-bone shapes (bodies bend; not worth it at this size). Bodies bent
+  into a turn are treated straight. The old one is static and keeps its three spheres in `scenery.gd` (too few: QUALITY.md).
+- **The camera** keeps out of the rock spheres and the floor (`Main._camera_clear`): it stops short along its way, or
+  looks down from higher, never nearer than its fish's body. Animals do not stop it.
+- **Floor animals** stand at their own drawn height (`Creature._belows`, measured when first dressed), walk on the floor
+  and lie along its slope.
+- **The boat and the fishing gear** have baked painted atlases (2048 and 1024), drawn LIT by the game's sun (not unlit
+  like the panel: the boat turns on its circle and lives through the night above water). Other offenders, ranked, are
+  in QUALITY.md (the docks and the outcrops first).

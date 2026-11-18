@@ -10,6 +10,8 @@ class_name Species
 ## - script: its GameCommon creature (creatures/<name>/<name>.gd).
 ## - long, front: its length as built (0: the script's LENGTH) and how far its nose is ahead of
 ##   its own origin (left out: half its length, an origin at its middle).
+## - mouth: how far its mouth is behind its nose, as a share of its length (left out: Fish.MOUTH,
+##   0.08): a billfish's bill, a squid swimming mantle first (tests/hitboxes.gd measures it).
 ## - set: properties to set on the creature when it is made.
 ## - turn: turned this far round (radians) in its holder (a crab walks sideways).
 ## - curls: its shader has `curl` (left out: it has).
@@ -99,13 +101,13 @@ const ALL := {
 	"wahoo": {"script": "wahoo/wahoo", "zones": ["open"], "band": [0.6, 0.95], "count": 2, "size": [1.6, 2.0]},
 	"bigeye": {"script": "bigeye_tuna/bigeye_tuna", "zones": ["open"], "band": [0.3, 0.7], "count": 2, "size": [1.6, 2.0], "social": "school", "group": [3, 5], "mix": "tunas", "habit": "pack"},
 	"bluefin": {"script": "bluefin_tuna/bluefin_tuna", "zones": ["open"], "band": [0.4, 0.9], "count": 2, "size": [2.2, 2.8], "social": "school", "group": [2, 2], "habit": "pack"},
-	"humboldt": {"script": "humboldt_squid/humboldt_squid", "long": 2.2, "front": 1.3, "curls": false, "set": {"colour_beat": 7.0}, "zones": ["open", "trench"], "band": [0.1, 0.45], "count": 3, "size": [1.9, 2.4], "social": "school", "group": [3, 3], "habit": "pack"},
-	"sailfish": {"script": "sailfish/sailfish", "zones": ["open"], "band": [0.7, 0.97], "count": 2, "size": [2.5, 3.0], "social": "school", "group": [2, 2], "habit": "pack"},
-	"swordfish": {"script": "swordfish/swordfish", "zones": ["open"], "band": [0.3, 0.8], "count": 2, "size": [3.1, 3.8]},
-	"marlin": {"script": "blue_marlin/blue_marlin", "zones": ["open"], "band": [0.6, 0.95], "count": 2, "size": [3.2, 3.8], "habit": "pack"},
+	"humboldt": {"script": "humboldt_squid/humboldt_squid", "mouth": 0.62, "long": 2.2, "front": 1.3, "curls": false, "set": {"colour_beat": 7.0}, "zones": ["open", "trench"], "band": [0.1, 0.45], "count": 3, "size": [1.9, 2.4], "social": "school", "group": [3, 3], "habit": "pack"},
+	"sailfish": {"script": "sailfish/sailfish", "mouth": 0.26, "zones": ["open"], "band": [0.7, 0.97], "count": 2, "size": [2.5, 3.0], "social": "school", "group": [2, 2], "habit": "pack"},
+	"swordfish": {"script": "swordfish/swordfish", "mouth": 0.35, "zones": ["open"], "band": [0.3, 0.8], "count": 2, "size": [3.1, 3.8]},
+	"marlin": {"script": "blue_marlin/blue_marlin", "mouth": 0.21, "zones": ["open"], "band": [0.6, 0.95], "count": 2, "size": [3.2, 3.8], "habit": "pack"},
 	"blue_shark": {"script": "blue_shark/blue_shark", "zones": ["open"], "band": [0.4, 0.95], "count": 2, "size": [2.6, 3.2], "habit": "stalk"},
 	"white_shark": {"script": "white_shark/white_shark", "zones": ["open", "kelp", "pirate"], "band": [0.3, 0.9], "count": 1, "size": [4.6, 5.0], "habit": "stalk"},
-	"giant": {"script": "giant_squid/giant_squid", "long": 5.1, "front": 2.2, "curls": false, "zones": ["trench"], "band": [ 0.05, 0.5], "count": 1, "size": [7.0, 7.0]},
+	"giant": {"script": "giant_squid/giant_squid", "mouth": 0.46, "long": 5.1, "front": 2.2, "curls": false, "zones": ["trench"], "band": [ 0.05, 0.5], "count": 1, "size": [7.0, 7.0]},
 	# The river mouth, among the mangroves: fresh-water fish.
 	"arowana": {"script": "arowana/arowana", "zones": ["river"], "band": [0.8, 1.0], "count": 2, "size": [0.8, 1.0], "leaps": true},
 	"piranha": {"script": "piranha/piranha", "zones": ["river"], "band": [0.2, 0.8], "count": 5, "size": [0.25, 0.32], "social": "school", "group": [5, 5]},
@@ -123,7 +125,7 @@ const ALL := {
 	"betta_red": {"script": "betta/betta", "set": {"type": 1}, "zones": ["river"], "band": [0.5, 0.95], "count": 1, "size": [0.07, 0.1], "habit": "display"},
 	"betta_marble": {"script": "betta/betta", "set": {"type": 2}, "zones": ["river"], "band": [0.5, 0.95], "count": 1, "size": [0.07, 0.1], "habit": "display"},
 	"betta": {"script": "betta/betta", "zones": ["river"], "band": [0.5, 0.95], "count": 1, "size": [0.07, 0.1], "habit": "display"},
-	"guppy_female": {"script": "guppy/guppy", "set": {"type": 0}, "zones": ["river"], "band": [0.5, 0.95], "count": 3, "size": [0.06, 0.08], "social": "shoal", "group": [4, 7], "mix": "livebearers"},
+	"guppy_female": {"script": "guppy/guppy", "set": {"type": 0}, "long": 0.045, "zones": ["river"], "band": [0.5, 0.95], "count": 3, "size": [0.06, 0.08], "social": "shoal", "group": [4, 7], "mix": "livebearers"},
 	"guppy_red": {"script": "guppy/guppy", "set": {"type": 2}, "zones": ["river"], "band": [0.5, 0.95], "count": 2, "size": [0.05, 0.07], "social": "shoal", "group": [4, 7], "mix": "livebearers"},
 	"guppy_blue": {"script": "guppy/guppy", "set": {"type": 3}, "zones": ["river"], "band": [0.5, 0.95], "count": 2, "size": [0.05, 0.07], "social": "shoal", "group": [4, 7], "mix": "livebearers"},
 	"guppy_cobra": {"script": "guppy/guppy", "set": {"type": 4}, "zones": ["river"], "band": [0.5, 0.95], "count": 2, "size": [0.05, 0.07], "social": "shoal", "group": [4, 7], "mix": "livebearers"},

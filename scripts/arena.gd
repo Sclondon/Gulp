@@ -81,7 +81,7 @@ func step(delta: float) -> void:
 		var rival: Rival = rivals[id]
 		if not rival.alive or player.safe > 0.0 or player.in_air:
 			continue
-		if Life.can_eat(player.length, rival.length) and rival.global_position.distance_to(mouth) < player.length * 0.3 + rival.length * 0.35:
+		if Life.can_eat(player.length, rival.length) and rival.gap_to(mouth) < player.length * Life.TAKES + Life.TAKES_LEAST:
 			var last: float = _claimed.get(id, -1.0)
 			var now := Time.get_ticks_msec() / 1000.0
 			if now - last > 0.3:

@@ -524,7 +524,8 @@ func _try_bite(rig: Rig) -> void:
 	if not Life.is_food(player.length, rig.bait_long):
 		return
 	var bait := rig.bait_at()
-	if player.mouth().distance_to(bait) > player.length * 0.3 + rig.bait_long * 0.5 + 0.03:
+	# (the same reach as eating: Life.TAKES, tools/QUALITY.md)
+	if player.mouth().distance_to(bait) > player.length * Life.TAKES + Life.TAKES_LEAST + rig.bait_long * 0.5:
 		return
 	if player.length > rig.snap:
 		# (too big for the hook: it takes the bait and the line parts)
@@ -608,7 +609,7 @@ func _tempt(rig: Rig) -> void:
 		var far := each.global_position.distance_to(bait)
 		if far > 6.0:
 			continue
-		if each.mouth().distance_to(bait) < 0.15 + each.length * 0.3:
+		if each.mouth().distance_to(bait) < each.length * Life.TAKES + Life.TAKES_LEAST + rig.bait_long * 0.5:
 			rig.on = each
 			_held[each.get_instance_id()] = true
 			_start_haul(rig)

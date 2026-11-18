@@ -56,9 +56,11 @@ var receipt := {}
 ## The machine's depth limit holds (the smoke test turns it off but for its own check).
 var limited := true
 ## How close the fish's mouth must come to the middle of the net's hoop to be hauled in (m; more
-## for a big fish: a share of its length).
-const NET_REACH := 0.9
-const NET_REACH_PER_LENGTH := 0.4
+## for a big fish: a share of its length). (tools/QUALITY.md: the hoop is 0.8 m across; it was 0.9 m
+## and 0.4 of a length, so a fish was sold with its mouth half a metre outside the hoop, an orca's
+## three metres off. Now inside the hoop's rim, or a big head against it.)
+const NET_REACH := 0.55
+const NET_REACH_PER_LENGTH := 0.15
 ## A run must have gone on this long before the net takes it (s): it starts by the boat.
 const NET_AFTER := 4.0
 var _selling_for := 0.0
@@ -216,6 +218,11 @@ func _ready() -> void:
 	life.player = player
 	life.hunting = not calm
 	_viewport.add_child(life)
+	# (the reef-back walking the deep floor is solid as the giants are: its trunk, 4 to 13 m up, nose
+	# to tail-root; CLAUDE.md "Decision: solid giants")
+	var walker: Variant = scenery.get(&"_reef_back")
+	if walker is Node3D:
+		life.solids.append([walker, Vector3(0.0, 8.5, 0.0), 12.0, 4.5])
 	camera = Camera3D.new()
 	camera.near = 0.05
 	camera.far = 150.0
@@ -890,7 +897,43 @@ func _camera_place() -> Vector3:
 	# whenever the fish swam near the top, and looked down through the surface at nothing)
 	behind = Sea.keep_in(behind, 0.3)
 	behind.y = minf(behind.y, Sea.SURFACE - 0.5)
-	return behind
+	# (QUALITY.md: kept out of rocks and the floor; when that brings it in close, it looks down from
+	# higher over the fish instead, if that sees further)
+	var pivot := player.global_position + Vector3.UP * long * 0.3
+	var eye := _camera_clear(pivot, behind, long * 0.7 + 0.2)
+	if eye.distance_squared_to(behind) > 0.0025:
+		var over := Sea.keep_in(pivot + Vector3.UP * (0.4 + long * 1.8) - player.heading * long * 0.7, 0.3)
+		over.y = minf(over.y, Sea.SURFACE - 0.5)
+		var high := _camera_clear(pivot, over, long * 0.7 + 0.2)
+		if high.distance_to(pivot) > eye.distance_to(pivot) + 0.1:
+			eye = high
+	return eye
+
+
+## The camera's way from the fish out to where it wants to be, tried at EYE_STEPS points: it stops
+## short of the first that is in a rock (Sea.clear_of_rocks) or under the floor, but never nearer
+## the fish than `least` (outside its body), and is then pushed clear of the rock it is in.
+## (tools/QUALITY.md: it went through the rocks, the hulls and the floor.)
+const EYE_STEPS := 8
+const EYE_ROOM := 0.3
+
+
+func _camera_clear(from: Vector3, to: Vector3, least: float) -> Vector3:
+	var way := to - from
+	var span := way.length()
+	if span < 0.001:
+		return to
+	var free := 1.0
+	for k in range(1, EYE_STEPS + 1):
+		var t := float(k) / EYE_STEPS
+		var q := from + way * t
+		if q.y < Sea.ground(q.x, q.z) + EYE_ROOM or Sea.clear_of_rocks(q, EYE_ROOM).distance_squared_to(q) > 0.0001:
+			free = float(k - 1) / EYE_STEPS
+			break
+	var at := from + way * maxf(free, minf(least / span, 1.0))
+	at = Sea.clear_of_rocks(at, EYE_ROOM)
+	at.y = maxf(at.y, Sea.ground(at.x, at.z) + EYE_ROOM)
+	return at
 
 
 func _aim_camera() -> void:

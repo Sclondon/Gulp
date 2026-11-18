@@ -43,7 +43,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 GLB = os.path.join(ROOT, "models", "fishing_gear.glb")
 BLEND = os.path.join(HERE, "blend", "fishing_gear.blend")
-ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+ARGS = [a for a in (sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []) if not a.startswith("--")]
 
 ROD_TIPS = [(-1.55, 1.62, 0.55), (1.55, 1.62, 0.55)]
 
@@ -634,6 +634,184 @@ def render(folder, objects):
         other.hide_render = False
 
 
+# ---------------------------------------------------------------------------------------------- the paint
+# (the quality pass, 2026-11-18: the user, "make sure things have textures that fit our art style"). As the shrimp
+# boat's (tools/build_shrimp_boat.py, where the same helpers are explained): each solid part's material becomes a
+# procedural paint (worn white paint on the skiff, wood grain, mottled metal, grime in the corners), every solid part
+# is unwrapped into ONE atlas and Cycles bakes it under an even sky (contact shadow, no sun); the materials keep their
+# names and draw the picture (embedded in the .glb as a JPEG; lit as before). Not baked: the net (the game's net
+# shader draws it from its own UVs), the unit Line (scaled in the game) and the Trawl (its net's UVs are in metres for
+# that shader): the Trawl's rope and floats get plain copies of their materials, named "<name>_plain".
+# `-- --no-bake` skips it. 1024 px: the gear is small and seen small (the skiff, 4.2 m, is the biggest).
+BAKE = "--no-bake" not in sys.argv
+BAKE_SIZE = 1024
+ATLAS = os.path.join(ROOT, "textures", "boat", "gear_atlas.png")
+UNBAKED = ("NetPanel", "Trawl", "Line")
+PAINT_KIND = {"skiff_hull": "paint", "float_white": "paint", "skiff_bottom": "bottom", "skiff_inside": "wood",
+              "door_wood": "wood", "steel": "metal", "lead": "metal", "chain": "metal", "motor": "metal",
+              "rope": "weave", "net": "skip", "line": "skip"}
+
+
+def _n(nt, kind, **inputs):
+    made = nt.nodes.new(kind)
+    for key, value in inputs.items():
+        made.inputs[key].default_value = value
+    return made
+
+
+def _noise(nt, coords, scale, stretch=(1.0, 1.0, 1.0), detail=3.0, rough=0.55, shift=(0.0, 0.0, 0.0)):
+    mapping = _n(nt, "ShaderNodeMapping")
+    mapping.inputs["Scale"].default_value = stretch
+    mapping.inputs["Location"].default_value = shift
+    nt.links.new(coords, mapping.inputs["Vector"])
+    noise = _n(nt, "ShaderNodeTexNoise", Scale=scale, Detail=detail, Roughness=rough)
+    nt.links.new(mapping.outputs["Vector"], noise.inputs["Vector"])
+    return noise.outputs["Fac"]
+
+
+def _ramp(nt, value, low, high):
+    ramp = _n(nt, "ShaderNodeMapRange")
+    ramp.interpolation_type = "SMOOTHSTEP"
+    ramp.inputs["From Min"].default_value = low
+    ramp.inputs["From Max"].default_value = high
+    nt.links.new(value, ramp.inputs["Value"])
+    return ramp.outputs["Result"]
+
+
+def _mix(nt, a, b, fac, amount=1.0):
+    mix = nt.nodes.new("ShaderNodeMixRGB")
+    scaled = _n(nt, "ShaderNodeMath")
+    scaled.operation = "MULTIPLY"
+    nt.links.new(fac, scaled.inputs[0])
+    scaled.inputs[1].default_value = amount
+    nt.links.new(scaled.outputs[0], mix.inputs["Fac"])
+    for slot, value in (("Color1", a), ("Color2", b)):
+        if isinstance(value, tuple):
+            mix.inputs[slot].default_value = (*value[:3], 1.0)
+        else:
+            nt.links.new(value, mix.inputs[slot])
+    return mix.outputs["Color"]
+
+
+def _paint_for_bake(mat):
+    rgb = COLOURS[mat.name][0]
+    kind = PAINT_KIND.get(mat.name, "plain")
+    nt = mat.node_tree
+    nt.nodes.clear()
+    out = _n(nt, "ShaderNodeOutputMaterial")
+    bsdf = _n(nt, "ShaderNodeBsdfPrincipled", Roughness=1.0, Metallic=0.0)
+    nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    where = _n(nt, "ShaderNodeTexCoord").outputs["Object"]
+    col = _mix(nt, tuple(rgb), tuple(c * 0.84 for c in rgb), _ramp(nt, _noise(nt, where, 1.4, detail=2.0), 0.35, 0.75), 0.6)
+    if kind == "paint":
+        chips = _ramp(nt, _noise(nt, where, 3.2, detail=3.0, rough=0.5, shift=(2.0, 5.0, 1.0)), 0.69, 0.71)
+        col = _mix(nt, col, (0.30, 0.24, 0.19), chips, 0.85)
+        runs = _ramp(nt, _noise(nt, where, 5.0, (5.0, 5.0, 0.35), 4.0, 0.6, (7.0, 3.0, 0.0)), 0.52, 0.72)
+        col = _mix(nt, col, tuple(c * 0.62 for c in rgb), runs, 0.5)
+    elif kind == "bottom":
+        col = _mix(nt, col, tuple(c * 0.55 for c in rgb), _ramp(nt, _noise(nt, where, 3.0, detail=5.0, rough=0.65), 0.45, 0.7), 0.6)
+    elif kind == "wood":
+        grain = _noise(nt, where, 6.0, (14.0, 0.5, 14.0), 6.0, 0.62)
+        col = _mix(nt, col, tuple(c * 0.62 for c in rgb), _ramp(nt, grain, 0.42, 0.62), 0.7)
+        col = _mix(nt, col, (0.40, 0.38, 0.34), _ramp(nt, _noise(nt, where, 2.0, shift=(1.0, 8.0, 3.0)), 0.45, 0.75), 0.3)
+    elif kind == "metal":
+        col = _mix(nt, col, (0.30, 0.15, 0.07), _ramp(nt, _noise(nt, where, 18.0, detail=5.0, rough=0.65), 0.55, 0.7), 0.5)
+    elif kind == "weave":
+        col = _mix(nt, col, tuple(c * 0.7 for c in rgb), _ramp(nt, _noise(nt, where, 60.0, (1.0, 1.0, 3.0), 2.0), 0.4, 0.6), 0.6)
+    ao = _n(nt, "ShaderNodeAmbientOcclusion", Distance=0.12)
+    ao.samples = 16
+    inv = _n(nt, "ShaderNodeMath")
+    inv.operation = "SUBTRACT"
+    inv.inputs[0].default_value = 1.0
+    nt.links.new(ao.outputs["AO"], inv.inputs[1])
+    col = _mix(nt, col, (0.10, 0.08, 0.06), inv.outputs[0], 0.7)
+    nt.links.new(col, bsdf.inputs["Base Color"])
+
+
+def _paint_from_atlas(mat, image):
+    colour, metal, rough = COLOURS[mat.name]
+    nt = mat.node_tree
+    nt.nodes.clear()
+    out = _n(nt, "ShaderNodeOutputMaterial")
+    bsdf = _n(nt, "ShaderNodeBsdfPrincipled", Roughness=rough, Metallic=min(metal, 0.5))
+    nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = image
+    nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+
+
+def bake_paint(objects):
+    """The gear's paint, baked into one picture (see above)."""
+    import time
+    started = time.time()
+    baked = [o for o in objects if o.name not in UNBAKED]
+    # (what the unbaked parts share with the baked ones keeps a plain copy of its own)
+    for obj in objects:
+        if obj.name in UNBAKED:
+            for k, slot in enumerate(obj.data.materials):
+                if slot.name not in ("net", "line"):
+                    plain = slot.copy()
+                    plain.name = slot.name + "_plain"
+                    obj.data.materials[k] = plain
+    bpy.ops.object.select_all(action="DESELECT")
+    for obj in baked:
+        obj.select_set(True)
+    bpy.context.view_layer.objects.active = baked[0]
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(60.0), island_margin=0.003)
+    bpy.ops.uv.average_islands_scale()
+    bpy.ops.uv.pack_islands(margin=0.003)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    painted = sorted({slot.name for o in baked for slot in o.data.materials if slot.name not in ("net", "line")})
+    for name in painted:
+        _paint_for_bake(bpy.data.materials[name])
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    scene.cycles.samples = 96
+    scene.cycles.device = "CPU"
+    world = bpy.data.worlds.new("sky")
+    world.use_nodes = True
+    wt = world.node_tree
+    bg = next(n for n in wt.nodes if n.type == "BACKGROUND")
+    up = wt.nodes.new("ShaderNodeSeparateXYZ")
+    wt.links.new(wt.nodes.new("ShaderNodeTexCoord").outputs["Generated"], up.inputs[0])
+    sky = wt.nodes.new("ShaderNodeMapRange")
+    sky.inputs["From Min"].default_value = -1.0
+    sky.inputs["To Min"].default_value = 0.4
+    sky.inputs["To Max"].default_value = 1.12
+    wt.links.new(up.outputs["Z"], sky.inputs["Value"])
+    wt.links.new(sky.outputs["Result"], bg.inputs["Strength"])
+    bg.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+    scene.world = world
+    image = bpy.data.images.new("gear_atlas", BAKE_SIZE, BAKE_SIZE, alpha=False)
+    for name in painted:
+        nt = bpy.data.materials[name].node_tree
+        node = nt.nodes.new("ShaderNodeTexImage")
+        node.image = image
+        nt.nodes.active = node
+    scene.render.bake.margin = 3
+    bpy.ops.object.select_all(action="DESELECT")
+    for obj in baked:
+        obj.select_set(True)
+    # (every part sits at the origin as built: stood apart for the bake, or each shades the others)
+    for k, obj in enumerate(objects):
+        obj.location.x += 12.0 * k
+    bpy.context.view_layer.update()
+    bpy.context.view_layer.objects.active = baked[0]
+    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT", "INDIRECT", "COLOR"}, use_clear=True)
+    for k, obj in enumerate(objects):
+        obj.location.x -= 12.0 * k
+    bpy.context.view_layer.update()
+    os.makedirs(os.path.dirname(ATLAS), exist_ok=True)
+    image.filepath_raw = ATLAS
+    image.file_format = "PNG"
+    image.save()
+    for name in painted:
+        _paint_from_atlas(bpy.data.materials[name], image)
+    print("BAKED %s (%d px) in %.0f s" % (ATLAS, BAKE_SIZE, time.time() - started))
+
+
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     builds = [hook(), worm(), bait_fish(), sinker(), bobber(), net_float(), net_weight(), marker_buoy(), otter_door(),
@@ -650,11 +828,15 @@ def main():
     print("TRIANGLES total: %d" % total)
     print("INSIDE-OUT %s" % ("PASSED" if wrong_all == 0 else "FAILED (%d)" % wrong_all))
     objects = [b.make() for b in builds]
+    if BAKE:
+        bake_paint(objects)
     os.makedirs(os.path.dirname(BLEND), exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=BLEND)
     bpy.ops.object.select_all(action="DESELECT")
     kw = dict(filepath=GLB, export_format="GLB", export_apply=True, export_yup=True, export_cameras=False,
               export_lights=False, export_animations=False)
+    if BAKE:
+        kw["export_image_format"] = "JPEG"
     bpy.ops.export_scene.gltf(**kw)
     print("WROTE", GLB)
     if ARGS:
