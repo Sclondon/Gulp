@@ -739,3 +739,14 @@ Claude's.
   like the face of this version, but with the newer body". FACE = tpose3 (softer boyish square face, rosy nose, thin
   moustache); BODY = `concept_brother_tpose4.jpg` (tall, rugby build, hairy). New sheets of him are asked for with that
   face on that body.
+- Heads and hands (the user, 2026-11-18, midday, of all three figures): "The heads and hands need a lot of work on all
+  three- make sure you are matching pose silhouettes aggressively"; "I upgraded so we have more gemini usage" (the
+  account is now Pro); "Make sure to regen the brothers look too". What works: every figure gets a BARE head sheet
+  (shaved, clean-shaven, five or six views) and a HANDS sheet (six views), and the builder matches each view by a
+  filled-silhouette difference picture (model against sheet, red and cyan), reporting the worst gap, not by eye.
+  Sheets: `concept_captain_head_bare.jpg`, `concept_captain_hands.jpg`; `concept_brother_tpose5.jpg` (the settled
+  look: soft boyish square face on the tall hairy rugby body; made in the /app/d2fe19426ff0ebc4 conversation, since
+  the figures conversation draws everyone squat), `concept_brother_head2.jpg`, `concept_brother_hands.jpg`;
+  `concept_boy_head.jpg`, `concept_boy_hands.jpg`. Gemini: a new picture shows only after the NEXT prompt is sent or
+  about two minutes and a reload; type into the box found by `find` (its place moves). Still owed: the younger boy's
+  outfits, the brother's outfits redrawn on the tall body, the captain's side view with the arm.
