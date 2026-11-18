@@ -629,3 +629,9 @@ Claude's.
   is the sheet's painting on the skin, no raised tufts. Still wrong: the shell over the ear reads as a slab from the
   side, the beard is greyer and flatter than the painting, the skin is paler than the sheet. `models/captain.glb`
   (tools/build_captain.py, tests/captain_view.gd) is NOT in the game yet; the title still uses `title_captain.glb`.
+- Pushed twice on 2026-11-18 (morning): game 0864fe9 with site PR #212, then game 27495d9 with site PR #213 (the
+  biome rebuild and the quality pass). Both tried in Chrome on this machine first (loading screen, title, the dive).
+  First load of 27495d9 took three to four minutes there before the title showed (the title now warms about 173 more
+  materials): too long; the warm-up needs to move off the path to the title. Not tried on a phone. The pack is 39.6 MB.
+  The new captain (`models/captain.glb`) ships in the pack though the game does not use it yet: leave it out of the
+  web export until it is wired in.
