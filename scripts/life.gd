@@ -108,6 +108,15 @@ func _ready() -> void:
 			lights.count = 40
 			lights.bounds_size = Vector3(4.0, 3.0, 4.0)
 			_school(lights, Fish.school_mesh("lanternfish"), 0.16, "trench", 0.1, 0.6, 500 + i)
+	if ResourceLoader.exists("res://creatures/neon_tetra/neon_tetra.gd"):
+		var neons := _sardine_rules()
+		# (three times life size: a neon tetra is 3.5 cm)
+		neons.size = 3.0
+		neons.count = 36
+		neons.max_speed = 1.4
+		neons.cruise_speed = 0.8
+		neons.bounds_size = Vector3(2.5, 1.6, 2.5)
+		_school(neons, Fish.school_mesh("neon_tetra"), 0.1, "river", 0.3, 0.8, 600)
 	if Species.has("mackerel"):
 		for i in 2:
 			var rules := _sardine_rules()
