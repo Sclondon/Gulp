@@ -329,3 +329,6 @@ a half on a Windows desktop browser. Build the web export from the clean worktre
   (liner, pirate ship, Atlantis). Nothing built; ask before building.
 - The sonar shows height (2026-11-18): a blip above or below the fish is an arrowhead on a stalk (`Sonar.high`).
   The smoke test's "pack hunters at a swarm" check failed once in three runs: it is flaky, not yet looked at.
+- Another idea in the same breath ("and there could also be a regular fishing mode rather than only the odell down
+  under"): fishing from the boat with a rod as a second way to play, feeding the same sell-for-money loop. GameCommon
+  has a `fishing` component to start from. Nothing built; ask before building.
