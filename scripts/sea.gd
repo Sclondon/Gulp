@@ -640,12 +640,16 @@ func _make_snow() -> void:
 	# little sprites of plankton": twelve kinds on one sheet, textures/plankton_sheet.png, made with
 	# an image generator; each speck is one of them, turned at random, drawn as light)
 	speck.albedo_color = Color(0.8, 0.95, 1.15)
-	speck.albedo_texture = load("res://textures/plankton_sheet.png")
+	# (the user, later the same day: "The plankton sprites are too big and hd": a 16-pixel copy of each,
+	# drawn with hard pixels as the rest of the half-size picture is, a third of the size. The
+	# 1024-pixel sheet is kept, unused)
+	speck.albedo_texture = load("res://textures/plankton_sheet_lo.png")
+	speck.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	speck.particles_anim_h_frames = 4
 	speck.particles_anim_v_frames = 3
 	speck.particles_anim_loop = false
 	var quad := QuadMesh.new()
-	quad.size = Vector2(0.16, 0.16)
+	quad.size = Vector2(0.06, 0.06)
 	quad.material = speck
 	_snow = CPUParticles3D.new()
 	_snow.name = "Snow"
