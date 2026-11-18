@@ -62,6 +62,10 @@ const RUINS_HEADING := -0.785
 ## its turn (its length along the node's own Z). On the canyon's western rim.
 const PIRATE_AT := Vector3(-80.0, 19.0, -12.8)
 const PIRATE_HEADING := 0.3
+## The fish markets' landings (the user: "the fish markets should be at monteray, santa cruz, and carmel";
+## the places are Claude's, tools/BIOMES.md): the end of Monterey's commercial wharf, the end of the
+## Santa Cruz wharf, the end of Carmel's pier (world x, z). Selling there is another stage's.
+const MARKETS := {"monterey": Vector2(51.2, 66.4), "santa_cruz": Vector2(-38.2, -91.2), "carmel": Vector2(30.0, 137.0)}
 ## Where a run starts (x, z): over the sand, between the north kelp and the pirate ship, with
 ## room east of it for the title boat's circle (45 m round a middle 45 m east: Title.COURSE).
 const START := Vector2(-52.8, -36.8)
@@ -221,7 +225,10 @@ static func place(rng: RandomNumberGenerator, zone: String, room: float, from :=
 		# (water deep enough to hold it; failing that, the last try is taken as it is)
 		for again in 10:
 			var deep := SURFACE - ground(flat.x, flat.y)
-			if deep > 2.0 * room + 0.6 and (zone != "beach" or deep < Bay.BEACH_DEEP + 1.0) and deep >= float(ZONES.get(zone, {}).get("deeper", 0.0)):
+			# (the open ocean's water is deep: none of its kinds, the giants above all, over the
+			# shallows round the canyon's basin; tools/BIOMES.md section 7)
+			if deep > 2.0 * room + 0.6 and (zone != "beach" or deep < Bay.BEACH_DEEP + 1.0) and deep >= float(ZONES.get(zone, {}).get("deeper", 0.0)) \
+					and (zone != "open" or deep >= 30.0):
 				break
 			flat = _spot(rng, zone)
 		var p := Vector3(flat.x, 0.0, flat.y)
@@ -287,6 +294,8 @@ func _ready() -> void:
 	_make_snow()
 	# (the water's light: tools/WATER_FX.md)
 	_caustics()
+	# (what the floor is made of, painted on the sand: scripts/floor_types.gd, tools/BIOMES.md)
+	FloorTypes.paint(sand)
 	shafts = LightShafts.new()
 	add_child(shafts)
 	_look()
@@ -344,9 +353,16 @@ func _look() -> void:
 		_env.fog_density = 0.004
 		_env.ambient_light_color = Color(0.8, 0.85, 0.9).lerp(sky, 0.35) * lerpf(0.6, 1.0, day)
 	else:
+		# (the liner's coral pocket is warmer and clearer water: a little more green-teal, less fog,
+		# a warmer ambient, fading in over 50 to 30 m from the wreck. tools/BIOMES.md 5.9; Claude's
+		# default for the user's question 6)
+		var warm := 0.0
+		if eye:
+			warm = 1.0 - smoothstep(30.0, 50.0, Vector2(eye.global_position.x - WRECK_AT.x, eye.global_position.z - WRECK_AT.z).length())
+		water = water.lerp(Color(0.03, 0.17, 0.19) * lerpf(0.5, 1.0, day), 0.35 * warm)
 		_env.background_color = water
 		_env.fog_light_color = water
-		_env.fog_density = lerpf(0.03, 0.04, down_far)
+		_env.fog_density = lerpf(0.03, 0.04, down_far) * lerpf(1.0, 0.8, warm)
 		_env.ambient_light_color = Color(0.22, 0.34, 0.62).lerp(Color(0.3, 0.5, 0.8), day).lerp(Color(0.42, 0.42, 0.62), glow * 0.3).lerp(Color(0.5, 0.72, 0.7) * lerpf(0.6, 1.0, day), 0.6 * (1.0 - down_far))
 	# (the surface overhead dims at night; seen from under it, it is the brightest thing there is)
 	var dim := lerpf(0.5, 1.0, maxf(day, glow * 0.7))

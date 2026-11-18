@@ -265,6 +265,17 @@ the sea (they need placing like scenery or the nettles, not as swimmers): `anemo
   jelly handling), `sea_slug`/`clam`/`oyster` when their builder finishes.
 - About 9 ms a frame on the desktop in the kelp now (it was about 6).
 
+## The places as levels (2026-11-18): floor types and the rule-based placer
+
+The user: "the foliage needs a smart realistic distrbtion, do research on kelp forests and othe under sea biomes and
+make good game design \"levels\" out of them". `tools/BIOMES.md` is the design (research, each place's plan and rules,
+what kit is missing) and, under "Phase two", what is built and the budget table. In short: `scripts/floor_types.gd`
+says what the floor is at every 2 m corner (rock, sand, mud, shell, crust, white) and paints it with the sand's own
+kinds (no new shader); `scripts/biomes.gd` places plants and floor pieces by per-place rule tables (floor type, depth,
+slope, density at core and edge, noise, clumps); kelp grows only on rock. `Sea.MARKETS` holds the three fish markets'
+landings. The old one and the reef back lie and walk in the deep (`Scenery._add_giants`). Every choice there is
+Claude's, and the user's six open questions were answered with Claude's defaults (BIOMES.md section 9): change freely.
+
 ## Asked for on 2026-11-18 and where each stands (the user's words; update as they land)
 
 How to work on anything visual here (the user: "We need a concept are solution", "spend more time coming up with a design

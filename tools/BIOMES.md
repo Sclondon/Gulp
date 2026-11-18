@@ -78,6 +78,74 @@ z 148   29   26   24    #    #    0    0    0    0    0    0    #    #
 
 ---
 
+## Phase two: what is built (2026-11-18)
+
+Built at the coordinator's word, on top of the performance pass (tools/PERF.md). The user's six questions (section 9)
+were answered with **Claude's defaults, all changeable**: (1) the liner's shelf stays; its chest moves to the armoured
+suit (DESIGN.md edited); (2) Carmel Bay deepened (a cove, `Bay.HARBOURS`) and a short Stillwater-Cove-like pier with two
+skiffs; (3) the eel garden on its ridge off Santa Cruz plus a small colony beside the liner; (4) mangroves with the real
+slough round them; (5) sargassum cut to 3 mats (the asset kept); (6) a subtle warmer, clearer tint in the liner's pocket.
+
+- **Floor types** (`scripts/floor_types.gd`, `FloorTypes`): one byte a corner of Bay's 2 m grid (sand, rock, mud, shell,
+  crust, white), by the rules of 3.1 and the reef masks in `Biomes.REEFS`. **No new shader**: GameCommon's sand already
+  paints kinds per corner (`SandGround.paint_all`), so rock is its SANDSTONE kind (its banded rock reads as layered
+  reef and canyon mudstone), mud its DIRT, shell its COARSE, crust its RED and Carmel's sand its WHITE, recoloured by
+  their uniforms. `Sea._ready` calls `FloorTypes.paint(sand)`. The piles' shell rings are painted by `Scenery._paint_shells`.
+- **The placer** (`scripts/biomes.gd`, `Biomes`): `REEFS` (kelp south with two channels and the barren, kelp north,
+  the outcrop's talus, Carmel's reef) and `TABLES` (kelp_south, kelp_north, outcrop, carmel, grass, slough,
+  docks_monterey, points, walls), each a list of layer rules as in section 6. `Biomes.run` fills floor pieces (drawn by
+  Scenery's LodField, near 8 m and far now 60 m, matching the plants' `SEEN`), kelp, grass and seaweed (drawn by their
+  own components, each in cells with its own near and far). `grow_on` puts pieces on a thing's spheres by which way
+  the face looks.
+- **Moved into the placer** (retired from `scripts/scenery.gd`): `_place_rocks`, `_plant_kelp`'s clumps, `_plant_grass`'s
+  circle and the slough's tufts, `_plant_seaweed`'s zone rows (only the liner's red weed and 3 sargassum mats stay there),
+  KELPS, TUFTS, SLOUGH_TUFTS. Still in scenery.gd as before: the cliffs (now with sponges on the canyon walls from the
+  placer), the breakwater, the live anemones, the clownfish anemones, the mangroves, the docks, the outcrop's stacks.
+- **The kelp forests** (5.2, 5.3): rock fingers with two sand channels in the south (the main one through the arch, now
+  turned across it), a pink barren with purple urchins, understory (SEA_PALM as the stand-in), red weed, feather boa,
+  fans, sponges, strawberry anemones and stars near the rocks; kelp only on rock, thinning to the edges (its lengths
+  short of the surface at the edge, canopy at the core). South 116 plants, north 22, Carmel 4 (139 in all, 180 before).
+- **Growth on structures**: the dock piles (mussel clumps hanging under the surface, strawberry anemones on the piles
+  under a deck, green anemones on the lit mooring piles, a star at the foot, shell hash round it); the liner's bommies
+  (26, thinning from the hull out to 32 m; hard corals and clams on their lit tops, fans, soft corals and sponges on
+  their sides; nothing loose on the open sand any more). **Not done:** growth by these rules on the liner's hull, the
+  pirate ship, the ruins and the outcrop's stacks (their own scripts place their own; the rules are in 3.4).
+- **Limits and moves**: every layer keeps to its depth band and floor type (the eelgrass stops at 8 m, short of the
+  canyon's lip; nothing roots in a channel); the 16 kinds of section 7 moved in `scripts/species.gd`; `Sea.place` keeps
+  every "open" kind to water 30 m deep or more.
+- **Markets**: `Sea.MARKETS` (Monterey's commercial wharf end, the Santa Cruz wharf end, Carmel's pier end). The
+  selling is another stage's. Carmel's fish shed is not built.
+- **Set pieces**: the old one (GameCommon `old_one`) asleep on the canyon's deep floor at (-40, 26), about 85 m, facing
+  Atlantis, its body and head as rocks, `wake` eased towards 1 within 22 to 55 m of the player; the reef back walking a
+  15 m loop at 0.45 m/s on the deep floor west of the shelf's edge round (-138, -62); both light models beyond 60 m.
+- **Not built: the kit** (section 8). None of the new models; stand-ins are noted above. Next in order: reef slabs,
+  understory kelp, bull kelp, pile sleeves, surfgrass, sea pens, sand dollars, whale fall, kelp rafts (so the open
+  ocean still has 3 sargassum mats and no rafts yet).
+
+### The budget, measured (tests/perf.gd, 390x844, the sea's picture; same machine, same harness)
+
+| place | draws before | after | triangles before | after | frame ms before | after |
+| --- | --- | --- | --- | --- | --- | --- |
+| start | 10 | 20 | 86k | 97k | 5.3 | 5.0 |
+| kelp | 79 | 97 | 123k | 136k | 6.5 | 6.8 |
+| grass | 57 | 54 | 256k | 248k | 6.9 | 6.1 |
+| sand | 8 | 15 | 145k | 147k | 6.1 | 6.1 |
+| reef (liner) | 149 | 152 | 338k | 354k | 5.7 | 7.8 |
+| pirate | 64 | 73 | 193k | 188k | 6.6 | 5.9 |
+| ruins | 72 | 75 | 147k | 142k | 7.0 | 7.1 |
+| docks | 166 | 179 | 129k | 140k | 7.0 | 6.8 |
+| river | 36 | 25 | 215k | 175k | 9.4 | 9.4 |
+| trench | 4 | 11 | 64k | 72k | 5.4 | 5.8 |
+| open | 4 | 11 | 64k | 71k | 4.7 | 4.9 |
+
+(kelp, grass, docks, reef "after" are the second run, with the trimmed densities; the rest the first.) Within the proxy
+(150k triangles, 150 draws): start, kelp, sand, ruins, trench, open. **Over before and still over**: the liner (its own
+reef: PERF.md), grass (102k of it is a sea nettle and 55k a flock: animals, not plants), pirate, river (both on triangles,
+lower than before) and the docks on draws (179: the kelp and seaweed cells along the breakwater, two draws a piece type
+of the floor kit). The frame's ms vary 1 to 3 ms with other sessions running.
+
+---
+
 ## 3. The system
 
 ### 3.1 The substrate map

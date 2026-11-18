@@ -30,12 +30,13 @@ const PIRATE := "res://scripts/pirate_wreck.gd"
 ## mangrove / river entrance area", and 2026-11-18: "the margrove river part goes in the center
 ## part where that river meets the bay". Off: the slough's banks are bare.
 const MANGROVES := true
-## How many kelp plants (both forests), tufts of grass (the bed, and eelgrass in the slough's
-## channel: none while the mangroves are there) and garden eels.
-const KELPS := 180
-const TUFTS := 2000
-const SLOUGH_TUFTS := 0
+## How many garden eels (the rest is the placer's: scripts/biomes.gd).
 const EEL_COUNT := 260
+## The garden's ridge in the sand off Santa Cruz (world, its two ends), and the small colony beside the
+## liner (its middle; how many).
+const EEL_RIDGE: Array[Vector2] = [Vector2(-88.0, -72.0), Vector2(-62.0, -84.0)]
+const REEF_EEL_AT := Vector2(-22.0, 118.0)
+const REEF_EELS := 50
 ## How long a garden eel counts as for the eating rule (m), and how long one stays gone (s).
 const EEL_LENGTH := 0.6
 const EEL_BACK := 25.0
@@ -45,7 +46,7 @@ const DOCKS_SEEN := 80.0
 ## The kit's pieces (rocks, cliffs, the reef's life): full models within PIECES_NEAR of the eye,
 ## light ones out to PIECES_SEEN, none beyond (m, to the nearest edge of the piece's cube).
 const PIECES_NEAR := 8.0
-const PIECES_SEEN := 70.0
+const PIECES_SEEN := 60.0
 ## The clear lanes kept for the wrecks' hulls (long, wide: m, along their headings).
 const WRECK_LANE := Vector2(64.0, 14.0)
 const PIRATE_LANE := Vector2(34.0, 12.0)
@@ -57,29 +58,49 @@ const MONTEREY := Vector2(35.2, 78.4)
 const SANTA_CRUZ := Vector2(-27.2, -107.2)
 ## The outcrop the pirate ship struck, and its island (world).
 const OUTCROP := Vector2(-98.0, -24.0)
+## The south kelp forest's landmark: the arch across its main channel (world x, z; BIOMES.md 5.2).
+const ARCH := Vector2(43.0, 49.0)
+## Where Carmel's pier starts at the shore (world; it runs north, BIOMES.md 5.12).
+const CARMEL_PIER := Vector2(30.0, 145.0)
+const OLD_ONE := "res://creatures/old_one/old_one.gd"
+const REEF_BACK := "res://creatures/reef_back/reef_back.gd"
+## Where the old one lies asleep (world x, z: the canyon's deep floor north-east of Atlantis, 85 m).
+const OLD_ONE_AT := Vector2(-40.0, 26.0)
+## The reef back's loop on the deep floor past the shelf's edge (middle x, z; radius), and its pace (m/s).
+const REEF_BACK_LOOP := Vector3(-138.0, -62.0, 15.0)
+const REEF_BACK_PACE := 0.45
+## Beyond this the two giants are their light models (m).
+const GIANT_LOW := 60.0
 
 ## Who lays the grass aside and frightens the eels (the player).
 var player: Player
 
 var _grass: Node3D
 var _eels: Node3D
-var _eaten := {}
+var _colonies: Array[Dictionary] = []
 var _props: GDScript
 var _rng := RandomNumberGenerator.new()
 # What has been placed of each piece: name -> [transforms, colours].
 var _placed := {}
 var _clock := 0.0
+# The rule-based placer's output (scripts/biomes.gd).
+var _biomes: Biomes
+# Where the piles stand (their feet get a ring of shell hash on the floor).
+var _shell_spots: Array[Vector2] = []
+var _old_one: Node3D
+var _reef_back: Node3D
+var _reef_turn := 0.0
 
 
 func _ready() -> void:
 	_rng.seed = 11
 	if ResourceLoader.exists(PROPS):
 		_props = load(PROPS)
-		_place_rocks()
+	_place_biomes()
+	if _props:
 		_place_reef()
 		_place_cliffs()
 		_place_breakwater()
-		_draw_pieces()
 	if ResourceLoader.exists(KELP):
 		_plant_kelp()
 	if ResourceLoader.exists(GRASS):
@@ -96,39 +117,44 @@ func _ready() -> void:
 		_plant_live_anemones()
 	if ResourceLoader.exists(DOCKS):
 		_build_docks()
+	if _props:
+		_draw_pieces()
 	_add_landmarks()
+	_add_giants()
 
 
 func _process(delta: float) -> void:
 	_clock += delta
+	_walk_giants(delta)
 	if player == null:
 		return
 	if _grass:
 		_grass.set(&"pushers", PackedVector3Array([player.global_position]))
-	if _eels:
+	var eye := get_viewport().get_camera_3d()
+	for colony: Dictionary in _colonies:
+		var eels: Node3D = colony.node
 		# (one draw of all of them, which nothing hid however far off: tools/PERF.md)
-		var eye := get_viewport().get_camera_3d()
 		if eye:
-			var sand: Dictionary = Sea.ZONES.sand
-			_eels.visible = Vector2(eye.global_position.x, eye.global_position.z).distance_to(sand.at) < float(sand.radius) + SEEN
-	if _eels and player.alive:
-		var zone: Dictionary = Sea.ZONES.sand
+			eels.visible = Vector2(eye.global_position.x, eye.global_position.z).distance_to(colony.at) < float(colony.r) + SEEN
+		if not player.alive:
+			continue
 		var at := player.global_position
-		if Vector2(at.x, at.z).distance_to(zone.at) > float(zone.radius) + 10.0:
-			return
-		_eels.call(&"disturb", at, 1.6 + player.length * 2.5)
+		if Vector2(at.x, at.z).distance_to(colony.at) > float(colony.r) + 10.0:
+			continue
+		eels.call(&"disturb", at, 1.6 + player.length * 2.5)
 		var mouth := player.mouth()
-		var i: int = _eels.call(&"nearest", mouth)
+		var i: int = eels.call(&"nearest", mouth)
+		var eaten: Dictionary = colony.eaten
 		if i >= 0 and Life.is_food(player.length, EEL_LENGTH):
-			var head: Vector3 = _eels.call(&"head_of", i)
+			var head: Vector3 = eels.call(&"head_of", i)
 			if head.distance_to(mouth) < player.length * 0.3 + 0.06:
-				_eels.call(&"take", i)
-				_eaten[i] = _clock + EEL_BACK
+				eels.call(&"take", i)
+				eaten[i] = _clock + EEL_BACK
 				player.feed(EEL_LENGTH, 0.5)
-		for gone: int in _eaten.keys():
-			if _clock > float(_eaten[gone]):
-				_eaten.erase(gone)
-				_eels.call(&"restore", gone)
+		for gone: int in eaten.keys():
+			if _clock > float(eaten[gone]):
+				eaten.erase(gone)
+				eels.call(&"restore", gone)
 
 
 # A piece of the kit stood somewhere: on the floor at a place, turned, at a size, tinted. Its
@@ -183,49 +209,59 @@ func _kept_clear(at: Vector2, margin := 2.0) -> bool:
 			or at.distance_to(Vector2(Sea.RUINS_AT.x, Sea.RUINS_AT.z)) < float(Bay.RUINS_TERRACE[2]) * Bay.K
 
 
-# The rocky floor of the kelp forests: boulders, stacks, a ledge or two, an arch to swim through,
-# and the cold-water life that grows on and round them.
-func _place_rocks() -> void:
-	var rocks: PackedStringArray = _props.call(&"names", "rock")
-	var life: PackedStringArray = _props.call(&"names", "cold")
-	var big: Dictionary = Sea.ZONES.kelp
-	_stand("rock_arch", big.at + Vector2(-10.0, 6.0), 0.6, 1.2, Color.WHITE, -0.3)
-	for i in 60:
-		var piece := rocks[_rng.randi() % rocks.size()]
-		if piece == "rock_arch":
-			piece = "rock_boulder"
-		var at := _in_zone("kelp", 1.05)
-		if Sea.SURFACE - Sea.ground(at.x, at.y) < 3.0:
-			continue
-		_stand(piece, at, _rng.randf() * TAU, _rng.randf_range(0.8, 1.5), Color.WHITE, -0.25)
-		# (a few living things on the sand at its foot)
-		for k in 3:
-			var kind := life[_rng.randi() % life.size()]
-			var beside := at + Vector2.from_angle(_rng.randf() * TAU) * _rng.randf_range(1.0, 3.5)
-			_stand(kind, beside, _rng.randf() * TAU, _rng.randf_range(0.9, 1.6), _tint(kind), -0.02)
+# The places' plants and floor pieces by rule (scripts/biomes.gd, tools/BIOMES.md): the kelp
+# forests' rock reefs with their channels and barren, the outcrop's talus, the rocky points, the
+# canyons' rock bands, the eelgrass, the slough, the harbours. The floor pieces join `_placed`
+# (drawn by the LodField); kelp, grass and seaweed are planted from `_biomes` below. The south
+# forest's landmark, the arch, stands across its main channel, its opening along the channel.
+func _place_biomes() -> void:
+	_biomes = Biomes.new()
+	_biomes.run(_props, _kept_clear)
+	if _props:
+		_biomes.add_piece("rock_arch", Transform3D(Basis(Vector3.UP, PI * 0.5).scaled(Vector3.ONE * 1.2), Vector3(ARCH.x, Sea.ground(ARCH.x, ARCH.y) - 0.3, ARCH.y)))
+		for piece: String in _biomes.pieces:
+			if not _placed.has(piece):
+				_placed[piece] = [[], []]
+			_placed[piece][0].append_array(_biomes.pieces[piece][0])
+			_placed[piece][1].append_array(_biomes.pieces[piece][1])
+		_biomes.pieces.clear()
 
 
-# The liner's reef: coral heads (bommies) round the wreck and corals, sponges, fans and clams on its
-# shelf, with the lane where its hull lies kept clear (the wreck itself is another agent's).
+# The liner's reef (BIOMES.md 5.9): coral heads (bommies) on the sand round the wreck, thick near
+# the hull and thinning out to 30 m, a rubble of red weed between; the corals, fans, sponges and
+# clams grow on the bommies (lit tops: hard corals and clams; sides: fans, soft corals, sponges),
+# not on the open sand. The lane where the hull lies is kept clear (the wreck grows its own reef).
 func _place_reef() -> void:
 	var heads: PackedStringArray = _props.call(&"names", "bommie")
-	var life: PackedStringArray = _props.call(&"names", "tropical")
+	var middle := Vector2(Sea.WRECK_AT.x, Sea.WRECK_AT.z)
 	var placed := 0
-	while placed < 16:
-		var at := _in_zone("reef", 0.85)
-		if in_lane(at, Sea.WRECK_AT, Sea.WRECK_HEADING, WRECK_LANE, 4.0):
+	var tries := 0
+	var growth := Biomes.new()
+	growth._props = _props
+	growth._rng.seed = 77
+	while placed < 26 and tries < 2000:
+		tries += 1
+		var at := middle + Vector2.from_angle(_rng.randf() * TAU) * _rng.randf_range(6.0, 32.0)
+		var out := at.distance_to(middle)
+		if _rng.randf() > lerpf(1.0, 0.12, inverse_lerp(8.0, 32.0, out)):
 			continue
-		_stand(heads[_rng.randi() % heads.size()], at, _rng.randf() * TAU, _rng.randf_range(0.9, 1.5), Color.WHITE, -0.3)
-		placed += 1
-	placed = 0
-	while placed < 150:
-		var kind := life[_rng.randi() % life.size()]
-		var at := _in_zone("reef", 0.95)
-		# (thickest along the hull's sides, as on a wreck)
-		if in_lane(at, Sea.WRECK_AT, Sea.WRECK_HEADING, WRECK_LANE, 0.5):
+		var deep := Sea.SURFACE - Sea.ground(at.x, at.y)
+		if deep < 18.0 or deep > 38.0 or FloorTypes.slope(at.x, at.y) > 0.4 or in_lane(at, Sea.WRECK_AT, Sea.WRECK_HEADING, WRECK_LANE, 4.0):
 			continue
-		_stand(kind, at, _rng.randf() * TAU, _rng.randf_range(0.8, 1.7), _tint(kind), -0.03)
+		var piece := heads[_rng.randi() % heads.size()]
+		var where := _stand(piece, at, _rng.randf() * TAU, _rng.randf_range(0.9, 1.5), Color.WHITE, -0.3)
+		var spheres: Array = []
+		for s: Vector4 in _props.call(&"spheres_of", piece):
+			var m := where * Vector3(s.x, s.y, s.z)
+			spheres.append(Vector4(m.x, m.y, m.z, s.w * where.basis.get_scale().x))
+		growth.grow_on(spheres, ["brain_coral", "table_coral", "staghorn_coral", "pillar_coral", "giant_clam"], 4, 0.55, 1.0, Vector2(0.7, 1.3))
+		growth.grow_on(spheres, ["sea_fan_purple", "soft_coral", "sea_rods", "barrel_sponge"], 4, -0.2, 0.55, Vector2(0.7, 1.3))
 		placed += 1
+	for piece: String in growth.pieces:
+		if not _placed.has(piece):
+			_placed[piece] = [[], []]
+		_placed[piece][0].append_array(growth.pieces[piece][0])
+		_placed[piece][1].append_array(growth.pieces[piece][1])
 
 
 # The shelf's edge: a wall of cliff pieces down from its lip, side by side along the coast, facing
@@ -296,71 +332,38 @@ func _draw_pieces() -> void:
 	add_child(field)
 
 
-# The kelp forests: plants standing in clumps with clear lanes between, each reaching for the
-# surface (the tallest lie along it). Both patches of the zone, the big one in the south-east.
+# The kelp forests, by the placer's rules (BIOMES.md 5.2, 5.3): on rock only, thick at the core and
+# thinning to the edge, each reaching for the surface (the longest lie along it as canopy).
 func _plant_kelp() -> void:
-	var places := PackedVector3Array()
-	var heights := PackedFloat32Array()
-	var clumps: Array[Vector2] = []
-	for i in 28:
-		clumps.append(_in_zone("kelp", 0.95))
-	for i in KELPS:
-		var clump := clumps[i % clumps.size()]
-		var at := clump + Vector2.from_angle(_rng.randf() * TAU) * _rng.randf_range(0.3, 4.5)
-		var low := Sea.ground(at.x, at.y)
-		var deep := Sea.SURFACE - low
-		if deep < 5.0:
-			continue
-		places.append(Vector3(at.x, low - 0.1, at.y))
-		heights.append(minf(deep * _rng.randf_range(0.7, 1.25), 25.0))
 	var forest: Node3D = (load(KELP) as GDScript).new()
 	forest.set(&"far", SEEN)
 	forest.set(&"current", Vector2(0.3, 0.1))
 	add_child(forest)
-	forest.call(&"plant", places, heights, Sea.SURFACE)
+	forest.call(&"plant", _biomes.kelp_places, _biomes.kelp_lengths, Sea.SURFACE)
 
 
-# The sea grass: the bed off the peninsula, thick in the middle and thinning to its edge, and
-# eelgrass along Elkhorn Slough's channel.
+# The sea grass, by the placer's rules (BIOMES.md 5.8 and 5.14): the meadow off the peninsula on
+# sand and mud 1.5 to 8 m, thick at its core with bare blowouts and a trail, and eelgrass along
+# the slough's shallow edges.
 func _plant_grass() -> void:
-	var places := PackedVector3Array()
-	var heights := PackedFloat32Array()
-	var zone: Dictionary = Sea.ZONES.grass
-	for i in TUFTS:
-		var turn := _rng.randf() * TAU
-		# (more of them towards the middle)
-		var at: Vector2 = zone.at + Vector2(cos(turn), sin(turn)) * float(zone.radius) * pow(_rng.randf(), 0.7)
-		var low := Sea.ground(at.x, at.y)
-		if Sea.SURFACE - low < 1.5:
-			continue
-		places.append(Vector3(at.x, low - 0.03, at.y))
-		heights.append(_rng.randf_range(0.45, 1.2))
-	for i in SLOUGH_TUFTS:
-		var k := _rng.randi() % (Bay.SLOUGH.size() - 1)
-		var at: Vector2 = (Bay.SLOUGH[k] as Vector2).lerp(Bay.SLOUGH[k + 1], _rng.randf()) * Bay.K + Vector2(_rng.randf_range(-4.0, 4.0), _rng.randf_range(-4.0, 4.0))
-		var low := Sea.ground(at.x, at.y)
-		if Sea.SURFACE - low < 1.2:
-			continue
-		places.append(Vector3(at.x, low - 0.03, at.y))
-		heights.append(_rng.randf_range(0.4, 0.9))
 	_grass = (load(GRASS) as GDScript).new()
 	_grass.set(&"far", SEEN)
 	_grass.set(&"current", Vector2(0.3, 0.1))
 	_grass.set(&"push_radius", 0.7)
 	add_child(_grass)
-	_grass.call(&"plant", places, heights)
+	_grass.call(&"plant", _biomes.grass_places, _biomes.grass_heights)
 
 
-# Seaweed (the user, 2026-11-18: "sea weed"; which kind grows where and how much is Claude's
-# pick): sea lettuce in the sea grass and the slough, rockweed, feather boa kelp and sea palms
-# among the kelp's rocks and on the docks' shore, red algae round the liner, and mats of sargassum
-# afloat over the open ocean. Each row: the kind (SeaweedBed.Kind), the zone, how many, how tall.
+# Seaweed: the placer's (understory, red weed, feather boa on the reefs; rockweed on the rocky
+# points and the breakwater; sea lettuce on the meadow, the slough and the harbour floors), and
+# here red weed on the liner's shelf round its bommies and a few mats of sargassum afloat over the
+# open ocean (BIOMES.md 4: sargassum is Atlantic; the open's drifting things are kelp rafts,
+# `_place_rafts`; Claude's default for the user's question 5).
 func _plant_seaweed() -> void:
-	var places := PackedVector3Array()
-	var sizes := PackedFloat32Array()
-	var kinds := PackedInt32Array()
-	for row: Array in [[0, "grass", 140, 0.25, 0.5], [0, "river", 60, 0.25, 0.45], [1, "kelp", 200, 0.25, 0.45], [1, "docks", 50, 0.25, 0.45],
-			[2, "reef", 160, 0.16, 0.32], [3, "kelp", 50, 1.8, 3.0], [4, "kelp", 50, 0.4, 0.7], [5, "open", 70, 0.8, 1.8]]:
+	var places := _biomes.weed_places
+	var sizes := _biomes.weed_sizes
+	var kinds := _biomes.weed_kinds
+	for row: Array in [[2, "reef", 120, 0.16, 0.32], [5, "open", 3, 1.2, 1.8]]:
 		for i in int(row[2]):
 			var at := _in_zone(row[1], 0.95)
 			var low := Sea.ground(at.x, at.y)
@@ -445,20 +448,38 @@ func _plant_mangroves() -> void:
 
 # The garden eels: a few loose patches of them in the open sand, each in its burrow.
 func _plant_eels() -> void:
-	var zone: Dictionary = Sea.ZONES.sand
+	# The garden: along a low ridge across the current in the sand off Santa Cruz (BIOMES.md 5.4).
 	var places := PackedVector3Array()
-	var patches: Array[Vector2] = []
-	for i in 7:
-		patches.append(_in_zone("sand", 0.8))
 	for i in EEL_COUNT:
-		var at := patches[i % patches.size()] + Vector2.from_angle(_rng.randf() * TAU) * _rng.randf_range(0.4, 6.0)
+		var along := EEL_RIDGE[0].lerp(EEL_RIDGE[1], _rng.randf())
+		var at := along + Vector2.from_angle(_rng.randf() * TAU) * _rng.randf_range(0.0, 3.2) * Vector2(1.0, 0.6)
 		places.append(Vector3(at.x, Sea.ground(at.x, at.y), at.y))
-	_eels = (load(EELS) as GDScript).new()
+	_add_colony(places, EEL_RIDGE[0].lerp(EEL_RIDGE[1], 0.5), 22.0)
+	# A small one on the liner's sand apron, where garden eels really live, next to a reef (the
+	# coordinator's default for the user's question 3).
+	places = PackedVector3Array()
+	var tries := 0
+	while places.size() < REEF_EELS and tries < 2000:
+		tries += 1
+		var at := REEF_EEL_AT + Vector2.from_angle(_rng.randf() * TAU) * _rng.randf_range(0.0, 4.0)
+		if _kept_clear(at, 3.0) or FloorTypes.of(at.x, at.y) != FloorTypes.SAND:
+			continue
+		places.append(Vector3(at.x, Sea.ground(at.x, at.y), at.y))
+	_add_colony(places, REEF_EEL_AT, 6.0)
+
+
+func _add_colony(places: PackedVector3Array, middle: Vector2, radius: float) -> void:
+	if places.is_empty():
+		return
+	var colony: Node3D = (load(EELS) as GDScript).new()
 	# (into the current, which runs in from the sea)
-	_eels.set(&"facing", Vector3(-1.0, 0.0, 0.3).normalized())
-	_eels.set(&"eel_scale", 1.5)
-	add_child(_eels)
-	_eels.call(&"plant", places)
+	colony.set(&"facing", Vector3(-1.0, 0.0, 0.3).normalized())
+	colony.set(&"eel_scale", 1.5)
+	add_child(colony)
+	colony.call(&"plant", places)
+	_colonies.append({"node": colony, "at": middle, "r": radius, "eaten": {}})
+	if _eels == null:
+		_eels = colony
 
 
 # ---------------------------------------------------------------------------------------- the docks
@@ -504,7 +525,17 @@ func _build_docks() -> void:
 	for each: Array in [["Tyre", Vector2(-41.0, -128.0)], ["CrabPot", Vector2(-30.0, -124.0)], ["CrabPot", Vector2(-49.0, -121.0)], ["Chain", Vector2(-44.0, -138.0)]]:
 		_litter(site, each[0], o + (each[1] as Vector2))
 	_draw_site(site, kit, "SantaCruz")
+	# Carmel (the user: "the fish markets should be at monteray, santa cruz, and carmel"): a short
+	# wooden pier out into the cove dredged off Carmel Beach (Bay.HARBOURS), two skiffs at it, after
+	# the small pier at Stillwater Cove (Claude's default, BIOMES.md 5.12). The fish shed is not built.
+	site = _Site.new()
+	_wharf(site, CARMEL_PIER, 3, deck_y)
+	_boat(site, "Skiff", CARMEL_PIER + Vector2(-5.0, -4.0), 0.4)
+	_boat(site, "Skiff", CARMEL_PIER + Vector2(5.5, -6.0), -0.3)
+	_litter(site, "CrabPot", CARMEL_PIER + Vector2(-3.0, -7.0))
+	_draw_site(site, kit, "Carmel")
 	_build_outcrop(kit)
+	_paint_shells()
 	kit.free()
 
 
@@ -607,6 +638,54 @@ func _pile(site: _Site, at: Vector2, top: float) -> void:
 	while y < Sea.SURFACE + 0.5:
 		Sea.add_rock(Vector4(at.x, y, at.y, 0.42))
 		y += 0.9
+	_grow_on_pile(at, top < Sea.SURFACE + 1.0)
+
+
+# What grows on a pile, in bands (BIOMES.md 5.10): mussel clumps hanging just under the surface,
+# below them anemones down to the floor (strawberry anemones on the shaded piles under a deck,
+# plumose-like green ones on the lit mooring piles), a sea star at its foot. Drawn with the rest of
+# the floor pieces (near and far).
+func _grow_on_pile(at: Vector2, shaded: bool) -> void:
+	if _props == null:
+		return
+	var floor_y := Sea.ground(at.x, at.y)
+	for k in 3:
+		var turn := _rng.randf() * TAU + k * TAU / 3.0
+		var out := Vector3(sin(turn), 0.0, cos(turn))
+		var y := Sea.SURFACE - _rng.randf_range(0.25, 1.3)
+		if y < floor_y + 0.3:
+			continue
+		# (hanging off the pile's side, its top against the wood)
+		var basis := Basis(out.cross(Vector3.UP).normalized(), out, Vector3.UP.cross(out.cross(Vector3.UP).normalized())).orthonormalized()
+		_add_placed("mussel_clump", Transform3D(basis.scaled(Vector3.ONE * _rng.randf_range(0.9, 1.3)), Vector3(at.x, y, at.y) + out * 0.36))
+	var low := "strawberry_anemones" if shaded else "green_anemone"
+	var y2 := lerpf(floor_y + 0.5, Sea.SURFACE - 1.6, _rng.randf())
+	if y2 > floor_y + 0.3:
+		var turn2 := _rng.randf() * TAU
+		var out2 := Vector3(sin(turn2), 0.0, cos(turn2))
+		var basis2 := Basis(out2.cross(Vector3.UP).normalized(), out2, Vector3.UP.cross(out2.cross(Vector3.UP).normalized())).orthonormalized()
+		_add_placed(low, Transform3D(basis2, Vector3(at.x, y2, at.y) + out2 * 0.4))
+	if _rng.randf() < 0.5:
+		var star := "ochre_star" if _rng.randf() < 0.6 else "bat_star"
+		var foot := at + Vector2.from_angle(_rng.randf() * TAU) * 0.6
+		_add_placed(star, Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), Vector3(foot.x, Sea.ground(foot.x, foot.y) - 0.01, foot.y)))
+	_shell_spots.append(at)
+
+
+# The rings of shell hash round the piles' feet, painted on the sea's sand (FloorTypes: COARSE).
+func _paint_shells() -> void:
+	for node in get_parent().get_children():
+		if node is Sea and (node as Sea).sand:
+			for at in _shell_spots:
+				(node as Sea).sand.paint(Sand.Kind.COARSE, at, 0.9, 1.0, 0.8)
+
+
+# A floor piece added to what the LodField draws, in one of its tints (no spheres: it is small).
+func _add_placed(piece: String, where: Transform3D) -> void:
+	if not _placed.has(piece):
+		_placed[piece] = [[], []]
+	_placed[piece][0].append(where)
+	_placed[piece][1].append(_tint(piece))
 
 
 # A piece of litter lying on the floor, turned any way.
@@ -694,3 +773,50 @@ func _add_landmarks() -> void:
 		made.position = each[1]
 		made.rotation.y = each[2]
 		add_child(made)
+
+
+# ------------------------------------------------------------------------------ the deep's set pieces
+
+# The old one asleep on the canyon's deep floor, its face towards Atlantis, and the reef back
+# walking its slow loop on the deep floor past the shelf's edge (GameCommon's old-one and
+# reef-back; where they lie and walk is Claude's, tools/BIOMES.md). Their game models; the light
+# ones beyond GIANT_LOW. The old one's body and head stop a swimmer; the reef back walks, so it
+# does not (spheres are fixed).
+func _add_giants() -> void:
+	if ResourceLoader.exists(OLD_ONE):
+		_old_one = (load(OLD_ONE) as GDScript).new()
+		_old_one.set(&"game", true)
+		_old_one.set(&"cartoon_eyes", 1.0)
+		add_child(_old_one)
+		var at := Vector3(OLD_ONE_AT.x, Sea.ground(OLD_ONE_AT.x, OLD_ONE_AT.y), OLD_ONE_AT.y)
+		_old_one.global_position = at
+		var face := Vector3(Sea.RUINS_AT.x, at.y, Sea.RUINS_AT.z) - at
+		_old_one.rotation.y = atan2(-face.x, -face.z)
+		for s: Vector4 in [Vector4(0.0, 4.0, 2.0, 11.0), Vector4(0.0, 13.0, -4.0, 8.5), Vector4(0.0, 19.0, -5.0, 5.0)]:
+			var p := _old_one.global_transform * Vector3(s.x, s.y, s.z)
+			Sea.add_rock(Vector4(p.x, p.y, p.z, s.w))
+	if ResourceLoader.exists(REEF_BACK):
+		_reef_back = (load(REEF_BACK) as GDScript).new()
+		_reef_back.set(&"game", true)
+		_reef_back.set(&"cartoon_eyes", 1.0)
+		add_child(_reef_back)
+		_walk_giants(0.0)
+
+
+func _walk_giants(delta: float) -> void:
+	var eye := player.global_position if player else (get_viewport().get_camera_3d().global_position if get_viewport().get_camera_3d() else Vector3.ZERO)
+	if _old_one:
+		var far := eye.distance_to(_old_one.global_position)
+		# (it stirs as something comes near, slowly, and settles again when it has gone)
+		var stir := 1.0 - smoothstep(22.0, 55.0, far)
+		_old_one.set(&"wake", move_toward(float(_old_one.get(&"wake")), stir, delta * 0.12))
+		_old_one.set(&"low", far > GIANT_LOW)
+		_old_one.call(&"step", Vector3.ZERO, delta)
+	if _reef_back:
+		_reef_turn += delta * REEF_BACK_PACE / REEF_BACK_LOOP.z
+		var at := Vector2(REEF_BACK_LOOP.x, REEF_BACK_LOOP.y) + Vector2.from_angle(_reef_turn) * REEF_BACK_LOOP.z
+		var ahead := Vector2.from_angle(_reef_turn).orthogonal() * -1.0
+		_reef_back.global_position = Vector3(at.x, Sea.ground(at.x, at.y), at.y)
+		_reef_back.rotation.y = atan2(-ahead.x, -ahead.y)
+		_reef_back.set(&"low", eye.distance_to(_reef_back.global_position) > GIANT_LOW)
+		_reef_back.call(&"step", Vector3(ahead.x, 0.0, ahead.y) * REEF_BACK_PACE, delta)

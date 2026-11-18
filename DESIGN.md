@@ -65,8 +65,9 @@ ruins, and finds the pieces of the treasure. Between times there is a rod over t
 ## The treasure
 
 Five pieces, each in a chest that needs more gear than the last, so the plot is the gear ladder:
-the docks (under the wharf, a plain chest); the pirate ship's hold (crowbar); the liner's saloon (key ring, hard-hat
-suit); the temple at Atlantis (lamp, armoured suit); the last under the sleeping old one in the canyon's floor (the
+the docks (under the wharf, a plain chest); the pirate ship's hold (crowbar); the liner's saloon (key ring, armoured
+suit: its shelf is 25 to 35 m deep, past the hard-hat's 25 m; Claude's default while the user decides, tools/BIOMES.md
+section 9); the temple at Atlantis (lamp, armoured suit); the last under the sleeping old one in the canyon's floor (the
 deep suit, the winch). Each piece shows on the chart once found. Whose treasure it is ties to the photographs
 below; beyond the user's words nothing is written. Ask before writing lore.
 

@@ -55,6 +55,7 @@ const HARBOURS := [
 	[Vector2(42.0, 98.0), 26.0, 6.0],  # Monterey harbour, Fisherman's Wharf
 	[Vector2(-45.0, -134.0), 14.0, 5.0],  # Santa Cruz wharf
 	[Vector2(-18.0, -140.0), 9.0, 4.5],  # Santa Cruz small craft harbour
+	[Vector2(35.0, 176.0), 16.0, 8.0],  # Carmel: a cove off Carmel Beach for the market's pier (tools/BIOMES.md 5.12; Claude's)
 ]
 ## The Monterey Canyon: its head at Moss Landing, a narrow arm west between the two kelp
 ## forests, then widening into the deep basin that fills the middle of the map and runs south to
