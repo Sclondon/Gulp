@@ -94,9 +94,14 @@ static func paints() -> Dictionary:
 
 
 ## Paints any model built with the panel's material names (the computer on the boat, the helmet).
-## Its lamps are lit if `lit`.
-static func paint(model: Node3D, lit := false) -> void:
+## Its lamps are lit if `lit`. `atlas`: its own baked picture, if it is not the panel's.
+static func paint(model: Node3D, lit := false, atlas := "") -> void:
 	var all := paints()
+	if atlas != "":
+		all = {}
+		for named: String in paints():
+			all[named] = (paints()[named] as ShaderMaterial).duplicate()
+			all[named].set_shader_parameter(&"atlas", load(atlas))
 	var lamp: ShaderMaterial = null
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		for surface in mesh.mesh.get_surface_count():

@@ -514,6 +514,65 @@ def outline(inner):
                      (way * (half + 0.05) * reach, 0.12, SHOULDER - 0.05), (way * half, 0.12, SHOULDER - 0.3)], 0.04, ("Y", into), 4)
 
 
+# --- The paint: every part unwrapped into one atlas, and colour, light and contact shadow baked
+# into it.
+def unwrap(meshes):
+    """Lays every mesh out in one picture, at one scale."""
+    bpy.ops.object.select_all(action="DESELECT")
+    for obj in meshes:
+        obj.select_set(True)
+    bpy.context.view_layer.objects.active = meshes[0]
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(66.0), island_margin=0.002)
+    bpy.ops.uv.average_islands_scale()
+    bpy.ops.uv.pack_islands(margin=0.002)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
+def bake(path, size, first, then=()):
+    """Bakes the paint into a picture: `first` with `then` out of the way (what moves would leave
+    its shadow behind), then `then` in their places. Light from the upper left, in front."""
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    scene.cycles.samples = 96
+    scene.cycles.device = "CPU"
+    world = bpy.data.worlds.new("sky")
+    world.use_nodes = True
+    world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.9, 0.86, 0.8, 1.0)
+    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.55
+    scene.world = world
+    sun = bpy.data.lights.new("sun", "SUN")
+    sun.energy = 1.7
+    sun.angle = math.radians(12.0)
+    lamp = bpy.data.objects.new("sun", sun)
+    bpy.context.collection.objects.link(lamp)
+    lamp.rotation_euler = (math.radians(58.0), 0.0, math.radians(-32.0))
+    image = bpy.data.images.new(os.path.basename(path), size, size, alpha=False)
+    for made in bpy.data.materials:
+        node = made.node_tree.nodes.new("ShaderNodeTexImage")
+        node.image = image
+        made.node_tree.nodes.active = node
+    scene.render.bake.margin = 6
+    for obj in then:
+        obj.hide_render = True
+    for k, group in enumerate((first, then)):
+        if not group:
+            continue
+        for obj in then:
+            obj.hide_render = k == 0
+        bpy.ops.object.select_all(action="DESELECT")
+        for obj in group:
+            obj.select_set(True)
+        bpy.context.view_layer.objects.active = group[0]
+        bpy.ops.object.bake(type="COMBINED", use_clear=k == 0)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    image.filepath_raw = path
+    image.file_format = "PNG"
+    image.save()
+    print("PANEL baked", path)
+
+
 # --- The helm housing: a socket with a rubber boot and a stick; over it the evolution dial,
 # between two electrodes that stand over the housing's top.
 plate(SIDE_WIDE, SHOULDER, [(BIG_DIAL[0], BIG_DIAL[1], 0.8)])
@@ -651,71 +710,17 @@ for obj in meshes:
 print("PANEL triangles %d; side %.2f x %.2f; well z %.2f; slot r %.2f from %.1f to %.1f deg; gauges %.2f x %.2f; swing %.1f"
       % (triangles, SIDE_WIDE, SIDE_TALL, WELL_Z, SLOT_R, math.degrees(SLOT_FROM), math.degrees(SLOT_TO), GAUGE_WIDE, GAUGE_TALL, SWING))
 
-# --- The paint: every part unwrapped into one atlas, and colour, light and contact shadow baked
-# into it. The housings are stood apart for the bake (as built they overlap: the game places them).
-bpy.ops.object.select_all(action="DESELECT")
-for obj in meshes:
-    obj.select_set(True)
-bpy.context.view_layer.objects.active = meshes[0]
-bpy.ops.object.mode_set(mode="EDIT")
-bpy.ops.mesh.select_all(action="SELECT")
-bpy.ops.uv.smart_project(angle_limit=math.radians(66.0), island_margin=0.002)
-bpy.ops.uv.average_islands_scale()
-bpy.ops.uv.pack_islands(margin=0.002)
-bpy.ops.object.mode_set(mode="OBJECT")
-
+# The housings are stood apart for the bake (as built they overlap: the game places them).
+unwrap(meshes)
 if BAKE:
-    scene = bpy.context.scene
-    scene.render.engine = "CYCLES"
-    scene.cycles.samples = 96
-    scene.cycles.device = "CPU"
-    world = bpy.data.worlds.new("sky")
-    world.use_nodes = True
-    world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.9, 0.86, 0.8, 1.0)
-    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.55
-    scene.world = world
-    sun = bpy.data.lights.new("sun", "SUN")
-    sun.energy = 1.7
-    sun.angle = math.radians(12.0)
-    lamp = bpy.data.objects.new("sun", sun)
-    bpy.context.collection.objects.link(lamp)
-    # (from the upper left, in front)
-    lamp.rotation_euler = (math.radians(58.0), 0.0, math.radians(-32.0))
-    image = bpy.data.images.new("panel_atlas", ATLAS_SIZE, ATLAS_SIZE, alpha=False)
-    for made in bpy.data.materials:
-        node = made.node_tree.nodes.new("ShaderNodeTexImage")
-        node.image = image
-        made.node_tree.nodes.active = node
     engine.location.x = 8.0
     gauges.location.x = -8.0
     bpy.context.view_layer.update()
     bodies = [helm, engine, gauges]
-    movers = [obj for obj in meshes if obj not in bodies]
-    scene.render.bake.margin = 6
-    # first the housings, with nothing that moves in the way (its shadow would stay behind) ...
-    for obj in movers:
-        obj.hide_render = True
-    bpy.ops.object.select_all(action="DESELECT")
-    for obj in bodies:
-        obj.select_set(True)
-    bpy.context.view_layer.objects.active = bodies[0]
-    bpy.ops.object.bake(type="COMBINED", use_clear=True)
-    # ... then the moving parts, in their places
-    for obj in movers:
-        obj.hide_render = False
-    bpy.ops.object.select_all(action="DESELECT")
-    for obj in movers:
-        obj.select_set(True)
-    bpy.context.view_layer.objects.active = movers[0]
-    bpy.ops.object.bake(type="COMBINED", use_clear=False)
+    bake(ATLAS, ATLAS_SIZE, bodies, [obj for obj in meshes if obj not in bodies])
     engine.location.x = 0.0
     gauges.location.x = 0.0
     bpy.context.view_layer.update()
-    os.makedirs(os.path.dirname(ATLAS), exist_ok=True)
-    image.filepath_raw = ATLAS
-    image.file_format = "PNG"
-    image.save()
-    print("PANEL baked", ATLAS)
 
 os.makedirs(os.path.dirname(BLEND), exist_ok=True)
 bpy.ops.wm.save_as_mainfile(filepath=BLEND)

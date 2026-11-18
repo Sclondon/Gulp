@@ -87,6 +87,9 @@ func _ready() -> void:
 			_touching = true
 		elif arg == "--title":
 			_titled = true
+		elif arg == "--dive":
+			_titled = true
+			_trick = "--dive"
 		elif arg == "--calm":
 			calm = true
 		elif arg == "--over":
@@ -335,6 +338,9 @@ func _open_title() -> void:
 func _title_step(delta: float) -> void:
 	if _dive < 0.0:
 		camera.global_transform = title.eye(size.y > size.x)
+		if _trick == "--dive" and _clock > 0.6:
+			_trick = ""
+			_card.go.emit()
 		return
 	_dive += delta / 1.8
 	life.step(delta)

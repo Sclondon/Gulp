@@ -24,6 +24,8 @@ const FIGURES := "res://scripts/title_figures.gd"
 ## How big the computer is beside the model it shares with the TouchPad, and how high its bench is (m).
 const COMPUTER := 0.3
 const BENCH := 0.5
+## The boy's head, as a radius over his hair (m): what the helmet is sized to.
+const HEAD := 0.128
 ## Where things go on the boat if its model does not say (metres from its middle at the waterline;
 ## the bow is towards -Z).
 const SPOTS := {
@@ -50,21 +52,27 @@ func _ready() -> void:
 	if ResourceLoader.exists(BOAT):
 		var hull: Node3D = (load(BOAT) as PackedScene).instantiate()
 		boat.add_child(hull)
+		# (its plank lines and grime are vertex colours)
+		for mesh: MeshInstance3D in hull.find_children("*", "MeshInstance3D", true, false):
+			for surface in mesh.mesh.get_surface_count():
+				var paint := mesh.mesh.surface_get_material(surface) as StandardMaterial3D
+				if paint:
+					paint.vertex_color_use_as_albedo = true
 		for named: String in SPOTS:
 			var marker := hull.find_child(named) as Node3D
 			if marker:
 				_spots[named] = _place_in(marker, boat)
 	# The computer: the control panel's three housings side by side on a bench, leaning back.
 	var parts: Node3D = (load(HELMET) as PackedScene).instantiate()
-	PanelModel.paint(parts, true)
+	PanelModel.paint(parts, true, "res://textures/panel/helmet_atlas.png")
 	var bench := parts.find_child("Bench") as Node3D
 	bench.get_parent().remove_child(bench)
-	bench.position = _spots["ConsoleSpot"]
+	bench.position = _spots["ConsoleSpot"] + Vector3(0.0, 0.0, 0.34)
 	boat.add_child(bench)
 	var computer: Node3D = (load(PANEL) as PackedScene).instantiate()
 	PanelModel.paint(computer, true)
 	computer.scale = Vector3.ONE * COMPUTER
-	computer.position = _spots["ConsoleSpot"] + Vector3(0.0, BENCH, -0.06)
+	computer.position = _spots["ConsoleSpot"] + Vector3(0.0, BENCH, 0.2)
 	computer.rotation.x = -0.14
 	(computer.find_child("Helm") as Node3D).position.x = -(PanelModel.GAUGE_WIDE + PanelModel.SIDE_WIDE) * 0.5 - 0.15
 	(computer.find_child("Engine") as Node3D).position.x = (PanelModel.GAUGE_WIDE + PanelModel.SIDE_WIDE) * 0.5 + 0.15
@@ -89,9 +97,9 @@ func _ready() -> void:
 			_helmet = parts.find_child("Helmet") as Node3D
 			_helmet.get_parent().remove_child(_helmet)
 			head.add_child(_helmet)
-			var fit: Variant = figures.get(&"HELMET_FIT")
-			if fit is Transform3D:
-				_helmet.transform = fit
+			# (built round a head of radius 1 with its face to +Z, as the mount is: sized to his, and sat
+			# on the middle of his skull)
+			_helmet.transform = Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * HEAD), Vector3(0.0, 0.1, 0.005))
 			var cable := parts.find_child("Cable") as Node3D
 			cable.get_parent().remove_child(cable)
 			for named: String in ["CableA", "CableB"]:
@@ -122,18 +130,18 @@ func _process(delta: float) -> void:
 	# The cables, from the helmet's sockets to the top of the computer, hanging slack.
 	for k in _cables.size():
 		var from := boat.to_local(_sockets[k].global_position)
-		var to: Vector3 = _spots["HelmetCable"] + Vector3((k - 0.5) * 0.5, 0.0, 0.0)
+		var to: Vector3 = _spots["HelmetCable"] + Vector3((k - 0.5) * 0.5, -0.35, 0.2)
 		var along := to - from
 		var long := along.length()
 		var side := along.cross(Vector3.UP).normalized() * long
-		_cables[k].transform = Transform3D(Basis(along, Vector3.UP * long * 1.4, side), from)
+		_cables[k].transform = Transform3D(Basis(along, Vector3.UP * long * 0.8, side * 0.7), from)
 
 
 ## Where the eye stands (in the world): astern and above, looking into the open cabin; further
 ## back in an upright window, where the picture is narrow.
 func eye(upright: bool) -> Transform3D:
-	var back := 11.5 if upright else 8.6
-	var from := global_position + Vector3(0.6 if not upright else 0.0, 3.0 if not upright else 3.8, _spots["ConsoleSpot"].z + back)
+	var back := 9.5 if upright else 7.9
+	var from := global_position + Vector3(0.0, 2.7 if not upright else 3.2, _spots["ConsoleSpot"].z + back)
 	var at: Vector3 = global_position + _spots["ConsoleSpot"] + Vector3(0.0, 0.9, 0.6)
 	return Transform3D(Basis.IDENTITY, from).looking_at(at, Vector3.UP)
 
