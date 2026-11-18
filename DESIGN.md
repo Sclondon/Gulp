@@ -106,6 +106,7 @@ evolution tree on a green tube screen, the sale scale, the shop at the chart tab
 
 ## Open questions for the user
 
-- Is the arcade's online arena still wanted beside this (it is a different game from the loop above)?
+- (Answered, the user: "yes the arena should still be part of the fish control aspect": fish runs can be the online
+  arena; how a sale works from an arena run is not designed yet.)
 - Phones: walking as the diver needs the same stick and buttons; is the panel kept in the suit, or a simpler one?
 - Does dying as a fish lose anything but the run?

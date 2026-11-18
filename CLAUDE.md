@@ -357,3 +357,10 @@ a half on a Windows desktop browser. Build the web export from the clean worktre
   call `finish()`, wait for `done`), seen alone with `tests/loading_view.gd`. To wire in: show it over everything from
   the first frame, feed it the warm-up's share done (`Main._warm`), finish it when the title is ready. The captain
   also gets "a tasteful bulge" (the user), passed to the figure builder.
+- The loading screen uses the real sardine (the user: "it needs to be actual sardines making the wayside logo in the
+  loading"): `Sardine.school_mesh()` WITHOUT its automatic LODs (seen small, Godot drew the crudest one: a few spikes),
+  in a SubViewport world of its own with the schools' shader; the round mark only is made of fish (about 700), the
+  lettering is the logo's own, shown as they settle (Claude's pick: the letters are too fine for fish that read as
+  fish). The two smaller logo copies in textures/loading (`_small`, `_116`) are retired.
+- "yes the arena should still be part of the fish control aspect" (the user, 2026-11-18): the online arena stays,
+  inside the fish runs of DESIGN.md.
