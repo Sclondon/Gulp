@@ -173,3 +173,17 @@ Not verified or rough:
 - The camera does not avoid rocks. Fish turn away from rocks only by being pushed out of their spheres.
 - The red edge is drawn as nested rings and shows faint lines. The picture is very blue; fish colours are muted.
 - No sound at all. No attract script, no dev panel (the arguments stand in for one), no web export preset.
+
+## Model weight, and the Twilight Princess yardstick (2026-11-18)
+
+The user: "We should have a twilight princess model to compare to so we can make low poly versions while maintaining
+high quality looks and silhouettes", then "we literally have model references": use the data on this machine, not web
+figures. The references (looked at and measured only; nothing of them is copied into any project):
+`Gloaming/ConceptArt/GameCube - ... - Link (Sumo).zip` (4,174 triangles) and, in `C:\Users\stewa\Downloads`, the same
+set's `Link (Zora Armor)` (5,671), `Bosses - Dangoro` (2,451 with its floor pieces) and `Locations - Palace of
+Twilight`. Gloaming's own figures were cut to that fidelity (`man_tp.glb`, about 4,500 dressed).
+
+Gulp's models as built (`tests/wire.gd` counts every kind and saves a wireframe of each): full 5,000 to 73,000
+triangles (most fish 30,000 to 60,000), low 450 to 6,400; 3.1 million against 251,000 in all. The full ones spend
+their triangles as an even fine grid; the reference spends them unevenly: dense at the face, hands and edges of the
+outline, a few big triangles across flat stretches. Not yet done: a "game" model of each at that budget.
