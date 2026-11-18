@@ -33,6 +33,12 @@ const EASE_SLOPE := 0.6
 ## The easing is whole within the first of these from the shore (m) and gone by the second.
 const EASE_NEAR := Vector2(25.0, 40.0)
 const OUT := "res://data/monterey.bin"
+## The user's trench (see _trench).
+const TRENCH := "res://data/trench_mask.png"
+const SHELF := 26.0
+const SHELF_EASE := 5.0
+const WALL := 3.0
+const TRENCH_SHORE := 12.0
 ## The smoothing: box blurs this many cells round, this many times (about a Gaussian).
 const BLUR := 2
 const BLUR_PASSES := 3
@@ -120,6 +126,7 @@ func _initialize() -> void:
 	# ovals once the depths were squeezed), wet points only, so the shore stays where it is.
 	for blur_pass in BLUR_PASSES:
 		wide = _blur(wide, cols, rows, BLUR)
+	wide = _trench(wide, cols, rows)
 	var shore := _shore_distance(wide, cols, rows)
 	# The near shore eased.
 	# (only near the shore, EASE_NEAR; and a canyon that drops far below the eased slope keeps its
@@ -156,6 +163,38 @@ func _initialize() -> void:
 			var r := clampi(int(round((p.y - NORTH) / CELL)), 0, rows - 1)
 			print("PLACE %s: (%.1f, %.1f) depth %.1f, shore %.1f" % [name, p.x, p.y, wide[r * cols + c], shore[r * cols + c]])
 	quit()
+
+
+# The trench where the user drew it (data/trench_mask.png, tools/trench_mask.gd: "The trench area needs to
+# be skinner, just showing roughish boundaries"): outside it the floor is raised to the shelf (no deeper
+# than SHELF, eased in over SHELF_EASE m from its edge); inside, it is at least as deep as a wall going
+# down WALL m a metre from the edge would make it (so a branch the real floor has shallow, as the Soquel
+# Canyon, is cut), but never within TRENCH_SHORE of a shore (the slough, Carmel Cove and the canyon's head
+# at Moss Landing keep their own floors).
+func _trench(src: PackedFloat32Array, cols: int, rows: int) -> PackedFloat32Array:
+	if not FileAccess.file_exists(TRENCH):
+		print("BAKE no trench mask: the floor as it is")
+		return src
+	var mask := Image.load_from_file(TRENCH)
+	var inside := PackedFloat32Array()
+	inside.resize(cols * rows)
+	for r in rows:
+		for c in cols:
+			var m := mask.get_pixel(mini(c, mask.get_width() - 1), mini(r, mask.get_height() - 1)).r > 0.5
+			inside[r * cols + c] = 1.0 if m else -1.0
+	var to_out := _chamfer(inside, cols, rows, true)
+	var to_in := _chamfer(inside, cols, rows, false)
+	var shore := _shore_distance(src, cols, rows)
+	var out := src.duplicate()
+	for i in src.size():
+		if src[i] <= 0.0:
+			continue
+		if inside[i] > 0.0:
+			var cut := SHELF + clampf(to_out[i] * WALL, 0.0, 70.0)
+			out[i] = lerpf(src[i], maxf(src[i], cut), smoothstep(TRENCH_SHORE * 0.5, TRENCH_SHORE, shore[i]))
+		else:
+			out[i] = lerpf(src[i], minf(src[i], SHELF), smoothstep(0.0, SHELF_EASE, to_in[i]))
+	return out
 
 
 # A box blur `r` cells round, of the wet points among wet points (land is left as it is).

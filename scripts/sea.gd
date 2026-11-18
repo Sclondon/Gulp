@@ -47,15 +47,15 @@ const ZONES := {
 	"trench": {"at": Vector2(30.0, -36.0), "radius": 45.0, "deeper": 45.0},
 	"ruins": {"at": Vector2(-53.0, 26.0), "radius": 30.0},
 	"grass": {"at": Vector2(82.0, 52.0), "radius": 12.0},
-	"reef": {"at": Vector2(6.0, 124.0), "radius": 24.0},
+	"reef": {"at": Vector2(6.0, 119.0), "radius": 24.0},
 	"open": {"at": Vector2(-95.0, 10.0), "radius": 24.0},
 }
 ## The liner's wreck (scripts/wreck.gd, another agent's): where the middle of its keel rests on the
 ## bottom, and its turn (rotation.y; the hull's length lies along the node's own Z). Across the head of the Carmel
 ## Canyon like a bridge (the user, 2026-11-18: "The liner should sit across the carmel trench top like a
-## bridge"): its ends rest on the rims 33 m down (Bay.WRECK_SHELF and WRECK_SEAT_SOUTH, two small seats), the
-## canyon open under its middle down to 60 to 70 m. Found by tools/bay_probe.gd --span.
-const WRECK_AT := Vector3(6.0, 6.8, 124.0)
+## bridge"): its ends rest on the rims 25 m down (Bay.WRECK_SHELF and WRECK_SEAT_SOUTH, two small seats), the
+## canyon open under its middle down to about 60 m (the user drew the canyon narrow there: about 22 m across). Found by tools/bay_probe.gd --span.
+const WRECK_AT := Vector3(6.0, 15.0, 119.0)
 const WRECK_HEADING := 0.13
 ## Atlantis (scripts/ruins.gd, another agent's): the middle of its terrace on the bottom, and its
 ## turn (its front, the node's -Z, faces north-east, up the canyon). In the canyon's deep basin, 93 m down, on

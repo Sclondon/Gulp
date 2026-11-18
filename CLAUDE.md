@@ -414,6 +414,16 @@ choices below are Claude's.
   its ends on the two rims 33 m down, the canyon open under its middle to 60 to 70 m (`tools/bay_probe.gd --span=`
   found it: the rims within 0.3 m of each other). The ends rest on two small seats, `Bay.WRECK_SHELF` (north) and
   `WRECK_SEAT_SOUTH`, whose 7th item makes a shelf fill only (never dig), level under what rests on it.
+- **The trench as the user drew it** (2026-11-18, red lines over the overhead chart: "The trench area needs to be
+  skinner, just showing roughish boundaries"; kept as `tools/art_src/user_trench_lines.png`). `tools/trench_mask.gd`
+  turns the lines into `data/trench_mask.png` (1 m a pixel): it joins their loose ends to the shore or the map's edge
+  (`CLOSE`, Claude's reading), fills the deep water from `SEEDS` (the canyon, the Soquel branch the user drew, the open
+  west, the deep south-west, the Carmel Canyon) and keeps it out of the slough. `tools/bake_bay.gd` then raises the
+  floor outside the mask to the shelf (26 m) and inside cuts at least a wall 3 m down a metre from its edge (so the
+  Soquel branch, shallow in the real floor, is a canyon), never within 12 m of a shore. Re-run both after changing
+  either. Reading of the drawing (Claude's): the west of the map beyond the north line is deep open water, as is the
+  south-west between the lines; the south of the Carmel Canyon's south line is shelf. The liner now spans the narrow
+  Carmel Canyon at (6, 119), its ends on the rims 25 m down (it needs only the 30 m amplifier now).
 - `tests/overhead.gd` now tints the land and draws the shoreline in cyan (the user: "Need too see where the shoreline
   is on the map").
 - **Decision: rock walls** (the cliffs). What: steep floor (`wall_from`/`wall_to` on 1 - the normal's y) is painted
