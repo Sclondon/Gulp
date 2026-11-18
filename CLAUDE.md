@@ -497,3 +497,7 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
 - "and if you need more poses for concept art ask for them" (the user, 2026-11-18): builders are to ask for any view
   they lack (a level-armed T-pose, head turnarounds, hands, seated) rather than guess; Claude generates it in the
   figure's own Gemini conversation.
+- More captain sheets (2026-11-18): `concept_captain_head.jpg` (head turnaround, five views), `concept_captain_closed.jpg`,
+  `concept_captain_hands_wheel.jpg`, `concept_captain_tpose2.jpg`. The generator will not draw level arms: two tries at a
+  true T-pose both came out with the arms hanging low, so figures are built and overlaid in the sheet's own pose.
+  Gemini's limit: about ten pictures, then a five-hour wait (used up again at 3:34 AM, resets 8:15 AM).
