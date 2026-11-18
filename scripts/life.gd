@@ -3,8 +3,11 @@ extends Node3D
 ## Everything else that lives in the sea, and who eats whom.
 ##
 ## - Clouds of krill and schools of sardines: each a GameCommon Flock (one draw each).
-## - The other fish, one by one (Creature): small fish, young salmon, salmon, tuna, sharks.
+## - The other swimmers, one by one (Creature): loaches, trout, flying fish, young salmon,
+##   catfish, salmon, moray eels, tuna, Humboldt squid, sailfish, swordfish, sharks and one
+##   giant squid, each keeping to its own depth.
 ## - Moon jellies (MoonJelly, from Moon Jellies), drifting about and glowing.
+## - Sea nettles (SeaNettle), bigger, trailing long strands that sting.
 ##
 ## The one rule (`can_eat`): a mouth eats what is no more than `BITE` of its own length. So the
 ## player eats whatever is small enough (and not too small to bother with: `WORTH`) when its
@@ -23,13 +26,22 @@ const WORTH := 0.08
 ## How much food a jelly is for its size (it is mostly water), and krill and fish.
 const JELLY_RICH := 0.35
 
-## The other fish: kind, how many, and how long (from, to).
+## The other swimmers: kind, how many, how long (from, to), and the depth each keeps to when it
+## wanders (from, to: 0 the floor, 1 the surface).
 const FISH := [
-	["reef", 4, 0.3, 0.45], ["reef2", 4, 0.3, 0.45], ["reef3", 4, 0.32, 0.45],
-	["smolt", 7, 0.5, 0.62],
-	["salmon", 6, 0.9, 1.2],
-	["tuna", 4, 2.0, 2.5],
-	["shark", 3, 3.4, 4.6],
+	["loach", 4, 0.16, 0.24, 0.0, 0.2],
+	["trout", 4, 0.3, 0.45, 0.2, 0.8], ["golden", 3, 0.32, 0.45, 0.2, 0.8],
+	["flying", 6, 0.24, 0.32, 0.8, 1.0],
+	["smolt", 6, 0.5, 0.62, 0.3, 0.9],
+	["catfish", 3, 0.55, 0.8, 0.0, 0.1],
+	["salmon", 5, 0.9, 1.2, 0.3, 0.9],
+	["eel", 3, 1.4, 1.9, 0.0, 0.15],
+	["tuna", 3, 2.0, 2.5, 0.4, 0.95],
+	["humboldt", 3, 1.9, 2.4, 0.1, 0.5],
+	["sailfish", 2, 2.5, 3.0, 0.6, 0.97],
+	["swordfish", 2, 3.1, 3.8, 0.3, 0.8],
+	["shark", 2, 3.6, 4.6, 0.2, 0.9],
+	["giant", 1, 7.0, 7.0, 0.05, 0.4],
 ]
 const KRILL_CLOUDS := 6
 const KRILL_EACH := 60
@@ -38,6 +50,11 @@ const SARDINE_SCHOOLS := 4
 const SARDINES_EACH := 36
 const SARDINE_LENGTH := 0.2
 const JELLIES := 9
+## Sea nettles: how many, how big beside the creature as built (its bell 1.8 m across, its strands
+## 5 m), and how long one counts as for the eating rule.
+const NETTLES := 2
+const NETTLE_SIZE := 0.45
+const NETTLE_LENGTH := 1.6
 ## How far off a school of sardines, a cloud of krill and a jelly are still moved and drawn (m).
 const SARDINES_SEEN := 32.0
 const KRILL_SEEN := 18.0
@@ -57,12 +74,15 @@ var steps := 0
 
 var creatures: Array[Creature] = []
 var jellies: Array[MoonJelly] = []
+var nettles: Array[SeaNettle] = []
 ## Each: {flock, length, rich, goal, radius, low, high, seen}.
 var schools: Array[Dictionary] = []
 
 var _rng := RandomNumberGenerator.new()
 var _jelly_away: Array[float] = []
 var _jelly_time: Array[float] = []
+var _nettle_away: Array[float] = []
+var _nettle_goal: Array[Vector3] = []
 
 
 ## Whether something `eater` metres long can eat something `prey` metres long.
@@ -81,15 +101,16 @@ func _ready() -> void:
 	for i in KRILL_CLOUDS:
 		_school(_krill_rules(), _krill_mesh(), KRILL_LENGTH, Sea.SURFACE - 7.0, Sea.SURFACE - 3.0, i)
 	for i in SARDINE_SCHOOLS:
-		_school(_sardine_rules(), Fish.mesh_of("sardine"), SARDINE_LENGTH, 6.0, Sea.SURFACE - 6.0, 100 + i)
+		_school(_sardine_rules(), Fish.school_mesh(), SARDINE_LENGTH, 6.0, Sea.SURFACE - 6.0, 100 + i)
 	for each: Array in FISH:
 		for i in int(each[1]):
 			var made := Creature.new()
 			made._rng.seed = _rng.randi()
 			add_child(made)
 			made.length = _rng.randf_range(each[2], each[3])
+			made.band = Vector2(each[4], each[5])
 			made.set_kind(each[0])
-			made.place(Sea.open_water(_rng, made.length * 0.5))
+			made.place(made.somewhere())
 			creatures.append(made)
 	for i in JELLIES:
 		var jelly := MoonJelly.new()
@@ -103,6 +124,17 @@ func _ready() -> void:
 		_jelly_away.append(0.0)
 		_jelly_time.append(0.0)
 		_place_jelly(i, Sea.open_water(_rng, 1.0))
+	for i in NETTLES:
+		var nettle := SeaNettle.new()
+		nettle.scale = Vector3.ONE * NETTLE_SIZE
+		# (the game has no sound yet: its own is kept all but silent)
+		nettle.volume_db = -80.0
+		nettle.glow = 0.35
+		add_child(nettle)
+		nettles.append(nettle)
+		_nettle_away.append(0.0)
+		_nettle_goal.append(Vector3.ZERO)
+		_place_nettle(i, Sea.open_water(_rng, 3.0))
 
 
 ## A new run has begun at a place: whatever could hunt the player there leaves it alone a while.
@@ -119,6 +151,7 @@ func step(delta: float) -> void:
 	_step_creatures(delta)
 	var t2 := Time.get_ticks_usec()
 	_step_jellies(delta)
+	_step_nettles(delta)
 	cost_usec += Vector3(t1 - t0, t2 - t1, Time.get_ticks_usec() - t2)
 	for school in schools:
 		if (school.flock as Flock).visible:
@@ -168,6 +201,10 @@ func threats() -> Array:
 	for i in jellies.size():
 		if _jelly_away[i] <= 0.0 and not can_eat(player.length, jellies[i].size * 2.0):
 			found.append([jellies[i].global_position, jellies[i].size * 2.0])
+	for i in nettles.size():
+		if _nettle_away[i] <= 0.0 and not can_eat(player.length, NETTLE_LENGTH):
+			# (its strands hang under it)
+			found.append([nettles[i].global_position + Vector3.DOWN * 0.8, 3.0])
 	return found
 
 
@@ -214,9 +251,10 @@ func _step_creatures(delta: float) -> void:
 		if each.away > 0.0:
 			each.away -= delta
 			if each.away <= 0.0:
-				each.place(Sea.open_water(_rng, each.length * 0.5, player.global_position, 24.0))
+				each.place(each.somewhere(player.global_position, 24.0))
 			continue
 		each.step(delta, player, hunting)
+		each.detail(each.global_position.distance_to(player.global_position) < 5.0 + each.length * 4.0)
 		if not player.alive:
 			continue
 		if each.mode == Creature.Mode.HUNT:
@@ -258,6 +296,54 @@ func _step_jellies(delta: float) -> void:
 				_jelly_away[i] = _rng.randf_range(8.0, 16.0)
 		elif hunting and not can_eat(player.length, wide) and jelly.global_position.distance_to(player.global_position) < jelly.size * 0.85 + player.length * 0.25:
 			player.die("jelly")
+
+
+## The nettles drift from place to place, a push with each beat of the bell. Their strands sting
+## whatever cannot eat them; what can, eats one by reaching its bell.
+func _step_nettles(delta: float) -> void:
+	for i in nettles.size():
+		var nettle := nettles[i]
+		if _nettle_away[i] > 0.0:
+			_nettle_away[i] -= delta
+			if _nettle_away[i] <= 0.0:
+				_place_nettle(i, Sea.open_water(_rng, 3.0, player.global_position, 24.0))
+			continue
+		var far := nettle.global_position.distance_to(player.global_position)
+		if far > JELLY_SEEN:
+			continue
+		if nettle.global_position.distance_to(_nettle_goal[i]) < 1.5:
+			_nettle_goal[i] = _nettle_place(Sea.open_water(_rng, 3.0))
+		var way := (_nettle_goal[i] - nettle.global_position).normalized()
+		nettle.global_position += way * (0.12 + 0.5 * nettle.thrust) * delta
+		nettle.step(Vector3.ZERO, delta)
+		if not player.alive or far > 8.0:
+			continue
+		if is_food(player.length, NETTLE_LENGTH):
+			if nettle.global_position.distance_to(player.mouth()) < player.length * 0.3 + SeaNettle.RADIUS * NETTLE_SIZE:
+				player.feed(NETTLE_LENGTH, JELLY_RICH)
+				nettle.visible = false
+				_nettle_away[i] = _rng.randf_range(12.0, 20.0)
+		elif hunting and not can_eat(player.length, NETTLE_LENGTH):
+			var half := player.heading * player.length * 0.4
+			var bell := far < SeaNettle.RADIUS * NETTLE_SIZE + player.length * 0.25
+			if bell or nettle.touches(player.global_position - half, player.global_position + half, player.length * 0.12):
+				nettle.sting(player.global_position)
+				player.die("nettle")
+
+
+## A place for a nettle: high enough that its strands hang clear of the floor.
+func _nettle_place(at: Vector3) -> Vector3:
+	at.y = maxf(at.y, Sea.ground(at.x, at.z) + SeaNettle.TENTACLE_LONG * NETTLE_SIZE + 0.5)
+	return Sea.keep_in(at, 1.0)
+
+
+func _place_nettle(i: int, at: Vector3) -> void:
+	var nettle := nettles[i]
+	nettle.global_position = _nettle_place(at)
+	nettle.visible = true
+	nettle.lay_ropes()
+	_nettle_away[i] = 0.0
+	_nettle_goal[i] = nettle.global_position
 
 
 func _place_jelly(i: int, at: Vector3) -> void:
@@ -328,9 +414,10 @@ func _sardine_rules() -> FlockRules:
 	var r := FlockRules.fish_school()
 	r.count = SARDINES_EACH
 	r.body = FlockRules.Body.CUSTOM
-	r.size = SARDINE_LENGTH / 1.1
+	# (the school mesh is life size, and brings its own colours)
+	r.size = SARDINE_LENGTH / Sardine.LENGTH
 	r.colour = Color(1.0, 1.0, 1.0)
-	r.colour_variation = 0.08
+	r.colour_variation = 0.0
 	r.max_speed = 2.3
 	r.min_speed = 0.6
 	r.cruise_speed = 1.3

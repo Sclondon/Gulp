@@ -5,3 +5,6 @@
 # Exports and pictures
 # (the web build is kept: GitHub Pages serves it to the arcade)
 shots/
+# The editable .blend files of the creatures are kept in GameCommon (C:/Projects/GameCommon/godot/<name>),
+# and each is rebuilt by its build script here: they are too big for this repo, which GitHub Pages serves.
+creatures/*/tools/*.blend

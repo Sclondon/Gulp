@@ -1,17 +1,19 @@
 class_name Fish
 extends Node3D
-## A fish of any of the game's kinds, at any length: what the player is, and what the other
-## fish are (Player and Creature extend this).
+## A swimmer of any of the game's kinds, at any length: what the player is, and what the other
+## fish (and eels and squids) are (Player and Creature extend this).
 ##
-## The meshes are Salmon Run 2's (scripts/world/props.gd, copied whole: its sardine, small
-## fish, sockeye at two ages, tuna and shark), all with the nose at -z; each is drawn so that
-## it is `length` metres from nose to tail, with its middle at this node. shaders/fish.gdshader
-## wags its tail and bends it into a turn.
+## Each kind is drawn by its GameCommon creature (creatures/<name>: a model built in Blender, its
+## markings and swimming in its own shader), made `length` metres from nose to tail with its
+## middle at this node, its nose at -z. Only the shark is still Salmon Run 2's code-built mesh
+## (scripts/world/props.gd) under shaders/fish.gdshader: there is no shark model yet.
 
 const Props := preload("res://scripts/world/props.gd")
 const SHADER := preload("res://shaders/fish.gdshader")
+## How far a fish's body bends into its tightest turn (radians, gills to tail).
+const CURL := 0.7
 
-## What it is: "sardine", "reef", "reef2", "reef3", "smolt", "salmon", "tuna" or "shark".
+## What it is: one of `KINDS`.
 var kind := ""
 ## Nose to tail, in metres.
 var length := 0.2: set = set_length
@@ -19,10 +21,25 @@ var length := 0.2: set = set_length
 var heading := Vector3.FORWARD
 var velocity := Vector3.ZERO
 
-var _body: MeshInstance3D
+## Every kind there is.
+const KINDS: Array[String] = [
+	"sardine", "loach", "trout", "golden", "flying", "smolt", "catfish", "salmon", "eel", "tuna",
+	"humboldt", "sailfish", "swordfish", "shark", "giant",
+]
+
+# The holder that is scaled to the fish's length, and what is in it: a creature's node, or (the
+# shark) a mesh under `_material`.
+var _body: Node3D
+var _look: Node3D
 var _material: ShaderMaterial
-var _units := 1.0
-var _middle := 0.0
+# How long the look is as built, and how far its nose is ahead of its own origin.
+var _long := 1.0
+var _front := 0.5
+# The look's own seconds a beat, whether its shader bends into a turn, and whether it is near
+# enough to be drawn in full.
+var _beat := 0.0
+var _curls := false
+var _near := true
 var _phase := randf() * TAU
 var _bend := 0.0
 var _flash := 0.0
@@ -35,50 +52,72 @@ static func pace(of_length: float) -> float:
 	return 2.4 * pow(of_length, 0.35) + 0.4
 
 
-## The mesh of a kind (made once).
-static func mesh_of(of_kind: String) -> Mesh:
-	if not _meshes.has(of_kind):
-		var made: Mesh
-		match of_kind:
-			"sardine": made = Props.sardine()
-			"reef": made = Props.small_fish(Color(0.2, 0.5, 0.45), Color(0.9, 0.86, 0.6))
-			"reef2": made = Props.small_fish(Color(0.45, 0.4, 0.6), Color(0.95, 0.75, 0.8))
-			"reef3": made = Props.small_fish(Color(0.3, 0.42, 0.55), Color(0.82, 0.88, 0.92))
-			"smolt": made = Props.salmon("smolt")
-			"salmon": made = Props.salmon("ocean")
-			"tuna": made = Props.tuna()
-			"shark": made = Props.shark_whole()
-			_: push_error("Fish: no such kind: " + of_kind)
-		_meshes[of_kind] = made
-	return _meshes[of_kind]
+## The light mesh that a school of sardines is drawn with, many at once (its nose at -z).
+static func school_mesh() -> Mesh:
+	return Sardine.school_mesh()
 
 
-## Makes it a fish of a kind.
+## Makes it a swimmer of a kind.
 func set_kind(to: String) -> void:
 	kind = to
 	if _body == null:
-		_material = ShaderMaterial.new()
-		_material.shader = SHADER
-		_body = MeshInstance3D.new()
-		_body.material_override = _material
-		_body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_body = Node3D.new()
 		add_child(_body)
-	var mesh := mesh_of(to)
-	_body.mesh = mesh
-	var box := mesh.get_aabb()
-	_units = maxf(box.size.z, 0.001)
-	_middle = box.position.z + box.size.z * 0.5
-	_material.set_shader_parameter(&"nose_z", box.position.z)
-	_material.set_shader_parameter(&"tail_z", box.end.z)
+	if _look:
+		_body.remove_child(_look)
+		_look.queue_free()
+	_material = null
+	_curls = true
+	_near = true
+	match to:
+		"sardine":
+			_wear(Sardine.new(), Sardine.LENGTH)
+		"loach":
+			_wear(ClownLoach.new(), ClownLoach.LENGTH)
+		"trout", "golden":
+			var trout := CutthroatTrout.new()
+			trout.look = CutthroatTrout.Look.GOLDEN if to == "golden" else CutthroatTrout.Look.GREENBACK
+			_wear(trout, CutthroatTrout.LENGTH)
+		"flying":
+			_wear(FlyingFish.new(), FlyingFish.LENGTH)
+		"smolt", "salmon":
+			var salmon := SockeyeSalmon.new()
+			salmon.stage = SockeyeSalmon.Stage.SMOLT if to == "smolt" else SockeyeSalmon.Stage.OCEAN
+			_wear(salmon, SockeyeSalmon.LENGTH)
+		"catfish":
+			_wear(ChannelCatfish.new(), ChannelCatfish.LENGTH)
+		"tuna":
+			var tuna := YellowfinTuna.new()
+			# (folded into its groove, as when it swims)
+			tuna.first_dorsal = 0.25
+			_wear(tuna, YellowfinTuna.LENGTH)
+		"sailfish":
+			_wear(Sailfish.new(), Sailfish.LENGTH)
+		"swordfish":
+			_wear(Swordfish.new(), Swordfish.LENGTH)
+		"eel":
+			# (its origin is the tip of its snout; its body is a rope that follows it)
+			_wear(MorayEel.new(), MorayEel.LENGTH, 0.0, false)
+		"humboldt":
+			# (mantle first: the head is its origin, its mantle ahead, its arms behind)
+			var squid := HumboldtSquid.new()
+			squid.colour_beat = 7.0
+			_wear(squid, 2.2, 1.3, false)
+		"giant":
+			_wear(GiantSquid.new(), 5.1, 2.2, false)
+		_:
+			if to != "shark":
+				push_error("Fish: no such kind: " + to)
+			if not _meshes.has("shark"):
+				_meshes["shark"] = Props.shark_whole()
+			_wear_mesh(_meshes["shark"])
 	set_length(length)
 
 
 func set_length(to: float) -> void:
 	length = to
 	if _body:
-		var grown := length / _units
-		_body.scale = Vector3.ONE * grown
-		_body.position = Vector3(0.0, 0.0, -_middle * grown)
+		_body.scale = Vector3.ONE * (length / _long)
 
 
 ## Where its mouth is (world).
@@ -86,24 +125,52 @@ func mouth() -> Vector3:
 	return global_position + heading * length * 0.42
 
 
-## A flash of white over it (it has just grown into something new).
+## A flash over it (it has just grown into something new).
 func flash() -> void:
 	_flash = 1.0
+
+
+## Whether it is near enough to be drawn in full (far off, its low model stands in).
+func detail(near: bool) -> void:
+	if near != _near:
+		_near = near
+		if _look and &"low" in _look:
+			_look.set(&"low", not near)
 
 
 ## Each frame: turned the way it is heading, its tail wagging the harder the more `effort` it
 ## is making (0 idling, 1 cruising, 2 flat out), its body bent by how hard it is turning (-1..1).
 func pose(delta: float, effort: float, turning: float) -> void:
-	_phase += delta * (5.0 + 9.0 * effort) / pow(maxf(length, 0.1), 0.25)
 	_bend = lerpf(_bend, clampf(turning, -1.0, 1.0), 1.0 - exp(-6.0 * delta))
 	_flash = maxf(_flash - delta * 1.6, 0.0)
-	_material.set_shader_parameter(&"wag_phase", _phase)
-	_material.set_shader_parameter(&"wag_amp", 0.07 + 0.05 * effort)
-	_material.set_shader_parameter(&"bend", _bend)
-	_material.set_shader_parameter(&"flash", _flash * 0.6)
 	var flat := Vector2(heading.x, heading.z).length()
 	if flat > 0.001:
 		global_basis = Basis.looking_at(heading, Vector3.UP)
+	# (it swells as it becomes something new, and settles)
+	_body.scale = Vector3.ONE * (length / _long) * (1.0 + 0.35 * _flash * _flash)
+	if _material:
+		_phase += delta * (5.0 + 9.0 * effort) / pow(maxf(length, 0.1), 0.25)
+		_material.set_shader_parameter(&"wag_phase", _phase)
+		_material.set_shader_parameter(&"wag_amp", 0.07 + 0.05 * effort)
+		_material.set_shader_parameter(&"bend", _bend)
+		_material.set_shader_parameter(&"flash", _flash * 0.6)
+		return
+	if _look == null or not visible:
+		return
+	# The creature keeps its own beat: quicker the harder it is swimming.
+	if _beat > 0.0:
+		_look.set(&"beat", _beat / (0.55 + 0.6 * effort))
+	if &"swim" in _look:
+		_look.set(&"swim", clampf(0.3 + 0.35 * effort, 0.0, 1.0))
+	elif &"sway" in _look:
+		_look.set(&"sway", 0.6 + 0.45 * effort)
+	if &"wings" in _look:
+		# (a flying fish spreads its wings when it bolts)
+		_look.set(&"wings", move_toward(_look.get(&"wings"), 1.0 if effort > 1.1 else 0.0, delta * 3.0))
+	# (it really moves through the water, so there is no more current to add)
+	_look.call(&"step", Vector3.ZERO, delta)
+	if _curls:
+		_look.call(&"set_shader_parameter", &"curl", _bend * CURL)
 
 
 ## `from` turned towards `to` (unit vectors) by no more than an angle.
@@ -117,3 +184,37 @@ static func turned(from: Vector3, to: Vector3, most: float) -> Vector3:
 		if axis.length() < 0.00001:
 			axis = Vector3.RIGHT
 	return from.rotated(axis.normalized(), minf(angle, most)).normalized()
+
+
+# Puts a creature in the holder: `long` its length as built, `front` how far its nose is ahead
+# of its origin (half its length when its origin is its middle).
+func _wear(look: Node3D, long: float, front := -1.0, curls := true) -> void:
+	_look = look
+	_long = long
+	_front = long * 0.5 if front < 0.0 else front
+	_curls = curls
+	_beat = float(look.get(&"beat")) if &"beat" in look else 0.0
+	# (each starts somewhere else in its beat)
+	if &"phase" in look:
+		look.set(&"phase", randf())
+	look.position = Vector3(0.0, 0.0, _front - _long * 0.5)
+	_body.add_child(look)
+
+
+# Puts a code-built mesh in the holder, under the old fish shader.
+func _wear_mesh(mesh: Mesh) -> void:
+	_material = ShaderMaterial.new()
+	_material.shader = SHADER
+	var body := MeshInstance3D.new()
+	body.mesh = mesh
+	body.material_override = _material
+	body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var box := mesh.get_aabb()
+	_long = maxf(box.size.z, 0.001)
+	_front = -box.position.z
+	_material.set_shader_parameter(&"nose_z", box.position.z)
+	_material.set_shader_parameter(&"tail_z", box.end.z)
+	body.position = Vector3(0.0, 0.0, _front - _long * 0.5)
+	_look = body
+	_beat = 0.0
+	_body.add_child(body)

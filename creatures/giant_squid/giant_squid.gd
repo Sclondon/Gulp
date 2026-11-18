@@ -1,0 +1,348 @@
+class_name GiantSquid
+extends Node3D
+## A giant squid (Architeuthis dux): a long red torpedo of a mantle 2 m long with two small
+## rounded fins at its tip, a short head with two very large eyes, the siphon under it, eight
+## suckered arms and two far longer tentacles ending in clubs: about 10.5 m in all. It swims
+## mantle first, towards its own -Z; its arms and tentacles trail behind it, towards +Z; its
+## back is +Y. The origin is the middle of its head, between its eyes. `scale` it for a
+## smaller or bigger one.
+##
+## Its mantle breathes in slowly and squeezes quickly (a jet: `beat` seconds), its fins ripple,
+## and its arms open a little as it fills and close as it jets.
+##
+## Its arms and tentacles are ropes, as the sea nettle's are (GameCommon's godot/sea-nettle:
+## its README's "Decision: ropes" says why and how): each of the ten is a chain of points
+## simulated here, in the world, hung from the head. So they are dragged after it however it
+## is moved or turned, lag behind and swing through; and they are heavy (much drag, no
+## flicking: `rope_drag`, `rope_hold`, `rope_sink`). The arms' rest is a loose cone trailing
+## behind the head (`cone`); the two tentacles are longer and looser (`tentacle_loose`).
+##
+## How it looks and moves only: whatever moves it puts it where it is each frame and calls
+## `step(velocity, delta)`. After putting it somewhere new all at once, `lay_ropes()` hangs
+## its arms afresh there (a jump of more than two of its own metres in one step does so by
+## itself, and so does its being seen again after being hidden).
+##
+## Nothing in it runs on a clock that only grows: everything that comes round (the jet, the
+## fins, the arms' opening, the stirring of the ropes) goes by `phase`, which `step` moves on by
+## delta / beat. Set `beat` to 0 and `phase` yourself to drive it (a looping picture).
+##
+## The model is creatures/giant_squid/models/giant_squid.glb (and _lo), built by
+## tools/build_giant_squid.py; giant_squid.gdshaderinc pulses the mantle and lays the strands
+## along their ropes.
+
+const MODEL := "res://creatures/giant_squid/models/giant_squid%s.glb"
+const BODY := preload("res://creatures/giant_squid/giant_squid_body.gdshader")
+const FINS := preload("res://creatures/giant_squid/giant_squid_fins.gdshader")
+## As the model is built (tools/build_giant_squid.py) and the shader has them: keep them in step.
+const MANTLE_LONG := 2.0
+const ARMS := 8
+const ARM_RING := 0.15
+const ARM_Z := 0.3
+const ARM_LONG := 2.6
+const TENTACLES := 2
+const TENTACLE_LONG := 4.4
+## The ropes, as the shader has them: how many points an arm's has and a tentacle's (which is
+## also how wide the picture is that carries them to the shader, a row a strand).
+const ARM_POINTS := 10
+const TENTACLE_POINTS := 14
+## The share of a jet spent breathing in (the rest is the squeeze), as the shader has it.
+const SQUEEZE_AT := 0.62
+
+## Seconds a jet takes (a slow breath in, a quicker squeeze). 0: `phase` is yours to set.
+@export var beat := 2.6
+## How wide the arms' rest is spread behind the head (the tangent of the cone's half angle at
+## the arms' roots; they draw together further back).
+@export var cone := 0.34
+## Swims like a jellyfish (the user, 2026-11-17: "The squid should make like a jelly fish motion
+## tk propel itself"): how far its arms spread out into a bell as the mantle fills (0 not at all:
+## the loose cone only; 1 wide open, like an umbrella), to be swept shut behind it as it jets.
+@export var bell := 0.0
+## How much the ropes are stirred about as they trail, for 1 as it hangs in open water. The
+## stirring comes round with each jet.
+@export var wander := 1.0
+## The ropes' weight. How much the water slows them (/s: the more, the less they flick and the
+## further they are left behind); how strongly each is drawn back to its rest (/s², all of it
+## at the root, a tenth of it at the tip); how fast they sink (m/s², straight down in the
+## world); and how much more loosely the two tentacles are held than the arms.
+@export var rope_drag := 5.0
+@export var rope_hold := 20.0
+@export var rope_sink := 0.12
+@export var tentacle_loose := 0.35
+## How many times the fins ripple in a jet (a whole number comes round with it).
+@export var fin_ripples := 2
+## Full detail within this of the camera; the low model (no sucker cups) further off.
+@export var detail_range := 40.0
+## A light of its own (0 none): for dark water.
+var glow := 0.0
+## A round tank it is kept inside (the user, 2026-11-17, of a tube of water it swam in: "make sure
+## the squid and eel dont clip out the sides of the tank"): the tank's radius (world metres; 0
+## none) about the upright line through `tank_at`. Its ropes are put back inside the wall.
+var tank := 0.0
+var tank_at := Vector3.ZERO
+## How far through a jet it is (0..1): it breathes in until SQUEEZE_AT, then squeezes.
+var phase := 0.0
+## How full of water its mantle is now (0..1), and the push of the squeeze (1 as it starts,
+## falling away), for its mover.
+var fullness := 0.0
+var thrust := 0.0
+
+var _full: MeshInstance3D
+var _low: MeshInstance3D
+var _materials: Array[ShaderMaterial] = []
+# The ropes: every strand's points one after another (world), where each was a step ago, where
+# each strand's first point is in those, and the picture that carries them to the shader.
+var _ropes := PackedVector3Array()
+var _ropes_before := PackedVector3Array()
+var _rope_from := PackedInt32Array()
+var _rope_data := PackedFloat32Array()
+var _rope_picture: ImageTexture
+var _laid := false
+var _was_at := Vector3.ZERO
+
+static var _strands := []
+
+
+func _ready() -> void:
+	for shader: Shader in [BODY, FINS]:
+		var material := ShaderMaterial.new()
+		material.shader = shader
+		_materials.append(material)
+	_materials[1].render_priority = 1
+	_full = _mesh_of("")
+	_low = _mesh_of("_lo")
+	_low.visible = false
+
+
+func _mesh_of(suffix: String) -> MeshInstance3D:
+	var scene := load(MODEL % suffix) as PackedScene
+	var made := scene.instantiate()
+	var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+	var mesh := MeshInstance3D.new()
+	mesh.mesh = found.mesh
+	for surface in mesh.mesh.get_surface_count():
+		var named := mesh.mesh.surface_get_material(surface)
+		var fins := named != null and named.resource_name == "squid_fins"
+		mesh.set_surface_override_material(surface, _materials[1 if fins else 0])
+	# (its ropes may swing anywhere within their length of it)
+	mesh.extra_cull_margin = TENTACLE_LONG * 1.1
+	mesh.name = "Squid" + suffix
+	made.free()
+	add_child(mesh)
+	return mesh
+
+
+## How full the mantle is at `x` through a jet (0..1): filling slowly, emptied quickly (the
+## shader's `fullness`).
+static func fullness_at(x: float) -> float:
+	x = fposmod(x, 1.0)
+	var through := 0.5 * x / SQUEEZE_AT if x < SQUEEZE_AT else 0.5 + 0.5 * (x - SQUEEZE_AT) / (1.0 - SQUEEZE_AT)
+	return 0.5 - 0.5 * cos(through * TAU)
+
+
+## Each frame, after putting it where it is. Its ropes follow however it has been moved and
+## turned since the last step. `velocity` (world, m/s) is how fast it is going through the
+## water: where that is more than it has really moved (a squid held still in a picture, in
+## water that runs past it), the ropes are carried off by the difference; give Vector3.ZERO
+## when there is nothing to add.
+func step(velocity: Vector3, delta: float) -> void:
+	delta = minf(delta, 0.05)
+	if beat > 0.0:
+		var was := phase
+		phase = fposmod(phase + delta / beat, 1.0)
+		if was < SQUEEZE_AT and phase >= SQUEEZE_AT:
+			thrust = 1.0
+	fullness = fullness_at(phase)
+	thrust = maxf(thrust - delta * 2.5, 0.0)
+	set_shader_parameter(&"phase", phase)
+	set_shader_parameter(&"fin_ripples", float(fin_ripples))
+	set_shader_parameter(&"glow", glow)
+	if is_inside_tree():
+		if not is_visible_in_tree():
+			# (unseen, its ropes are not worked out: they are hung afresh when it is next seen)
+			_laid = false
+		elif not _laid or global_position.distance_to(_was_at) > 2.0 * _size():
+			lay_ropes()
+		elif delta > 0.0:
+			_swing_ropes(velocity, delta)
+			_send_ropes()
+	var camera := get_viewport().get_camera_3d() if is_inside_tree() else null
+	if camera:
+		var near := camera.global_position.distance_to(global_position) < detail_range
+		_full.visible = near
+		_low.visible = not near
+
+
+## Sets one of the shader's settings (its colours: `skin`, `deep`, `belly`, `cup`, `silver`; how
+## clear its fins are: `fin_alpha`) on every part of it.
+func set_shader_parameter(setting: StringName, value: Variant) -> void:
+	for material in _materials:
+		material.set_shader_parameter(setting, value)
+
+
+## Its strands as built: [root (its own space), length, phase 0..1, an arm or not (a tentacle),
+## which strand, the way out from its middle it lies (its own space, a unit)], arms first: arm 0
+## is the upper one on its +X side, and they go round by way of its back.
+static func strands() -> Array:
+	var all := []
+	for k in ARMS:
+		var a := (k + 0.5) * TAU / ARMS
+		var out := Vector3(cos(a), sin(a), 0.0)
+		all.append([out * ARM_RING + Vector3(0.0, 0.0, ARM_Z), ARM_LONG - 0.3 * sin(a), fposmod(k * 0.37 + 0.11, 1.0), true, k, out])
+	for k in range(ARMS, ARMS + TENTACLES):
+		var side := 1.0 if k == ARMS else -1.0
+		all.append([Vector3(side * 0.05, -0.035, ARM_Z + 0.02), TENTACLE_LONG * (1.0 if side > 0.0 else 0.96), fposmod(k * 0.37 + 0.11, 1.0), false, k, Vector3(side, 0.0, 0.0)])
+	return all
+
+
+static func _all() -> Array:
+	if _strands.is_empty():
+		_strands = strands()
+	return _strands
+
+
+## Where `s` (0 root .. 1 tip) along strand `strand` (of `strands()`) is now, in the world: on
+## its rope, on the same curve the shader lays it along.
+func strand_point(strand: Array, s: float) -> Vector3:
+	if not _laid:
+		lay_ropes()
+	var k: int = strand[4]
+	var count := ARM_POINTS if strand[3] else TENTACLE_POINTS
+	var base := _rope_from[k]
+	var f := clampf(s, 0.0, 1.0) * (count - 1)
+	var i := mini(int(f), count - 2)
+	var t := f - i
+	var p0 := _ropes[base + maxi(i - 1, 0)]
+	var p1 := _ropes[base + i]
+	var p2 := _ropes[base + i + 1]
+	var p3 := _ropes[base + mini(i + 2, count - 1)]
+	return 0.5 * (2.0 * p1 + (p2 - p0) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t * t + (3.0 * (p1 - p2) + p3 - p0) * t * t * t)
+
+
+func _size() -> float:
+	return maxf(global_basis.get_scale().x, 0.0001)
+
+
+## The way a strand's rope leaves the head, and the way it runs further back (its own space,
+## units): an arm leaves along the cone, opened a little as the mantle fills and closed as it
+## jets, and runs nearly straight back; a tentacle runs straight back from the first.
+func _rope_ways(strand: Array) -> Array[Vector3]:
+	var out: Vector3 = strand[5]
+	if not strand[3]:
+		return [Vector3(out.x * 0.04, -0.03, 1.0).normalized(), Vector3(out.x * 0.02, -0.02, 1.0).normalized()]
+	var open := cone * (0.75 + 0.5 * fullness) + bell * 1.5 * fullness
+	# (opened into a bell, the arms curve: out from the head, then back at their tips)
+	return [(Vector3.BACK + out * open).normalized(), (Vector3.BACK + out * open * (0.3 + 0.35 * bell)).normalized()]
+
+
+## Hangs every arm and tentacle afresh, at rest behind the head where it is now (after putting
+## it somewhere new all at once: its ropes would otherwise be dragged there from where it was).
+func lay_ropes() -> void:
+	var all := _all()
+	if _rope_from.is_empty():
+		var total := 0
+		for strand: Array in all:
+			_rope_from.append(total)
+			total += ARM_POINTS if strand[3] else TENTACLE_POINTS
+		_ropes.resize(total)
+		_ropes_before.resize(total)
+		_rope_data.resize(TENTACLE_POINTS * all.size() * 4)
+	var size := _size()
+	var turned := global_basis.orthonormalized()
+	for k in all.size():
+		var strand: Array = all[k]
+		var count := ARM_POINTS if strand[3] else TENTACLE_POINTS
+		var ways := _rope_ways(strand)
+		var piece: float = float(strand[1]) * size / (count - 1)
+		var rest := global_transform * (strand[0] as Vector3)
+		for i in count:
+			if i > 0:
+				rest += turned * ways[0].lerp(ways[1], smoothstep(0.0, 0.5, float(i) / (count - 1))).normalized() * piece
+			_ropes[_rope_from[k] + i] = rest
+			_ropes_before[_rope_from[k] + i] = rest
+	_laid = true
+	_was_at = global_position
+	_send_ropes()
+
+
+## A step of the ropes (Verlet): each point keeps going as it was, slowed by the water, drawn
+## back towards its rest behind the head (strongly near its root, hardly at its tip), stirred
+## a little, sinking; then each rope is held to its length from its root down. The water
+## stands still in the world, but for `velocity` more than the squid has really moved: that
+## much runs past it the other way and carries the ropes with it.
+func _swing_ropes(velocity: Vector3, delta: float) -> void:
+	var all := _all()
+	var size := _size()
+	var keep := exp(-rope_drag * delta)
+	var water := Vector3.ZERO
+	if velocity != Vector3.ZERO:
+		water = (global_position - _was_at) / delta - velocity
+	_was_at = global_position
+	var carried := water * delta * (1.0 - keep)
+	var turned := global_basis.orthonormalized()
+	var angle := phase * TAU
+	var sink := Vector3.DOWN * rope_sink * size * delta * delta
+	for k in all.size():
+		var strand: Array = all[k]
+		var arm: bool = strand[3]
+		var count := ARM_POINTS if arm else TENTACLE_POINTS
+		var base := _rope_from[k]
+		var ways := _rope_ways(strand)
+		var piece: float = float(strand[1]) * size / (count - 1)
+		var own: float = float(strand[2]) * TAU
+		var hold := rope_hold * (1.0 if arm else tentacle_loose)
+		var rest := global_transform * (strand[0] as Vector3)
+		_ropes[base] = rest
+		_ropes_before[base] = rest
+		for i in range(1, count):
+			var p := _ropes[base + i]
+			var share := float(i) / (count - 1)
+			var held := 1.0 - 0.9 * smoothstep(0.0, 0.9, share)
+			rest += turned * ways[0].lerp(ways[1], smoothstep(0.0, 0.5, share)).normalized() * piece
+			var pull := (rest - p) * hold * held
+			# (stirred: a slow round that comes back with each jet, each strand at its own time)
+			var stir := turned * Vector3(sin(angle + own + share * 4.0), cos(angle + own * 1.7 + share * 3.0), 0.0) * 0.3 * wander * size * share
+			var moved := (p - _ropes_before[base + i]) * keep + carried + (pull + stir) * delta * delta + sink
+			_ropes_before[base + i] = p
+			_ropes[base + i] = p + moved
+		# held to length, from the root down (three times over, so that it settles)
+		for again in 3:
+			for i in range(1, count):
+				var from := _ropes[base + i - 1]
+				var to := _ropes[base + i] - from
+				var long := to.length()
+				if long > 0.00001:
+					_ropes[base + i] = from + to * (piece / long)
+				_ropes[base + i] = _in_tank(_ropes[base + i])
+
+
+## `p` (world), put back inside the round tank if it is outside it (see `tank`).
+func _in_tank(p: Vector3) -> Vector3:
+	if tank <= 0.0:
+		return p
+	var out := Vector2(p.x - tank_at.x, p.z - tank_at.z)
+	var far := out.length()
+	if far <= tank:
+		return p
+	out *= tank / far
+	return Vector3(tank_at.x + out.x, p.y, tank_at.z + out.y)
+
+## The ropes to the shader: a picture, a row a strand, each point in the squid's own space.
+func _send_ropes() -> void:
+	var to_local := global_transform.affine_inverse()
+	var all := _all()
+	for k in all.size():
+		var count := ARM_POINTS if all[k][3] else TENTACLE_POINTS
+		var base := _rope_from[k]
+		var at := k * TENTACLE_POINTS * 4
+		for i in count:
+			var p := to_local * _ropes[base + i]
+			_rope_data[at] = p.x
+			_rope_data[at + 1] = p.y
+			_rope_data[at + 2] = p.z
+			at += 4
+	var image := Image.create_from_data(TENTACLE_POINTS, all.size(), false, Image.FORMAT_RGBAF, _rope_data.to_byte_array())
+	if _rope_picture == null:
+		_rope_picture = ImageTexture.create_from_image(image)
+		set_shader_parameter(&"ropes", _rope_picture)
+	else:
+		_rope_picture.update(image)

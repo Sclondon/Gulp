@@ -25,8 +25,8 @@ func _run() -> void:
 	var player: Player = main.player
 	life.hunting = false
 	await _frames(30)
-	_check("the sea is stocked", life.creatures.size() == 32 and life.schools.size() == 10 and life.jellies.size() == 9,
-			"%d fish, %d schools, %d jellies" % [life.creatures.size(), life.schools.size(), life.jellies.size()])
+	_check("the sea is stocked", life.creatures.size() == 47 and life.schools.size() == 10 and life.jellies.size() == 9,
+			"%d fish, %d schools, %d jellies, %d nettles" % [life.creatures.size(), life.schools.size(), life.jellies.size(), life.nettles.size()])
 	_check("starts as the smallest fish", player.alive and player.stage == 0 and player.kind == "sardine", "%s %.2f m" % [player.kind, player.length])
 	# A krill in its mouth is eaten.
 	var krill: Dictionary = life.schools[0]
@@ -71,8 +71,11 @@ func _run() -> void:
 		if each.kind == "salmon":
 			big = each
 			break
+	# (a small one: a bigger salmon takes no notice of so small a fish)
+	big.length = 0.9
 	big.place(player.global_position - player.heading * 3.0)
 	big.heading = player.heading
+	big._tired = 0.0
 	var hunted := false
 	for n in 900:
 		await _frames(1)

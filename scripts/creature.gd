@@ -24,6 +24,8 @@ var _speed := 0.0
 var _chase := 0.0
 var _tired := 0.0
 var _rng := RandomNumberGenerator.new()
+## Where in the water it keeps to when it wanders: from and to, 0 the floor, 1 the surface.
+var band := Vector2(0.0, 1.0)
 
 
 ## Puts it somewhere, wandering.
@@ -39,6 +41,15 @@ func place(at: Vector3) -> void:
 	_speed = Fish.pace(length) * 0.5
 	away = 0.0
 	visible = true
+
+
+## A place in open water at its own depth, no nearer than `apart` to `from` if that can be had.
+func somewhere(from := Vector3.INF, apart := 0.0) -> Vector3:
+	var room := maxf(length * 0.5, 0.3)
+	var p := Sea.open_water(_rng, room, from, apart)
+	var low := Sea.ground(p.x, p.z) + maxf(length * 0.3, 0.3)
+	p.y = lerpf(low, maxf(low, Sea.SURFACE - 0.6), _rng.randf_range(band.x, band.y))
+	return Sea.clear_of_rocks(p, room)
 
 
 ## Leaves the player alone for a while (a new run has begun next to it).
@@ -65,7 +76,7 @@ func step(delta: float, player: Player, hunting: bool) -> void:
 		Mode.WANDER:
 			_goal_time -= delta
 			if _goal_time <= 0.0 or global_position.distance_to(_goal) < 1.0 + length:
-				_goal = Sea.open_water(_rng, maxf(length * 0.5, 0.3))
+				_goal = somewhere()
 				_goal_time = _rng.randf_range(6.0, 14.0)
 			want = (_goal - global_position).normalized()
 			speed *= 0.5
