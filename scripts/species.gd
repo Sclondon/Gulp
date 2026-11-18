@@ -56,8 +56,9 @@ const ALL := {
 	"parrotfish": {"script": "parrotfish/parrotfish", "zones": ["reef"], "band": [0.05, 0.5], "count": 4, "size": [0.4, 0.55]},
 	"cleaner": {"script": "wrasse/wrasse", "set": {"kind": 0}, "zones": ["reef"], "band": [0.05, 0.5], "count": 3, "size": [0.12, 0.16]},
 	"wrasse": {"script": "wrasse/wrasse", "set": {"kind": 1}, "zones": ["reef"], "band": [0.05, 0.6], "count": 3, "size": [0.2, 0.28]},
-	"yellow_tang": {"script": "surgeonfish/surgeonfish", "set": {"type": 0}, "zones": ["reef"], "band": [0.05, 0.6], "count": 4, "size": [0.18, 0.24]},
-	"surgeonfish": {"script": "surgeonfish/surgeonfish", "set": {"type": 1}, "zones": ["reef"], "band": [0.05, 0.6], "count": 3, "size": [0.2, 0.28]},
+	"yellow_tang": {"script": "surgeonfish/surgeonfish", "set": {"kind": 0}, "zones": ["reef"], "band": [0.05, 0.6], "count": 4, "size": [0.18, 0.24]},
+	"surgeonfish": {"script": "surgeonfish/surgeonfish", "set": {"kind": 1}, "zones": ["reef"], "band": [0.05, 0.6], "count": 3, "size": [0.2, 0.28]},
+	"convict": {"script": "surgeonfish/surgeonfish", "set": {"kind": 2}, "zones": ["reef"], "band": [0.05, 0.6], "count": 3, "size": [0.18, 0.24]},
 	"blue_tang": {"script": "blue_tang/blue_tang", "zones": ["reef"], "band": [0.1, 0.7], "count": 4, "size": [0.2, 0.27]},
 	"clownfish": {"script": "clownfish/clownfish", "zones": ["reef"], "band": [0.02, 0.15], "count": 5, "size": [0.09, 0.12]},
 	# The sand flats.

@@ -13,6 +13,7 @@ const KELP := "res://plants/kelp/kelp_forest.gd"
 const GRASS := "res://plants/sea_grass/sea_grass_bed.gd"
 const PROPS := "res://scenery/sea_floor_props/sea_floor_props.gd"
 const EELS := "res://creatures/garden_eel/garden_eel_colony.gd"
+const ANEMONE := "res://creatures/clownfish/clownfish_anemone.gd"
 ## How many kelp plants, tufts of grass and garden eels.
 const KELPS := 150
 const TUFTS := 2600
@@ -50,6 +51,8 @@ func _ready() -> void:
 		_plant_grass()
 	if ResourceLoader.exists(EELS):
 		_plant_eels()
+	if ResourceLoader.exists(ANEMONE):
+		_plant_anemones()
 
 
 func _process(delta: float) -> void:
@@ -231,6 +234,17 @@ func _plant_grass() -> void:
 	_grass.set(&"push_radius", 0.7)
 	add_child(_grass)
 	_grass.call(&"plant", places, heights)
+
+
+# The clownfish's homes: a few host anemones on the reef.
+func _plant_anemones() -> void:
+	var zone: Dictionary = Sea.ZONES.reef
+	for i in 7:
+		var at := _in_zone(zone, 0.7)
+		var home: Node3D = (load(ANEMONE) as GDScript).new()
+		add_child(home)
+		home.global_position = Vector3(at.x, Sea.ground(at.x, at.y) - 0.02, at.y)
+		home.scale = Vector3.ONE * _rng.randf_range(1.2, 2.0)
 
 
 # The garden eels: a few loose patches of them in the open sand, each in its burrow.

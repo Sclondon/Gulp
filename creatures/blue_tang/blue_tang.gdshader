@@ -1,0 +1,238 @@
+shader_type spatial;
+// The regal blue tang (blue_tang.gd): it swims by a small wave down its body and rows with its pectoral
+// fins, its mouth opens, its fins wave; and every marking is drawn here: no texture files. What each point
+// is comes from the model (tools/build_blue_tang.py): COLOR.r the part, as a tenth (0 body, 1 lower jaw, 2
+// eye, 3 spine, 4 dorsal, 6 tail, 7 anal, 8 pelvic, 9 pectoral). On the body and the jaw UV.x is how far
+// along the fish (0 snout to 1 tail tip), UV.y how high on the head and body (0 the chin or the belly line,
+// 1 the back line), COLOR.b the inside of the mouth. On an eye UV is where a point is on its round face. On
+// a fin UV.x is along its rays (0 root, 1 edge), UV.y across it counted in rays, COLOR.g how far across it
+// (0 leading edge, 1 trailing edge); UV2.xy and COLOR.b the way its flat side faces. Nothing here needs more
+// than GL Compatibility has. One opaque draw, back faces culled. (The school model does not wear this
+// shader: its colours are in its points.)
+//
+// Everything that moves runs on `phase` (0..1 through one beat): in a beat the tail beats `tail_beats`
+// times and the pectoral fins row `strokes` times (whole numbers), so a film of it loops exactly.
+render_mode cull_back, depth_draw_opaque;
+
+// As the model is built (tools/build_blue_tang.py prints these): its length, where its lower jaw hinges
+// (how far along, how high, in body lengths) and where its gill cover's rear edge is.
+const float LENGTH = 0.25;
+const float HINGE_S = 0.037;
+const float HINGE_Y = -0.007;
+const float GILL_S = 0.225;
+// How many body lengths one wave of the swimming bend is.
+const float WAVE = 1.05;
+// How far a pectoral fin's edge rows out and in (body lengths; the build script checks the gap it leaves
+// to the body with the same numbers: out to 1.5 of it, in to 0.5).
+const float ROW_REACH = 0.035;
+
+// How far through a beat it is (0..1), and how many times in a beat its tail beats and its pectoral fins
+// row (whole numbers).
+uniform float phase = 0.0;
+uniform float tail_beats = 2.0;
+uniform float strokes = 3.0;
+// How widely its body and tail sway (1: the tail's tip a tenth of its length each way), and how hard its
+// pectoral fins row (1 as it cruises).
+uniform float sway = 0.35;
+uniform float row = 1.0;
+// Turning: how far the body is bent round to one side behind the gills, in radians from gills to tail
+// (0 straight; more than 0 the tail comes round to +X). The head stays as it is.
+uniform float curl = 0.0;
+// The mouth: 0 shut, 1 wide open. `gape_angle` is how far (radians) the lower jaw swings down at 1, and
+// `lip_lift` how far the snout's tip lifts with it.
+uniform float gape = 0.0;
+uniform float gape_angle = 0.8;
+uniform float lip_lift = 0.15;
+
+// The colours: the royal blue of the body, paler towards the belly; the black of the "palette"; the yellow
+// of the tail and the pectoral fins' tips; the fins' blue and their black edges; the spine; the ring round
+// the pupil; the inside of the mouth. (The school model's are written into its points by the build
+// script: change both.)
+uniform vec3 blue : source_color = vec3(0.1, 0.32, 0.86);
+uniform vec3 belly : source_color = vec3(0.22, 0.46, 0.9);
+uniform vec3 black : source_color = vec3(0.03, 0.03, 0.06);
+uniform vec3 yellow : source_color = vec3(1.0, 0.84, 0.1);
+uniform vec3 fin_blue : source_color = vec3(0.12, 0.34, 0.84);
+uniform vec3 fin_edge : source_color = vec3(0.04, 0.05, 0.12);
+uniform vec3 spine_colour : source_color = vec3(0.95, 0.92, 0.7);
+uniform vec3 eye_ring : source_color = vec3(0.16, 0.16, 0.12);
+uniform vec3 mouth : source_color = vec3(0.16, 0.05, 0.06);
+// How much it shines where it is seen aslant.
+uniform float sheen = 0.3;
+
+varying float part;
+varying float inside;
+
+
+// The body behind the gills laid round an arc (see `curl`).
+void curl_bend(inout vec3 v, inout vec3 n) {
+	float from = (GILL_S - 0.5) * LENGTH;
+	float d = v.z - from;
+	if (abs(curl) < 0.001 || d <= 0.0) {
+		return;
+	}
+	float k = curl / (0.7 * LENGTH);
+	float a = d * k;
+	float r = 1.0 / k;
+	float c = cos(a);
+	float sn = sin(a);
+	n = vec3(n.x * c + n.z * sn, n.y, -n.x * sn + n.z * c);
+	v = vec3(r + (v.x - r) * c, v.y, from + (r - v.x) * sn);
+}
+
+
+// Turns a point and its normal about the jaw's hinge (a > 0 swings what is ahead of it down).
+void about_hinge(inout vec3 v, inout vec3 n, float a) {
+	vec2 hinge = vec2(HINGE_Y, HINGE_S - 0.5) * LENGTH;
+	vec2 d = v.yz - hinge;
+	float c = cos(a);
+	float sn = sin(a);
+	v.yz = hinge + vec2(d.x * c + d.y * sn, d.y * c - d.x * sn);
+	n.yz = vec2(n.y * c + n.z * sn, n.z * c - n.y * sn);
+}
+
+
+void vertex() {
+	part = floor(COLOR.r * 10.0 + 0.5);
+	inside = COLOR.b;
+	vec3 v = VERTEX;
+	vec3 n = NORMAL;
+	float s = v.z / LENGTH + 0.5;
+	float side_is = v.x >= 0.0 ? 1.0 : -1.0;
+	float tail = phase * TAU * tail_beats;
+	float wave = tail - TAU * clamp(s, 0.0, 1.05) / WAVE;
+	float open = clamp(gape, 0.0, 1.0);
+	if (part == 1.0) {
+		// The lower jaw swings down about its hinge at the corner of the mouth; the throat behind stays.
+		about_hinge(v, n, open * gape_angle * smoothstep(HINGE_S + 0.022, HINGE_S - 0.008, s));
+	} else if (part == 0.0) {
+		// The snout's tip lifts a little as the mouth opens.
+		about_hinge(v, n, -open * lip_lift * smoothstep(HINGE_S + 0.012, HINGE_S - 0.02, s));
+	} else if (part >= 4.0) {
+		vec3 flat_way = normalize(vec3(UV2.x, UV2.y, COLOR.b * 2.0 - 1.0));
+		float r = UV.x;
+		float across = COLOR.g;
+		if (part == 9.0) {
+			// The pectorals row: each stroke swings the fin out and back, then feathers it in and
+			// forward, the leading edge leading; one side a little after the other.
+			float a = phase * TAU * strokes + (side_is > 0.0 ? 0.0 : 0.3) - across * 0.9;
+			v += flat_way * (LENGTH * ROW_REACH * row * r * (sin(a) + 0.5));
+			v.z += LENGTH * 0.03 * row * r * cos(a);
+		} else if (part == 8.0) {
+			float a = phase * TAU * strokes + (side_is > 0.0 ? 1.8 : 2.2);
+			v += flat_way * (LENGTH * 0.01 * row * r * r * sin(a));
+		} else if (part == 6.0) {
+			// (the tail's edge lags behind the bend that carries it)
+			v.x += LENGTH * 0.05 * sway * r * r * sin(wave - 1.1 - across * 0.4);
+		} else {
+			// The dorsal and anal fins ripple, a wave running back along them.
+			v.x += LENGTH * 0.03 * sway * r * r * sin(wave - 1.0 - across * 2.5);
+		}
+	}
+	// The swimming bend: a wave from head to tail, the head nearly still and the tail swinging widest.
+	// Each place is carried sideways and turned to lie along the bent body, so the fins follow it.
+	float sb = clamp(v.z / LENGTH + 0.5, 0.0, 1.05);
+	float reach = 0.008 - 0.04 * sb + 0.13 * sb * sb;
+	float reach_slope = -0.04 + 0.26 * sb;
+	float w = tail - TAU * sb / WAVE;
+	float off = LENGTH * sway * reach * sin(w);
+	float slope = sway * (reach_slope * sin(w) - reach * TAU / WAVE * cos(w));
+	vec3 along = normalize(vec3(slope, 0.0, 1.0));
+	vec3 across_body = vec3(along.z, 0.0, -along.x);
+	v = vec3(off, v.y, v.z) + across_body * v.x;
+	n = across_body * n.x + vec3(0.0, n.y, 0.0) + along * n.z;
+	curl_bend(v, n);
+	VERTEX = v;
+	NORMAL = normalize(n);
+}
+
+
+float band(float x, float centre, float half_width, float soft) {
+	return 1.0 - smoothstep(half_width - soft, half_width + soft, abs(x - centre));
+}
+
+
+float gill_edge(float h) {
+	return GILL_S - 0.22 * (h - 0.5) * (h - 0.5);
+}
+
+
+// The body's colour at a place: `s` along, `h` up. The black "palette": a band from the eye along the
+// back to the tail's wrist, and a loop from it down round the flank and back to the wrist, holding an oval
+// of blue; yellow from the spine back over the tail's root. (tools/build_blue_tang.py's `palette` is the
+// same, for the school model: change both.)
+vec3 skin(float s, float h) {
+	vec3 c = mix(belly, blue, smoothstep(0.05, 0.35, h));
+	float centre = 0.665 + 0.055 * smoothstep(0.12, 0.3, s) - 0.17 * smoothstep(0.55, 0.8, s);
+	float wide = 0.05 + 0.07 * smoothstep(0.12, 0.3, s) - 0.07 * smoothstep(0.5, 0.8, s);
+	float dark = smoothstep(0.092, 0.112, s) * (1.0 - smoothstep(wide - 0.015, wide + 0.015, abs(h - centre)));
+	float outer = pow((s - 0.585) / 0.235, 2.0) + pow((h - 0.5) / 0.3, 2.0);
+	float inner = pow((s - 0.6) / 0.135, 2.0) + pow((h - 0.52) / 0.15, 2.0);
+	dark = max(dark, (1.0 - smoothstep(0.85, 1.0, outer)) * smoothstep(0.85, 1.0, inner));
+	c = mix(c, black, dark);
+	float gold = smoothstep(0.74, 0.76, s) * (1.0 - smoothstep(-0.015, 0.015, abs(h - 0.5) - 0.06 - (s - 0.75) * 3.0));
+	c = mix(c, yellow, gold);
+	// The gill cover's edge: a fine darker crescent.
+	float edge = gill_edge(h);
+	c *= 1.0 - 0.25 * band(s, edge, 0.0016, 0.0012) * smoothstep(0.12, 0.25, h) * (1.0 - smoothstep(0.78, 0.9, h));
+	return c;
+}
+
+
+void fragment() {
+	vec3 c = blue;
+	float rough = 0.4;
+	float glint = sheen;
+	if (part < 1.5) {
+		// The body and the lower jaw.
+		float s = UV.x;
+		float h = UV.y;
+		c = skin(s, h);
+		// (the lips a little darker)
+		c *= 1.0 - 0.3 * (1.0 - smoothstep(0.02, 0.04, s)) * smoothstep(0.25, 0.0, abs(h - 0.12) * 2.0);
+		// (where the skin runs out over the root of the tail it takes the tail's colour)
+		c = mix(c, yellow, smoothstep(0.835, 0.85, s));
+		c = mix(c, mouth, inside);
+		glint *= 1.0 - inside;
+	} else if (part < 2.5) {
+		// An eye: a black pupil in a dark ring.
+		vec2 on_eye = UV * 2.0 - 1.0;
+		float r = length(on_eye);
+		c = mix(eye_ring * 1.5, eye_ring, smoothstep(0.35, 0.6, r));
+		c = mix(c, vec3(0.03), smoothstep(0.62, 0.7, r));
+		c = mix(c, vec3(0.01), 1.0 - smoothstep(0.3, 0.34, r));
+		rough = 0.08;
+		glint = 0.0;
+	} else if (part < 3.5) {
+		c = spine_colour;
+		rough = 0.3;
+	} else {
+		// A fin: its rays as fine lines.
+		float r = UV.x;
+		float t = COLOR.g;
+		float between = abs(fract(UV.y) - 0.5) * 2.0;
+		float lines = smoothstep(0.55, 1.0, between) * smoothstep(0.05, 0.3, r);
+		if (part > 8.5) {
+			// The pectorals: blue at the root, yellow towards their tips.
+			c = mix(fin_blue, yellow, smoothstep(0.45, 0.7, r));
+			lines *= 0.6;
+		} else if (part > 7.5) {
+			c = mix(fin_blue, fin_edge, smoothstep(0.55, 0.9, r));
+		} else if (part > 5.5 && part < 6.5) {
+			// The tail: a yellow triangle, its point at the wrist, between thick black edges.
+			float out_of_middle = abs(t - 0.5) * 2.0;
+			c = mix(yellow, black, smoothstep(-0.04, 0.04, out_of_middle - 0.22 - 0.5 * r));
+		} else {
+			// The dorsal and anal fins: blue, edged with black.
+			c = mix(fin_blue, fin_edge, smoothstep(0.62, 0.8, r));
+		}
+		c *= 1.0 - 0.12 * lines;
+		rough = 0.5;
+		glint *= 0.4;
+	}
+	float seen = clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0);
+	c += vec3(0.85, 0.92, 1.0) * glint * pow(1.0 - seen, 3.0);
+	ALBEDO = c;
+	ROUGHNESS = rough;
+	SPECULAR = 0.45;
+}
