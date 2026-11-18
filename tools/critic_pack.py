@@ -34,7 +34,7 @@ hi = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)
 tall = hi.z - lo.z
 mid = (lo + hi) / 2
 # the head: everything above the shoulders' level, near the middle
-top = [p for p in pts if p.z > hi.z - tall * 0.125 and abs(p.x - mid.x) < tall * 0.1]
+top = [p for p in pts if p.z > hi.z - tall * 0.16 and abs(p.x - mid.x) < tall * 0.085]
 hlo = Vector((min(p.x for p in top), min(p.y for p in top), min(p.z for p in top)))
 hhi = Vector((max(p.x for p in top), max(p.y for p in top), max(p.z for p in top)))
 head = (hlo + hhi) / 2
@@ -114,7 +114,7 @@ Q = 0.7
 P = math.pi
 sheet("body", [("front", mid, tall * 1.06, 0, 0), ("q", mid, tall * 1.06, Q, 0), ("side", mid, tall * 1.06, P / 2, 0),
                ("back", mid, tall * 1.06, P, 0), ("qb", mid, tall * 1.06, P - Q, 0)], 520, 860)
-hs = max(hhi.z - hlo.z, hhi.x - hlo.x) * 1.35
+hs = max(hhi.z - hlo.z, hhi.x - hlo.x) * 1.3
 sheet("head", [("front", head, hs, 0, 0), ("q", head, hs, Q, 0.1), ("side", head, hs, P / 2, 0), ("back", head, hs, P, 0),
                ("below", head, hs, 0.3, -0.9), ("above", head, hs, 0.3, 0.9)], 600, 600)
 ds = tall * 0.2
