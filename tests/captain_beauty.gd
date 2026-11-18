@@ -11,6 +11,7 @@ var _cam: Camera3D
 var _model: Node3D
 var _shots: Array = []
 var _frame := 0
+var _sun: DirectionalLight3D
 
 
 func _initialize() -> void:
@@ -23,7 +24,9 @@ func _initialize() -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.78, 0.8, 0.82)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.78, 0.83, 0.9)
+	# (fourteenth round: the shaded side went near black and grey under a weak blue sky light; a fuller, more neutral
+	# sky light, as an outdoor day scene has)
+	env.ambient_light_color = Color(0.86, 0.87, 0.9)
 	env.ambient_light_energy = 0.35
 	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	var we := WorldEnvironment.new()
@@ -31,7 +34,8 @@ func _initialize() -> void:
 	world.add_child(we)
 	var sun := DirectionalLight3D.new()
 	sun.basis = Basis.looking_at(Vector3(-0.5, -0.7, -0.55).normalized(), Vector3.UP)
-	sun.light_energy = 0.75
+	sun.light_energy = 0.6
+	_sun = sun
 	sun.shadow_enabled = true
 	world.add_child(sun)
 	_model = (load(MODEL) as PackedScene).instantiate() as Node3D
@@ -48,7 +52,11 @@ func _initialize() -> void:
 		var tag := "" if cap else "_nocap"
 		for b in [["front", Vector3(0, 0, 1)], ["three_quarter", Vector3(0.7, 0, 0.7)], ["side", Vector3(-1, 0, 0)], ["three_quarter_back", Vector3(0.7, 0, -0.7)]]:
 			_shots.append([b[0] + tag, (b[1] as Vector3).normalized(), Vector3(0, 0.86, 0), 3.3, cap])
-		_shots.append(["close" + tag, Vector3(0.62, 0.05, 0.78).normalized(), Vector3(0.0, 1.36, 0.03), 1.6, cap])
+		# (the close head shot pulled back and up a little: it cut off the top of his head)
+		_shots.append(["close" + tag, Vector3(0.62, 0.05, 0.78).normalized(), Vector3(0.0, 1.4, 0.03), 1.95, cap])
+	# close-ups of his left hand and left foot (cap on; it does not show)
+	_shots.append(["hand", Vector3(0.75, 0.1, 0.65).normalized(), Vector3(0.43, 0.7, 0.0), 0.75, true])
+	_shots.append(["foot", Vector3(0.35, 0.5, 0.8).normalized(), Vector3(0.17, 0.05, 0.1), 0.7, true])
 
 
 func _process(_delta: float) -> bool:
@@ -68,6 +76,10 @@ func _process(_delta: float) -> bool:
 			eye.y = 1.5
 		_cam.position = eye
 		_cam.look_at(at, Vector3.UP)
+		# (the sun over the camera's left shoulder for every shot, so no view is lit from behind)
+		var to := (at - eye).normalized()
+		var light := (to + _cam.global_transform.basis.x * -0.45 + Vector3(0, -0.6, 0)).normalized()
+		_sun.basis = Basis.looking_at(light, Vector3.UP)
 	elif f % 5 == 4 and _out != "":
 		root.get_texture().get_image().save_png("%s/%s.png" % [_out, shot[0]])
 	return false

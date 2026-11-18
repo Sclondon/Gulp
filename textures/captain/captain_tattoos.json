@@ -1,0 +1,158 @@
+{
+ "keep": false,
+ "skin": "captain_skin_layout.json",
+ "pictures": "res://textures/tattoos/",
+ "note": "size: the picture's width in the island's own units (the layout's scale divided out)",
+ "rows": [
+  {
+   "picture": "captain_rose_shoulder",
+   "part": "arm_r",
+   "x": 0.6354,
+   "y": 0.9508,
+   "size": 0.1034,
+   "turn": 89.0,
+   "mirror": false,
+   "strength": 1.0
+  },
+  {
+   "picture": "captain_arm_badge",
+   "part": "arm_r",
+   "x": 0.653,
+   "y": 0.6895,
+   "size": 0.1228,
+   "turn": 29.8,
+   "mirror": false,
+   "strength": 1.0
+  },
+  {
+   "picture": "captain_anchor_forearm",
+   "part": "arm_r",
+   "x": 0.5885,
+   "y": 0.262,
+   "size": 0.1229,
+   "turn": 34.2,
+   "mirror": false,
+   "strength": 1.0
+  },
+  {
+   "picture": "captain_swallow_forearm",
+   "part": "arm_r",
+   "x": 0.7487,
+   "y": 0.3207,
+   "size": 0.089,
+   "turn": 33.1,
+   "mirror": false,
+   "strength": 1.0
+  },
+  {
+   "picture": "captain_chest_anchor",
+   "part": "torso_front",
+   "x": 0.6668,
+   "y": 0.8239,
+   "size": 0.1499,
+   "turn": -14.8,
+   "mirror": false,
+   "strength": 1.0
+  },
+  {
+   "picture": "captain_ship_shoulder",
+   "part": "arm_l",
+   "x": 0.6,
+   "y": 0.9372,
+   "size": 0.1787,
+   "turn": 74.5,
+   "mirror": true,
+   "strength": 1.0
+  },
+  {
+   "picture": "captain_anchor_arm",
+   "part": "arm_l",
+   "x": 0.6921,
+   "y": 0.6881,
+   "size": 0.1189,
+   "turn": 22.0,
+   "mirror": true,
+   "strength": 1.0
+  },
+  {
+   "picture": "captain_swallows_forearm",
+   "part": "arm_l",
+   "x": 0.7089,
+   "y": 0.3162,
+   "size": 0.1316,
+   "turn": 32.6,
+   "mirror": true,
+   "strength": 1.0
+  },
+  {
+   "picture": "captain_ship_back",
+   "part": "torso_back",
+   "x": 0.3145,
+   "y": 0.7931,
+   "size": 0.1922,
+   "turn": 6.5,
+   "mirror": false,
+   "strength": 1.0
+  },
+  {
+   "picture": "captain_swallow_heart",
+   "part": "torso_back",
+   "x": 0.6997,
+   "y": 0.7931,
+   "size": 0.1759,
+   "turn": -6.7,
+   "mirror": false,
+   "strength": 1.0
+  },
+  {
+   "picture": "captain_compass",
+   "part": "arm_r",
+   "x": 0.3929,
+   "y": 0.892,
+   "size": 0.1141,
+   "turn": -38.4,
+   "mirror": false,
+   "strength": 1.0
+  },
+  {
+   "picture": "captain_squid_back",
+   "part": "torso_back",
+   "x": 0.3818,
+   "y": 0.5451,
+   "size": 0.1189,
+   "turn": 0.8,
+   "mirror": false,
+   "strength": 1.0
+  },
+  {
+   "picture": "captain_arm_back_l",
+   "part": "arm_l",
+   "x": 0.352,
+   "y": 0.6807,
+   "size": 0.1547,
+   "turn": -28.6,
+   "mirror": true,
+   "strength": 1.0
+  },
+  {
+   "picture": "captain_forearm_back_r",
+   "part": "arm_l",
+   "x": 0.3349,
+   "y": 0.2128,
+   "size": 0.1261,
+   "turn": -14.5,
+   "mirror": true,
+   "strength": 1.0
+  },
+  {
+   "picture": "captain_forearm_back_l",
+   "part": "arm_r",
+   "x": 0.3016,
+   "y": 0.2218,
+   "size": 0.1374,
+   "turn": -14.3,
+   "mirror": false,
+   "strength": 1.0
+  }
+ ]
+}
