@@ -80,6 +80,9 @@ func _initialize() -> void:
 	var hand_at := Vector3(0.56, 0.67, 0.05)
 	for h in [["hand_back", Vector3(1, 0, 0.35)], ["hand_palm", Vector3(-1, 0, -0.1)], ["hand_thumb", Vector3(0.1, 0, 1)], ["hand_tips", Vector3(0.15, -1, 0.1)]]:
 		_shots.append([h[0], (h[1] as Vector3).normalized(), hand_at, 0.24, true, 0.12])
+	# (seventh round) His bare head, the cap hidden: front, three-quarter, his left side, the back and from above.
+	for h in [["bare_front", Vector3(0, 0, 1)], ["bare_three_quarter", Vector3(-0.62, 0, 0.78)], ["bare_side", Vector3(1, 0, 0)], ["bare_back", Vector3(0, 0, -1)], ["bare_above", Vector3(0, 1, 0.12)]]:
+		_shots.append([h[0], (h[1] as Vector3).normalized(), Vector3(0, 1.45, 0.02), 0.5, true, 5.0, true])
 
 
 func _hair(key: String) -> ShaderMaterial:
@@ -159,6 +162,8 @@ func _process(_delta: float) -> bool:
 	var shot: Array = _shots[i]
 	if f % 3 == 0:
 		_set_lit(shot[4])
+		for mesh: MeshInstance3D in _model.find_children("captain_cap*", "MeshInstance3D", true, false):
+			mesh.visible = not (shot.size() > 6 and shot[6])
 		var dir: Vector3 = shot[1]
 		_cam.size = shot[3]
 		var at: Vector3 = shot[2] if shot[2] is Vector3 else Vector3(0, shot[2], 0)
