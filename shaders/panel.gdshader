@@ -21,6 +21,6 @@ void fragment() {
 	float lit = mix(1.0, 0.72 + 0.5 * clamp(d * 0.5 + 0.5, 0.0, 1.0), 0.6);
 	vec3 half_way = normalize(light + vec3(0.0, 0.0, 1.0));
 	float spark = pow(max(dot(n, half_way), 0.0), 28.0) * shine;
-	float mirror = mix(1.0, mix(0.85, 1.2, smoothstep(-0.5, 0.8, n.y * 0.6 + d * 0.5)), shine);
-	ALBEDO = colour * lit * mirror * 1.1 + spark * mix(vec3(1.0), colour * 3.0, 0.5) * 0.7 + glow;
+	float mirror = mix(1.0, mix(0.9, 1.12, smoothstep(-0.5, 0.8, n.y * 0.6 + d * 0.5)), shine);
+	ALBEDO = colour * lit * mirror * 0.88 + spark * mix(vec3(1.0), colour * 3.0, 0.5) * 0.7 + glow;
 }

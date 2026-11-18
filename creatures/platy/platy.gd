@@ -22,8 +22,10 @@ extends Node3D
 ## yourself (for a picture that must loop: frame / frames in a beat). The same names and meanings as
 ## GameCommon's yellowfin tuna and sardine, so they are driven the same way.
 ##
-## The models are creatures/platy/models/platy.glb (and _lo), built by tools/build_platy.py;
-## platy.gdshader draws the markings and swims it.
+## The models are creatures/platy/models/platy.glb (and _lo, and _game), built by
+## tools/build_platy.py; platy.gdshader draws the markings and swims it. Each model is loaded
+## only when it is first shown: with `game` on, the full model is never loaded, so a game's web
+## export can leave it out.
 
 enum Colouring { SUNSET, RED_WAGTAIL, BLUE_MICKEY }
 
@@ -83,6 +85,31 @@ const COLOURINGS := {
 	set(value):
 		low = value
 		_show()
+## The game model (about 860 triangles, spent on the outline, the eye, the mouth and the fins'
+## edges) in place of the full one; `low` still shows the low model. With it on the full model is
+## never loaded.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye: 0 the eye as it was (the default), 1 the cartoon eye (bigger, a white,
+## a big iris filling most of the eye, a big pupil, two big soft highlights: sweet, gentle
+## and doe-eyed). Gulp sets it to 1.
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = value
+		_send(&"cartoon_eyes", value)
+## Where the cartoon eye looks, -1..1 each way: x towards its nose (+) or tail, y up (+) or down.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		_send(&"eye_look", value)
+## 0 open, 1 shut: the eye squashes flat (a fish has no lids) and a lid the colour of its head
+## comes down over it.
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = value
+		_send(&"blink", value)
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set it.
 var phase := 0.0:
 	set(value):
@@ -94,13 +121,23 @@ static var _meshes := {}
 var _material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
 
 
 ## The full model's mesh, or the low one's (each one surface, to wear `new_material()`): for drawing
 ## a platy without this node. Loaded once and kept, without the importer's automatic LODs (made from
 ## the still model, they would bend in straight pieces far off).
 static func mesh_of(low_wanted := false) -> Mesh:
-	var path := MODEL % ("_lo" if low_wanted else "")
+	return _mesh_at(MODEL % ("_lo" if low_wanted else ""))
+
+
+## The game model's mesh (one surface, to wear `new_material()`), for a game that draws meshes
+## itself. Loaded once and kept, without the importer's automatic LODs.
+static func game_mesh() -> Mesh:
+	return _mesh_at(MODEL % "_game")
+
+
+static func _mesh_at(path: String) -> Mesh:
 	if not _meshes.has(path):
 		var made := (load(path) as PackedScene).instantiate()
 		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
@@ -132,12 +169,13 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
 	_show()
 	_send_phase()
 	_send(&"sway", sway)
 	_send(&"gape", gape)
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 
 
 ## Each frame, for one that is not having its `phase` set for it: moves it on through its beat.
@@ -150,7 +188,9 @@ func step(_velocity: Vector3, delta: float) -> void:
 ## Sets one of the shader's settings: `curl` (bent round into a turn: radians from gills to tail,
 ## more than 0 the tail comes round to its left, +X), `billow`, `wave`, or a colour or amount
 ## (`front`, `rear`, `back`, `belly`, `sheen`, `sheen_amount`, `scales_show`, `fin`, `fin_black`,
-## `lips_black`, `mickey`, `black`, `iris`, `mouth_inside`). `colouring` sets most of them again.
+## `lips_black`, `mickey`, `black`, `iris`, `mouth_inside`,
+## the cartoon eye's `eye_grow`, `eye_white`, `iris_size`, `pupil_size`, `lid`, `lid_slant`, the gills'
+## `gill_red`, `gill_raker`). `colouring` sets most of them again.
 func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_send(setting, value)
 
@@ -182,17 +222,31 @@ func _dress() -> void:
 
 
 func _show() -> void:
+	if not is_inside_tree():
+		return
+	# (each model is made only when it is first shown)
+	if low:
+		if _low == null:
+			_low = _instance_of("PlatyLo", mesh_of(true))
+	elif game:
+		if _game == null:
+			_game = _instance_of("PlatyGame", game_mesh())
+	elif _full == null:
+		_full = _instance_of("Platy", mesh_of(false))
 	if _full:
-		_full.visible = not low
+		_full.visible = not low and not game
+	if _low:
 		_low.visible = low
+	if _game:
+		_game.visible = game and not low
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of(named: String, shown: Mesh) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
+	mesh.mesh = shown
 	mesh.material_override = _material
 	# (its tail swings out past where the still model ends)
 	mesh.extra_cull_margin = 0.012
-	mesh.name = "PlatyLo" if low_wanted else "Platy"
+	mesh.name = named
 	add_child(mesh)
 	return mesh

@@ -73,39 +73,12 @@ func _draw() -> void:
 			var inset := deep * (k + 0.5) / 12.0
 			var faint := pow(1.0 - k / 12.0, 2.0)
 			draw_rect(Rect2(Vector2(inset, inset), size - Vector2(inset, inset) * 2.0), Color(1.0, 0.15, 0.1, pulse * faint), false, deep / 12.0 + 1.0)
-	# What it is now: an outline that swells as it grows, and a pip for each time it has become
-	# something bigger.
-	var top := 46.0 * u
-	var wide := minf(size.x - 60.0 * u, 620.0 * u)
-	var left := (size.x - wide) * 0.5
-	var long := (40.0 + 22.0 * clampf(player.progress, 0.0, 1.0)) * u * (1.0 + 0.35 * _grown)
-	_fish(Vector2(left + 34.0 * u, top + 26.0 * u), long, Color(0.55, 1.0, 0.8, 1.0), player.length > 2.5)
-	for k in player.stage:
-		draw_circle(Vector2(left + 84.0 * u + k * 20.0 * u, top + 26.0 * u), 6.0 * u, Color(ink, 0.9))
-	# The bar: how far towards the next (or towards full size, at the last).
-	var bar := Rect2(left, top + 66.0 * u, wide, 12.0 * u)
-	# (a brass-framed sight glass, as the controls are a submarine's fittings)
-	draw_rect(bar.grow(4.0 * u), Color(TouchPad.BRASS_DARK, 0.9))
-	draw_rect(bar.grow(4.0 * u), Color(TouchPad.BRASS, 0.95), false, 3.0 * u)
-	draw_rect(bar, Color(TouchPad.IRON, 0.85))
-	draw_rect(Rect2(bar.position, Vector2(bar.size.x * clampf(player.progress, 0.0, 1.0), bar.size.y)), Color(0.45, 0.95, 0.7, 0.95))
-	for k in [0.0, 1.0]:
-		draw_circle(Vector2(lerpf(bar.position.x - 4.0 * u, bar.end.x + 4.0 * u, k), bar.get_center().y), 5.0 * u, Color(TouchPad.BRASS_LIGHT, 0.95))
-	# How long it is, and the longest so far (under a small crown).
-	var text_size := int(30.0 * u)
-	draw_string(font, Vector2(left, bar.end.y + 38.0 * u), "%.2f m" % player.length, HORIZONTAL_ALIGNMENT_LEFT, -1.0, text_size, ink)
-	if best > 0.0:
-		var best_text := "%.2f m" % best
-		var best_wide := font.get_string_size(best_text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, text_size).x
-		var at := Vector2(left + wide - best_wide, bar.end.y + 38.0 * u)
-		draw_string(font, at, best_text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, text_size, Color(1.0, 0.86, 0.45))
-		_crown(at + Vector2(-34.0 * u, -11.0 * u), 22.0 * u, Color(1.0, 0.86, 0.45))
 	# The high scores of the shared sea: a crown, then name and length, the longest first.
 	if not scores.is_empty():
 		var small := int(20.0 * u)
 		var line := 26.0 * u
 		var right := size.x - 16.0 * u
-		var from := bar.end.y + 70.0 * u
+		var from := 70.0 * u
 		_crown(Vector2(right - 22.0 * u, from - 30.0 * u), 22.0 * u, Color(1.0, 0.86, 0.45))
 		for k in mini(scores.size(), 5 if not over else 10):
 			var row: Array = scores[k]

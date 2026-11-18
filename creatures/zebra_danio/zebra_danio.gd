@@ -22,8 +22,10 @@ extends Node3D
 ## For a school of hundreds, do not make hundreds of these nodes: draw `ZebraDanio.school_mesh()`
 ## with one MultiMesh (GameCommon's Flock takes it as its `custom_mesh`).
 ##
-## The models are creatures/zebra_danio/models/zebra_danio.glb (and _lo, and _school), built by
-## tools/build_zebra_danio.py; zebra_danio.gdshader draws the markings and swims it.
+## The models are creatures/zebra_danio/models/zebra_danio.glb (and _lo, _game and _school), built
+## by tools/build_zebra_danio.py; zebra_danio.gdshader draws the markings and swims it. Each model is
+## loaded only when it is first shown: with `game` on, the full model is never loaded, so a game's
+## web export can leave it out.
 
 const MODEL := "res://creatures/zebra_danio/models/zebra_danio%s.glb"
 const SHADER := preload("res://creatures/zebra_danio/zebra_danio.gdshader")
@@ -55,6 +57,31 @@ const WIDTH := 0.0052
 	set(value):
 		low = value
 		_show()
+## The game model (about 850 triangles, spent on the outline, the eye, the mouth and the fins'
+## edges) in place of the full one; `low` still shows the low model. With it on the full model is
+## never loaded.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye: 0 the eye as it was (the default), 1 the cartoon eye (bigger, a white, a pale
+## gold iris ringed in steel blue, a round pupil, a highlight, the lid sloping down to the back: a
+## keen, quick, slightly jumpy look). Gulp sets it to 1.
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = value
+		_send(&"cartoon_eyes", value)
+## Where the cartoon eye looks, -1..1 each way: x towards its nose (+) or tail, y up (+) or down.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		_send(&"eye_look", value)
+## 0 open, 1 shut: the eye squashes flat (a fish has no lids) and a lid the colour of its head
+## comes down over it.
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = value
+		_send(&"blink", value)
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set it.
 var phase := 0.0:
 	set(value):
@@ -66,6 +93,7 @@ static var _meshes := {}
 var _material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
 
 
 ## The full model's mesh, or the low one's (each one surface, to wear `new_material()`): for drawing
@@ -73,6 +101,12 @@ var _low: MeshInstance3D
 ## the still model, they would bend in straight pieces far off).
 static func mesh_of(low_wanted := false) -> Mesh:
 	return _mesh_at(MODEL % ("_lo" if low_wanted else ""))
+
+
+## The game model's mesh (one surface, to wear `new_material()`), for a game that draws meshes
+## itself. Loaded once and kept, without the importer's automatic LODs.
+static func game_mesh() -> Mesh:
+	return _mesh_at(MODEL % "_game")
 
 
 ## The school model's mesh: about 350 triangles, the same size and the same way round as the others
@@ -107,12 +141,13 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
 	_show()
 	_send_phase()
 	_send(&"sway", sway)
 	_send(&"gape", gape)
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 
 
 ## Each frame, for one that is not having its `phase` set for it: moves it on through its beat.
@@ -124,7 +159,9 @@ func step(_velocity: Vector3, delta: float) -> void:
 
 ## Sets one of the shader's settings: `curl` (bent round into a turn: radians from gills to tail,
 ## more than 0 the tail comes round to its left, +X), `wave`, or a colour (`back`, `gold`, `stripe`,
-## `stripe_glint`, `belly`, `fin`, `fin_white`, `mouth_inside`).
+## `stripe_glint`, `belly`, `fin`, `fin_white`, `mouth_inside`, the cartoon eye's `eye_grow`, `eye_white`,
+## `eye_iris`, `eye_iris_ring`, `iris_size`, `pupil_size`, `lid`, `lid_slant`, the gills' `gill_red`,
+## `gill_raker`).
 func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_send(setting, value)
 
@@ -145,18 +182,32 @@ func _send_phase() -> void:
 
 
 func _show() -> void:
+	if not is_inside_tree():
+		return
+	# (each model is made only when it is first shown)
+	if low:
+		if _low == null:
+			_low = _instance_of("ZebraDanioLo", mesh_of(true))
+	elif game:
+		if _game == null:
+			_game = _instance_of("ZebraDanioGame", game_mesh())
+	elif _full == null:
+		_full = _instance_of("ZebraDanio", mesh_of(false))
 	if _full:
-		_full.visible = not low
+		_full.visible = not low and not game
+	if _low:
 		_low.visible = low
+	if _game:
+		_game.visible = game and not low
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of(named: String, shown: Mesh) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
+	mesh.mesh = shown
 	mesh.material_override = _material
 	# (its tail swings out past where the still model ends)
 	mesh.extra_cull_margin = 0.012
-	mesh.name = "ZebraDanioLo" if low_wanted else "ZebraDanio"
+	mesh.name = named
 	add_child(mesh)
 	return mesh
 

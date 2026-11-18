@@ -38,6 +38,8 @@ var _card: Title.Card
 var _dive := -1.0
 var _dive_from := Transform3D()
 var _titled := false
+## Paused from the panel's button (or P, Escape): the sea stands still.
+var paused := false
 var bot: Bot
 var arena: Arena
 
@@ -72,6 +74,7 @@ var _touching := false
 var _end_now := false
 var _saves := true
 var _accept_was := false
+var _p_was := false
 var _near := ""
 
 
@@ -170,6 +173,7 @@ func _ready() -> void:
 	add_child(hud)
 	pad = TouchPad.new()
 	add_child(pad)
+	pad.pause_pressed.connect(_toggle_pause)
 	player.ate.connect(_on_ate)
 	player.grew.connect(_on_grew)
 	player.died.connect(_on_died)
@@ -272,8 +276,11 @@ func _process(delta: float) -> void:
 		player.global_position.y = Sea.SURFACE - 1.5
 		player.pitch = 0.9
 		player.boost_held = true
-	# (while it is choosing what to become, the sea stands still)
-	if not player.choosing:
+	# (while it is choosing what to become, or paused, the sea stands still)
+	if Input.is_action_just_pressed(&"ui_cancel") or (Input.is_physical_key_pressed(KEY_P) and not _p_was):
+		_toggle_pause()
+	_p_was = Input.is_physical_key_pressed(KEY_P)
+	if not player.choosing and not paused:
 		player.step(delta)
 		life.step(delta)
 	if arena:
@@ -302,6 +309,9 @@ func _process(delta: float) -> void:
 	pad.stamina = player.stamina
 	pad.speed = lerpf(pad.speed, player.velocity.length() / (Fish.pace(player.length) * 1.15 * Player.BOOST), 1.0 - exp(-8.0 * delta)) if player.alive else 0.0
 	pad.level = player.stage
+	pad.progress = player.progress
+	pad.length = player.length
+	pad.heading = atan2(player.heading.x, -player.heading.z)
 	pad.depth = clampf((Sea.SURFACE - player.global_position.y) / 100.0, 0.0, 1.0)
 	if _frames % 6 == 0:
 		_sound_out()
@@ -354,6 +364,15 @@ func _title_step(delta: float) -> void:
 		hud.visible = true
 		pad.visible = true
 		pad.release()
+
+
+## Pauses the game, or goes on (the panel's pause button; P or Escape).
+func _toggle_pause() -> void:
+	if over or title:
+		return
+	paused = not paused
+	pad.paused = paused
+	pad.release()
 
 
 ## A picture or the end of a timed run, when its time has come.

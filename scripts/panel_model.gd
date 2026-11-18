@@ -3,9 +3,9 @@ extends SubViewport
 ## The control panel as a 3D model (the user, 2026-11-18: "lets recreate the ui as a 3d model to
 ## interact with"): models/control_panel.glb (built by tools/build_panel.py, which says what is in
 ## it) in a little world of its own, drawn clear-backed over the game by TouchPad, which also
-## takes the touches. This places the three housings along the bottom of the screen and moves
+## takes the touches. This places the five housings along the bottom of the screen and moves
 ## their parts: the stick leans, the plunger sinks and glows, the lever swings round the plunger
-## in its slot, the needles turn.
+## in its slot, the needles turn, the tubes glow.
 ##
 ## Decision (Claude's pick, 2026-11-18): a SubViewport with its own World3D and a clear background,
 ## shown as a texture by a Control. It is the usual way in Godot to put 3D things in a 2D
@@ -22,13 +22,14 @@ extends SubViewport
 
 const MODEL := "res://models/control_panel.glb"
 ## These are tools/build_panel.py's numbers (its PANEL line): change both.
-const SIDE_WIDE := 2.2
-const SIDE_TALL := 3.5
-const WELL_Z := 1.05
-const SLOT_FROM := 162.0
-const SLOT_TO := 74.0
+const SIDE_WIDE := 2.6
+const SIDE_TALL := 3.9
+const SLOT_FROM := 200.0
+const SLOT_TO := 108.0
 const GAUGE_WIDE := 3.3
-const GAUGE_TALL := 3.0
+const GAUGE_TALL := 2.3
+const SMALL_WIDE := 1.5
+const SMALL_TALL := 1.1
 const SWING := 2.2
 ## Metres of the model to one of TouchPad's layout units.
 const METRE := 100.0
@@ -36,28 +37,26 @@ const METRE := 100.0
 const LENS := 24.0
 ## How far the stick leans, pushed right over (radians), and how far the plunger sinks (m).
 const STICK_LEAN := 0.55
-const PLUNGER_SINK := 0.12
-## How much of the instrument housing's foot (its switches) is under the screen's edge on a wide
-## screen, where it would otherwise stand over the fish (m).
-const GAUGE_SUNK := 1.08
-## How much smaller the side housings are on an upright phone, so the instruments fit between.
-const SIDE_UPRIGHT := 0.8
+const PLUNGER_SINK := 0.14
+## The gap left between housings standing side by side (m).
+const GAP := 0.1
 
 ## How each material of the model is drawn over the baked picture: its shine, and a tint.
 const PAINTS := {
 	"iron": {},
-	"brass": {"shine": 0.75},
-	"copper": {"shine": 0.7},
-	"rubber": {"shine": 0.15},
+	"brass": {"shine": 0.4},
+	"copper": {"shine": 0.4},
+	"rubber": {"shine": 0.12},
 	"dark": {},
 	"paper": {},
 	"ink": {},
-	"red": {"shine": 0.2},
+	"red": {"shine": 0.15},
 	"orange": {},
 	"green": {},
-	"steel": {"shine": 0.4},
-	"screen": {"shine": 0.35},
-	"lamp": {"shine": 0.4},
+	"steel": {"shine": 0.3},
+	"screen": {"shine": 0.3},
+	"lamp": {"shine": 0.3},
+	"ember": {},
 	"wood": {},
 }
 const ATLAS := "res://textures/panel/panel_atlas.png"
@@ -65,17 +64,22 @@ const ATLAS := "res://textures/panel/panel_atlas.png"
 var helm: Node3D
 var engine: Node3D
 var gauges: Node3D
+var switches: Node3D
+var aux: Node3D
+## Whether the housings stand in one row (a wide screen) or the two small boxes stand on top of
+## the instruments (an upright one).
+var in_a_row := true
 var _stick: Node3D
 var _plunger: Node3D
 var _lever: Node3D
 var _needles: Array[Node3D] = []
 var _lamp: ShaderMaterial
+var _glass: ShaderMaterial
 var _camera: Camera3D
 var _for_size := Vector2.ZERO
 var _unit := 1.0
 var _grip := Vector3.ZERO
 var _points := {}
-
 
 static var _paints := {}
 
@@ -106,7 +110,9 @@ static func paint(model: Node3D, lit := false, atlas := "") -> void:
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		for surface in mesh.mesh.get_surface_count():
 			var named: String = mesh.mesh.surface_get_material(surface).resource_name
-			if named == "lamp" and lit:
+			if named == "glass":
+				mesh.set_surface_override_material(surface, glass_paint())
+			elif named == "lamp" and lit:
 				if lamp == null:
 					lamp = (all[named] as ShaderMaterial).duplicate()
 					lamp.set_shader_parameter(&"tint", Color(3.2, 1.6, 0.6))
@@ -114,6 +120,13 @@ static func paint(model: Node3D, lit := false, atlas := "") -> void:
 				mesh.set_surface_override_material(surface, lamp)
 			elif all.has(named):
 				mesh.set_surface_override_material(surface, all[named])
+
+
+## A vacuum tube's clear glass.
+static func glass_paint() -> ShaderMaterial:
+	var glass := ShaderMaterial.new()
+	glass.shader = load("res://shaders/panel_glass.gdshader")
+	return glass
 
 
 func _init() -> void:
@@ -130,32 +143,36 @@ func _init() -> void:
 	world.environment = Environment.new()
 	world.environment.background_mode = Environment.BG_CLEAR_COLOR
 	add_child(world)
-	var paints := PanelModel.paints()
 	var model: Node3D = (load(MODEL) as PackedScene).instantiate()
 	add_child(model)
+	PanelModel.paint(model)
 	helm = model.find_child("Helm")
 	engine = model.find_child("Engine")
 	gauges = model.find_child("Gauges")
+	switches = model.find_child("Switches")
+	aux = model.find_child("Aux")
 	_stick = model.find_child("Stick")
 	_plunger = model.find_child("Plunger")
 	_lever = model.find_child("Lever")
 	_grip = (model.find_child("Grip") as Node3D).position
-	for named: String in ["SparkA", "SparkB", "Scope", "ScopeEdge"]:
+	for named: String in ["SparkA", "SparkB", "Length", "Scope", "ScopeEdge", "Pause"]:
 		_points[named] = (model.find_child(named) as Node3D).position
 	for named: String in ["NeedleSpeed", "NeedleDepth", "NeedleBurst", "NeedleEvolve"]:
 		_needles.append(model.find_child(named))
-	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+	# (the plunger's lamp and the tubes' glass are this panel's own, to light by themselves)
+	for mesh: MeshInstance3D in _plunger.find_children("*", "MeshInstance3D", true, false) + [_plunger]:
 		for surface in mesh.mesh.get_surface_count():
-			var named: String = mesh.mesh.surface_get_material(surface).resource_name
-			if named == "lamp":
-				_lamp = (paints[named] as ShaderMaterial).duplicate()
+			if mesh.mesh.surface_get_material(surface).resource_name == "lamp":
+				_lamp = (paints()["lamp"] as ShaderMaterial).duplicate()
 				mesh.set_surface_override_material(surface, _lamp)
-			elif paints.has(named):
-				mesh.set_surface_override_material(surface, paints[named])
+	var tubes := model.find_child("TubeGlass") as MeshInstance3D
+	_glass = tubes.get_surface_override_material(0)
 
 
 ## Lays the housings out for a screen (pixels) and a layout unit (pixels): the helm in the lower
-## left corner, the engine in the lower right, the instruments between them.
+## left corner, the engine in the lower right, the instruments between them; the switch box and
+## the valve box either side of the instruments where there is room, and on top of them where
+## there is not (an upright phone), the side housings then made smaller to fit.
 func lay_out(screen: Vector2, unit: float) -> void:
 	if screen == _for_size or screen.x < 2.0 or screen.y < 2.0:
 		return
@@ -165,13 +182,20 @@ func lay_out(screen: Vector2, unit: float) -> void:
 	var wide := screen.x / (unit * METRE)
 	var tall := screen.y / (unit * METRE)
 	_camera.position = Vector3(0.0, tall * 0.5, _far())
-	var upright := wide < 11.5
-	var side := SIDE_UPRIGHT if upright else 1.0
+	in_a_row = wide >= SIDE_WIDE * 2.0 + GAUGE_WIDE + SMALL_WIDE * 2.0 + GAP * 6.0
+	var side := 1.0 if in_a_row else clampf((wide - GAUGE_WIDE - GAP * 4.0) / (SIDE_WIDE * 2.0), 0.5, 1.0)
+	var foot := -0.04
 	helm.scale = Vector3.ONE * side
 	engine.scale = Vector3.ONE * side
-	helm.position = Vector3(-wide * 0.5 + SIDE_WIDE * 0.5 * side + 0.08, -0.06, 0.0)
-	engine.position = Vector3(wide * 0.5 - SIDE_WIDE * 0.5 * side - 0.08, -0.06, 0.0)
-	gauges.position = Vector3(0.0, -0.06 if upright else -GAUGE_SUNK, 0.0)
+	helm.position = Vector3(-wide * 0.5 + SIDE_WIDE * 0.5 * side + GAP, foot, 0.0)
+	engine.position = Vector3(wide * 0.5 - SIDE_WIDE * 0.5 * side - GAP, foot, 0.0)
+	gauges.position = Vector3(0.0, foot, 0.0)
+	if in_a_row:
+		switches.position = Vector3(-(GAUGE_WIDE + SMALL_WIDE) * 0.5 - GAP, foot, 0.0)
+		aux.position = Vector3((GAUGE_WIDE + SMALL_WIDE) * 0.5 + GAP, foot, 0.0)
+	else:
+		switches.position = Vector3(-SMALL_WIDE * 0.5 - GAP * 0.5, foot + GAUGE_TALL + 0.05, 0.0)
+		aux.position = Vector3(SMALL_WIDE * 0.5 + GAP * 0.5, foot + GAUGE_TALL + 0.05, 0.0)
 
 
 func _far() -> float:
@@ -190,18 +214,29 @@ func _in(housing: Node3D, at: Vector3) -> Vector3:
 	return housing.position + at * housing.scale.x
 
 
-## The middle of the helm's socket, of the plunger, and the scope's middle and edge; the tips of
-## the two electrodes: all on the screen.
+## The middle of the helm's socket and of the plunger, on the screen.
 func stick_home() -> Vector2:
-	return to_screen(_in(helm, Vector3(0.0, WELL_Z, 0.0)))
+	return to_screen(_in(helm, Vector3(_stick.position.x, _stick.position.y, 0.0)))
 
 
 func boost_home() -> Vector2:
-	return to_screen(_in(engine, Vector3(0.0, WELL_Z, 0.0)))
+	return to_screen(_in(engine, Vector3(_plunger.position.x, _plunger.position.y, 0.0)))
 
 
+## A named place on the screen: "SparkA", "SparkB" (the electrodes' tips), "Length" (on the growth
+## dial's face, under its hub), "Scope", "ScopeEdge", "Pause" (the pause button).
 func point(named: String) -> Vector2:
-	return to_screen(_in(helm if named.begins_with("Spark") else gauges, _points[named]))
+	var housing := gauges
+	if named.begins_with("Spark") or named == "Length":
+		housing = helm
+	elif named == "Pause":
+		housing = aux
+	return to_screen(_in(housing, _points[named]))
+
+
+## How big things on a housing's face are on the screen: pixels to a metre of the model there.
+func scale_of(named: String) -> float:
+	return _unit * METRE * (helm.scale.x if named == "Length" else 1.0)
 
 
 # How far round the lever is turned (radians, from standing at the top of its arc) for a speed.
@@ -227,3 +262,5 @@ func show_state(stick: Vector2, held: bool, speed: float, needles: Array[float],
 	_lever.rotation.z = lerpf(_lever.rotation.z, _lever_turn(speed), ease)
 	for k in _needles.size():
 		_needles[k].rotation.z = lerpf(_needles[k].rotation.z, lerpf(SWING, -SWING, clampf(needles[k], 0.0, 1.0)), ease)
+	# (the tubes burn brighter while it bursts)
+	_glass.set_shader_parameter(&"lit", (0.75 if held else 0.45) + 0.06 * sin(Time.get_ticks_msec() * 0.013))

@@ -50,6 +50,45 @@ uniform vec3 fin : source_color = vec3(0.78, 0.76, 0.66);
 uniform vec3 fin_white : source_color = vec3(0.95, 0.94, 0.88);
 uniform vec3 mouth_inside : source_color = vec3(0.3, 0.08, 0.08);
 
+// Cartoon eyes (added 2026-11-18; the user: "the eyes for most of them should be more cartoony and
+// personalized"). 0, the default, is the eye drawn below, as it always was; 1 the cartoon eye: grown about
+// its middle, a white, an iris, a round pupil, a highlight that stays put (up and forward, towards the light)
+// and a dark rim, under an upper lid the colour of its head. The danio's: keen, quick and a little jumpy:
+// a pale gold iris ringed in the steel blue of its stripes, a smallish pupil with plenty of white round it,
+// the lid sloping down towards the back so that it looks eagerly forward.
+uniform float cartoon_eyes = 0.0;
+// Where the cartoon eye looks, -1..1 each way: x towards the nose (+) or the tail, y up (+) or down.
+uniform vec2 eye_look = vec2(0.0);
+// 0 open, 1 shut: the eye squashes flat from above and below (a fish has no lids) and the lid comes down.
+uniform float blink = 0.0;
+// How much bigger the cartoon eye is; how far its grown rim sinks back towards the skin (up and down, along);
+// its white, iris (and the iris's outer ring), how wide the iris is (of the eye's face) and the pupil (of the
+// iris); where the upper lid's edge rests (1 the top of the eye: no lid) and how much lower it comes at the
+// front (less than 0 raises it there).
+uniform float eye_grow = 1.45;
+uniform vec2 eye_sink = vec2(100.0, 20.0);
+uniform vec3 eye_white : source_color = vec3(0.97, 0.97, 0.94);
+uniform vec3 eye_iris : source_color = vec3(0.86, 0.74, 0.38);
+uniform vec3 eye_iris_ring : source_color = vec3(0.16, 0.26, 0.55);
+uniform float iris_size = 0.6;
+uniform float pupil_size = 0.55;
+uniform float lid = 0.8;
+uniform float lid_slant = -0.3;
+// As the model has it (the build script's EYE line): the left eye's middle on the skin and the way it faces
+// (the right eye is its mirror), and its radius over the skin.
+const vec3 EYE_MIDDLE = vec3(0.00203, 0.0009, -0.0184);
+const vec3 EYE_OUT = vec3(0.9643, 0.1888, -0.1855);
+const float EYE_RADIUS = 0.0013;
+
+// The gills (added 2026-11-18; the user: "The fish need modeled gills as well, ... so like when it opens its
+// mouth wide you can see them"): four arches a side in the throat behind the mouth, seen through it when it is
+// open (closed in, they are not seen at all). As the model has them (the build script's GILLS line): the gap
+// between two arches and where the throat ends. Their red, and their rakers' pale.
+const float GILL_GAP = 0.00102;
+const float THROAT_END = 0.0091;
+uniform vec3 gill_red : source_color = vec3(0.66, 0.05, 0.07);
+uniform vec3 gill_raker : source_color = vec3(0.9, 0.66, 0.62);
+
 varying vec3 rest;
 varying float part;
 varying float inside;
@@ -75,6 +114,30 @@ void curl_bend(inout vec3 v, inout vec3 n) {
 	v = vec3(r + (v.x - r) * c, v.y, from + (r - v.x) * sn);
 }
 
+// The cartoon eye grown about its middle, and squashed from above and below as it blinks (nothing moves
+// while cartoon_eyes and blink are 0).
+void eye_shape(inout vec3 v) {
+	if (cartoon_eyes <= 0.0 && blink <= 0.0) {
+		return;
+	}
+	float side_is = v.x >= 0.0 ? 1.0 : -1.0;
+	vec3 at = vec3(EYE_MIDDLE.x * side_is, EYE_MIDDLE.yz);
+	vec3 o = normalize(vec3(EYE_OUT.x * side_is, EYE_OUT.yz));
+	vec3 up = normalize(vec3(0.0, 1.0, 0.0) - o * o.y);
+	vec3 d = v - at;
+	float grow = mix(1.0, eye_grow, cartoon_eyes);
+	// (grown across and outward; what lies behind its face is not pushed further in; the grown rim sinks
+	// back as the head's skin falls away round it)
+	float deep = min(dot(d, o), 0.0);
+	vec3 across = d - o * dot(d, o);
+	vec3 up_d = up * dot(across, up);
+	float before = eye_sink.x * dot(up_d, up_d) + eye_sink.y * dot(across - up_d, across - up_d);
+	d = (d - o * deep) * grow + o * deep;
+	d -= o * before * (grow * grow - 1.0);
+	d -= up * dot(d, up) * 0.85 * blink;
+	v = at + d;
+}
+
 void vertex() {
 	part = UV2.y;
 	rest = VERTEX;
@@ -82,7 +145,16 @@ void vertex() {
 	vec3 v = VERTEX;
 	float xm = v.z + HALF;
 	float g = clamp(gape, 0.0, 1.0);
-	if ((part < 0.5 || part > 6.5) && xm < JAW_TO) {
+	if (part > 5.5 && part < 6.5) {
+		eye_shape(v);
+		xm = v.z + HALF;
+	}
+	// The gill arches spread a little apart as the mouth opens.
+	if (part > 9.5) {
+		v.z += g * 0.14 * GILL_GAP * (floor(UV.y) - 1.5);
+		xm = v.z + HALF;
+	}
+	if ((part < 0.5 || (part > 6.5 && part < 7.5)) && xm < JAW_TO) {
 		v.z -= g * PROTRUDE * (1.0 - smoothstep(0.3 * JAW_TO, JAW_TO, xm));
 		xm = v.z + HALF;
 	}
@@ -124,6 +196,39 @@ float stripes_at(float q, float soft) {
 	return s;
 }
 
+// The cartoon eye's colour at a place on its face: `e` x up, y forward, 1 at its rim. A round pupil.
+vec3 cartoon_eye(vec2 e) {
+	float r = length(e);
+	vec2 q = e - vec2(eye_look.y, eye_look.x) * (0.92 - iris_size);
+	float ri = length(q) / iris_size;
+	float aa = fwidth(ri) + 0.01;
+	vec3 c = eye_white * mix(1.0, 0.8, smoothstep(0.45, 1.0, r));
+	vec3 ring = mix(eye_iris * 1.15, eye_iris * 0.75, smoothstep(0.3, 0.8, ri));
+	ring = mix(ring, eye_iris_ring, smoothstep(0.72, 0.9, ri));
+	c = mix(c, ring, 1.0 - smoothstep(1.0 - aa, 1.0 + aa, ri));
+	float pd = length(q) / (iris_size * pupil_size);
+	float pa = fwidth(pd) + 0.02;
+	c = mix(c, vec3(0.012), 1.0 - smoothstep(1.0 - pa, 1.0 + pa, pd));
+	// (the highlight: up and forward, where the light comes from, and a small second one below behind)
+	float glint = 1.0 - smoothstep(0.14, 0.18, length(e - vec2(0.3, 0.26)));
+	glint = max(glint, 0.8 * (1.0 - smoothstep(0.06, 0.09, length(e - vec2(-0.2, -0.24)))));
+	c = mix(c, vec3(1.0), glint);
+	// (the dark outline, so that it reads from far off)
+	return mix(c, vec3(0.02, 0.03, 0.06), smoothstep(0.84, 0.91, r));
+}
+
+// The gills' colour: `uv` as the model gives it (x 0 the rakers' side, about 0.35 the bar, 1 the filaments;
+// y the arch's number plus how far along it), `xm` how far back: blood red, the filaments darker with fine
+// lines across, the rakers pale, all darker deeper in the throat.
+vec3 gills(vec2 uv, float xm) {
+	float along = fract(uv.y);
+	vec3 fringe = gill_red * 0.62 * (0.72 + 0.28 * cos(along * 160.0));
+	vec3 c = mix(gill_red * 1.15, fringe, smoothstep(0.45, 0.9, uv.x));
+	float teeth = 0.6 + 0.4 * step(0.45, fract(along * 11.0));
+	c = mix(c, gill_raker, (1.0 - smoothstep(0.06, 0.24, uv.x)) * teeth);
+	return c * (1.0 - 0.5 * smoothstep(JAW_TO, THROAT_END, xm));
+}
+
 void fragment() {
 	int p = int(part + 0.5);
 	float glance = 1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0);
@@ -148,8 +253,14 @@ void fragment() {
 		c = mix(c, c * 0.5, cover * 0.6);
 		rough = mix(0.3, 0.45, on);
 		c = mix(c, mouth_inside, inside);
+		// (darker down the throat behind the hinge)
+		c *= 1.0 - 0.6 * inside * smoothstep(JAW_TO, THROAT_END, xm);
 		rough = mix(rough, 0.8, inside);
 		spec = mix(spec, 0.2, inside);
+	} else if (p == 10) {
+		c = gills(UV, rest.z + HALF);
+		rough = 0.35;
+		spec = 0.6;
 	} else if (p == 3) {
 		// The tail: the stripes run on along its middle rays; its lobes clear and pale, white towards their
 		// edges.
@@ -189,6 +300,17 @@ void fragment() {
 		c = mix(c, back * 0.6, smoothstep(0.88, 1.0, r) * 0.7);
 		rough = 0.12;
 		spec = 0.65;
+		if (cartoon_eyes > 0.0 || blink > 0.0) {
+			// (where it is on the eye's face: x up, y forward, 1 at its rim)
+			vec2 e = vec2(rest.y - EYE_AT.y, EYE_AT.x - (rest.z + HALF)) / EYE_RADIUS;
+			c = mix(c, cartoon_eye(e), cartoon_eyes);
+			// (the upper lid, the colour of its head, with a dark edge: none until it blinks on the eye as it
+			// was)
+			float lid_edge = mix(mix(1.3, lid, cartoon_eyes) - lid_slant * cartoon_eyes * e.y, -1.3, blink);
+			c = mix(c, vec3(0.03, 0.03, 0.05), smoothstep(lid_edge - 0.16, lid_edge - 0.06, e.x) * step(lid_edge, 1.2));
+			c = mix(c, mix(gold, back, 0.45), smoothstep(lid_edge - 0.05, lid_edge, e.x));
+			rough = mix(rough, 0.4, smoothstep(lid_edge - 0.05, lid_edge, e.x));
+		}
 	}
 	ALBEDO = c;
 	ROUGHNESS = rough;

@@ -1,5 +1,12 @@
 """Builds the goldfish (creatures/goldfish) and exports it for Godot.
 
+(Added 2026-11-18: it also writes the GAME model, models/..._game.glb, a third model of the same curves with
+far fewer points put where the outline bends (`Fish.GAME_*`, `spaced`, each fin's counts through `Fish.n`), into the
+same .blend; and all three models now have a throat behind the mouth (`Fish.throat`) and four gill arches a side
+in it (`Fish.gills`, part 10, GILL: UV.x 0 the rakers' side, about 0.35 the bar, 1 the filaments; UV.y the arch's
+number plus how far along it, 0 low to 1 high). It prints an EYE line and a GILLS line: the numbers the shader's
+cartoon eye and gills are given. See the component's README.)
+
 Run from the game's root:
     blender --background --python creatures/goldfish/tools/build_goldfish.py
     blender --background --python creatures/goldfish/tools/build_goldfish.py -- <preview folder>   # with pictures
@@ -50,6 +57,16 @@ PREVIEW = ARGS[0] if ARGS else ""
 LENGTH = 0.15
 HALF = 0.075
 BODY, DORSAL, ANAL, TAIL, PECTORAL, PELVIC, EYE, JAW = range(8)
+# (10: the gill arches, added 2026-11-18; 8 and 9 are some kinds' barbels and adipose fin)
+GILL = 10
+# (10: the gill arches, added 2026-11-18; 8 and 9 are some kinds' barbels and adipose fin)
+GILL = 10
+# (10: the gill arches, added 2026-11-18; 8 and 9 are some kinds' barbels and adipose fin)
+GILL = 10
+# (10: the gill arches, added 2026-11-18; 8 and 9 are some kinds' barbels and adipose fin)
+GILL = 10
+# (10: the gill arches, added 2026-11-18; 8 and 9 are some kinds' barbels and adipose fin)
+GILL = 10
 TAU = math.tau
 SIDE = Vector((1.0, 0.0, 0.0))
 
@@ -221,15 +238,107 @@ def spread(sx, pivot, angle, gap):
     return place_at
 
 
+def spaced(first, last, count, ring_at, floor=0.6):
+    """For the game model: count + 1 places from `first` to `last` along the fish, close together where the skin
+    bends most along its length (the snout, the forehead, the wrist of the tail) and further apart along the
+    flanks. `ring_at(xm)` gives points round the skin at xm. A straight line between places misses a curve by
+    about its bend times the gap squared, so the places are spaced by the square root of the bend, plus `floor`
+    of the mean so that no stretch is left bare (the swimming bend needs rings all the way). (As GameCommon's
+    clown loach does it.)"""
+    n = 360
+    h = (last - first) / n
+    ss = [first + h * i for i in range(n + 1)]
+    made = [ring_at(s) for s in ss]
+    dens = []
+    for i in range(n + 1):
+        a, b, c = made[max(i - 1, 0)], made[i], made[min(i + 1, n)]
+        bend = max((a[k] - b[k] * 2.0 + c[k]).length for k in range(len(b))) / (h * h)
+        dens.append(math.sqrt(bend))
+    dens[0], dens[-1] = dens[1], dens[-2]
+    mean = sum(dens) / len(dens)
+    dens = [d + floor * mean for d in dens]
+    acc = [0.0]
+    for i in range(n):
+        acc.append(acc[-1] + 0.5 * (dens[i] + dens[i + 1]))
+    places = []
+    for k in range(count + 1):
+        want = acc[-1] * k / count
+        i = next((j for j in range(n) if acc[j + 1] >= want), n - 1)
+        t = (want - acc[i]) / max(acc[i + 1] - acc[i], 1e-12)
+        places.append(ss[i] + (ss[i + 1] - ss[i]) * t)
+    places[0], places[-1] = first, last
+    return places
+
+
+def bar(m, part, name, frames, outline, uvs):
+    """A closed bar along a line: `frames` (place, inward, back, along) at each step of it, `outline` its
+    section as (d, dz) points (d towards `inward`, dz towards `back`; one list for every step, or one list per
+    step), `uvs(i, j)` the UV of step i's point j. Each side is a strip of its own points (so that it shades
+    as one face across, as a blade's sides do) and each end is closed by a fan."""
+    steps = len(frames)
+    rings = [outline[i] if isinstance(outline[0], list) else outline for i in range(steps)]
+    n = len(rings[0])
+    # (its section's points go round anticlockwise as (d, dz): each side's outward way is the edge turned)
+    area = sum(rings[0][j][0] * rings[0][(j + 1) % n][1] - rings[0][(j + 1) % n][0] * rings[0][j][1] for j in range(n))
+    order = list(range(n)) if area > 0.0 else list(reversed(range(n)))
+
+    def place(i, j):
+        o, inward, back, _ = frames[i]
+        d, dz = rings[i][j]
+        return o + inward * d + back * dz
+
+    for e in range(n):
+        j, k = order[e], order[(e + 1) % n]
+        column = [(m.add(place(i, j), uvs(i, j), part, 1.0), m.add(place(i, k), uvs(i, k), part, 1.0)) for i in range(steps)]
+        for i in range(steps - 1):
+            ed = rings[i][k][0] - rings[i][j][0]
+            ez = rings[i][k][1] - rings[i][j][1]
+            _, inward, back, _ = frames[i]
+            out = inward * ez - back * ed
+            m.face((column[i][0], column[i][1], column[i + 1][1], column[i + 1][0]), out, name)
+    for i, way in ((0, -1.0), (steps - 1, 1.0)):
+        loop = [m.add(place(i, j), uvs(i, j), part, 1.0) for j in order]
+        middle = sum((m.verts[q] for q in loop), Vector()) / len(loop)
+        tip = m.add(middle, uvs(i, order[0]), part, 1.0)
+        for e in range(n):
+            m.face((tip, loop[e], loop[(e + 1) % n]), frames[i][3] * way, name)
+
+
 class Fish:
     """One model's shape. A kind sets PROFILE (xm, half depth above, half depth below, half width), BODY_TO,
-    JAW_TO (the jaw's hinge), EYE_AT, EYE_RADIUS, RINGS, mouth_y, gill_x and fins."""
+    JAW_TO (the jaw's hinge), EYE_AT, EYE_RADIUS, RINGS, mouth_y, gill_x and fins.
+
+    Three models of each: the full one, the low one (`low`) and the GAME model (`game`, added 2026-11-18: the same
+    curves and parts with far fewer points, put where the outline bends: GAME_RINGS rings along the body behind
+    the hinge and GAME_HEAD ahead of it, spaced by `spaced`; GAME_AROUND points round each ring; an eye of
+    GAME_EYE (spokes, rows); each fin's counts given by the kind's `fins` through `n`)."""
 
     LOW_STEP = 4.0
+    GAME_RINGS = 20
+    GAME_HEAD = 3
+    GAME_AROUND = 16
+    GAME_EYE = (24, 2)
+    GAME_JAW = 6
+    GAME_THROAT = 3
+    GAME_GILL = 3
+    GAME_GILL_SIDES = 4
+    # The throat and the gills (added 2026-11-18): the throat behind the hinge is GILL_WIDE of the body's half
+    # width wide, GILL_HIGH of its half depth above its middle line high and GILL_DEEP below; its middle line
+    # GILL_DROP of the body's half depth below below the body's. The game model's throat has GAME_THROAT rings
+    # behind the hinge and each of its arches GAME_GILL steps, a bar of GAME_GILL_SIDES sides (4 or 3).
+    GILL_WIDE = 0.55
+    GILL_HIGH = 0.45
+    GILL_DEEP = 0.42
+    GILL_DROP = 0.28
 
-    def __init__(self, low):
-        self.low = low
+    def __init__(self, low, game=False):
+        self.low = low and not game
+        self.game = game
         self.outline_curves = Curves(self.PROFILE)
+
+    def n(self, full, low, game):
+        """A count: the full model's, the low model's or the game model's."""
+        return game if self.game else (low if self.low else full)
 
     def outline(self, xm):
         return [max(v, 0.0013 * LENGTH) for v in self.outline_curves.at(xm)]
@@ -272,6 +381,11 @@ class Fish:
         return self.angle_at(xm, self.mouth_y(xm))
 
     def rings(self):
+        if self.game:
+            def ring_at(xm):
+                return [self.body_point(xm, c / 16 * TAU) for c in range(16)]
+            head = spaced(self.BODY_FROM, self.JAW_TO, self.GAME_HEAD, ring_at)[:-1]
+            return head + spaced(self.JAW_TO, self.BODY_TO, self.GAME_RINGS, ring_at)
         xs = []
         x = self.BODY_FROM
         for until, step in self.RINGS:
@@ -285,7 +399,10 @@ class Fish:
         return xs
 
     def around(self):
-        return self.AROUND_LOW if self.low else self.AROUND
+        return self.GAME_AROUND if self.game else (self.AROUND_LOW if self.low else self.AROUND)
+
+    def jaw_across(self):
+        return self.n(10, 4, self.GAME_JAW)
 
     def inside_point(self, xm, across, roof):
         """A point of the roof or the floor of the mouth at `xm`: `across` 1 at the left lip, -1 at the right,
@@ -336,7 +453,9 @@ class Fish:
                           for k in range(across + 1)])
         first = grid[0]
         uppers.append([first[j % around] for j in range(-half, half + 1)])
-        roofs.append([m.add(m.verts[first[(half + k) % around]], (self.JAW_TO / LENGTH, 0.5), BODY, 1.0) for k in range(across + 1)])
+        # (the roof of the mouth goes on back past the hinge as the roof of the throat: a short tunnel back to
+        # the gills, `throat`; until 2026-11-18 the mouth ended at the hinge in a dark wall down to the belly)
+        roofs.append(self.throat(m, across))
         for r in range(len(head)):
             centre = self.mouth_y(head[r]) - 0.1 * self.outline(head[r])[0]
             for j in range(2 * half):
@@ -345,15 +464,148 @@ class Fish:
                 m.face(quad, Vector((middle.x, middle.y - centre, 0.0)), "body")
             for k in range(across):
                 quad = (roofs[r][k], roofs[r][k + 1], roofs[r + 1][k + 1], roofs[r + 1][k])
-                if r < len(head) - 1:
-                    m.face(quad, Vector((0.0, -1.0, 0.0)), "mouth roof")
-                else:
-                    m.face(quad, Vector((0.0, -0.3, -1.0)), "throat")
+                m.face(quad, Vector((0.0, -1.0, 0.0)), "mouth roof")
         loop = uppers[0] + roofs[0][1:-1]
         middle = sum((m.verts[q] for q in loop), Vector()) / len(loop)
         tip = m.add(middle + Vector((0.0, 0.0, -0.002 * LENGTH)), (0.0, 0.5), BODY)
         for i in range(len(loop)):
             m.face((tip, loop[i], loop[(i + 1) % len(loop)]), Vector((0.0, 0.0, -1.0)), "body")
+
+    # --- the throat and the gills (added 2026-11-18) -------------------------------------------------------
+
+    def gill_span(self):
+        """Where the first and the last of the four gill arches stand (metres behind the snout, at the throat's
+        middle line), the gap between two, and where the throat ends behind them."""
+        j, g = self.JAW_TO, self.GILL_AT
+        first = j + 0.42 * (g - j)
+        last = g - 0.06 * (g - j)
+        return first, last, (last - first) / 3.0, g + 0.15 * (g - j)
+
+    def throat_shape(self, xm):
+        """The throat behind the hinge at xm: (half width, the height of its middle line, height above it,
+        depth below it), narrowing to its end behind the gills."""
+        up, down, wide = self.outline(xm)
+        _, last, _, end = self.gill_span()
+        narrow = 1.0 - 0.45 * smooth(last, end, xm)
+        return (self.GILL_WIDE * wide * narrow, self.mid(xm) - self.GILL_DROP * down,
+                self.GILL_HIGH * up * narrow, self.GILL_DEEP * down * narrow)
+
+    def throat_point(self, xm, a, roof):
+        """A point of the throat's roof or floor at xm (`a` 1 at its left side, -1 at its right): at the hinge
+        the mouth's own roof and floor, which meet at the corners of the mouth, rounding out behind it into an
+        oval about a line low in the head."""
+        j = self.JAW_TO
+        end = self.gill_span()[3]
+        b = smooth(j, j + 0.3 * (end - j), xm)
+        front = self.inside_point(j, a, roof)
+        front.z = xm - HALF
+        w, cy, hu, hd = self.throat_shape(xm)
+        back = Vector((w * math.sin(0.5 * math.pi * a), cy + (hu if roof else -hd) * math.cos(0.5 * math.pi * a), xm - HALF))
+        return front.lerp(back, b)
+
+    def throat_wall(self, xm, angle, sx):
+        """A point of the throat's wall behind the hinge (its oval): `angle` 0 at the middle of its roof, a half
+        turn at the middle of its floor, on the `sx` side."""
+        w, cy, hu, hd = self.throat_shape(xm)
+        c = math.cos(angle)
+        return Vector((sx * w * math.sin(angle), cy + (hu if c >= 0.0 else hd) * c, xm - HALF))
+
+    def throat(self, m, across):
+        """The throat: the roof of the mouth and the floor of the jaw carried on behind the hinge as a short
+        tunnel (its walls dark, `inside` 1, of the body's part) back past the gill arches to an end. Returns the
+        roof's points at the hinge (for the roof of the mouth ahead of it to join)."""
+        floor_across = self.jaw_across()
+        end = self.gill_span()[3]
+        steps = self.n(10, 2, self.GAME_THROAT)
+        xs = [self.JAW_TO + (end - self.JAW_TO) * i / steps for i in range(steps + 1)]
+        rings = []
+        for i, xm in enumerate(xs):
+            u = (xm / LENGTH, 0.5)
+            roof = [m.add(self.throat_point(xm, 1.0 - 2.0 * k / across, True), u, BODY, 1.0) for k in range(across + 1)]
+            floor = [m.add(self.throat_point(xm, 1.0 - 2.0 * k / floor_across, False), u, BODY, 1.0)
+                     for k in range(floor_across - 1, 0, -1)]
+            rings.append(roof + floor)
+        count = len(rings[0])
+        for i in range(steps):
+            for c in range(count):
+                quad = (rings[i][c], rings[i][(c + 1) % count], rings[i + 1][(c + 1) % count], rings[i + 1][c])
+                middle = sum((m.verts[q] for q in quad), Vector()) * 0.25
+                axis = sum((m.verts[q] for q in rings[i] + rings[i + 1]), Vector()) / (2 * count)
+                m.face(quad, Vector((axis.x - middle.x, axis.y - middle.y, 0.0)), "throat")
+        middle = sum((m.verts[q] for q in rings[-1]), Vector()) / count
+        tip = m.add(middle, (end / LENGTH, 0.5), BODY, 1.0)
+        for c in range(count):
+            m.face((tip, rings[-1][c], rings[-1][(c + 1) % count]), Vector((0.0, 0.0, -1.0)), "throat")
+        return rings[0][:across + 1]
+
+    def gills(self, m):
+        """Four gill arches a side in the throat, each a closed bar of the GILL part: a curved bar (blood red)
+        from low in the throat round its side and up under its roof, its top leaning back, a fringe of
+        filaments behind it out to the throat's wall (deep red) and pale gill rakers on its front. UV.x: 0 the
+        rakers' side, about 0.35 the bar, 1 the filaments; UV.y: the arch's number (0 the front one) plus how far
+        along it (0 its lower end to 1 its upper end). The full model's has a toothed fringe and the rakers as
+        spikes; the game model's is a bar of four sides, the low model's of three."""
+        first, _, gap, _ = self.gill_span()
+        steps = self.n(16, 2, self.GAME_GILL)
+        rb = 0.16 * gap
+        bar_d = 0.38 * gap
+        for sx in (1.0, -1.0):
+            for k in range(4):
+                xa = first + gap * k
+                frames = []
+                for i in range(steps + 1):
+                    t = i / steps
+                    angle = math.pi * (0.22 + 0.68 * (1.0 - t))
+                    xm = xa + 0.25 * gap * math.cos(angle)
+                    wall = self.throat_wall(xm, angle, sx)
+                    _, cy, _, _ = self.throat_shape(xm)
+                    inward = Vector((-wall.x, cy - wall.y, 0.0)).normalized()
+                    ahead = self.throat_wall(xm, angle - 0.01, sx) - self.throat_wall(xm, angle + 0.01, sx)
+                    frames.append((wall, inward, Vector((0.0, 0.0, 1.0)), ahead.normalized()))
+                if self.game and self.GAME_GILL_SIDES == 4:
+                    outline = [(bar_d + rb, -0.4 * rb), (bar_d + 0.3 * rb, rb), (0.08 * gap, 0.62 * gap), (0.08 * gap, -0.12 * gap)]
+                    pieces = (0.0, 0.35, 1.0, 0.85)
+                elif self.low or self.game:
+                    outline = [(bar_d + rb, 0.0), (0.08 * gap, 0.62 * gap), (0.08 * gap, -0.12 * gap)]
+                    pieces = (0.0, 1.0, 0.85)
+                else:
+                    outline = []
+                    for i in range(steps + 1):
+                        # (the fringe's back edge toothed: its filaments in bunches)
+                        tip = 0.62 * gap if i % 2 == 0 else 0.44 * gap
+                        ring = [(0.08 * gap, -0.12 * gap)]
+                        for a in (-120.0, -60.0, 0.0, 60.0, 120.0):
+                            r = math.radians(a)
+                            ring.append((bar_d + rb * math.cos(r), rb * math.sin(r)))
+                        ring.append((0.08 * gap, tip))
+                        outline.append(ring)
+                    pieces = (0.85, 0.35, 0.15, 0.0, 0.15, 0.35, 1.0)
+                bar(m, GILL, "gills", frames, outline, lambda i, j: (pieces[j], k + i / steps))
+                if not self.game and not self.low:
+                    self.rakers(m, frames, bar_d, rb, k, steps)
+
+    def rakers(self, m, frames, bar_d, rb, k, steps):
+        """The full model's gill rakers: short pale spikes along the front of an arch, pointing in and forward."""
+        count = 12
+        for r in range(count):
+            t = (r + 0.5) / count
+            i = min(int(t * steps), steps - 1)
+            f = t * steps - i
+            o = frames[i][0].lerp(frames[i + 1][0], f)
+            inward = frames[i][1].lerp(frames[i + 1][1], f).normalized()
+            back = Vector((0.0, 0.0, 1.0))
+            along = frames[i][3].lerp(frames[i + 1][3], f).normalized()
+            a = math.radians(-35.0)
+            root = o + inward * (bar_d + rb * math.cos(a)) + back * (rb * math.sin(a))
+            size = rb * 0.4
+            base = [root + along * size, root - along * size * 0.5 + back * size * 0.8, root - along * size * 0.5 - back * size * 0.8]
+            apex = root + inward * (rb * 1.2) - back * (rb * 0.5)
+            pts = [m.add(p, (0.0, k + t), GILL, 1.0) for p in base]
+            tip = m.add(apex, (0.0, k + t), GILL, 1.0)
+            centre = (base[0] + base[1] + base[2] + apex) * 0.25
+            for p, q, s in ((pts[0], pts[1], pts[2]), (pts[0], pts[1], tip), (pts[1], pts[2], tip), (pts[2], pts[0], tip)):
+                middle = (m.verts[p] + m.verts[q] + m.verts[s]) / 3.0
+                m.face((p, q, s), middle - centre, "gill rakers")
 
     def jaw(self, m):
         """The lower jaw: the body's own skin below the line of the mouth, ahead of the hinge, closed over by
@@ -361,7 +613,7 @@ class Fish:
         around = self.around()
         half = round(self.lip_angle(self.JAW_TO) / (TAU / around))
         under = around - 2 * half
-        across = 4 if self.low else 10
+        across = self.jaw_across()
         xs = [xm for xm in self.rings() if xm < self.JAW_TO + 1e-9]
         skins = []
         floors = []
@@ -397,8 +649,7 @@ class Fish:
 
     def eye(self, m, sx):
         """A low dome lying on the skin of the head."""
-        spokes = 8 if self.low else 22
-        steps = 1 if self.low else 5
+        spokes, steps = self.GAME_EYE if self.game else ((8, 1) if self.low else (22, 5))
         xe, ye = self.EYE_AT
         rad = self.EYE_RADIUS
         e = rad * 0.12
@@ -407,6 +658,9 @@ class Fish:
         out.normalize()
         if out.x * sx < 0.0:
             out = -out
+        if sx > 0.0:
+            # (for the shader's cartoon eye: the middle of the left eye on the skin and the way it faces)
+            self.eye_middle = (here, out)
         bulge = rad * self.EYE_BULGE
         middle = m.add(here + out * bulge, (0.0, 0.0), EYE)
         last = None
@@ -446,6 +700,7 @@ class Fish:
         m = Mesh()
         self.body(m)
         self.jaw(m)
+        self.gills(m)
         for sx in (1.0, -1.0):
             self.eye(m, sx)
         self.fins(m)
@@ -470,6 +725,12 @@ class Fish:
         tris = sum(len(p.vertices) - 2 for p in mesh.polygons)
         print("BUILT %s verts=%d tris=%d" % (name, len(mesh.vertices), tris))
         winding(name, mesh, m)
+        if not self.low and not self.game:
+            here, out = self.eye_middle
+            print("EYE %s: middle=(%.5f, %.5f, %.5f) out=(%.4f, %.4f, %.4f) at=(%.4f, %.4f) radius=%.4f" % (
+                name, here.x, here.y, here.z, out.x, out.y, out.z, self.EYE_AT[0], self.EYE_AT[1], self.EYE_RADIUS))
+            first, last, gap, end = self.gill_span()
+            print("GILLS %s: first=%.4f last=%.4f gap=%.5f throat_end=%.4f" % (name, first, last, gap, end))
         return obj, m
 
 
@@ -514,8 +775,6 @@ class Common(Fish):
         return -0.0004 - 0.12 * xm
 
     def fins(self, m):
-        low = self.low
-        d = 3 if low else 1
         # The dorsal fin: long-based, highest at its front, its rays leaning back, its edge a little rounded.
         def dorsal_root(u):
             xm = 0.041 + 0.050 * u
@@ -526,7 +785,7 @@ class Common(Fish):
             h = 0.0145 * (0.25 + 0.75 * (1.0 - u) ** 1.1) * (0.45 + 0.55 * smooth(0.0, 0.16, u))
             return (xm + 0.42 * h, self.top(xm) - 0.0009 + h)
 
-        blade(m, DORSAL, "dorsal", between(dorsal_root, dorsal_edge), upright, SIDE, 0.0011, 9 // d, (12 if not low else 4))
+        blade(m, DORSAL, "dorsal", between(dorsal_root, dorsal_edge), upright, SIDE, 0.0011, self.n(9, 3, 2), self.n(12, 4, 6))
         # The anal fin: small, far back, leaning back.
         def anal_root(u):
             xm = 0.087 + 0.012 * u
@@ -537,23 +796,23 @@ class Common(Fish):
             h = 0.0095 * (0.3 + 0.7 * (1.0 - u) ** 1.2) * (0.6 + 0.4 * smooth(0.0, 0.15, u))
             return (xm + 0.6 * h, self.bottom(xm) + 0.0008 - h)
 
-        blade(m, ANAL, "anal", between(anal_root, anal_edge), upright, SIDE, 0.0009, 6 // d, 8 // d)
+        blade(m, ANAL, "anal", between(anal_root, anal_edge), upright, SIDE, 0.0009, self.n(6, 2, 1), self.n(8, 2, 3))
         # The tail: one, forked, two rounded-pointed lobes and a shallow notch.
         tail_root = lambda u: (0.1045, 0.0072 * (1.0 - 2.0 * u))
         tail_edge = through([
             (0.0, 0.111, 0.0098), (0.1, 0.133, 0.0158), (0.2, 0.149, 0.0188), (0.3, 0.146, 0.0120),
             (0.4, 0.137, 0.0050), (0.5, 0.1325, 0.0), (0.6, 0.137, -0.0050), (0.7, 0.146, -0.0120),
             (0.8, 0.149, -0.0188), (0.9, 0.133, -0.0158), (1.0, 0.111, -0.0098)])
-        blade(m, TAIL, "tail", between(tail_root, tail_edge), upright, SIDE, 0.0012, 10 // d, (18 if not low else 6))
+        blade(m, TAIL, "tail", between(tail_root, tail_edge), upright, SIDE, 0.0012, self.n(10, 3, 2), self.n(18, 6, 10))
         for sx in (1.0, -1.0):
             root = self.skin(0.0305, -0.0118, sx)
             root.x -= sx * 0.0006
             self.paired(m, PECTORAL, "pectorals", sx, root, (0.38, -0.3, 0.87), (0.06, -0.88, 0.45),
-                        0.0175, 0.0085, 0.0008, 8 // d, 6 // max(d - 1, 1),
+                        0.0175, 0.0085, 0.0008, self.n(8, 2, 3), self.n(6, 3, 2),
                         lambda t: (0.45 + 0.55 * smooth(0.0, 0.35, t)) * (1.0 - t) ** 0.5)
             root = Vector((sx * 0.0035, self.bottom(0.056) + 0.0012, 0.056 - HALF))
             self.paired(m, PELVIC, "pelvics", sx, root, (0.3, -0.55, 0.78), (0.0, 0.14, 1.0),
-                        0.0125, 0.0058, 0.0007, 6 // d, 4 // max(d - 1, 1),
+                        0.0125, 0.0058, 0.0007, self.n(6, 2, 2), self.n(4, 2, 2),
                         lambda t: (1.0 - t) ** 0.7)
 
 
@@ -590,13 +849,13 @@ class Fantail(Fish):
     AROUND_LOW = 10
     RINGS = ((0.0085, 0.0008), (0.028, 0.0015), (0.08, 0.0022), (0.0905, 0.0012))
     TAIL_PIVOT = 0.0045
+    # (the game model: fewer rings along its short body, more rows across its spreading tails)
+    GAME_RINGS = 15
 
     def mouth_y(self, xm):
         return -0.0006 - 0.14 * xm
 
     def fins(self, m):
-        low = self.low
-        d = 3 if low else 1
         def dorsal_root(u):
             xm = 0.028 + 0.036 * u
             return (xm, self.top(xm) - 0.0009)
@@ -606,7 +865,7 @@ class Fantail(Fish):
             h = 0.0215 * (0.22 + 0.78 * (1.0 - u) ** 1.0) * (0.4 + 0.6 * smooth(0.0, 0.2, u))
             return (xm + 0.55 * h, self.top(xm) - 0.0009 + h)
 
-        blade(m, DORSAL, "dorsal", between(dorsal_root, dorsal_edge), upright, SIDE, 0.0011, 9 // d, (12 if not low else 4))
+        blade(m, DORSAL, "dorsal", between(dorsal_root, dorsal_edge), upright, SIDE, 0.0011, self.n(9, 3, 2), self.n(12, 4, 6))
         for sx in (1.0, -1.0):
             # The paired anal fins: side by side under the tail's root, spread apart.
             def anal_root(u):
@@ -622,7 +881,7 @@ class Fantail(Fish):
             place = spread(sx, pivot, 0.5, 0.0012)
             point = between(anal_root, anal_edge)
             blade(m, ANAL, "anals", lambda t, u: (point(t, u), t), lambda p: place(p[0], p[1]),
-                  Vector((sx, 0.45, 0.0)), 0.0008, 6 // d, 8 // d)
+                  Vector((sx, 0.45, 0.0)), 0.0008, self.n(6, 2, 1), self.n(8, 2, 3))
             # The double tail: two forked tails, one each side, joined along the top and spread apart below.
             tail_root = lambda u: (0.0795, 0.0060 - 0.0118 * u)
             tail_edge = through([
@@ -630,20 +889,31 @@ class Fantail(Fish):
                 (0.36, 0.141, 0.0105), (0.46, 0.1295, 0.0000), (0.55, 0.137, -0.0110), (0.66, 0.1475, -0.0240),
                 (0.76, 0.143, -0.0350), (0.88, 0.116, -0.0300), (1.0, 0.0905, -0.0150)])
             point_t = between(tail_root, tail_edge)
+            if self.game:
+                # (the game model's ten steps across each tail fall on the points its edge is drawn through,
+                # so that the lobes' tips and the notch are kept)
+                point_t = between(tail_root, lambda u, e=tail_edge: e(on_points(u, (0.0, 0.1, 0.2, 0.27, 0.36, 0.46, 0.55, 0.66, 0.76, 0.88, 1.0))))
             place_t = spread(sx, self.TAIL_PIVOT, lambda xm: 0.8 * smooth(0.0785, 0.092, xm), 0.0009)
             # (each point of the tail is turned out by how far back it is)
             blade(m, TAIL, "tails", lambda t, u, point_t=point_t: (point_t(t, u), point_t(t, u)[0]),
                   lambda p, place_t=place_t: place_t(p[0], p[1]), Vector((sx * 0.75, 0.65, 0.0)), 0.0,
-                  (12 if not low else 3), (18 if not low else 6))
+                  self.n(12, 3, 5), self.n(18, 6, 10))
             root = self.skin(0.0265, -0.0150, sx)
             root.x -= sx * 0.0006
             self.paired(m, PECTORAL, "pectorals", sx, root, (0.42, -0.32, 0.85), (0.06, -0.88, 0.45),
-                        0.0170, 0.0090, 0.0008, 8 // d, 6 // max(d - 1, 1),
+                        0.0170, 0.0090, 0.0008, self.n(8, 2, 3), self.n(6, 3, 2),
                         lambda t: (0.45 + 0.55 * smooth(0.0, 0.35, t)) * (1.0 - t) ** 0.5)
             root = Vector((sx * 0.0045, self.bottom(0.045) + 0.0014, 0.045 - HALF))
             self.paired(m, PELVIC, "pelvics", sx, root, (0.32, -0.58, 0.75), (0.0, 0.14, 1.0),
-                        0.0140, 0.0065, 0.0007, 6 // d, 4 // max(d - 1, 1),
+                        0.0140, 0.0065, 0.0007, self.n(6, 2, 2), self.n(4, 2, 2),
                         lambda t: (1.0 - t) ** 0.7)
+
+
+def on_points(u, us):
+    """u (0 to 1, in even steps) carried onto the uneven places `us` (one more than the steps), straight between."""
+    k = min(int(u * (len(us) - 1)), len(us) - 2)
+    f = u * (len(us) - 1) - k
+    return us[k] + (us[k + 1] - us[k]) * f
 
 
 def material_of(name, colour):
@@ -679,7 +949,7 @@ def export_one(obj, path):
     )
 
 
-def render(folder, prefix, full, low, colours=False):
+def render(folder, prefix, full, low, colours=False, game=None):
     scene = bpy.context.scene
     scene.render.engine = "BLENDER_WORKBENCH"
     scene.display.shading.light = "STUDIO"
@@ -701,7 +971,8 @@ def render(folder, prefix, full, low, colours=False):
              ("top", (0.001, 0, 1), (0, 0, 0), 1.15 * L), ("under", (0.001, 0, -1), (0, 0, 0), 1.15 * L),
              ("head", (0.8, 0.5, 0.2), (0, HALF - 0.12 * L, 0), 0.42 * L),
              ("tail", (0.7, -0.6, 0.3), (0, -HALF + 0.2 * L, 0), 0.6 * L)]
-    for tag, obj, only in (("", full, None), ("lo_", low, ("left", "head", "top", "back"))):
+    shown = [("", full, None), ("lo_", low, ("left", "head", "top", "back"))] + ([("game_", game, None)] if game else [])
+    for tag, obj, only in shown:
         for other in bpy.context.scene.objects:
             if other.type == "MESH":
                 other.hide_render = other is not obj
@@ -728,17 +999,21 @@ def main():
         full_fish = kind(False)
         full, _ = full_fish.make(kind.NAME)
         low, _ = kind(True).make(kind.NAME + "_lo")
+        game, _ = kind(False, True).make(kind.NAME + "_game")
         print("NUMBERS %s: joint=%.4f jaw_to=%.4f hinge_y=%.5f body_to=%.4f eye=(%.4f, %.4f) gill=%.4f" % (
             kind.NAME, kind.JOINT, kind.JAW_TO, full_fish.mouth_y(kind.JAW_TO), kind.BODY_TO,
             kind.EYE_AT[0], kind.EYE_AT[1], kind.GILL_AT))
         export_one(full, os.path.join(OUT, kind.NAME + ".glb"))
         export_one(low, os.path.join(OUT, kind.NAME + "_lo.glb"))
+        export_one(game, os.path.join(OUT, kind.NAME + "_game.glb"))
         low.location.x = 0.06
+        game.location.x = 0.12
         bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, kind.NAME + ".blend"))
         low.location.x = 0.0
+        game.location.x = 0.0
         if PREVIEW:
             os.makedirs(PREVIEW, exist_ok=True)
-            render(PREVIEW, kind.NAME, full, low)
+            render(PREVIEW, kind.NAME, full, low, game=game)
 
 
 if __name__ == "__main__":

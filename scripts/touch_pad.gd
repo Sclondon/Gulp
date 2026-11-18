@@ -1,40 +1,44 @@
 class_name TouchPad
 extends Control
-## The on-screen controls: a rusted mad-science console along the bottom of the screen, in three
-## housings (the user, 2026-11-18: "the contols UI should be old timey submarine themed, and
-## there needs to be a lever to control speed around the boost button", "There should be a whole
-## control panel on the bottom part, that also shows speed and your evolution level and maybe any
-## special ability buttons, with and old rusted and e gad frankenstein technology aesthetic").
+## The on-screen controls: a rusted mad-science console along the bottom of the screen (the user,
+## 2026-11-18: "the contols UI should be old timey submarine themed, and there needs to be a
+## lever to control speed around the boost button", "There should be a whole control panel on
+## the bottom part, that also shows speed and your evolution level and maybe any special ability
+## buttons, with and old rusted and e gad frankenstein technology aesthetic").
 ##
-## It is a 3D model (the user, after two rounds of generated pictures: "lets recreate the ui as a
-## 3d model to interact with"): PanelModel draws it and moves its parts; this takes the touches
-## and draws what is only light over it (the sonar's sweep and blips, the spark).
+## It is a 3D model (the user: "lets recreate the ui as a 3d model to interact with"):
+## PanelModel draws it and moves its parts; this takes the touches and draws what is only light
+## or writing over it (the sonar's sweep, blips and compass points, the spark, the fish's length).
 ##
 ## - The helm housing (bottom left): a socket with a ball-topped stick that steers, under two
-##   electrodes that a spark jumps between while the fish bursts.
+##   electrodes that a spark jumps between while the fish bursts; over it the GROWTH dial: a turn
+##   of its needle is the whole way from the first fish to the last, creeping round as it eats,
+##   and the fish's length is written on its face (this replaced the bar that was at the top of the
+##   screen: the user, "Why is there srill the ui at rhe top? Is that the same as the evo dial!").
 ## - The engine housing (bottom right): a plunger, held for a burst of speed, and curving round
-##   it a slot with a lever that sets how fast the fish swims, from dead slow (the slot's lower
-##   left end) to full ahead (its upper right end). The lever stays where it is put.
+##   its left a slot with a lever that sets how fast the fish swims, from dead slow (the slot's
+##   lower end) to full ahead (its top). The lever stays where it is put. Over it the SPEED dial.
 ## - The instrument housing (between them): a sonar scope (what hunts the fish in red, what it
-##   can eat in green, ahead of it up the screen), dials for speed, depth and how much burst is
-##   left (left to right), a rack of vacuum tubes that light one for each time the fish has become
-##   something bigger, and two switches kept for special abilities that do not exist yet (hidden
-##   under the screen's edge on a wide screen).
-##
-## The two rounds of generated pictures the model follows are in tools/art_src and, retired,
-## textures/panel.
+##   can eat in green, ahead of it up the screen, with N, E, S and W round its rim), and small
+##   dials for DEPTH and for how much BURST is left.
+## - The switch box: two knife switches kept for special abilities that do not exist yet.
+## - The valve box: the pause button, and two vacuum tubes that burn brighter while it bursts.
 ##
 ## A touch anywhere in the lower left takes the helm; a touch on the lever's slot takes the lever;
-## a touch anywhere else in the lower right holds the burst. A mouse works as a finger (the
-## project turns mouse presses into touches).
+## a touch on the pause button pauses (and any touch then goes on); a touch anywhere else in the
+## lower right holds the burst. A mouse works as a finger (the project turns mouse presses into
+## touches).
+
+## The pause button was pressed, or (paused) the screen was touched to go on.
+signal pause_pressed
 
 const BRASS := Color(0.80, 0.62, 0.26)
 const BRASS_LIGHT := Color(1.0, 0.88, 0.55)
 const BRASS_DARK := Color(0.33, 0.23, 0.09)
 const IRON := Color(0.10, 0.12, 0.14)
 ## How solid the panel is drawn (the sea shows through it a little).
-const SEE := 0.9
-## How many times a fish can grow into something bigger (the evolution dial's full turn).
+const SEE := 0.92
+## How many times a fish can grow into something bigger (the growth dial's full turn).
 const STAGES := 8
 ## How far the sonar sees (m).
 const SONAR_RANGE := 30.0
@@ -46,14 +50,20 @@ var boost := false
 var throttle := 0.7
 ## Shown on the panel: how much burst is left (0..1), how fast the fish is going (0 still to 1
 ## flat out, bursting), how deep it is (0 at the surface to 1 at the bottom of the trench), how
-## many times it has become something bigger, and what the sonar sees: each a Vector3 of where it
-## is from the fish (x to its right, y ahead of it, both in metres) and what it is (z: 0 food,
-## 1 a hunter).
+## many times it has become something bigger and how far it is towards the next (0..1), how long
+## it is (m), which way it is heading (radians round from north, which is the sea's -Z, turning
+## towards east, its +X), and what the sonar sees: each a Vector3 of where it is from the fish (x
+## to its right, y ahead of it, both in metres) and what it is (z: 0 food, 1 a hunter).
 var stamina := 1.0
 var speed := 0.0
 var depth := 0.0
 var level := 0
+var progress := 0.0
+var length := 0.0
+var heading := 0.0
 var blips: Array[Vector3] = []
+## The game is paused: a veil over the sea and an arrow to go on.
+var paused := false
 
 var model: PanelModel
 var _stick_touch := -1
@@ -83,7 +93,8 @@ func _process(delta: float) -> void:
 	model.render_target_update_mode = SubViewport.UPDATE_ALWAYS if visible else SubViewport.UPDATE_DISABLED
 	if visible:
 		_fit()
-		model.show_state(stick, boost and stamina > 0.0, throttle, [speed + sin(Time.get_ticks_msec() * 0.03) * 0.004, depth, stamina, float(level) / STAGES], delta)
+		model.show_state(stick, boost and stamina > 0.0, throttle,
+				[speed + sin(Time.get_ticks_msec() * 0.03) * 0.004, depth, stamina, (level + clampf(progress, 0.0, 1.0)) / STAGES], delta)
 		queue_redraw()
 
 
@@ -107,6 +118,12 @@ func boost_home() -> Vector2:
 	return model.boost_home()
 
 
+## Where the pause button is.
+func pause_home() -> Vector2:
+	_fit()
+	return model.point("Pause")
+
+
 ## Where the lever's handle is for a speed (0..1): a point along its slot.
 func lever_at(at_speed: float) -> Vector2:
 	_fit()
@@ -120,6 +137,9 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch
 		if touch.pressed:
+			if paused or touch.position.distance_to(pause_home()) < 46.0 * unit():
+				pause_pressed.emit()
+				return
 			if touch.position.y < size.y * 0.4:
 				return
 			if touch.position.x < size.x * 0.5 and _stick_touch == -1:
@@ -177,6 +197,9 @@ func _pull(at: Vector2) -> void:
 
 func _draw() -> void:
 	var u := unit()
+	var font := get_theme_default_font()
+	if paused:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.05, 0.1, 0.55))
 	draw_texture_rect(model.get_texture(), Rect2(Vector2.ZERO, size), false, Color(1.0, 1.0, 1.0, SEE))
 	# The sonar: a sweep going round, a ring, and what is about (hunters red, food green).
 	var scope := model.point("Scope")
@@ -184,8 +207,9 @@ func _draw() -> void:
 	var sweep := Time.get_ticks_msec() * 0.0022
 	for k in 14:
 		var way := Vector2.from_angle(sweep - k * 0.06)
-		draw_line(scope, scope + way * r * 0.95, Color(0.4, 1.0, 0.45, 0.5 * (1.0 - k / 14.0)), 2.5 * u, true)
-	draw_arc(scope, r * 0.5, 0.0, TAU, 32, Color(0.4, 1.0, 0.45, 0.22), 1.5 * u, true)
+		draw_line(scope, scope + way * r * 0.82, Color(0.4, 1.0, 0.45, 0.5 * (1.0 - k / 14.0)), 2.5 * u, true)
+	draw_arc(scope, r * 0.42, 0.0, TAU, 32, Color(0.4, 1.0, 0.45, 0.22), 1.5 * u, true)
+	draw_arc(scope, r * 0.82, 0.0, TAU, 48, Color(0.4, 1.0, 0.45, 0.3), 1.5 * u, true)
 	draw_circle(scope, 3.0 * u, Color(0.6, 1.0, 0.6, 0.9))
 	for blip in blips:
 		var off := Vector2(blip.x, -blip.y) / SONAR_RANGE
@@ -195,9 +219,34 @@ func _draw() -> void:
 		var lag := fposmod(sweep - off.angle(), TAU) / TAU
 		var bright := 0.45 + 0.55 * (1.0 - lag)
 		var colour := Color(1.0, 0.25, 0.15) if blip.z > 0.5 else Color(0.5, 1.0, 0.5)
-		draw_circle(scope + off * r, (5.0 if blip.z > 0.5 else 3.5) * u, Color(colour, bright))
-	if boost and stamina > 0.0:
+		draw_circle(scope + off * r * 0.82, (5.0 if blip.z > 0.5 else 3.5) * u, Color(colour, bright))
+	# The compass round its rim (the user: "The sonar radar needs caridnal direction indicators as
+	# well"): ahead is up the screen, so the points turn as the fish does. North is brighter.
+	var letter := int(maxf(r * 0.2, 9.0))
+	for k in 4:
+		var bearing := k * PI * 0.5 - heading
+		var at := scope + Vector2(sin(bearing), -cos(bearing)) * r * 0.91
+		var said := "NESW"[k]
+		var wide := font.get_string_size(said, HORIZONTAL_ALIGNMENT_LEFT, -1.0, letter).x
+		draw_string(font, at + Vector2(-wide * 0.5, letter * 0.36), said, HORIZONTAL_ALIGNMENT_LEFT, -1.0, letter, Color(1.0, 0.9, 0.5, 1.0) if k == 0 else Color(0.55, 1.0, 0.6, 0.85))
+	for k in 8:
+		var bearing := (k + 0.5) * PI * 0.25 - heading
+		var way := Vector2(sin(bearing), -cos(bearing))
+		draw_line(scope + way * r * 0.86, scope + way * r * 0.95, Color(0.55, 1.0, 0.6, 0.5), 1.5 * u, true)
+	# The fish's length, written on the growth dial's face.
+	var high := int(maxf(model.scale_of("Length") * 0.17, 9.0))
+	var long := "%.2f m" % length
+	var across := font.get_string_size(long, HORIZONTAL_ALIGNMENT_LEFT, -1.0, high).x
+	draw_string(font, model.point("Length") + Vector2(-across * 0.5, high * 0.36), long, HORIZONTAL_ALIGNMENT_LEFT, -1.0, high, Color(0.12, 0.07, 0.04, 0.95))
+	if boost and stamina > 0.0 and not paused:
 		_spark(model.point("SparkA"), model.point("SparkB"))
+	# Paused: an arrow in the middle of the screen to go on.
+	if paused:
+		var middle := Vector2(size.x * 0.5, size.y * 0.36)
+		var big := 70.0 * u
+		draw_circle(middle, big + 8.0 * u, Color(0.1, 0.07, 0.03, 0.85))
+		draw_circle(middle, big, Color(0.5, 0.38, 0.18))
+		draw_colored_polygon(PackedVector2Array([middle + Vector2(-0.3, -0.42) * big, middle + Vector2(0.5, 0.0) * big, middle + Vector2(-0.3, 0.42) * big]), Color(0.12, 0.07, 0.03))
 
 
 # A spark between the electrodes: a jagged blue-white line that is never the same twice.
@@ -206,6 +255,6 @@ func _spark(from: Vector2, to: Vector2) -> void:
 	var line := PackedVector2Array()
 	for k in 9:
 		var share := k / 8.0
-		line.append(from.lerp(to, share) + Vector2(0.0, randf_range(-0.16, 0.16) * wide * sin(share * PI)))
-	draw_polyline(line, Color(0.45, 0.7, 1.0, 0.5), wide * 0.07, true)
-	draw_polyline(line, Color(0.9, 0.97, 1.0, 0.95), wide * 0.025, true)
+		line.append(from.lerp(to, share) + Vector2(0.0, randf_range(-0.12, 0.12) * wide * sin(share * PI) - wide * 0.1 * sin(share * PI)))
+	draw_polyline(line, Color(0.45, 0.7, 1.0, 0.5), wide * 0.05, true)
+	draw_polyline(line, Color(0.9, 0.97, 1.0, 0.95), wide * 0.018, true)

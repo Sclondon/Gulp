@@ -76,6 +76,8 @@ func _ready() -> void:
 	computer.rotation.x = -0.14
 	(computer.find_child("Helm") as Node3D).position.x = -(PanelModel.GAUGE_WIDE + PanelModel.SIDE_WIDE) * 0.5 - 0.15
 	(computer.find_child("Engine") as Node3D).position.x = (PanelModel.GAUGE_WIDE + PanelModel.SIDE_WIDE) * 0.5 + 0.15
+	(computer.find_child("Switches") as Node3D).position = Vector3(-PanelModel.SMALL_WIDE * 0.5 - 0.05, PanelModel.GAUGE_TALL + 0.05, 0.0)
+	(computer.find_child("Aux") as Node3D).position = Vector3(PanelModel.SMALL_WIDE * 0.5 + 0.05, PanelModel.GAUGE_TALL + 0.05, 0.0)
 	boat.add_child(computer)
 	# The three of them.
 	if ResourceLoader.exists(FIGURES):
