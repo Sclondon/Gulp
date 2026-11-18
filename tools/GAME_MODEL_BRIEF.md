@@ -114,3 +114,26 @@ cutthroat-trout, flying-fish, clown-loach, channel-catfish).
 Not started yet (no free slot): aquarium-a (neon-tetra, guppy, betta); aquarium-b (goldfish, zebra-danio, corydoras,
 platy); odd (nudibranch, the single garden eel, ammonite). Not planned: the jellies (moon jelly, sea nettle) and the
 scenery, which are light already.
+
+## Added 2026-11-18: cartoon eyes
+
+The user, after the groups had started: "the eyes for most of them should be more cartoony and personalized".
+
+- A shader setting **`cartoon_eyes`** (0: the eye as it is now, the default, so nothing else changes; 1: the cartoon
+  eye) and a node property of the same name. It works on all three models. Gulp sets it to 1.
+- The cartoon eye: bigger than life (the eye's dome may be scaled up in the vertex shader about its own middle, by a
+  factor chosen for the animal, about 1.3 to 2), a clean white or pale sclera, a coloured iris, a big dark pupil and a
+  bright highlight that stays put towards the light, with a dark outline so it reads from far off. Drawn in the shader
+  on the eye's own surface (the game model's eye needs enough triangles to stay round: say 24 to 40 a side).
+- **Personalized**: each animal gets its own eye, to suit what it is, not one eye stamped on all of them: iris colour,
+  pupil shape (round, a cat's slit, a W, a bar, a keyhole), how much white shows, and a lid or brow line that gives it
+  a character (a white shark's heavy menacing brow, a sardine's wide startled stare, a grouper's sleepy half lid, a
+  clownfish's bright eager eye, a moray's small mean one, an otter's or seal's big soft dark eye). Say in the README
+  what character you gave it.
+- Two more settings so a game can bring it to life: **`eye_look`** (a Vector2, -1..1: the pupil and iris slide that
+  way, right and up, in the eye's own plane) and **`blink`** (0 open to 1 shut: a lid the colour of the skin closes
+  over it; for fish, which have no lids, it may be a quick squash of the eye instead).
+- Animals with no proper eyes to speak of (krill specks in a school mesh, plankton) are left alone; the school meshes
+  are left alone.
+- Check it in pictures: `cartoon_eyes` 0 and 1 close on the head from the side, front and three-quarter, looking each
+  way, and blinking; and that with 0 the animal looks exactly as before.
