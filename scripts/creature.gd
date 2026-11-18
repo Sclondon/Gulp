@@ -27,6 +27,8 @@ var band := Vector2(0.0, 1.0)
 ## It keeps to the bottom; it is a giant (see above); it goes for the player.
 var on_floor := false
 var giant := false
+## How fast it goes beside a fish of its length (Species: a starfish creeps, a sea lily stays).
+var slow := 1.0
 var hunts := true
 
 var _goal := Vector3.ZERO
@@ -45,6 +47,7 @@ func become(of_kind: String) -> void:
 	band = Vector2(depth[0], depth[1])
 	on_floor = entry.get("how", "swim") == "floor"
 	giant = entry.get("how", "swim") == "giant"
+	slow = float(entry.get("slow", 1.0))
 	hunts = bool(entry.get("hunts", true)) and not giant
 	set_kind(of_kind)
 	# (each koi, guppy or other patterned fish its own pattern)
@@ -97,7 +100,7 @@ func step(delta: float, player: Player, hunting: bool) -> void:
 				and player.length >= length * Life.TOO_SMALL and far < SIGHT + length * SIGHT_PER_LENGTH:
 			mode = Mode.HUNT
 	var want := heading
-	var speed := Fish.pace(length)
+	var speed := Fish.pace(length) * slow
 	bite = 0.0
 	match mode:
 		Mode.WANDER:

@@ -15,6 +15,7 @@ class_name Species
 ## - curls: its shader has `curl` (left out: it has).
 ## - how: "swim" (the default), "floor" (it keeps to the bottom, on it or just over it), or
 ##   "giant" (it cruises, takes no notice of anything, and nothing eats it).
+## - slow: how fast it goes beside a fish of its length (left out: 1; a starfish creeps, 0 stays put).
 ## - hunts: it goes for the player when it is big enough to eat it (left out: it does).
 ## - breathes: it comes down from the surface and goes back up to it (seals, whales).
 ## - zones: where it lives (Sea.Zone names); band: the depth it keeps to there (0 the floor,
@@ -137,6 +138,26 @@ const ALL := {
 	"devil_ray": {"script": "devil_ray/devil_ray", "long": 0.64, "front": 0.32, "hunts": false, "zones": ["open", "sand"], "band": [0.5, 0.95], "count": 5, "size": [0.6, 0.7]},
 	"eagle_ray": {"script": "spotted_eagle_ray/spotted_eagle_ray", "long": 1.15, "front": 0.575, "hunts": false, "zones": ["reef", "sand"], "band": [0.05, 0.4], "count": 2, "size": [1.1, 1.3]},
 	"manta": {"script": "manta_ray/manta_ray", "long": 3.06, "front": 1.53, "how": "giant", "zones": ["open", "reef"], "band": [0.5, 0.9], "count": 2, "size": [3.0, 3.4]},
+	# More of the user's second list (2026-11-18); places, numbers and sizes are Claude's picks.
+	"green_turtle": {"script": "sea_turtle/sea_turtle", "set": {"type": 0}, "long": 1.1, "front": 0.712, "curls": false, "hunts": false, "breathes": true, "zones": ["grass", "reef"], "band": [0.2, 0.9], "count": 2, "size": [0.9, 1.2]},
+	"hawksbill": {"script": "sea_turtle/sea_turtle", "set": {"type": 1}, "long": 0.9, "front": 0.611, "curls": false, "hunts": false, "breathes": true, "zones": ["reef"], "band": [0.1, 0.8], "count": 2, "size": [0.7, 0.9]},
+	"loggerhead": {"script": "sea_turtle/sea_turtle", "set": {"type": 2}, "long": 1.0, "front": 0.738, "curls": false, "hunts": false, "breathes": true, "zones": ["kelp", "open"], "band": [0.3, 0.9], "count": 1, "size": [0.9, 1.1]},
+	"leatherback": {"script": "sea_turtle/sea_turtle", "set": {"type": 3}, "long": 1.8, "front": 1.161, "curls": false, "hunts": false, "breathes": true, "zones": ["open"], "band": [0.4, 0.95], "count": 1, "size": [1.7, 2.0]},
+	"pufferfish": {"script": "pufferfish/pufferfish", "hunts": false, "zones": ["reef", "sand"], "band": [0.05, 0.5], "count": 4, "size": [0.22, 0.32]},
+	"seahorse": {"script": "seahorse/seahorse", "set": {"type": 0}, "long": 0.15, "curls": false, "hunts": false, "slow": 0.25, "zones": ["grass"], "band": [0.02, 0.2], "count": 5, "size": [0.16, 0.22]},
+	"thorny_seahorse": {"script": "seahorse/seahorse", "set": {"type": 1}, "long": 0.15, "curls": false, "hunts": false, "slow": 0.25, "zones": ["reef", "kelp"], "band": [0.02, 0.2], "count": 4, "size": [0.13, 0.17]},
+	"pygmy_seahorse": {"script": "seahorse/seahorse", "set": {"type": 2}, "long": 0.15, "curls": false, "hunts": false, "slow": 0.25, "zones": ["reef"], "band": [0.02, 0.15], "count": 5, "size": [0.02, 0.03]},
+	"cleaner_shrimp": {"script": "shrimps/shrimp", "set": {"kind": 0}, "long": 0.058, "curls": false, "hunts": false, "how": "floor", "zones": ["reef"], "band": [0.0, 0.0], "count": 6, "size": [0.05, 0.07]},
+	"mantis_shrimp": {"script": "shrimps/shrimp", "set": {"kind": 1}, "long": 0.1485, "curls": false, "hunts": false, "how": "floor", "zones": ["reef", "sand"], "band": [0.0, 0.0], "count": 4, "size": [0.13, 0.18]},
+	"pistol_shrimp": {"script": "shrimps/shrimp", "set": {"kind": 2}, "long": 0.045, "curls": false, "hunts": false, "how": "floor", "zones": ["sand"], "band": [0.0, 0.0], "count": 5, "size": [0.04, 0.05]},
+	"starfish": {"script": "starfish/starfish", "set": {"kind": 0}, "long": 0.26, "curls": false, "hunts": false, "how": "floor", "slow": 0.03, "zones": ["kelp", "reef"], "band": [0.0, 0.0], "count": 8, "size": [0.2, 0.3]},
+	"sunflower_star": {"script": "starfish/starfish", "set": {"kind": 1}, "long": 0.58, "curls": false, "hunts": false, "how": "floor", "slow": 0.05, "zones": ["kelp"], "band": [0.0, 0.0], "count": 3, "size": [0.5, 0.7]},
+	"brittle_star": {"script": "starfish/starfish", "set": {"kind": 2}, "long": 0.19, "curls": false, "hunts": false, "how": "floor", "slow": 0.08, "zones": ["reef", "trench"], "band": [0.0, 0.0], "count": 6, "size": [0.15, 0.22]},
+	"long_spined_urchin": {"script": "sea_urchin/sea_urchin", "set": {"kind": 0}, "long": 0.29, "curls": false, "hunts": false, "how": "floor", "slow": 0.02, "zones": ["reef"], "band": [0.0, 0.0], "count": 6, "size": [0.24, 0.32]},
+	"purple_urchin": {"script": "sea_urchin/sea_urchin", "set": {"kind": 1}, "long": 0.13, "curls": false, "hunts": false, "how": "floor", "slow": 0.02, "zones": ["kelp"], "band": [0.0, 0.0], "count": 10, "size": [0.1, 0.15]},
+	"pencil_urchin": {"script": "sea_urchin/sea_urchin", "set": {"kind": 2}, "long": 0.17, "curls": false, "hunts": false, "how": "floor", "slow": 0.02, "zones": ["reef"], "band": [0.0, 0.0], "count": 5, "size": [0.14, 0.2]},
+	"feather_star": {"script": "crinoid/crinoid", "set": {"kind": 0}, "long": 0.3, "curls": false, "hunts": false, "how": "floor", "slow": 0.0, "zones": ["reef"], "band": [0.0, 0.0], "count": 5, "size": [0.25, 0.35]},
+	"sea_lily": {"script": "crinoid/crinoid", "set": {"kind": 2}, "long": 0.5, "curls": false, "hunts": false, "how": "floor", "slow": 0.0, "zones": ["trench"], "band": [0.0, 0.0], "count": 6, "size": [0.45, 0.6]},
 	# The giants: they cruise the open ocean and take no notice of a fish.
 	"whale_shark": {"script": "whale_shark/whale_shark", "how": "giant", "zones": ["open"], "band": [0.6, 0.95], "count": 1, "size": [9.0, 10.0]},
 	"humpback": {"script": "humpback_whale/humpback_whale", "how": "giant", "breathes": true, "zones": ["open"], "band": [0.5, 0.95], "count": 1, "size": [13.0, 14.0]},
