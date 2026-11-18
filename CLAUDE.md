@@ -494,3 +494,6 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   tpose until it looks right". Render the model orthographically in the sheet's pose and scale and lay it half-clear
   (and as an outline) over each view of the sheet; fix and repeat until the silhouettes agree. This is the standard
   for the captain and for the brothers after him.
+- "and if you need more poses for concept art ask for them" (the user, 2026-11-18): builders are to ask for any view
+  they lack (a level-armed T-pose, head turnarounds, hands, seated) rather than guess; Claude generates it in the
+  figure's own Gemini conversation.
