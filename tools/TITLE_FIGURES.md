@@ -791,3 +791,94 @@ The user's: the T-pose sheet as the measure, the overlay method, the boxers base
 views when needed. Claude's: the bone table's numbers, the grating, the coat's skirt, trousers slimmer than his legs,
 the painted face drawn unlit, the painted head with its own cap and no pipe, the earring in both faces, the tattoos'
 places where the sheet was unclear.
+
+## The captain: painted body, planned UVs, hair-shader beard, movable tattoos (2026-11-18, in progress)
+
+The user, in order: "make sure things have textures that fit our art style"; "Dont try to model the beard it should
+be made with a hair shader"; "the tattoos need to be moveable so we can postion them eventually"; "instead of
+projecting hte concept art onto it we should make proper uvs no?"; "I downloaded some more references models for you
+to compare to".
+
+### Planned UVs (decision)
+
+- **What:** every piece of the captain is unwrapped by plan in the build script (`plan_uvs`), not by Blender's smart
+  projection: each face goes to a named part by where it is (arms, hands, legs, front, back; on the painted head the
+  face, the round of the head and cap, the cap's top); each part is unwrapped by the projection that suits it (a strip
+  round each arm with its seam underneath; a strip round each leg with its seam on the inside; flat front and back
+  panels meeting at the sides under the arms; the face flat from the front; the head and cap a strip with its seam down
+  the back), at true scale times its share of texels (face 3.2, hands 1.6, front 1.3, arms 1.0, back 0.8, legs 0.6),
+  mirrored left onto right for the clothes (coat, undershirt, trousers and boots, boxers) but not for the bare skin, and
+  shelf-packed into one atlas with padding. Beside each atlas the build writes a layout picture (every face's edges,
+  each island named) and a JSON of where each part is: `tools/art_src/captain_<atlas>_layout.png` and `.json` for the
+  atlases skin (1024), boxers (512), open (1024), legs (512), closed (1024), and `captain_face_layout.png` (1024). The
+  face takes 442 by 384 pixels of its 1024 picture.
+- **Why:** the user's call; smart projection gave a jumble of small islands nobody could paint on, and could not be
+  mirrored. This is how the Twilight Princess figures on this machine are laid out (see the yardstick below).
+- **Practice:** planned seams where they hide, limbs as strips, mirrored halves, texel density by importance (the
+  usual game-character unwrap). **Alternative:** hand-unwrapping in Blender (better islands, not repeatable from the
+  script).
+- The sheets are still projected into this layout as the first paint (`paint_from_sheet`, in the sheet's pose), and
+  what no view sees is filled from its neighbours.
+
+### Painted body and clothes
+
+The body and each look are painted from their sheets (base body from `concept_captain_tpose.jpg`, open from
+`concept_captain_tpose_clothed.jpg`, closed from `concept_captain_closed.jpg`), drawn unlit like the head. The tufted
+chest-hair mesh is dropped (`TUFTED_HAIR = False`): the sheet's painted chest and belly hair read better and match the
+rest. The skin's projection is cleaned of the sheet's tattoos (ink is painted out from the skin round it), since the
+tattoos are now an overlay.
+
+### Movable tattoos
+
+- Each tattoo is its own picture with a clear background: `textures/tattoos/anchor.png`, `swallow.png`, `star.png`,
+  `heart.png`, `ship.png` (drawn by the build, faded blue-black, no letters). They live under `textures/`, not
+  `tools/`, because `tools/` is hidden from Godot.
+- The table is `textures/tattoos/captain_tattoos.json`: one row per placed tattoo. The build writes it only if it is
+  missing, so edit it freely. Positions are in the part's own island: on an arm `x` runs round it (0.5 on top, more
+  toward the front) and `y` from the shoulder (0) to the wrist (1); on `front` and `back`, `x` across and `y` up from
+  his hips; `size` is the tattoo's width on his skin in metres; `turn` in degrees; `mirror`; `strength` 0 to 1. Parts:
+  `arm_l`, `arm_r`, `hand_l`, `hand_r`, `front`, `back`, `leg_l`, `leg_r` (the islands of
+  `textures/tattoos/captain_skin_layout.json`).
+- Example row (an anchor on his right forearm): `{"picture": "anchor", "part": "arm_r", "x": 0.55, "y": 0.72,
+  "size": 0.07, "turn": 0, "mirror": false, "strength": 0.85}`. To move it, change `x`/`y` and either rebuild (the
+  build composites `textures/tattoos/captain_tattoo_overlay.png` in a second or two) or, in the game, call
+  `TitleFigures.lay_tattoos(captain)` (it reads the table and composites the overlay once, about 30 ms).
+- The overlay is drawn as a second, see-through copy of each bare piece (`*_ink*` meshes, StandardMaterial3D with
+  alpha), 0.6 mm off the skin. No new shader program.
+- The same scheme serves any figure: a skin picture, a table, an overlay.
+
+### Beard as hair
+
+The beard, moustache, sideburns and the hair under his cap are hair-shader hair (`head_hair`): flat card clumps
+(`card_lock`) rooted over the head's own triangles in each region, combed down along the surface, with UV along each
+clump. The head's lower part stays as the beard's core, painted a grey root shadow. 486 clumps, about 14,600 triangles,
+on both faces. Brows stay paint (`BROW_TUFTS = False`): the painted brows read closer to the sheet.
+
+### Still to do (this round is not finished)
+
+- **The beard reads as white shingles, not a soft bushy beard:** too regular and too bright under the hair shader's
+  ink edges, and heavy (about 14,600 triangles). It needs fewer, larger, softer cards with a strand texture, or the
+  `sheen` style.
+- **The closed coat does not match its sheet:** the sheet's pea coat is bulkier, its arms stand further out, its
+  collar is higher, so its projected paint is misplaced. Its overlay is in the scratch folder.
+- The coat's lapels are not yet brought in to the open sheet.
+- The waist-up framing has not been matched to the concept's camera.
+- Hands to the hands sheet and the stance against the wheel views are not done.
+- The triangle budget (4,000 to 5,000 a look) is not done: the glb holds 56,647 triangles across all looks, both faces
+  and both beards. Drawn per look, without the beard, it is about 10,000.
+- Picture weight: the captain's glb is 3.4 MB (JPEG pictures inside); the source PNGs in `tools/art_src` and
+  `textures/tattoos` are about 10 MB, unused by the game except the tattoo pictures and their table.
+
+### The Twilight Princess yardstick (measured only, nothing copied)
+
+Measured in Blender from the user's references in the session's scratch folder (`tp_refs`):
+
+| Figure | Triangles | Main body picture | Mirrored share of body texels |
+| --- | --- | --- | --- |
+| Shad | 2,663 (head 653, torso 1,058, legs 514, arms 438) | 512 by 512, itself a 256 square mirrored four ways | 77 % |
+| Telma | 2,308 (head 468, torso 972, legs 442, arms 426) | 256 by 256 | 93 % |
+| Hylian Knight | 2,533 (head 614, torso 572, legs 741, arms 606) | 512 by 256 | 83 % (armour pieces 100 %) |
+
+What they show: about 2,300 to 2,700 triangles a figure; one small body picture, mostly mirrored; the face and eyes
+on their own small tiles (32 to 128 pixels); folds, seams and trim painted in, not modelled. The captain draws about
+10,000 triangles a look without his beard: about four times that.

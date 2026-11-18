@@ -563,3 +563,15 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   planned UVs (seams hidden, a big face island, mirrored halves, a readable layout with a layout picture kept beside
   the texture), as the Twilight Princess figures have; projecting a concept sheet is only how the first paint gets
   into that layout. No smart-project UVs on figures.
+
+### The captain's model: what failed and the method that replaces it (2026-11-18)
+
+The user, of the rebuilt captain: "the captain model does not match the conept art", "its deformted". True of both
+rounds: the body was the tall shared man's mesh warped by a bone table into a short stout shape (so it looked
+squashed, not built), the hair-shader beard was flat white shingles, and the closed coat did not fit its sheet. What
+did work was the HEAD, which was built from nothing, row by row, to the head sheet's silhouettes. The third round's
+files are kept in `tools/retired/captain_round3/` (it holds useful parts: planned UVs, the movable tattoo table and
+overlay, `TitleFigures.lay_tattoos`); the game has the earlier recorded captain meanwhile.
+The method from here: build each figure's body FROM ITS OWN SHEET, cross-section by cross-section from the front and
+side silhouettes, as the head was, on its own skeleton fitted to that body, never by warping another figure's mesh.
+Pushed 2026-11-18: game 0864fe9, site PR #212 (the push does not include the failed captain).

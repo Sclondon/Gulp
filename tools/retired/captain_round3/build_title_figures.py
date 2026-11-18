@@ -1,0 +1,3179 @@
+"""The three figures of the title scene: the boy from Warren, a sea captain and an old-time diver, all on the shared
+skeleton, built in Blender from the existing figures. See tools/TITLE_FIGURES.md (with the design sheets).
+
+    blender -b --factory-startup --python tools/build_title_figures.py
+
+Writes tools/blend/title_figures.blend (all three, editable, a collection each) and models/title_boy.glb,
+title_captain.glb, title_diver.glb. Then `godot --headless --path . --import`.
+
+Where each comes from (read in place, never copied or changed):
+- The boy: GameCommon's boy (character controller, models/boy_tp.glb and boy.glb) as Warren turns him out
+  (Warren's scripts/looks.gd): HeadShape "inside_round", the bowl cut, Warren's colours.
+- The captain and the diver: GameCommon's man (godot/man, models/man.glb: Gloaming's man, on the boy's skeleton),
+  his skeleton, his build keys, his hands, and garments grown from his own body's surface (as build_man.py cuts his
+  braies from his skin and stands them off it). The captain wears the man's own `legs__trousers` piece (trousers
+  into boots) and the boy's mask head (boy.glb `boy_head__base`, as HeadShape reshapes it) sized to a man, with a big
+  nose and a beard. The diver's gear is new (nothing like it exists): built with build_character.py's Builder.
+
+Godot space in all the sums (metres as modelled, Y up, he faces +Z, +X is his left); the man is modelled 1.25 m
+tall and stood at 1.44 times that by TitleFigures.
+"""
+
+import json
+import math
+import os
+import sys
+
+import bmesh
+import bpy
+from mathutils import Matrix, Quaternion, Vector
+from mathutils.bvhtree import BVHTree
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+COMMON = "C:/Projects/GameCommon/godot/character-controller/files"
+MAN = "C:/Projects/GameCommon/godot/man/files/models/man.glb"
+sys.path.insert(0, os.path.join(COMMON, "tools"))
+import build_character as kit  # noqa: E402
+
+X, Y, Z = kit.X, kit.Y, kit.Z
+G = kit.from_blender
+B = kit.to_blender
+
+
+def ease(a, b, x):
+    t = min(max((x - a) / (b - a), 0.0), 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+# =====================================================================================================
+# Shared helpers
+# =====================================================================================================
+
+def import_glb(path):
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=path)
+    return [o for o in bpy.data.objects if o not in before]
+
+
+def make_material(name, srgb, metallic=0.0, roughness=1.0):
+    material = bpy.data.materials.new(name)
+    material.use_nodes = True
+    colour = tuple(kit.linear(c) for c in srgb) + (1.0,)
+    shader = next(n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    shader.inputs["Base Color"].default_value = colour
+    shader.inputs["Roughness"].default_value = roughness
+    shader.inputs["Metallic"].default_value = metallic
+    material.diffuse_color = colour
+    return material
+
+
+def settle(o):
+    """Bakes an imported object's place into its points and frees it of parent and modifiers."""
+    o.data.transform(o.matrix_world)
+    o.parent = None
+    o.matrix_world = Matrix.Identity(4)
+    for m in list(o.modifiers):
+        o.modifiers.remove(m)
+
+
+def weld(o):
+    """Joins the points the glTF split at every seam, so a surface grown from it can be stood off whole."""
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
+    bm.to_mesh(o.data)
+    bm.free()
+
+
+def activate(o):
+    for other in bpy.context.view_layer.objects:
+        other.select_set(False)
+    bpy.context.view_layer.objects.active = o
+    o.select_set(True)
+
+
+def apply_keys(o, values):
+    """Sets the shape keys (the man's build) and bakes the mix in."""
+    if not o.data.shape_keys:
+        return
+    blocks = o.data.shape_keys.key_blocks
+    basis = [Vector(d.co) for d in blocks[0].data]
+    mixed = [p.copy() for p in basis]
+    for key in blocks[1:]:
+        share = values.get(key.name, 0.0)
+        if share:
+            for i, d in enumerate(key.data):
+                mixed[i] += (d.co - basis[i]) * share
+    o.shape_key_clear()
+    for v, p in zip(o.data.vertices, mixed):
+        v.co = p
+    o.data.update()
+
+
+def copy_of(o, name):
+    made = o.copy()
+    made.data = o.data.copy()
+    made.name = name
+    made.data.name = name
+    bpy.context.scene.collection.objects.link(made)
+    return made
+
+
+def keep_only(o, keep):
+    """Deletes the faces whose middle (Godot space) `keep` refuses, and the points left loose."""
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    gone = [f for f in bm.faces if not keep(G(f.calc_center_median()))]
+    bmesh.ops.delete(bm, geom=gone, context="FACES")
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    bm.to_mesh(o.data)
+    bm.free()
+
+
+def stand_off(o, thickness, smooth=0, lam=0.5):
+    """Moves every point out along its normal by thickness(point), then smooths (the border held)."""
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    bm.normal_update()
+    moves = [(v, v.normal.copy() * thickness(G(v.co))) for v in bm.verts]
+    for v, d in moves:
+        v.co += d
+    inner = [v for v in bm.verts if not v.is_boundary]
+    for _ in range(smooth):
+        bmesh.ops.smooth_vert(bm, verts=inner, factor=lam, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+    bm.normal_update()
+    bm.to_mesh(o.data)
+    bm.free()
+
+
+def cut(o, point, normal):
+    """Cuts an object by a plane (Godot space) and keeps what lies on the side the normal points to."""
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], plane_co=B(point), plane_no=B(normal),
+                           clear_inner=True)
+    bm.to_mesh(o.data)
+    bm.free()
+
+
+def sleeve_at(o, x, band=0.006):
+    """Where a sleeve (held out along x, T pose) is at x: its middle and its largest radius there."""
+    near = [G(v.co) for v in o.data.vertices if abs(G(v.co).x - x) < band]
+    c = sum(near, Vector()) / len(near)
+    c.x = x
+    r = max(Vector((0.0, p.y - c.y, p.z - c.z)).length for p in near)
+    return c, r
+
+
+_TREES = {}
+
+
+def nearest_weights(o, p):
+    """The skin weights of the point of `o` nearest p (for a piece made to lie on it)."""
+    from mathutils import kdtree
+    key = (o.name, len(o.data.vertices))
+    if key not in _TREES:
+        tree = kdtree.KDTree(len(o.data.vertices))
+        for v in o.data.vertices:
+            tree.insert(G(v.co), v.index)
+        tree.balance()
+        _TREES[key] = tree
+    _, index, _ = _TREES[key].find(p)
+    names = {g.index: g.name for g in o.vertex_groups}
+    return {names[g.group]: g.weight for g in o.data.vertices[index].groups if g.group in names}
+
+
+def decimate(o, tris):
+    now = kit.triangle_count(o.data)
+    if now <= tris:
+        return
+    m = o.modifiers.new("decimate", "DECIMATE")
+    m.ratio = tris / now
+    m.use_symmetry = True
+    m.symmetry_axis = "X"
+    activate(o)
+    bpy.ops.object.modifier_apply(modifier=m.name)
+
+
+def recolour(o, by_name, fallback):
+    for i, slot in enumerate(o.material_slots):
+        base = slot.material.name.split(".")[0] if slot.material else ""
+        o.data.materials[i] = by_name.get(base, fallback)
+
+
+def smooth_shade(o):
+    for poly in o.data.polygons:
+        poly.use_smooth = True
+
+
+def from_builder(name, builder, fuse, material, weigh):
+    """A Builder's shapes as an object of their own, one material, skin weights from weigh(point) -> {bone: share}."""
+    mesh = kit.fused(builder, fuse)
+    o = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(o)
+    mesh.materials.append(material)
+    groups = {}
+    for v in mesh.vertices:
+        for bone, share in weigh(G(v.co)).items():
+            if share > 0.001:
+                if bone not in groups:
+                    groups[bone] = o.vertex_groups.new(name=bone)
+                groups[bone].add([v.index], share, "REPLACE")
+    smooth_shade(o)
+    return o
+
+
+def held_by_chest(o, edge, reach):
+    """Gives the points of `o` above edge(point) (and within `reach` of the middle) to the chest, eased in over a
+    few centimetres below it."""
+    chest = o.vertex_groups.get("chest") or o.vertex_groups.new(name="chest")
+    names = {g.index: g for g in o.vertex_groups}
+    for v in o.data.vertices:
+        p = G(v.co)
+        if abs(p.x) > reach:
+            continue
+        share = ease(edge(p) - 0.02, edge(p) + 0.04, p.y) * ease(reach, reach - 0.04, abs(p.x))
+        if share <= 0.0:
+            continue
+        old = [(names[g.group], g.weight) for g in v.groups]
+        for group, weight in old:
+            group.add([v.index], weight * (1.0 - share), "REPLACE")
+        have = next((w for g, w in old if g == chest), 0.0)
+        chest.add([v.index], have * (1.0 - share) + share, "REPLACE")
+
+
+def surface_path(o, points, centre_of, off):
+    """Points laid on an object's surface: each point (Godot space) moved to where a ray from centre_of(point)
+    through it meets the surface, then `off` out along the surface's normal. Gives (points, normals)."""
+    tree = BVHTree.FromObject(o, bpy.context.evaluated_depsgraph_get())
+    laid, normals = [], []
+    for p in points:
+        c = centre_of(p)
+        d = (p - c).normalized()
+        hit = tree.ray_cast(B(c + d * 0.6), B(-d) - B(Vector()))
+        if hit[0] is None:
+            laid.append(p)
+            normals.append(d)
+            continue
+        n = (G(hit[1]) - G(Vector())).normalized()
+        if n.dot(d) < 0.0:
+            n = -n
+        laid.append(G(hit[0]) + n * off)
+        normals.append(n)
+    return laid, normals
+
+
+def strap(b, points, normals, width, thick, segments=6):
+    """A flat strap along points lying on a surface (its face along the normals)."""
+    rings = []
+    for i, (p, n) in enumerate(zip(points, normals)):
+        ahead = (points[min(i + 1, len(points) - 1)] - points[max(i - 1, 0)]).normalized()
+        across = ahead.cross(n).normalized()
+        rings.append((p, across * width, n * thick))
+    b.tube(rings, segments)
+
+
+def smooth_path(pts, steps=2):
+    """A Catmull-Rom curve through the points."""
+    out = []
+    for i in range(len(pts) - 1):
+        p0, p1, p2, p3 = pts[max(i - 1, 0)], pts[i], pts[i + 1], pts[min(i + 2, len(pts) - 1)]
+        for k in range(steps):
+            t = k / steps
+            out.append(0.5 * (2.0 * p1 + (p2 - p0) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t * t + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t * t * t))
+    out.append(pts[-1])
+    return out
+
+
+def rigid(bone):
+    return lambda p: {bone: 1.0}
+
+
+def paint_tint(body, shade):
+    """Gives each corner of `body` the soft tint shade(material, point) (see `finish`), after taking away any
+    vertex colours it had."""
+    mesh = body.data
+    for called in [a.name for a in mesh.color_attributes]:
+        mesh.color_attributes.remove(mesh.color_attributes[called])
+    if shade:
+        tint = mesh.color_attributes.new("Tint", "BYTE_COLOR", "CORNER")
+        names = [s.material.name.split("_", 1)[1] for s in body.material_slots]
+        for poly in mesh.polygons:
+            material = names[poly.material_index]
+            for li in poly.loop_indices:
+                p = G(mesh.vertices[mesh.loops[li].vertex_index].co)
+                f = max(0.0, min(1.0, shade(material, p)))
+                tint.data[li].color = (f, f, f, 1.0)
+        mesh.color_attributes.active_color = tint
+        mesh.color_attributes.render_color_index = mesh.color_attributes.find("Tint")
+
+
+def finish(name, joints, parts, collection, shade=None):
+    """Joins a figure's parts into one mesh on a new skeleton at the man's joints (every bone straight up and
+    unrotated, kit.make_armature), in its collection. `shade(material, point)` gives each corner a soft tint (a
+    vertex colour, multiplied into the material's colour: ribs, stains, patina); 1 leaves it as it is."""
+    armature = kit.make_armature(joints)
+    armature.name = name + "_armature"
+    activate(parts[0])
+    for o in parts[1:]:
+        o.select_set(True)
+    bpy.ops.object.join()
+    body = parts[0]
+    body.name = name
+    body.data.name = name
+    paint_tint(body, shade)
+    body.parent = armature
+    body.modifiers.new("Armature", "ARMATURE").object = armature
+    for o in (armature, body):
+        for c in o.users_collection:
+            c.objects.unlink(o)
+        collection.objects.link(o)
+    print("FIGURE %s tris=%d" % (name, kit.triangle_count(body.data)))
+    return armature
+
+
+def extents(o, y, band=0.006, keep=lambda p: True):
+    """The span of an object's points near height y: (largest |x|, back z, front z)."""
+    pts = [G(v.co) for v in o.data.vertices]
+    near = [p for p in pts if abs(p.y - y) < band and keep(p)]
+    if not near:
+        return None
+    return max(abs(p.x) for p in near), min(p.z for p in near), max(p.z for p in near)
+
+
+# =====================================================================================================
+# The man (GameCommon godot/man)
+# =====================================================================================================
+
+def import_man(keys):
+    """The man's body and his trousers piece, his build set by `keys`, and his joints."""
+    made = import_glb(MAN)
+    armature = next(o for o in made if o.type == "ARMATURE")
+    joints = [(b.name, G(b.head_local), b.parent.name if b.parent else None) for b in armature.data.bones]
+    body = next(o for o in made if o.type == "MESH" and o.name.split(".")[0] == "man")
+    legs = next(o for o in made if o.type == "MESH" and o.name.split(".")[0] == "man_legs__trousers")
+    for o in made:
+        if o not in (body, legs):
+            bpy.data.objects.remove(o, do_unlink=True)
+    for o in (body, legs):
+        settle(o)
+        apply_keys(o, keys)
+        weld(o)
+    return joints, body, legs
+
+
+# His hands, out past the cuffs (he is modelled in a T pose, the wrists at |x| 0.48)
+HAND_FROM = 0.445
+
+
+def hands_of(body, name, skin, size=1.0, tris=560):
+    """His hands, made `size` times bigger about the wrists (the captain's big working hands, the diver's gloves)."""
+    hands = copy_of(body, name)
+    keep_only(hands, lambda p: abs(p.x) > HAND_FROM)
+    wrist = Vector((0.484, 0.934, 0.0))
+    for v in hands.data.vertices:
+        p = G(v.co)
+        w = Vector((math.copysign(wrist.x, p.x), wrist.y, wrist.z))
+        grow = 1.0 + (size - 1.0) * ease(HAND_FROM, wrist.x + 0.01, abs(p.x))
+        v.co = B(w + (p - w) * grow)
+    decimate(hands, tris)
+    recolour(hands, {}, skin)
+    smooth_shade(hands)
+    return hands
+
+
+# =====================================================================================================
+# HeadShape (the boy's mask heads)
+# =====================================================================================================
+
+SHAPES = {
+    "inside_round": {"chin": 0.15, "forward": 0.15, "jaw": 0.14, "flat": 0.07, "cheek": 0.07, "tall": 0.05, "brow": 0.03},
+    "mask_long": {"chin": 0.26, "forward": 0.14, "jaw": 0.3, "flat": 0.2, "cheek": 0.1, "tall": 0.08, "brow": 0.0},
+    "mask_brow": {"chin": 0.15, "forward": 0.12, "jaw": 0.2, "flat": 0.26, "cheek": 0.1, "tall": 0.03, "brow": 0.05},
+    "inside": {"chin": 0.15, "forward": 0.17, "jaw": 0.15, "flat": 0.25, "cheek": 0.11, "tall": 0.05, "brow": 0.02},
+}
+
+
+def head_shaped(p, centre, reach, how):
+    """HeadShape._shaped, line for line (Godot space)."""
+    u = Vector(((p.x - centre.x) / reach.x, (p.y - centre.y) / reach.y, (p.z - centre.z) / reach.z))
+    front = ease(-0.15, 0.75, u.z)
+    low = ease(0.05, -0.95, u.y)
+    out = u.copy()
+    out.x *= 1.0 - how["jaw"] * low * front
+    out.x *= 1.0 - how["cheek"] * front * (1.0 - low) * ease(1.0, 0.0, abs(u.y))
+    out.y -= how["chin"] * low * front * front * 1.6
+    out.z += how["forward"] * low * front
+    flat = how["flat"]
+    plane = 1.0 - flat
+    if out.z > plane - 0.25:
+        over = out.z - (plane - 0.25)
+        out.z = plane - 0.25 + over / (1.0 + over * flat * 6.0)
+    out.z += how["brow"] * front * ease(0.0, 0.25, u.y) * ease(0.6, 0.3, u.y) * 2.0
+    out.y *= 1.0 + how["tall"] * ease(0.0, 1.0, u.y)
+    return Vector((centre.x + out.x * reach.x, centre.y + out.y * reach.y, centre.z + out.z * reach.z))
+
+
+def reshape_head(head, shape):
+    points = [G(v.co) for v in head.data.vertices]
+    low = Vector((min(p.x for p in points), min(p.y for p in points), min(p.z for p in points)))
+    high = Vector((max(p.x for p in points), max(p.y for p in points), max(p.z for p in points)))
+    centre, reach = (low + high) * 0.5, (high - low) * 0.5
+    for v, p in zip(head.data.vertices, points):
+        v.co = B(head_shaped(p, centre, reach, SHAPES[shape]))
+    head.data.update()
+
+
+# =====================================================================================================
+# The boy: an old-time sailor boy (tools/art_src/concept_sailor_boy.jpg), on GameCommon's boy
+# =====================================================================================================
+#
+# The user (2026-11-18): "Nick of Time by Ned Bell is part of the inspiration, and the art on the cover- the boy needs
+# and old timey sailor boy outfit". Built to the concept: a loose cream shirt, collar open, sleeves rolled above the
+# elbow; a faded navy neckerchief knotted at the throat, its flap on his back; high-waisted khaki trousers with a
+# worn leather belt, rolled at the ankle; scuffed brown boots; a rope bracelet; a clasp knife on a lanyard at the
+# belt; wind-tossed sandy hair. The face stays the game's smooth mask.
+#
+# Everything is grown from the boy's own bare body (boy.glb `boy_body__bare`), as the captain's clothes are from
+# the man's: the shirt and trousers are its surface stood off; the rolls, turn-ups, belt and bracelet are bands of those
+# surfaces made solid; the collar, neckerchief and knife are laid on them by rays. Only the skin that shows is kept
+# of the body (neck and open chest, forearms, ankles). His hands (boy_tp.glb `boy`), boots (`boy_boots`) and mask
+# head (boy.glb `boy_head__base`, HeadShape "inside_round" as Warren has it) are the boy's own.
+
+BOY_TP = os.path.join(COMMON, "models", "boy_tp.glb")
+BOY_FULL = os.path.join(COMMON, "models", "boy.glb")
+BOY_JOINT = Vector((0.0, 1.012, 0.0))  # the boy's head joint
+# sRGB; sombre, muted, weathered (the concept's)
+BOY_COLOURS = {
+    "skin": (0.78, 0.62, 0.51), "shirt": (0.80, 0.76, 0.65), "kerchief": (0.21, 0.25, 0.35),
+    "trousers": (0.55, 0.50, 0.36), "belt": (0.38, 0.23, 0.13), "iron": (0.42, 0.42, 0.42), "boots": (0.40, 0.26, 0.16),
+    "hair": (0.74, 0.61, 0.40), "rope": (0.66, 0.56, 0.39), "wood": (0.40, 0.26, 0.15), "steel": (0.62, 0.62, 0.64),
+}
+BOY_METAL = {"iron": (0.4, 0.55), "steel": (0.6, 0.35), "boots": (0.0, 0.7), "belt": (0.0, 0.75)}
+SLEEVE_END = 0.29     # |x| where the rolled sleeves end (T pose; the elbow is at 0.32)
+OPEN_NECK = 0.855     # the bottom of the shirt's open neck, in front
+TROUSER_TOP = 0.705   # high-waisted (his hips' joint is at 0.62); just above the belt, under the shirt
+TROUSER_END = 0.19    # where the legs are cut, the turn-ups round them
+BELT = (0.664, 0.698)
+BRACELET = (0.447, 0.466)  # |x| of the rope round his right wrist
+# The helmet scripts/title.gd puts on his head: tools/build_helmet.py's cap (outer radius 1.1, inner 1.02, cut 0.18
+# above its middle) at HEAD 0.128, (0, 0.1, 0.005) from the head mount, in his model's space.
+HELMET_MIDDLE = BOY_JOINT + Vector((0.0, 0.1, 0.005))
+HELMET_INSIDE = 1.02 * 0.128
+HELMET_RIM = HELMET_MIDDLE.y + 0.18 * 0.128
+
+
+def under_helmet(p, margin=0.003):
+    """Whether a point keeps clear of the helmet: under its rim, or inside its shell."""
+    return p.y < HELMET_RIM - margin or (p - HELMET_MIDDLE).length < HELMET_INSIDE - margin
+
+
+def lay(objs, points, centre_of, off):
+    """Points laid on the outermost of several surfaces: a ray from far out, back toward centre_of(point) through
+    the point; the hit furthest out wins. Gives [(point moved `off` out along the surface's normal, normal)]."""
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    trees = [BVHTree.FromObject(o, depsgraph) for o in objs]
+    out = []
+    for p in points:
+        c = centre_of(p)
+        d = (p - c).normalized()
+        best = None
+        for tree in trees:
+            hit = tree.ray_cast(B(c + d * 0.6), B(-d))
+            if hit[0] is None:
+                continue
+            q = G(hit[0])
+            far = (q - c).dot(d)
+            if best is None or far > best[0]:
+                n = G(hit[1]).normalized()
+                if n.dot(d) < 0.0:
+                    n = -n
+                best = (far, q, n)
+        if best is None:
+            print("LAY missed at (%.3f, %.3f, %.3f)" % tuple(p))
+        out.append((p, d) if best is None else (best[1] + best[2] * off, best[2]))
+    return out
+
+
+def laid_strip(objs, path, widths, centre_of, off, across=5):
+    """Rows of laid points for a strip of cloth along a path, `widths[i]` either side of it, across the surface."""
+    middle = lay(objs, path, centre_of, off)
+    rows = []
+    for i, (p, n) in enumerate(middle):
+        ahead = (middle[min(i + 1, len(middle) - 1)][0] - middle[max(i - 1, 0)][0]).normalized()
+        side = ahead.cross(n).normalized()
+        row = [p + side * widths[i] * (2.0 * k / (across - 1) - 1.0) for k in range(across)]
+        rows.append(lay(objs, row, centre_of, off))
+    return rows
+
+
+def sheet(name, rows, thick, material, weigh):
+    """A thin slab of cloth over rows of laid (point, normal): its underside on the points, its top `thick` out."""
+    bm = bmesh.new()
+    low = [[bm.verts.new(B(p)) for p, n in row] for row in rows]
+    high = [[bm.verts.new(B(p + n * thick)) for p, n in row] for row in rows]
+    count, cols = len(rows), len(rows[0])
+    for r in range(count - 1):
+        for c in range(cols - 1):
+            bm.faces.new((high[r][c], high[r][c + 1], high[r + 1][c + 1], high[r + 1][c]))
+            bm.faces.new((low[r][c], low[r + 1][c], low[r + 1][c + 1], low[r][c + 1]))
+    rim = ([(0, c) for c in range(cols)] + [(r, cols - 1) for r in range(1, count)]
+           + [(count - 1, c) for c in range(cols - 2, -1, -1)] + [(r, 0) for r in range(count - 2, 0, -1)])
+    for i, (r0, c0) in enumerate(rim):
+        r1, c1 = rim[(i + 1) % len(rim)]
+        bm.faces.new((low[r0][c0], low[r1][c1], high[r1][c1], high[r0][c0]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    o = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(o)
+    mesh.materials.append(material)
+    groups = {}
+    for v in mesh.vertices:
+        for bone, share in weigh(G(v.co)).items():
+            if share > 0.001:
+                if bone not in groups:
+                    groups[bone] = o.vertex_groups.new(name=bone)
+                groups[bone].add([v.index], share, "REPLACE")
+    smooth_shade(o)
+    return o
+
+
+def band_of(o, name, keep, planes, out, thick, material):
+    """A solid band of a surface (a roll, a turn-up, a belt): the faces `keep` takes, cut clean by the planes
+    [(point, normal kept)], stood `out` off it, then made `thick` deep inward."""
+    band = copy_of(o, name)
+    keep_only(band, keep)
+    for point, normal in planes:
+        cut(band, point, normal)
+    stand_off(band, lambda p: out)
+    solid = band.modifiers.new("solid", "SOLIDIFY")
+    solid.thickness = thick
+    solid.offset = -1.0
+    solid.use_even_offset = True
+    from mathutils import kdtree
+    was = kdtree.KDTree(len(band.data.vertices))
+    for v in band.data.vertices:
+        was.insert(v.co, v.index)
+    was.balance()
+    activate(band)
+    bpy.ops.object.modifier_apply(modifier=solid.name)
+    # (a sliver at a cut can be thrown far out by the even offset: such a point is put back on the surface)
+    for v in band.data.vertices:
+        at, _, far = was.find(v.co)
+        if far > 0.05:
+            print("BAND %s: a point thrown %.2f m out, put back" % (name, far))
+            v.co = at
+    recolour(band, {}, material)
+    smooth_shade(band)
+    return band
+
+
+def blended_weights(o, p, count=4):
+    """Skin weights at p blended from the `count` nearest points of `o`, nearer counting more."""
+    from mathutils import kdtree
+    key = (o.name, len(o.data.vertices))
+    if key not in _TREES:
+        tree = kdtree.KDTree(len(o.data.vertices))
+        for v in o.data.vertices:
+            tree.insert(G(v.co), v.index)
+        tree.balance()
+        _TREES[key] = tree
+    names = {g.index: g.name for g in o.vertex_groups}
+    total, out = 0.0, {}
+    for _, index, distance in _TREES[key].find_n(p, count):
+        share = 1.0 / max(distance, 0.002)
+        total += share
+        for g in o.data.vertices[index].groups:
+            if g.group in names:
+                out[names[g.group]] = out.get(names[g.group], 0.0) + g.weight * share
+    return {bone: w / total for bone, w in out.items()}
+
+
+def hair_uvs(o, crown, centre):
+    """Gives a hair shell the coordinates the hair shader reads (GameCommon ink-figure's hair_ink, as the locks get
+    them from the Builder): UV (along the hair, from the crown 0 down to the hairline about 1; round the head 0..1)
+    and a second set, `Metres`, the same in metres. The hair runs from the crown down and out, as the locks do."""
+    mesh = o.data
+    while mesh.uv_layers:
+        mesh.uv_layers.remove(mesh.uv_layers[0])
+    plain, metres = mesh.uv_layers.new(name="UVMap"), mesh.uv_layers.new(name="Metres")
+    up = (crown - centre).normalized()
+    for poly in mesh.polygons:
+        coords = []
+        for li in poly.loop_indices:
+            d = (G(mesh.vertices[mesh.loops[li].vertex_index].co) - centre).normalized()
+            angle = math.acos(max(-1.0, min(1.0, d.dot(up))))
+            coords.append([angle / 2.2, (math.atan2(d.x, d.z) / math.tau) % 1.0, angle])
+        # (a face across the seam at the back: its corners kept on one side of it)
+        if max(c[1] for c in coords) - min(c[1] for c in coords) > 0.5:
+            for c in coords:
+                if c[1] < 0.5:
+                    c[1] += 1.0
+        for li, (along, round_, angle) in zip(poly.loop_indices, coords):
+            plain.data[li].uv = (along, round_)
+            metres.data[li].uv = (angle * 0.125, round_ * 0.75)
+    mesh.uv_layers.active = plain
+
+
+def boy_hair(head, m, bare):
+    """Wind-tossed sandy hair: a shell grown from his scalp and chunky locks on it, swept to his right and back.
+    Gives (what always shows, the crown). The crown is what the title's helmet (a close skullcap) would crush: it is
+    its own mesh, `boy_hairtop`, which TitleFigures hides while the helmet is on (see under_helmet)."""
+    pts = [G(v.co) for v in head.data.vertices]
+    low = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
+    high = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
+    mid = (low + high) * 0.5
+
+    def scalp(p):
+        front = (math.cos(math.atan2(p.x, p.z - mid.z)) + 1.0) * 0.5
+        return p.y > 1.04 + 0.112 * front ** 2.4
+
+    shell = copy_of(head, "boy_hairshell")
+    keep_only(shell, scalp)
+    stand_off(shell, lambda p: 0.009, smooth=3, lam=0.3)
+    decimate(shell, 420)
+    top = copy_of(shell, "boy_hairtop_shell")
+    cut(shell, Vector((0.0, HELMET_RIM - 0.002, 0.0)), -Y)
+    cut(top, Vector((0.0, HELMET_RIM - 0.002, 0.0)), Y)
+    crown = Vector((0.006, high.y + 0.01, mid.z - 0.03))
+    wind = Vector((-1.0, 0.25, -0.55)).normalized()
+    import random
+    rnd = random.Random(11)
+    keep_b, top_b = kit.Builder(), kit.Builder()
+    def lock(b, base, n, way, length, width, lift):
+        """A clump of hair: flat, wide at the root, arching out from the scalp by `lift` of its length, to a
+        blunt point."""
+        side = way.cross(n).normalized()
+        pts = [base, base + way * length * 0.5 + n * length * lift * 0.35, base + way * length + n * length * lift * 0.15]
+        b.tube([(p, side * width * w, n * width * t) for p, (w, t) in zip(pts, ((1.0, 0.55), (0.8, 0.45), (0.22, 0.12)))], 5)
+
+    # (around from the front toward his left, up from the head's middle, length, how far it arches out, width,
+    # how much the wind takes it)
+    locks = []
+    for a in (-0.7, -0.38, -0.08, 0.22, 0.52):  # the fringe, falling from the hairline, swept to his right
+        locks.append((a, 0.52, 0.095, 0.35, 0.028, 0.7))
+    for a in (-0.62, -0.36, -0.1, 0.16, 0.42):  # short locks on the brow: what shows under the helmet's rim
+        locks.append((a, 0.16, 0.04, 0.2, 0.03, 0.5))
+    for side in (1.0, -1.0):  # temples and over the ears
+        for a, e in ((0.95, 0.3), (1.35, 0.14), (1.78, 0.06)):
+            locks.append((side * a, e, 0.075, 0.55, 0.027, 0.45))
+    for a, e, length in ((2.1, 0.02, 0.055), (2.45, -0.06, 0.07), (2.8, 0.0, 0.05), (3.1, -0.09, 0.075), (-2.9, -0.02, 0.06),
+                         (-2.55, -0.08, 0.068), (-2.2, 0.03, 0.05), (2.6, 0.12, 0.05), (-2.75, 0.13, 0.055)):  # the back and nape
+        locks.append((a, e, length * 1.15, 0.6, 0.026, 0.35))
+    for a in (0.0, 0.8, 1.6, 2.4, 3.14, -2.4, -1.6, -0.8):  # the crown's ring, tossed up and back
+        locks.append((a, 0.85, 0.1, 0.75, 0.03, 0.8))
+    for a, e in ((0.4, 1.25), (2.0, 1.2), (-1.2, 1.2), (3.0, 1.1)):  # tufts on top
+        locks.append((a, e, 0.075, 1.1, 0.026, 0.9))
+    centre = Vector((0.0, mid.y - 0.01, mid.z))
+    shown, hidden = 0, 0
+    for a, e, length, lift, width, blow in locks:
+        a += rnd.uniform(-0.06, 0.06)
+        length *= rnd.uniform(0.8, 1.25)
+        aim = centre + Vector((math.sin(a) * math.cos(e), math.sin(e), math.cos(a) * math.cos(e)))
+        (base, n), = lay([shell, top, head], [aim], lambda p: centre, -0.004)
+        flow = base - crown
+        flow -= n * flow.dot(n)
+        if flow.length < 1e-4:
+            flow = -wind
+        way = flow.normalized() + wind * blow * 0.6
+        way -= n * way.dot(n)
+        way.normalize()
+        one = kit.Builder()
+        lock(one, base, n, way, length, width, lift)
+        fits = all(under_helmet(G(v.co)) for v in one.bm.verts)
+        one.bm.free()
+        lock(keep_b if fits else top_b, base, n, way, length, width, lift)
+        shown, hidden = (shown + 1, hidden) if fits else (shown, hidden + 1)
+    print("BOY hair locks: %d always shown, %d in the crown" % (shown, hidden))
+    hair = from_builder("boy_hairlocks", keep_b, None, m["hair"], rigid("head"))
+    crown_locks = from_builder("boy_hairtop", top_b, None, m["hair"], rigid("head"))
+    for o in (shell, top):
+        recolour(o, {}, m["hair"])
+        smooth_shade(o)
+        for g in list(o.vertex_groups):
+            o.vertex_groups.remove(g)
+        o.vertex_groups.new(name="head").add([v.index for v in o.data.vertices], 1.0, "REPLACE")
+        hair_uvs(o, crown, centre)
+    bad = [p for p in (G(v.co) for o in (shell, hair) for v in o.data.vertices) if not under_helmet(p, 0.0)]
+    print("BOY hair always shown, points into the helmet: %d" % len(bad))
+    # Two meshes, each a shell and its locks: what always shows, and the crown. (Not joined into his body: the hair
+    # shader reads UV as (along the lock, round it) and UV2 in metres, which his body's surfaces do not have.)
+    made = []
+    for base, locks_of, name in ((shell, hair, "boy_hair"), (top, crown_locks, "boy_hairtop")):
+        activate(base)
+        locks_of.select_set(True)
+        bpy.ops.object.join()
+        base.name = base.data.name = name
+        made.append(base)
+    return made
+
+
+def build_boy(collection):
+    m = {name: make_material("boy_" + name, c, *BOY_METAL.get(name, (0.0, 1.0))) for name, c in BOY_COLOURS.items()}
+    tp = import_glb(BOY_TP)
+    full = import_glb(BOY_FULL)
+    source_armature = next(o for o in tp if o.type == "ARMATURE")
+    joints = [(b.name, G(b.head_local), b.parent.name if b.parent else None) for b in source_armature.data.bones]
+
+    def mesh_of(made, name):
+        return next(o for o in made if o.type == "MESH" and o.name.split(".")[0] == name)
+
+    hands, boots = mesh_of(tp, "boy"), mesh_of(tp, "boy_boots")
+    bare, head = mesh_of(full, "boy_body__bare"), mesh_of(full, "boy_head__base")
+    kept = (hands, boots, bare, head)
+    for o in tp + full:
+        if o not in kept:
+            bpy.data.objects.remove(o, do_unlink=True)
+    bpy.context.view_layer.update()
+    for o in kept:
+        settle(o)
+        for called in [a.name for a in o.data.color_attributes]:
+            o.data.color_attributes.remove(o.data.color_attributes[called])
+    weld(bare)
+    weld(head)
+    # The head as Warren has it: HeadShape "inside_round", from the round head's own bounds.
+    reshape_head(head, "inside_round")
+    decimate(head, 1300)
+    head.name = "boy_head"
+    recolour(head, {}, m["skin"])
+    smooth_shade(head)
+    hands.name = "boy_hands"
+    recolour(hands, {}, m["skin"])
+    smooth_shade(hands)
+    boots.name = "boy_boots"
+    recolour(boots, {}, m["boots"])
+    smooth_shade(boots)
+    def weigh(p):
+        """The body's weights where cloth lies on it: blended from the few nearest points of the body (one point's
+        weights alone change in steps, and cloth laid over the shirt then parts from it as he moves)."""
+        return blended_weights(bare, p)
+
+    # The skin that shows: his neck and open chest, his forearms below the rolls, his ankles above the boots.
+    skin = copy_of(bare, "boy_skin")
+    keep_only(skin, lambda p: (p.y > 0.9 and math.hypot(p.x, p.z) < 0.058)
+              or (p.z > 0.0 and p.y > OPEN_NECK - 0.015 and abs(p.x) < 0.03 + (p.y - OPEN_NECK) * 0.5)
+              or (abs(p.x) > SLEEVE_END - 0.018 and p.y > 0.8) or (0.08 < p.y < TROUSER_END + 0.02 and abs(p.x) < 0.2))
+    decimate(skin, 360)
+    recolour(skin, {}, m["skin"])
+    smooth_shade(skin)
+
+    # The shirt: his body stood off, loose on the arms, tucked in at the waist, its neck open in front.
+    shirt = copy_of(bare, "boy_shirt")
+
+    def in_shirt(p):
+        if p.y < 0.6 or abs(p.x) > SLEEVE_END + 0.02:
+            return False
+        if p.y > 0.93 and math.hypot(p.x, p.z) < 0.055:
+            return False
+        return not (p.z > 0.0 and p.y > OPEN_NECK and abs(p.x) < 0.006 + (p.y - OPEN_NECK) * 0.42)
+
+    keep_only(shirt, in_shirt)
+    stand_off(shirt, lambda p: 0.005 + 0.005 * ease(0.66, 0.76, p.y) + 0.007 * ease(0.15, 0.21, abs(p.x)), smooth=6)
+    # (tucked in: its hem under the trousers, which come up to TROUSER_TOP)
+    cut(shirt, Vector((0.0, 0.685, 0.0)), Y)
+    # (the sleeves rolled up above the elbow: a roll round each end, the sleeve cut under it)
+    rolls = [band_of(shirt, "boy_roll", lambda p, s=s: p.x * s > SLEEVE_END - 0.045,
+                     [(Vector((s * (SLEEVE_END - 0.032), 0.0, 0.0)), X * s), (Vector((s * (SLEEVE_END + 0.004), 0.0, 0.0)), -X * s)],
+                     0.008, 0.013, m["shirt"]) for s in (1.0, -1.0)]
+    for roll in rolls:
+        decimate(roll, 170)
+    cut(shirt, Vector((SLEEVE_END, 0.0, 0.0)), -X)
+    cut(shirt, Vector((-SLEEVE_END, 0.0, 0.0)), X)
+    decimate(shirt, 950)
+    recolour(shirt, {}, m["shirt"])
+    smooth_shade(shirt)
+
+    # The trousers: his hips and legs stood off, loose and wide in the leg, high at the waist.
+    trousers = copy_of(bare, "boy_trousers")
+    keep_only(trousers, lambda p: TROUSER_END - 0.04 < p.y < TROUSER_TOP + 0.025 and abs(p.x) < 0.2)
+
+    def loose(p):
+        t = 0.012 + 0.014 * ease(0.6, 0.42, p.y) + 0.008 * ease(0.62, 0.68, p.y)
+        crotch = ease(0.42, 0.5, p.y) * ease(0.06, 0.025, abs(p.x))
+        return t * (1.0 - 0.75 * crotch)
+
+    stand_off(trousers, loose, smooth=12)
+    turnups = band_of(trousers, "boy_turnups", lambda p: p.y < TROUSER_END + 0.03,
+                      [(Vector((0.0, TROUSER_END - 0.028, 0.0)), Y), (Vector((0.0, TROUSER_END + 0.018, 0.0)), -Y)],
+                      0.008, 0.014, m["trousers"])
+    belt = band_of(trousers, "boy_belt", lambda p: BELT[0] - 0.012 < p.y < BELT[1] + 0.012,
+                   [(Vector((0.0, BELT[0], 0.0)), Y), (Vector((0.0, BELT[1], 0.0)), -Y)], 0.007, 0.006, m["belt"])
+    cut(trousers, Vector((0.0, TROUSER_TOP, 0.0)), -Y)
+    cut(trousers, Vector((0.0, TROUSER_END, 0.0)), Y)
+    decimate(trousers, 950)
+    decimate(turnups, 220)
+    decimate(belt, 160)
+    recolour(trousers, {}, m["trousers"])
+    smooth_shade(trousers)
+
+    # The rope bracelet round his right wrist (his right is -X).
+    bracelet = band_of(hands, "boy_bracelet", lambda p: -BRACELET[1] - 0.02 < p.x < -BRACELET[0] + 0.02,
+                       [(Vector((-BRACELET[1], 0.0, 0.0)), X), (Vector((-BRACELET[0], 0.0, 0.0)), -X)], 0.006, 0.006,
+                       m["rope"])
+    decimate(bracelet, 120)
+    wrist = sleeve_at(hands, -(BRACELET[0] + BRACELET[1]) * 0.5, 0.01)[0]
+
+    parts = [head, hands, boots, skin, shirt] + rolls + [trousers, turnups, belt, bracelet]
+
+    # The collar, open: laid on the shirt round the back of his neck, its points on his chest either side.
+    neck_axis = lambda p: Vector((0.0, p.y, 0.0))  # noqa: E731  (level rays: sloping ones met the tops of his
+    # shoulders first and laid the neckerchief out across them)
+    under = [shirt, skin]
+    for s in (1.0, -1.0):
+        path, widths = [], []
+        for k in range(12):
+            a = math.pi - (math.pi - 0.45) * k / 11.0  # from the back of his neck round to the front
+            y = 0.945 - 0.012 * ease(math.pi, 1.4, a) - 0.06 * ease(1.2, 0.45, a)
+            r = 0.08  # (outside the neckerchief round his neck, which covers the shirt's neck edge)
+            path.append(Vector((s * (math.sin(a) * r + 0.012 * ease(0.9, 0.45, a)), y, math.cos(a) * r)))
+            widths.append(0.013 + 0.007 * ease(1.4, 0.7, a))
+        widths[-1] = 0.004
+        parts.append(sheet("boy_collar", laid_strip(under, path, widths, neck_axis, 0.0015), 0.004, m["shirt"], weigh))
+    collars = parts[-2:]
+
+    # The neckerchief: a flap on his back, the cloth round his neck to a knot at his throat, two tails.
+    on = under + collars
+    rows = []
+    for r in range(7):
+        t = r / 6.0
+        half = 0.1 * (1.0 - t) + 0.004 * t
+        row = []
+        for c in range(7):
+            x = half * (c / 3.0 - 1.0)
+            y = (0.958 - 0.08 * (x / 0.1) ** 2) * (1.0 - t) + 0.805 * t
+            row.append(Vector((x, y, -0.3)))
+        rows.append(lay(on, row, lambda p: Vector((p.x * 0.8, p.y, 0.0)), 0.0025))  # (rays straight in from behind: slanting
+        # ones met the backs of his arms)
+    flap = sheet("boy_flap", rows, 0.004, m["kerchief"], weigh)
+    knot_at = lay(under, [Vector((0.0, 0.872, 0.3))], neck_axis, 0.0)[0]
+    pieces = [flap]
+    for s in (1.0, -1.0):
+        path, widths = [], []
+        for k in range(12):
+            a = math.pi * (1.0 - k / 11.0)
+            # (close round the neck, then steeply down to the knot, a narrow V as the concept has it)
+            y = 0.956 - 0.006 * ease(math.pi, 1.5, a) - 0.084 * ease(1.1, 0.0, a)
+            r = 0.054
+            path.append(Vector((s * (math.sin(a) * r * (1.0 - 0.55 * ease(1.1, 0.0, a)) + 0.008 * ease(0.5, 0.0, a)), y, math.cos(a) * r)))
+            widths.append(0.012 - 0.003 * ease(0.8, 0.0, a))
+        pieces.append(sheet("boy_kerchief", laid_strip(on + [flap], path, widths, neck_axis, 0.007, 7), 0.005,
+                            m["kerchief"], weigh))
+    # (the tails hang from the knot, one a little longer, splayed)
+    for s, drop, splay in ((1.0, 0.085, 0.022), (-1.0, 0.1, 0.012)):
+        path = [knot_at[0] + Vector((s * (0.006 + splay * f), -drop * f, 0.0)) for f in (0.0, 0.25, 0.5, 0.75, 1.0)]
+        widths = [0.009, 0.012, 0.013, 0.011, 0.005]
+        pieces.append(sheet("boy_tail", laid_strip(under + collars, path, widths, lambda p: Vector((p.x * 0.5, p.y, 0.0)), 0.002, 3),
+                            0.004, m["kerchief"], weigh))
+    b = kit.Builder()
+    p, n = knot_at
+    b.ellipsoid(p + n * 0.012 + Vector((0.0, -0.002, 0.0)), Vector((0.02, 0.013, 0.008)), None, 8, 4)
+    pieces.append(from_builder("boy_knot", b, None, m["kerchief"], weigh))
+    parts += pieces
+
+    # The belt's buckle: an iron frame at the front, its tongue across it.
+    (front, fn), = lay([belt], [Vector((0.0, (BELT[0] + BELT[1]) * 0.5, 0.3))], lambda p: Vector((0.0, p.y, 0.0)), 0.0)
+    b = kit.Builder()
+    y0 = (BELT[0] + BELT[1]) * 0.5
+    hw, hh = 0.02, 0.021
+    corners = [Vector((-hw, y0 - hh, 0.0)), Vector((hw, y0 - hh, 0.0)), Vector((hw, y0 + hh, 0.0)), Vector((-hw, y0 + hh, 0.0))]
+    z = front.z + 0.004
+    for i in range(4):
+        a0, a1 = corners[i], corners[(i + 1) % 4]
+        along = (a1 - a0).normalized()
+        across = along.cross(Z)
+        # (a flat bar: a tube of four sides set square, 7 mm wide and 4 mm deep)
+        bar = [(Vector((c.x, c.y, z)) + along * e, across * 0.0035 + Z * 0.002, -across * 0.0035 + Z * 0.002)
+               for c, e in ((a0, -0.0035), (a1, 0.0035))]
+        b.tube(bar, 4)
+    b.tube([(Vector((x, y0, z + 0.0015)), Y * 0.002 + Z * 0.0015, -Y * 0.002 + Z * 0.0015) for x in (-hw, hw * 0.6)], 4)
+    parts.append(from_builder("boy_buckle", b, None, m["iron"], rigid("hips")))
+
+    # The clasp knife on a lanyard from his belt, on his right hip, lying on his thigh.
+    hip = lambda p: Vector((-0.074 if p.y < 0.62 else 0.0, p.y, 0.0))  # noqa: E731
+    a = 0.75
+    aim = lambda y: Vector((-math.sin(a) * 0.3, y, math.cos(a) * 0.3))  # noqa: E731
+    (hook, hn), = lay([belt], [aim(BELT[0] + 0.006)], lambda p: Vector((0.0, p.y, 0.0)), 0.002)
+    laid = lay([trousers], [aim(y) for y in (0.6, 0.575, 0.55, 0.525, 0.5, 0.48)], hip, 0.0)
+    ring = laid[0][0] + laid[0][1] * 0.012
+    b = kit.Builder()
+    for s in (1.0, -1.0):
+        mid = (hook + ring) * 0.5 + hn * 0.006 + Vector((s * 0.004, 0.0, 0.0))
+        b.strand([hook + Vector((s * 0.004, 0.0, 0.0)), mid, ring], [0.0018] * 3, 4)
+    lanyard = from_builder("boy_lanyard", b, None, m["rope"], lambda p: nearest_weights(trousers, p))
+    b, blade = kit.Builder(), kit.Builder()
+    handle = [(q + nq * 0.011, nq) for q, nq in laid[:4]]
+    rings = []
+    for i, (q, nq) in enumerate(handle):
+        down = (handle[min(i + 1, 3)][0] - handle[max(i - 1, 0)][0]).normalized()
+        side = down.cross(nq).normalized()
+        w = (0.008, 0.0105, 0.0105, 0.009)[i]
+        rings.append((q, side * w, nq * 0.0065))
+    b.tube(rings, 8)
+    b.ellipsoid(handle[0][0], Vector((0.006, 0.006, 0.006)), None, 6, 3)
+    tip_q, tip_n = laid[5][0] + laid[5][1] * 0.009, laid[5][1]
+    top_q = handle[-1][0]
+    down = (tip_q - top_q).normalized()
+    side = down.cross(tip_n).normalized()
+    blade.tube([(top_q.lerp(tip_q, f), side * w, tip_n * 0.002) for f, w in ((0.0, 0.009), (0.5, 0.008), (0.85, 0.005), (1.0, 0.0015))], 4)
+    parts.append(lanyard)
+    parts.append(from_builder("boy_knife", b, None, m["wood"], lambda p: nearest_weights(trousers, p)))
+    parts.append(from_builder("boy_blade", blade, None, m["steel"], lambda p: nearest_weights(trousers, p)))
+
+    # The hair.
+    hair_meshes = boy_hair(head, m, bare)
+
+    from mathutils import noise
+
+    def shade(material, p):
+        stain = ease(0.1, 0.55, noise.noise(p * 6.0 + Vector((1.3, 7.1, 2.9))))
+        if material == "shirt":
+            return 0.95 - 0.1 * stain + 0.04 * noise.noise(p * 25.0)
+        if material in ("trousers", "kerchief"):
+            return 0.93 - 0.14 * stain + 0.05 * noise.noise(p * 21.0) - 0.08 * ease(0.3, 0.17, p.y)
+        if material in ("boots", "belt"):
+            return 0.82 + 0.18 * ease(-0.2, 0.5, noise.noise(p * 30.0))
+        if material == "rope":
+            turn = math.atan2(p.z - wrist.z, p.y - wrist.y) if abs(p.x - wrist.x) < 0.05 else p.y * 300.0
+            return 0.72 + 0.28 * (0.5 + 0.5 * math.cos(turn * 7.0 + p.x * 700.0))
+        if material == "hair":
+            return 0.86 + 0.14 * noise.noise(p * 40.0 + Vector((0.0, 3.0, 0.0)))
+        return 1.0
+
+    print("BOY parts", ", ".join("%s %d" % (o.name, kit.triangle_count(o.data)) for o in parts + hair_meshes))
+    bpy.data.objects.remove(bare, do_unlink=True)
+    armature = finish("boy", joints, parts, collection, shade)
+    for hair in hair_meshes:
+        paint_tint(hair, None)  # (no tint: the hair shader colours it)
+        hair.parent = armature
+        hair.modifiers.new("Armature", "ARMATURE").object = armature
+        for c in hair.users_collection:
+            c.objects.unlink(hair)
+        collection.objects.link(hair)
+        print("FIGURE %s tris=%d" % (hair.name, kit.triangle_count(hair.data)))
+    return armature
+
+
+# =====================================================================================================
+# The captain (design sheet: tools/TITLE_FIGURES.md)
+# =====================================================================================================
+
+CAPTAIN_KEYS = {"heavy": 0.5, "body_gut": 0.35, "body_shoulders": 0.3, "body_neck": 0.4}
+CAPTAIN_HEAD = "mask_long"
+# The boy's head made a man's: this much of the boy's size, its joint on the man's, a little forward.
+HEAD_SCALE = 0.64
+HEAD_FORWARD = 0.018
+# The closed outfit (the first concept): ribs round the gansey's bands, so many to a turn (each a pair of rings of
+# points, dark then light), its hem, and where its sleeves end (|x|, T pose)
+RIBS = {"hem": 56, "cuff": 24, "collar": 40}
+GANSEY_HEM = 0.535
+CUFF = 0.462
+CAPTAIN_COLOURS = {
+    # (after the concept art, tools/art_src/concept_characters.jpg: muted, a little greyed)
+    "skin": (0.76, 0.58, 0.48), "nose": (0.78, 0.46, 0.40), "coat": (0.14, 0.16, 0.23),
+    "gansey": (0.14, 0.16, 0.23), "rib": (0.14, 0.16, 0.23),
+    "vest": (0.80, 0.78, 0.72), "stripe": (0.24, 0.29, 0.40), "chesthair": (0.70, 0.69, 0.66),
+    "oilskin": (0.70, 0.57, 0.27), "rubber": (0.09, 0.09, 0.09), "beard": (0.80, 0.79, 0.76), "hair": (0.60, 0.59, 0.56),
+    "cap": (0.15, 0.17, 0.23), "peak": (0.06, 0.06, 0.07), "brass": (0.66, 0.55, 0.32), "pipe": (0.34, 0.22, 0.14),
+    "braces": (0.21, 0.19, 0.17), "steel": (0.45, 0.45, 0.46), "gold": (0.83, 0.66, 0.3),
+    "slit": (0.2, 0.12, 0.1), "crease": (0.6, 0.42, 0.34), "boxerband": (0.9, 0.89, 0.86), "grating": (0.36, 0.27, 0.18),
+}
+
+
+# The captain as the second concept draws him (tools/art_src/concept_captain.jpg): the user (2026-11-18), "captian
+# should have bushy chest hair and tattoos", and "the captain should have a tasteful bulge".
+COAT_SLEEVE = 0.36    # |x| where his coat's pushed-up sleeves end (T pose; the elbow is at 0.341)
+COAT_HEM = 0.535
+ARM_Y = 0.934         # the height of his arms' joints, held out in the T pose
+SCOOP = 0.865         # the bottom of his undershirt's low neck, in front
+VEST_HEM = 0.575
+STRIPE = 0.028        # each stripe of the undershirt, cream then navy
+TROUSERS_TOP = 0.542  # (where the closed outfit has always cut them, under the gansey's hem)
+BOXER_TOP = 0.655    # his boxer shorts: the waistband, and the hem on his thighs
+BOXER_HEM = 0.45
+
+
+def coat_open(y):
+    """How far either side of his middle the front of his coat is open, at a height."""
+    return 0.06 + (y - COAT_HEM) * 0.1
+
+
+def cut_front(o, point, normal):
+    """Cuts the front of one side of an object (z > 0, and x on the point's side) by a plane, keeping the side the
+    normal points to; the back and the other side are left whole."""
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    faces = [f for f in bm.faces if G(f.calc_center_median()).z > 0.0 and G(f.calc_center_median()).x * point.x > 0.0]
+    edges = list({e for f in faces for e in f.edges})
+    verts = list({v for f in faces for v in f.verts})
+    bmesh.ops.bisect_plane(bm, geom=verts + edges + faces, plane_co=B(point), plane_no=B(normal), clear_inner=True)
+    bm.to_mesh(o.data)
+    bm.free()
+
+
+def hair_lock(b, base, n, way, length, width, lift):
+    """A clump of hair (the boy's locks, and the captain's chest hair): flat, wide at the root, arching out from the
+    skin by `lift` of its length, to a blunt point. Its UV runs along it, as the hair shader wants."""
+    side = way.cross(n).normalized()
+    pts = [base, base + way * length * 0.5 + n * length * lift * 0.35, base + way * length + n * length * lift * 0.15]
+    b.tube([(p, side * width * w, n * width * t) for p, (w, t) in zip(pts, ((1.0, 0.55), (0.8, 0.45), (0.22, 0.12)))], 5)
+
+
+SKIN_PICTURE = os.path.join(HERE, "art_src", "captain_skin.png")
+BOXERS_PICTURE = os.path.join(HERE, "art_src", "captain_boxers.png")
+# (the skin picture's layout, in his model's space before his proportions are changed (captain_warp): the arms in
+# its lowest 0.45, the left (+X) in its left half, round the arm across and shoulder to wrist up; the legs above
+# (0.45 to 0.6), the left in the left half, round the leg across and sole to hip up; the front of his body (0.6 to
+# 0.8) and the back (0.8 to 1), across and up as they are)
+SKIN_ARM = (0.13, HAND_FROM + 0.012)
+SKIN_LEG = (0.0, 0.62)
+SKIN_BODY = (-0.25, 0.25, 0.5, 1.04)
+ARM_ROUND = 0.045     # about the radius of his arm (m), to lay the pictures out true
+LEG_X = 0.063         # his legs' middles
+
+
+def skin_region(c):
+    """Which part of the skin picture a face (its middle, c) takes its colour from."""
+    if abs(c.x) > 0.17 and c.y > 0.82:
+        return "arm"
+    if c.y < 0.55:
+        return "leg"
+    return "front" if c.z > 0.01 else "back"
+
+
+def skin_uvs(o):
+    """Lays the skin picture (paint_skin) over his body: UV of each corner, by the part its face is in."""
+    mesh = o.data
+    while mesh.uv_layers:
+        mesh.uv_layers.remove(mesh.uv_layers[0])
+    uv = mesh.uv_layers.new(name="UVMap")
+    a0, a1 = SKIN_ARM
+    l0, l1 = SKIN_LEG
+    x0, x1, y0, y1 = SKIN_BODY
+    clamp = lambda v: min(max(v, 0.0), 0.999)  # noqa: E731
+    for poly in mesh.polygons:
+        region = skin_region(G(poly.center))
+        coords = []
+        for li in poly.loop_indices:
+            p = G(mesh.vertices[mesh.loops[li].vertex_index].co)
+            side = 0.0 if (p.x > 0.0 if region in ("arm", "leg") else True) else 0.5
+            if region == "arm":
+                round_ = math.atan2(p.z, p.y - ARM_Y) / math.tau + 0.5
+                coords.append([round_, 0.45 * clamp((abs(p.x) - a0) / (a1 - a0)), side])
+            elif region == "leg":
+                round_ = math.atan2(p.x - math.copysign(LEG_X, p.x), p.z) / math.tau + 0.5
+                coords.append([round_, 0.45 + 0.15 * clamp((p.y - l0) / (l1 - l0)), side])
+            else:
+                base = 0.6 if region == "front" else 0.8
+                coords.append([None, clamp((p.x - x0) / (x1 - x0)), base + 0.2 * clamp((p.y - y0) / (y1 - y0))])
+        if coords[0][0] is not None:
+            if max(c[0] for c in coords) - min(c[0] for c in coords) > 0.5:
+                for c in coords:
+                    if c[0] < 0.5:
+                        c[0] += 1.0
+            # (one side's half of the picture for the whole face)
+            side = coords[0][2]
+            for li, c in zip(poly.loop_indices, coords):
+                uv.data[li].uv = (side + 0.5 * min(max(c[0], 0.0), 1.0), c[1])
+        else:
+            for li, c in zip(poly.loop_indices, coords):
+                uv.data[li].uv = (c[1], c[2])
+
+
+def paint_skin(skin, size=1024):
+    """Paints his skin: old sailor's tattoos as the base-body sheet has them (anchors, swallows, a ship, hearts, a
+    compass star; no letters), faded blue-black, and a light fuzz of grey hair (short strokes) on his forearms, legs
+    and back. Drawn true in metres on each part (see skin_uvs). Gives a Blender image, also saved as
+    tools/art_src/captain_skin.png."""
+    import numpy as np
+    j, i = np.mgrid[0:size, 0:size]
+    u, v = (i + 0.5) / size, (j + 0.5) / size
+    ink = np.zeros((size, size))
+    fuzz = np.zeros((size, size))
+    a0, a1 = SKIN_ARM
+    x0, x1, y0, y1 = SKIN_BODY
+    arm = v < 0.45
+    leg = (v >= 0.45) & (v < 0.6)
+    front = (v >= 0.6) & (v < 0.8)
+    back = v >= 0.8
+    left = u < 0.5
+    ul = np.where(left, u * 2.0, (u - 0.5) * 2.0)
+    s = (ul - 0.5) * math.tau * ARM_ROUND   # round the arm (m), 0 on top, + toward the front
+    t = a0 + v / 0.45 * (a1 - a0)          # along the arm: |x|
+    bx = x0 + u * (x1 - x0)
+    by = y0 + ((v - 0.6) / 0.2) * (y1 - y0)
+    by_back = y0 + ((v - 0.8) / 0.2) * (y1 - y0)
+
+    def poly(X, Y, pts):
+        inside = np.zeros(X.shape, bool)
+        for (ax, ay), (bx_, by_) in zip(pts, pts[1:] + pts[:1]):
+            inside ^= ((ay > Y) != (by_ > Y)) & (X < (bx_ - ax) * (Y - ay) / (by_ - ay + 1e-9) + ax)
+        return inside
+
+    def disc(X, Y, x, y, r):
+        return (X - x) ** 2 + (Y - y) ** 2 < r * r
+
+    def ring(X, Y, x, y, r, w):
+        return np.abs(np.sqrt((X - x) ** 2 + (Y - y) ** 2) - r) < w
+
+    def anchor(X, Y):
+        m = (np.abs(X) < 0.07) & (np.abs(Y + 0.05) < 0.6)
+        m |= ring(X, Y, 0.0, 0.72, 0.13, 0.05)
+        m |= (np.abs(X) < 0.36) & (np.abs(Y - 0.42) < 0.06)
+        m |= ring(X, Y, 0.0, -0.15, 0.5, 0.07) & (Y < -0.15)
+        for sx in (1.0, -1.0):
+            m |= poly(X, Y, [(sx * 0.5, 0.0), (sx * 0.72, -0.28), (sx * 0.34, -0.22)])
+        return m, m
+
+    def swallow(X, Y):
+        m = ((X / 0.36) ** 2 + ((Y + 0.02) / 0.17) ** 2 < 1.0) | disc(X, Y, 0.36, 0.06, 0.13)
+        m |= poly(X, Y, [(0.05, 0.08), (-0.55, 0.75), (-0.2, 0.05)])
+        m |= poly(X, Y, [(0.1, -0.05), (-0.45, -0.6), (-0.15, -0.08)])
+        m |= poly(X, Y, [(-0.3, 0.0), (-0.85, 0.22), (-0.62, 0.0), (-0.85, -0.2)])
+        return m, m & (Y > 0.0) & (X > -0.3)
+
+    def star(X, Y):
+        pts = []
+        for k in range(10):
+            a = math.pi / 2 + k * math.pi / 5
+            r = 0.75 if k % 2 == 0 else 0.3
+            pts.append((r * math.cos(a), r * math.sin(a)))
+        m = poly(X, Y, pts) | ring(X, Y, 0.0, 0.0, 0.85, 0.04)
+        return m, m & (((np.arctan2(Y, X) - math.pi / 2) % (2 * math.pi / 5)) < math.pi / 5)
+
+    def heart(X, Y):
+        m = disc(X, Y, -0.25, 0.15, 0.3) | disc(X, Y, 0.25, 0.15, 0.3) | poly(X, Y, [(-0.53, 0.06), (0.53, 0.06), (0.0, -0.62)])
+        hollow = disc(X, Y, -0.22, 0.17, 0.17) | disc(X, Y, 0.22, 0.17, 0.17) | poly(X, Y, [(-0.36, 0.1), (0.36, 0.1), (0.0, -0.4)])
+        return m, m & ~hollow
+
+    def ship(X, Y):
+        m = poly(X, Y, [(-0.62, 0.0), (0.62, 0.0), (0.45, -0.24), (-0.45, -0.24)])
+        m |= (np.abs(X + 0.15) < 0.03) & (Y > 0.0) & (Y < 0.85)
+        m |= (np.abs(X - 0.22) < 0.03) & (Y > 0.0) & (Y < 0.7)
+        sails = poly(X, Y, [(-0.13, 0.8), (-0.13, 0.08), (-0.52, 0.1)]) | poly(X, Y, [(0.24, 0.66), (0.24, 0.08), (0.56, 0.1)])
+        wave = Y + 0.05 * np.sin(X * 7.0)
+        ribbon = (np.abs(X) < 0.8) & (wave < -0.32) & (wave > -0.52) & ~poly(X, Y, [(0.8, -0.3), (0.66, -0.42), (0.8, -0.54)]) \
+            & ~poly(X, Y, [(-0.8, -0.3), (-0.66, -0.42), (-0.8, -0.54)])
+        return m | sails | ribbon, m
+
+    def put(shape, mask, X0, Y0, x, y, size_m, turn=0.0, flip=False):
+        X, Y = (X0 - x) / size_m, (Y0 - y) / size_m
+        if flip:
+            X = -X
+        if turn:
+            X, Y = X * math.cos(turn) - Y * math.sin(turn), X * math.sin(turn) + Y * math.cos(turn)
+        m, dark = shape(X, Y)
+        return np.where(mask & m, np.where(dark, 1.0, 0.55), 0.0)
+
+    def on_arm(shape, side_left, at_s, at_t, size_m, turn=0.0):
+        # (up the picture is toward his shoulder: Y = -(t - at_t))
+        return put(shape, arm & (left if side_left else ~left), s, -t, at_s, -at_t, size_m, turn)
+
+    # Forearms: his right an anchor, swallows and a compass star; his left a swallow, a ship and a heart.
+    for shape, side_left, at_s, at_t, size_m, turn in (
+            (anchor, False, 0.02, 0.37, 0.034, 0.0), (star, False, 0.035, 0.425, 0.018, 0.0), (swallow, False, -0.03, 0.42, 0.018, 0.5),
+            (swallow, True, 0.035, 0.345, 0.022, 0.4), (ship, True, 0.018, 0.39, 0.03, 0.0), (heart, True, 0.045, 0.437, 0.014, 0.0),
+            # upper arms: his left a ship, his right a heart and a swallow
+            (ship, True, 0.0, 0.2, 0.036, 0.0), (heart, False, 0.01, 0.2, 0.022, 0.0), (swallow, False, 0.045, 0.255, 0.02, -0.3)):
+        ink = np.maximum(ink, on_arm(shape, side_left, at_s, at_t, size_m, turn))
+    # Front: an anchor on his left breast, a swallow by his right shoulder.
+    ink = np.maximum(ink, put(anchor, front, bx, by, 0.085, 0.915, 0.026, -0.25))
+    ink = np.maximum(ink, put(swallow, front, bx, by, -0.14, 0.955, 0.02, 0.3, True))
+    # Back (seen from behind: drawn mirrored so they read): a ship on his left shoulder blade, a swallow and a heart
+    # on his right, a compass star on his right shoulder, a swallow low on his left.
+    for shape, x, y, size_m, turn in ((ship, 0.1, 0.87, 0.042, 0.0), (swallow, -0.11, 0.91, 0.026, -0.3), (heart, -0.08, 0.83, 0.02, 0.0),
+                                      (star, -0.18, 0.945, 0.022, 0.0), (swallow, 0.06, 0.74, 0.024, 0.4)):
+        ink = np.maximum(ink, put(shape, back, bx, by_back, x, y, size_m, turn, True))
+
+    # The fuzz: short strokes along the hair's lie, many on the forearms, legs and the middle of his back.
+    rng = np.random.default_rng(7)
+
+    def strokes(count, umin, umax, vmin, vmax, angle, spread, length, keep=None):
+        nonlocal fuzz
+        pu = rng.uniform(umin, umax, count) * size
+        pv = rng.uniform(vmin, vmax, count) * size
+        ang = angle + rng.normal(0.0, spread, count)
+        ln = rng.uniform(length * 0.6, length * 1.3, count)
+        for k in range(9):
+            f = k / 8.0
+            cu = np.clip((pu + np.cos(ang) * ln * f).astype(int), 0, size - 1)
+            cv = np.clip((pv + np.sin(ang) * ln * f).astype(int), 0, size - 1)
+            ok = np.ones(count, bool) if keep is None else keep(cu, cv)
+            np.maximum.at(fuzz, (cv[ok], cu[ok]), 0.42 * (1.0 - 0.4 * abs(f - 0.5)))
+
+    fore0 = (COAT_SLEEVE - 0.05 - a0) / (a1 - a0) * 0.45
+    for off in (0.0, 0.5):
+        # forearms (the outer half of the arm round: the top and the back), the hair lying toward the hand
+        strokes(5000, off + 0.05, off + 0.45, fore0, 0.445, math.pi / 2, 0.35, 9.0)
+        strokes(900, off + 0.1, off + 0.4, 0.05, fore0, math.pi / 2, 0.4, 7.0)  # (a little on the upper arms)
+        strokes(7000, off, off + 0.5, 0.455, 0.595, -math.pi / 2, 0.3, 10.0)  # legs, lying down toward the feet
+    # the back: thick up the middle and over the shoulder blades, thinning out
+    yb0, yb1 = (0.7 - y0) / (y1 - y0) * 0.2 + 0.8, (0.98 - y0) / (y1 - y0) * 0.2 + 0.8
+    strokes(5000, 0.36, 0.64, yb0, yb1, math.pi / 2, 0.5, 9.0)
+    strokes(1500, 0.25, 0.75, yb0 + 0.04, yb1, math.pi / 2, 0.6, 8.0)
+    # round the chest's tufted bush and down his belly, lighter (the bush itself is modelled)
+    yf0, yf1 = (0.62 - y0) / (y1 - y0) * 0.2 + 0.6, (0.97 - y0) / (y1 - y0) * 0.2 + 0.6
+    strokes(2500, 0.36, 0.64, yf0, yf1, math.pi / 2, 0.8, 7.0)
+
+    soft = ink.copy()
+    for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        soft += np.roll(np.roll(ink, di, 1), dj, 0)
+    ink = soft / 5.0 * 0.78 * (0.9 + 0.1 * rng.random((size, size)))
+    base = np.array(skin)
+    tattoo = np.array((0.17, 0.22, 0.29))
+    hair = np.array((0.4, 0.36, 0.33))
+    rgb = base[None, None, :] * (1.0 - fuzz[..., None]) + hair[None, None, :] * fuzz[..., None]
+    rgb = rgb * (1.0 - ink[..., None]) + tattoo[None, None, :] * ink[..., None]
+    return save_picture("captain_skin", rgb, SKIN_PICTURE)
+
+
+def save_picture(name, rgb, path):
+    """An sRGB picture (rows bottom up) as a Blender image, saved to path and packed."""
+    import numpy as np
+    h, w = rgb.shape[:2]
+    pixels = np.concatenate([np.clip(rgb, 0.0, 1.0), np.ones((h, w, 1))], axis=2).astype(np.float32)
+    image = bpy.data.images.new(name, w, h)
+    image.colorspace_settings.name = "sRGB"
+    image.pixels.foreach_set(np.ravel(pixels))
+    image.filepath_raw = path
+    image.file_format = "PNG"
+    image.save()
+    image.pack()
+    return image
+
+
+def paint_boxers(size=256):
+    """His boxer shorts' print: small red hearts on white, staggered; one tile, repeated round him (boxer_uvs)."""
+    import numpy as np
+    j, i = np.mgrid[0:size, 0:size]
+    u, v = (i + 0.5) / size, (j + 0.5) / size
+    rgb = np.ones((size, size, 3)) * np.array((0.9, 0.89, 0.86))
+    for cx, cy in ((0.25, 0.25), (0.75, 0.75)):
+        X, Y = (u - cx) / 0.13, (v - cy) / 0.13
+        m = ((X + 0.25) ** 2 + (Y - 0.15) ** 2 < 0.09) | ((X - 0.25) ** 2 + (Y - 0.15) ** 2 < 0.09)
+        m |= (Y < 0.08) & (Y > -0.62) & (np.abs(X) < 0.53 * (Y + 0.62) / 0.7)
+        rgb[m] = (0.74, 0.16, 0.15)
+    return save_picture("captain_boxers", rgb, BOXERS_PICTURE)
+
+
+def boxer_uvs(o):
+    """The print round his boxers: round each leg (or his hips), so many tiles to a turn, and up."""
+    mesh = o.data
+    while mesh.uv_layers:
+        mesh.uv_layers.remove(mesh.uv_layers[0])
+    uv = mesh.uv_layers.new(name="UVMap")
+    for poly in mesh.polygons:
+        coords = []
+        for li in poly.loop_indices:
+            p = G(mesh.vertices[mesh.loops[li].vertex_index].co)
+            coords.append([(math.atan2(p.x, p.z) / math.tau + 0.5) * 7.0, p.y * 14.0])
+        us = [c[0] for c in coords]
+        if max(us) - min(us) > 3.5:
+            for c in coords:
+                if c[0] < 3.5:
+                    c[0] += 7.0
+        for li, c in zip(poly.loop_indices, coords):
+            uv.data[li].uv = tuple(c)
+
+
+def textured_material(name, image, roughness=1.0):
+    material = bpy.data.materials.new(name)
+    material.use_nodes = True
+    shader = next(n for n in material.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    texture = material.node_tree.nodes.new("ShaderNodeTexImage")
+    texture.image = image
+    material.node_tree.links.new(texture.outputs["Color"], shader.inputs["Base Color"])
+    shader.inputs["Roughness"].default_value = roughness
+    return material
+
+
+# His proportions, from the base-body sheet (tools/art_src/concept_captain_tpose.jpg): the man's skeleton with its
+# bones moved and each bone's flesh scaled (along the bone, across it), so everything built on the man (his skin,
+# his clothes, as they are skinned) takes the new shape by the same weights: linear blend skinning, done once, at
+# rest. Godot space, the model's own units (TitleFigures stands him 1.44 times bigger); +X his left. (new joint,
+# scale (x, y, z)) for the left side; the right is its mirror. Every other bone goes with its parent here (fingers
+# with the hand, the hair and eye bones with the head, the toe with the foot, the knee with the shin, the seat with
+# the thigh). Measured against the sheet: see tools/TITLE_FIGURES.md.
+WARP = {
+    "hips": ((0.0, 0.55, 0.0), (1.2, 1.03, 1.15)),
+    "spine": ((0.0, 0.64, 0.0), (1.28, 0.98, 1.25)),
+    "chest": ((0.0, 0.75, 0.0), (1.2, 1.12, 1.45)),
+    "neck": ((0.0, 0.925, 0.0), (1.45, 0.66, 1.3)),
+    "head": ((0.0, 0.96, 0.0), (1.25, 1.25, 1.25)),
+    "upper_arm_l": ((0.225, 0.815, 0.0), (0.9, 1.15, 1.2)),
+    "forearm_l": ((0.414, 0.815, 0.0), (1.15, 1.3, 1.3)),
+    "hand_l": ((0.578, 0.815, 0.0), (1.15, 1.15, 1.15)),
+    "thigh_l": ((0.115, 0.528, 0.0), (1.3, 1.055, 1.4)),
+    "shin_l": ((0.12, 0.222, 0.0), (1.9, 0.64, 1.75)),
+    "foot_l": ((0.122, 0.054, 0.0), (1.75, 0.9, 1.2)),
+}
+# He stands on a low grating at the wheel (title_figures' wheel is where it was; he is shorter): this high (model units).
+GRATING = 0.083
+WARP_OWNER = {"finger": "hand", "thumb": "hand", "hair": "head", "cap": "head", "eye": "head", "toe": "foot",
+              "knee": "shin", "seat": "thigh"}
+
+
+def warp_owner(name):
+    """The bone whose move a bone takes (itself, if WARP has it)."""
+    if name in WARP or name.replace("_r", "_l") in WARP:
+        return name
+    side = name[-2:] if name[-2:] in ("_l", "_r") else ""
+    for stem, owner in WARP_OWNER.items():
+        if name.startswith(stem):
+            return owner if owner == "head" else owner + side
+    return "head"
+
+
+def warp_bones(joints):
+    """Each bone's (old joint, new joint, scale) by name: its owner's."""
+    old = {name: at for name, at, _ in joints}
+    table = {}
+    for name, at, _ in joints:
+        owner = warp_owner(name)
+        new, scale = WARP[owner.replace("_r", "_l")]
+        new = Vector(new) + Vector((0.0, GRATING, 0.0))
+        if owner.endswith("_r"):
+            new.x = -new.x
+        table[name] = (old[owner], new, Vector(scale))
+    return table
+
+
+def warp_point(table, p, weights):
+    total, out = 0.0, Vector()
+    for bone, w in weights.items():
+        if bone not in table or w <= 0.0:
+            continue
+        old, new, scale = table[bone]
+        d = p - old
+        out += (new + Vector((d.x * scale.x, d.y * scale.y, d.z * scale.z))) * w
+        total += w
+    return out / total if total > 0.0 else p
+
+
+def warp_captain(objs, joints):
+    """Gives everything of him his proportions (WARP) and stands him on his grating; gives back the new joints."""
+    table = warp_bones(joints)
+    for o in objs:
+        names = {g.index: g.name for g in o.vertex_groups}
+        for v in o.data.vertices:
+            weights = {names[g.group]: g.weight for g in v.groups if g.group in names}
+            v.co = B(warp_point(table, G(v.co), weights or {"hips": 1.0}))
+        o.data.update()
+    return [(name, warp_point(table, at, {name: 1.0}), parent) for name, at, parent in joints]
+
+
+
+# The painted-face test: crops of the head turnaround (tools/art_src/concept_captain_head.jpg, one scale, flat light; made
+# by the build, so it is repeatable) and where his features are in them (crop pixels, rows down from the top; the
+# three crops share their rows). The side shows his left side, facing left; it is used mirrored for his right.
+HEAD_SHEET = os.path.join(HERE, "art_src", "concept_captain_head.jpg")
+FACE_FRONT_SRC = (HEAD_SHEET, (140, 130, 665, 950))
+FACE_SIDE_SRC = (HEAD_SHEET, (1400, 130, 2015, 950))
+FACE_BACK_SRC = (HEAD_SHEET, (2115, 130, 2635, 950))
+FACE_FRONT = {"half": 205.0, "eye": (262.0, 352.0), "nose": (262.0, 435.0), "ear": (20.0, 380.0)}
+FACE_SIDE = {"eye": (160.0, 352.0), "ear": (410.0, 380.0)}
+FACE_BACK = {"middle": 260.0}
+FACE_PICTURE = os.path.join(HERE, "art_src", "captain_face_painted.png")
+HAIR_GREY = (0.66, 0.65, 0.62)
+
+
+def concept_crop(src, name):
+    """A crop of a concept sheet as an array (rows top down, RGB), also saved beside the sheets as captain_<name>.png."""
+    import numpy as np
+    path, (x0, y0, x1, y1) = src
+    img = bpy.data.images.load(path)
+    w, h = img.size
+    pix = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)[::-1][y0:y1, x0:x1, :3]
+    save_picture("captain_" + name, pix[::-1].copy(), os.path.join(HERE, "art_src", "captain_%s.png" % name))
+    bpy.data.images.remove(img)
+    return pix
+
+
+def paint_face(o, eye_y, eye_z, s_f, size=1024):
+    """Unwraps the painted head and paints it: each texel takes the front painting where it faces forward, the side
+    painting where it faces sideways (his left side's, used for both), the back painting where it faces back;
+    blended by the square of how squarely it faces each way; gaps between islands filled out. Gives the image (saved
+    as tools/art_src/captain_face_painted.png)."""
+    import numpy as np
+    # (planned UVs: the face one island seen from the front, the rest of the head and cap a strip round it with its
+    # seam down the back, the cap's top from above; plan_uvs)
+    cap_band = eye_y + (FACE_FRONT["eye"][1] - 262.0) / s_f
+    chin = eye_y - (720.0 - FACE_FRONT["eye"][1]) / s_f
+    head_rects = plan_uvs([o], "head", ("head", cap_band, chin), False)
+    write_layout([o], head_rects, os.path.join(HERE, "art_src", "captain_face_layout.png"), size)
+    face_r = head_rects["face"]
+    print("CAPTAIN face island: %d by %d pixels of %d" % ((face_r[2] - face_r[0]) * size, (face_r[3] - face_r[1]) * size, size))
+    front = concept_crop(FACE_FRONT_SRC, "face_front")
+    side = concept_crop(FACE_SIDE_SRC, "face_side")
+    rear = concept_crop(FACE_BACK_SRC, "face_back")
+    mesh = o.data
+    mesh.calc_loop_triangles()
+    uv = mesh.uv_layers.active.data
+    pos = np.zeros((size, size, 3))
+    nrm = np.zeros((size, size, 3))
+    hit = np.zeros((size, size), bool)
+    for tri in mesh.loop_triangles:
+        uvs = np.array([tuple(uv[li].uv) for li in tri.loops]) * size
+        ps = np.array([tuple(G(mesh.vertices[vi].co)) for vi in tri.vertices])
+        ns = np.array([tuple(G(mesh.vertices[vi].normal)) for vi in tri.vertices])
+        lo = np.floor(uvs.min(axis=0)).astype(int)
+        hi = np.ceil(uvs.max(axis=0)).astype(int)
+        lo, hi = np.clip(lo, 0, size - 1), np.clip(hi, 0, size - 1)
+        xs, ys = np.meshgrid(np.arange(lo[0], hi[0] + 1) + 0.5, np.arange(lo[1], hi[1] + 1) + 0.5)
+        a, b, c = uvs
+        den = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+        if abs(den) < 1e-9:
+            continue
+        w0 = ((b[1] - c[1]) * (xs - c[0]) + (c[0] - b[0]) * (ys - c[1])) / den
+        w1 = ((c[1] - a[1]) * (xs - c[0]) + (a[0] - c[0]) * (ys - c[1])) / den
+        w2 = 1.0 - w0 - w1
+        inside = (w0 >= -0.02) & (w1 >= -0.02) & (w2 >= -0.02)
+        if not inside.any():
+            continue
+        wv = np.stack([w0, w1, w2], -1)[inside]
+        rows, cols = (ys[inside] - 0.5).astype(int), (xs[inside] - 0.5).astype(int)
+        pos[rows, cols] = wv @ ps
+        nrm[rows, cols] = wv @ ns
+        hit[rows, cols] = True
+    n = nrm / np.maximum(np.linalg.norm(nrm, axis=-1, keepdims=True), 1e-6)
+
+    def sample(picture, cx, cy):
+        h, w = picture.shape[:2]
+        inside = (cx >= 0) & (cx < w - 1) & (cy >= 0) & (cy < h - 1)
+        colour = picture[np.clip(cy, 0, h - 1).astype(int), np.clip(cx, 0, w - 1).astype(int)]
+        # (only where the picture shows him, not its background)
+        ground = np.median(picture[:12, :12].reshape(-1, 3), axis=0)
+        return colour, inside & (np.linalg.norm(colour - ground, axis=-1) > 0.1)
+
+    fc, fin = sample(front, FACE_FRONT["eye"][0] + pos[..., 0] * s_f, FACE_FRONT["eye"][1] - (pos[..., 1] - eye_y) * s_f)
+    row = FACE_FRONT["eye"][1] - (pos[..., 1] - eye_y) * s_f
+    sc, sin_ = sample(side, FACE_SIDE["eye"][0] - (pos[..., 2] - eye_z) * s_f, row)
+    back, bin_ = sample(rear, FACE_BACK["middle"] - pos[..., 0] * s_f, row)
+    up = 0.6 * np.clip(n[..., 1], 0.0, 1.0) ** 2  # (the top from the front view on the front half, the back view behind)
+    wf = (np.clip(n[..., 2], 0.0, 1.0) ** 2 + up * (n[..., 2] >= 0.0)) * fin
+    ws = np.abs(n[..., 0]) ** 2 * sin_
+    wb = (np.clip(-n[..., 2], 0.0, 1.0) ** 2 + up * (n[..., 2] < 0.0)) * bin_
+    fallback = 0.001
+    rgb = (fc * wf[..., None] + sc * ws[..., None] + back * wb[..., None] + np.array(CAPTAIN_COLOURS["skin"]) * fallback) / (wf + ws + wb + fallback)[..., None]
+    # (the beard and the hair under his cap are hair-shader hair now: where the painting has them, the skin under
+    # them is painted instead, a grey shadow at the roots, so nothing shows through oddly)
+    lo_c, hi_c = rgb.min(axis=-1), rgb.max(axis=-1)
+    hairy = (lo_c > 0.42) & (hi_c - lo_c < 0.12)
+    below_nose = (pos[..., 1] < eye_y - (FACE_NOSE[1] - FACE_FRONT["eye"][1]) / s_f) | (pos[..., 1] < eye_y - (515.0 - FACE_FRONT["eye"][1]) / s_f)
+    under_cap = (pos[..., 1] < eye_y + (FACE_FRONT["eye"][1] - 262.0) / s_f) & (n[..., 2] < 0.35)
+    roots = np.array(CAPTAIN_COLOURS["skin"]) * 0.2 + np.array((0.5, 0.49, 0.47)) * 0.8
+    mouth_y_ = eye_y - (515.0 - FACE_FRONT["eye"][1]) / s_f
+    rgb[(hairy & (below_nose | under_cap)) | ((pos[..., 1] < mouth_y_) & (n[..., 2] > -0.6))] = roots
+    # (and what no view saw well, from its neighbours: the sides of the nose took the background's colour)
+    rgb = fill_out(rgb, hit & ((wf + ws + wb) > 0.05), 32)
+    # (the gaps between islands filled out from their edges, so no seam shows the background)
+    filled = hit.copy()
+    for _ in range(12):
+        grow = np.zeros_like(rgb)
+        count = np.zeros(filled.shape)
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            m = np.roll(np.roll(filled, dy, 0), dx, 1)
+            grow += np.roll(np.roll(rgb, dy, 0), dx, 1) * m[..., None]
+            count += m
+        new = ~filled & (count > 0)
+        rgb[new] = grow[new] / count[new][..., None]
+        filled |= new
+    return save_picture("captain_face_painted", rgb, FACE_PICTURE)
+
+
+FACE_ROWS = (14, 770, 18)    # the head's rings: from the cap's crown to the neck, so many picture rows apart
+FACE_JAW = (9999, 10000)     # (not used: the beard's volume is kept as a root-grey core under its locks)
+FACE_PEAK = (175, 262)       # the rows the cap's peak takes in the side view (taken out of the cap's depth there)
+FACE_EARRING = (390, 475)    # the earring, in the side view (column, row)
+FACE_EARS = (300, 455)       # the rows the ears take in the front view (taken out of the head's width there)
+FACE_NOSE = (395, 478)       # the rows the nose takes in the side view (taken out of the face's depth there)
+
+
+def silhouette(picture, threshold=0.1):
+    """For each row of a picture: (first, last) column of the figure (pixels unlike the background, in runs of 6 or
+    more, so the sheet's guide lines do not count), or None."""
+    import numpy as np
+    ground = np.median(picture[:12, :12].reshape(-1, 3), axis=0)
+    figure = np.linalg.norm(picture - ground, axis=-1) > threshold
+    out = []
+    for row in figure:
+        run = np.convolve(row.astype(int), np.ones(6, int), "same") >= 6
+        cols = np.where(run)[0]
+        out.append((cols.min(), cols.max()) if len(cols) else None)
+    return out
+
+
+def painted_head(eye_y, eye_z, s_f, m):
+    """The painted head: see build_captain. Rings from the silhouettes, ears and a nose, UV'd and painted."""
+    front = concept_crop(FACE_FRONT_SRC, "face_front")
+    side = concept_crop(FACE_SIDE_SRC, "face_side")
+    fs, ss = silhouette(front), silhouette(side)
+    to_y = lambda row: eye_y - (row - FACE_FRONT["eye"][1]) / s_f  # noqa: E731
+    to_z = lambda col: eye_z - (col - FACE_SIDE["eye"][0]) / s_f  # noqa: E731
+    r0, r1, step = FACE_ROWS
+
+    def half_width(row):
+        if row > FACE_JAW[0]:
+            return half_width(FACE_JAW[0]) + (0.78 * half_width(int(FACE_FRONT["eye"][1])) - half_width(FACE_JAW[0])) * ease(FACE_JAW[0], FACE_JAW[1], row)
+        if FACE_EARS[0] <= row <= FACE_EARS[1]:
+            a, b = half_width(FACE_EARS[0] - 1), half_width(FACE_EARS[1] + 1)
+            t = (row - FACE_EARS[0]) / (FACE_EARS[1] - FACE_EARS[0])
+            return a + (b - a) * t
+        lo, hi = fs[row]
+        return (hi - lo) / 2.0 / s_f
+
+    def depth(row):
+        if row > FACE_JAW[0]:
+            zf0 = depth(FACE_JAW[0])[0]
+            return zf0 - 0.006 - 0.045 * ease(FACE_JAW[0], FACE_JAW[1], row), to_z(ss[min(row, 600)][1])
+        lo, hi = ss[row]
+        zf, zb = to_z(lo), to_z(hi)
+        for r0_, r1_ in (FACE_NOSE, FACE_PEAK):
+            if r0_ <= row <= r1_:
+                a, b = depth(r0_ - 1)[0], depth(r1_ + 1)[0]
+                zf = a + (b - a) * (row - r0_) / (r1_ - r0_)
+        return zf, zb
+
+    b = kit.Builder()
+    rings = []
+    for row in range(r0, r1 + 1, step):
+        hx = half_width(row)
+        zf, zb = depth(row)
+        zc, rz_f, rz_b = (zf + zb) / 2.0, (zf - zb) / 2.0, (zf - zb) / 2.0
+        rings.append((to_y(row), hx, zc, rz_f))
+    # (a ring of points round each row: a soft box, x from the front view, z from the side)
+    bm = b.bm
+    loops = []
+    seg = 16
+    for y, hx, zc, rz in rings:
+        loop = []
+        for k in range(seg):
+            a = math.tau * k / seg
+            sx, cz = math.sin(a), math.cos(a)
+            x = hx * math.copysign(abs(sx) ** 0.75, sx)
+            z = zc + rz * math.copysign(abs(cz) ** 0.75, cz)
+            loop.append(bm.verts.new(B(Vector((x, y, z)))))
+        loops.append(loop)
+    for a_loop, b_loop in zip(loops, loops[1:]):
+        for k in range(seg):
+            j = (k + 1) % seg
+            bm.faces.new((a_loop[k], a_loop[j], b_loop[j], b_loop[k]))
+    top = bm.verts.new(B(Vector((0.0, rings[0][0] + 0.004, rings[0][2]))))
+    bottom = bm.verts.new(B(Vector((0.0, rings[-1][0] - 0.004, rings[-1][2]))))
+    for k in range(seg):
+        bm.faces.new((loops[-1][k], loops[-1][(k + 1) % seg], bottom))
+    for k in range(seg):
+        bm.faces.new((loops[0][(k + 1) % seg], loops[0][k], top))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    # The nose, from the side view's tip and the front view's width; the ears, where the views put them.
+    tip_row = min(range(FACE_NOSE[0], FACE_NOSE[1]), key=lambda r: ss[r][0])
+    tip_z = to_z(ss[tip_row][0])
+    face_z = depth(tip_row)[0]
+    ny = to_y(tip_row)
+    # (the nose lofted down the side view's profile, as wide as the painted nose is at each row)
+    widths = ((FACE_NOSE[0], 22.0), (410, 30.0), (425, 55.0), (445, 68.0), (465, 60.0), (FACE_NOSE[1], 35.0))
+    nose_rings = []
+    for r in range(FACE_NOSE[0], FACE_NOSE[1] + 1, 8):
+        k = next(i for i in range(len(widths) - 1) if widths[i + 1][0] >= r)
+        (ra, wa), (rb, wb_) = widths[k], widths[k + 1]
+        half = (wa + (wb_ - wa) * (r - ra) / max(rb - ra, 1)) / s_f
+        base, tip = depth(r)[0] - 0.006, to_z(ss[r][0])
+        nose_rings.append((Vector((0.0, to_y(r), (base + tip) * 0.5)), X * half, Z * max((tip - base) * 0.5, 0.002)))
+    b.tube(kit.dome(nose_rings[0], Y, 0.004, 2)[::-1] + nose_rings + kit.dome(nose_rings[-1], -Y, 0.006, 2), 10)
+    ear_y = to_y((FACE_EARS[0] + FACE_EARS[1]) / 2.0)
+    ear_z = to_z(FACE_SIDE["ear"][0])
+    ear_x = half_width((FACE_EARS[0] + FACE_EARS[1]) // 2) + 0.004
+    for s in (1.0, -1.0):
+        b.ellipsoid(Vector((s * ear_x, ear_y, ear_z)), Vector((0.006, 0.03, 0.019)), Matrix.Rotation(s * 0.4, 3, "Y"), 12, 5)
+    # The cap's peak: from the band's front out to the side view's tip, a flattened wedge.
+    tip_row = min(range(*FACE_PEAK), key=lambda r: ss[r][0])
+    peak_tip, peak_root = to_z(ss[tip_row][0]), depth(FACE_PEAK[1] + 1)[0]
+    py = to_y(tip_row + 6)
+    pw = half_width(FACE_PEAK[1] + 1) * 0.85
+    b.tube([(Vector((0.0, py + 0.006 * (1 - f), peak_root - 0.01 + (peak_tip - peak_root + 0.01) * f)), X * pw * (1.0 - 0.35 * f * f), Y * 0.004)
+            for f in (0.0, 0.35, 0.7, 1.0)], 10)
+    head = from_builder("captain_painted_head", b, None, m["skin"], rigid("head"))
+    head.data.materials.clear()
+    head.data.materials.append(textured_material("captain_painted", paint_face(head, eye_y, eye_z, s_f)))
+    smooth_shade(head)
+    # (his earring where the turnaround has it, in his left ear's lobe)
+    b = kit.Builder()
+    lobe = Vector((ear_x + 0.004, to_y(FACE_EARRING[1]), to_z(FACE_EARRING[0])))
+    hoop = [lobe + (Y * -(1.0 - math.cos(a)) + Z * math.sin(a)) * 0.008 for a in (math.tau * k / 12 for k in range(13))]
+    b.strand(hoop, [0.0018] * len(hoop), 4)
+    ring = from_builder("captain_painted_earring", b, None, m["gold"], rigid("head"))
+    activate(head)
+    ring.select_set(True)
+    bpy.ops.object.join()
+    # (his beard, moustache, sideburns and the hair under his cap: hair-shader hair, see head_hair)
+    row_of = lambda y: int(min(max(FACE_FRONT["eye"][1] - (y - eye_y) * s_f, r0), r1))  # noqa: E731
+    levels = (to_y(262), to_y(310), eye_y, to_y(515), to_y(720), to_y(560))
+    hair = head_hair("captain_beard__painted", [head], levels, lambda y: sum(depth(row_of(y))) * 0.5,
+                     half_width(int(FACE_FRONT["eye"][1])), m["beard"])
+    return head, hair
+
+
+# Painting his body and clothes as his head is painted: each mesh unwrapped and painted by projecting a modelling
+# sheet's front, side and back views onto it as he stands in the sheet's pose (arms 64 degrees down from level, the
+# elbows a little bent), scaled to the sheet's floor and cap-top lines. (sheet, floor row, cap-top row, the middle
+# column of each view; in the sheet's pixels as displayed 2000 wide.)
+SHEETS = {
+    "base": (os.path.join(HERE, "art_src", "concept_captain_tpose.jpg"), 1055.0, 75.0, {"front": 478.0, "side": 1062.0, "back": 1610.0}),
+    "open": (os.path.join(HERE, "art_src", "concept_captain_tpose_clothed.jpg"), 1055.0, 75.0, {"front": 478.0, "side": 1062.0, "back": 1610.0}),
+    "closed": (os.path.join(HERE, "art_src", "concept_captain_closed.jpg"), 1052.0, 97.0, {"front": 488.0, "side": 1140.0, "back": 1658.0}),
+}
+SHEET_POSE = (64.0, 8.0)  # (arms down from level, elbows bent), degrees
+# The chest and belly hair as tufted meshes (the hair shader) over the painted hair, or the painted hair alone.
+TUFTED_HAIR = False
+
+
+def _skinlike(c):
+    r, g, b = c[..., 0], c[..., 1], c[..., 2]
+    return (r > g) & (g > b * 0.95) & (r - b > 0.08) & (r - b < 0.32) & (r - g < 0.2) & (r < 0.95)
+
+
+def _not_pale(c):
+    return (c.max(axis=-1) < 0.62) | (c.max(axis=-1) - c.min(axis=-1) > 0.15)
+
+
+# What colours each piece may take from its sheet (the rest are filled from neighbours).
+ACCEPT = {"skin": _skinlike,
+          "legs": _not_pale}
+
+
+def fill_out(rgb, valid, rounds=24):
+    """Fills the texels not `valid` from their valid neighbours, round by round (gaps, and what no view sees)."""
+    import numpy as np
+    filled = valid.copy()
+    for _ in range(rounds):
+        grow = np.zeros_like(rgb)
+        count = np.zeros(filled.shape)
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)):
+            mk = np.roll(np.roll(filled, dy, 0), dx, 1)
+            grow += np.roll(np.roll(rgb, dy, 0), dx, 1) * mk[..., None]
+            count += mk
+        new = ~filled & (count > 0)
+        if not new.any():
+            break
+        rgb[new] = grow[new] / count[new][..., None]
+        filled |= new
+    return rgb
+
+
+def sheet_pose(armature, on):
+    for side, s in (("l", 1.0), ("r", -1.0)):
+        for bone, angle in (("upper_arm_", SHEET_POSE[0]), ("forearm_", SHEET_POSE[1])):
+            pb = armature.pose.bones[bone + side]
+            pb.rotation_mode = "QUATERNION"
+            pb.rotation_quaternion = Quaternion((0.0, 0.0, 1.0), -s * math.radians(angle)) if on else Quaternion()
+    bpy.context.view_layer.update()
+
+
+def paint_from_sheet(objs, sheet, cap_top, size, name, accept=None, clean_ink=False):
+    """Paints objects (unwrapped by plan_uvs into one atlas, posed by their armature in the sheet's pose) from the
+    sheet's three views into one picture. clean_ink: the tattoos the sheet shows are painted out (they are an
+    overlay now, placed from a table)."""
+    import numpy as np
+    path, floor, top, middles = SHEETS[sheet]
+    img = bpy.data.images.load(path)
+    sw, sh = img.size
+    k = sw / 2000.0
+    pix = np.array(img.pixels[:], dtype=np.float32).reshape(sh, sw, 4)[::-1][..., :3]
+    ground = np.median(pix[:20, :20].reshape(-1, 3), axis=0)
+    bpy.data.images.remove(img)
+    ppu = (floor - top) * k / (cap_top - GRATING)
+    pos = np.zeros((size, size, 3))
+    nrm = np.zeros((size, size, 3))
+    hit = np.zeros((size, size), bool)
+    for o in objs:
+      mesh = o.data
+      mesh.calc_loop_triangles()
+      uv = mesh.uv_layers.active.data
+      ev = o.evaluated_get(bpy.context.evaluated_depsgraph_get())
+      em = ev.to_mesh()
+      posed = [ev.matrix_world @ v.co for v in em.vertices]
+      normals = [(ev.matrix_world.to_3x3() @ v.normal).normalized() for v in em.vertices]
+      ev.to_mesh_clear()
+      for tri in mesh.loop_triangles:
+        uvs = np.array([tuple(uv[li].uv) for li in tri.loops]) * size
+        ps = np.array([tuple(posed[vi]) for vi in tri.vertices])
+        ns = np.array([tuple(normals[vi]) for vi in tri.vertices])
+        lo = np.clip(np.floor(uvs.min(axis=0)).astype(int), 0, size - 1)
+        hi = np.clip(np.ceil(uvs.max(axis=0)).astype(int), 0, size - 1)
+        xs, ys = np.meshgrid(np.arange(lo[0], hi[0] + 1) + 0.5, np.arange(lo[1], hi[1] + 1) + 0.5)
+        a, b, c = uvs
+        den = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+        if abs(den) < 1e-9:
+            continue
+        w0 = ((b[1] - c[1]) * (xs - c[0]) + (c[0] - b[0]) * (ys - c[1])) / den
+        w1 = ((c[1] - a[1]) * (xs - c[0]) + (a[0] - c[0]) * (ys - c[1])) / den
+        w2 = 1.0 - w0 - w1
+        inside = (w0 >= -0.02) & (w1 >= -0.02) & (w2 >= -0.02)
+        if not inside.any():
+            continue
+        wv = np.stack([w0, w1, w2], -1)[inside]
+        rows, cols = (ys[inside] - 0.5).astype(int), (xs[inside] - 0.5).astype(int)
+        pos[rows, cols] = wv @ ps
+        nrm[rows, cols] = wv @ ns
+        hit[rows, cols] = True
+    n = nrm / np.maximum(np.linalg.norm(nrm, axis=-1, keepdims=True), 1e-6)
+    row = floor * k - (pos[..., 2] - GRATING) * ppu
+
+    def sample(col):
+        inside = (col >= 0) & (col < sw - 1) & (row >= 0) & (row < sh - 1)
+        colour = pix[np.clip(row, 0, sh - 1).astype(int), np.clip(col, 0, sw - 1).astype(int)]
+        ok = inside & (np.linalg.norm(colour - ground, axis=-1) > 0.1)
+        # (and only colours this piece can be: a hand never takes the boxers' white, nor a boot the background)
+        return colour, ok & (accept(colour) if accept else True)
+
+    fc, fin = sample(middles["front"] * k + pos[..., 0] * ppu)
+    sc, sin_ = sample(middles["side"] * k - pos[..., 1] * ppu)
+    bc, bin_ = sample(middles["back"] * k - pos[..., 0] * ppu)
+    wf = np.clip(-n[..., 1], 0.0, 1.0) ** 2 * fin
+    ws = n[..., 0] ** 2 * sin_
+    wb = np.clip(n[..., 1], 0.0, 1.0) ** 2 * bin_
+    total = wf + ws + wb
+    rgb = (fc * wf[..., None] + sc * ws[..., None] + bc * wb[..., None]) / np.maximum(total, 1e-6)[..., None]
+    seen = hit & (total > 0.02)
+    if clean_ink:
+        # (ink: darker and bluer than skin; painted out from the skin round it)
+        r_, g_, b_ = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+        ink = seen & ((b_ > r_ * 0.9) | ((r_ - b_ < 0.07) & (r_ < 0.5)))
+        ink = ink | np.roll(ink, 1, 0) | np.roll(ink, -1, 0) | np.roll(ink, 1, 1) | np.roll(ink, -1, 1)
+        seen = seen & ~ink
+    rgb = fill_out(rgb, seen, 96)
+    picture = os.path.join(HERE, "art_src", "%s.png" % name)
+    image = save_picture(name, rgb, picture)
+    material = textured_material(name, image)
+    for o in objs:
+        o.data.materials.clear()
+        o.data.materials.append(material)
+        for poly in o.data.polygons:
+            poly.material_index = 0
+    print("PAINTED %s from the %s sheet: %d px, %.0f%% of its texels seen" % (name, sheet, size, 100.0 * seen.sum() / max(hit.sum(), 1)))
+
+
+def solid_cloth(o, thick):
+    """Makes a stood-off cloth surface solid (thickness inward), its slivers dissolved first and any point the
+    solidify throws out put back (as the open coat's)."""
+    from mathutils import kdtree
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0008)
+    bmesh.ops.dissolve_degenerate(bm, dist=0.0008, edges=bm.edges)
+    bm.to_mesh(o.data)
+    bm.free()
+    was = kdtree.KDTree(len(o.data.vertices))
+    for v in o.data.vertices:
+        was.insert(v.co, v.index)
+    was.balance()
+    solid = o.modifiers.new("solid", "SOLIDIFY")
+    solid.thickness = thick
+    solid.offset = -1.0
+    activate(o)
+    bpy.ops.object.modifier_apply(modifier=solid.name)
+    for v in o.data.vertices:
+        at, _, far = was.find(v.co)
+        if far > 0.02:
+            v.co = at
+
+
+# His beard, moustache, sideburns and the hair under his cap as HAIR for the hair shader (the user: "Dont try to model
+# the beard it should be made with a hair shader"): flat locks (hair_lock) rooted on his head, layered from the jaw
+# and cheeks out and down in the masses the head sheet shows. Brows too when BROW_TUFTS (else they are paint).
+BROW_TUFTS = False
+
+
+def card_lock(b, base, n, way, length, width, lift):
+    """A clump of beard or hair as game hair cards are: flat (a fifth as thick as wide), wide at the root, tapering to
+    a point, curving out from the skin by `lift` and back in at the tip. UV along it."""
+    side = way.cross(n).normalized()
+    rings = []
+    for f, w in ((0.0, 1.0), (0.3, 1.05), (0.6, 0.8), (0.85, 0.45), (1.0, 0.08)):
+        p = base + way * length * f + n * length * lift * math.sin(math.pi * f) * 0.4
+        rings.append((p, side * width * w, n * width * w * 0.2))
+    b.tube(rings, 4)
+
+
+def head_hair(name, surfaces, levels, centre_z, scale, material, seed=3):
+    """The hair on a head, rooted on its own surface: `levels` gives the heights (y) of the cap's band, the brows, the
+    eyes, the mouth, the beard's bottom and the nape; `scale` is the head's half width at the eyes (sizes go by it).
+    Roots are scattered over the head's triangles in each region (area-weighted), each lock combed down along the
+    surface (its normal component taken out), lying close, so the hair takes the head's shape. One mesh of locks,
+    UV along each lock and UV2 in metres, rigid on the head bone."""
+    import random
+    rnd = random.Random(seed)
+    band, brow, eye, mouth, bottom, nape = levels
+    s = scale
+    tris = []
+    for o in surfaces:
+        me = o.data
+        me.calc_loop_triangles()
+        for t in me.loop_triangles:
+            ps = [G(me.vertices[i].co) for i in t.vertices]
+            area = (ps[1] - ps[0]).cross(ps[2] - ps[0]).length / 2.0
+            n = (ps[2] - ps[0]).cross(ps[1] - ps[0])
+            c = (ps[0] + ps[1] + ps[2]) / 3.0
+            # (outward: away from the head's middle line)
+            mid = Vector((0.0, c.y, centre_z(c.y)))
+            n = n.normalized() if n.length > 1e-12 else (c - mid).normalized()
+            if n.dot(c - mid) < 0.0:
+                n = -n
+            tris.append((ps, area, n, c))
+    b = kit.Builder()
+    count = 0
+
+    def scatter(region, number, length, width, lift, comb):
+        nonlocal count
+        chosen = [t for t in tris if region(t[3], t[2])]
+        if not chosen:
+            return
+        weights = [t[1] for t in chosen]
+        for t in rnd.choices(chosen, weights, k=number):
+            ps, _, n, _ = t
+            u, v = rnd.random(), rnd.random()
+            if u + v > 1.0:
+                u, v = 1.0 - u, 1.0 - v
+            p = ps[0] + (ps[1] - ps[0]) * u + (ps[2] - ps[0]) * v - n * 0.002
+            way = comb(p, n)
+            way -= n * way.dot(n)
+            if way.length < 1e-6:
+                continue
+            way.normalize()
+            card_lock(b, p, n, way, length(p) * rnd.uniform(0.85, 1.15), s * rnd.uniform(*width), rnd.uniform(*lift))
+            count += 1
+
+    down = lambda p, n: Vector((0.0, -1.0, 0.0))  # noqa: E731
+    # the beard: the face below the cheeks, front and sides, down to under the chin; longer toward the chin
+    beard = lambda c, n: c.y < eye - 0.45 * (eye - mouth) and c.y > bottom - 0.4 * s and n.z > -0.35  # noqa: E731
+    scatter(beard, 230, lambda p: s * (0.6 + 0.45 * ease(mouth, bottom, p.y)), (0.2, 0.28), (0.06, 0.15), down)
+    # under the chin, combed back toward the neck so it is full from below
+    scatter(lambda c, n: bottom - 0.4 * s < c.y < mouth and n.y < -0.4 and c.z > centre_z(c.y) - 0.2 * s, 50, lambda p: s * 0.55, (0.2, 0.26), (0.08, 0.2),
+            lambda p, n: Vector((0.0, -0.5, -1.0)))
+    # the moustache: over the upper lip, drooping and out to each side
+    scatter(lambda c, n: mouth < c.y < mouth + 0.32 * s and abs(c.x) < 0.75 * s and n.z > 0.3, 28, lambda p: s * 0.55, (0.16, 0.2),
+            (0.15, 0.3), lambda p, n: Vector((math.copysign(0.9, p.x), -1.0, 0.0)))
+    # the sideburns, from the temples down into the beard, and the hair under his cap at the back and sides, to the nape
+    scatter(lambda c, n: mouth < c.y < eye - 0.15 * s and abs(n.x) > 0.5 and c.z > centre_z(c.y) + 0.35 * s, 30, lambda p: s * 0.5, (0.16, 0.22), (0.04, 0.1), down)
+    scatter(lambda c, n: nape < c.y < band - 0.05 * s and n.z < -0.2, 70, lambda p: s * 0.5, (0.2, 0.26), (0.04, 0.1), down)
+    if BROW_TUFTS:
+        scatter(lambda c, n: abs(c.y - brow) < 0.06 * s and 0.15 * s < abs(c.x) < 0.75 * s and n.z > 0.5, 16, lambda p: s * 0.25,
+                (0.08, 0.1), (0.3, 0.5), lambda p, n: Vector((math.copysign(1.0, p.x), 0.2, 0.0)))
+    hair = from_builder(name, b, None, material, rigid("head"))
+    print("HAIR %s: %d locks, %d triangles" % (name, count, kit.triangle_count(hair.data)))
+    return hair
+    return hair
+
+
+# Planned UVs (the user: "instead of projecting hte concept art onto it we should make proper uvs no?"): each piece is
+# cut into named parts, each part unwrapped by the projection that suits it (a strip round a limb, a panel front or
+# back, the face flat from the front), its seam where it hides (under the arm, inside the leg, down the sides under
+# the arms, down the back of the head), at true scale in metres times its share of texels, mirrored left onto right
+# where the two sides match, and packed into one atlas with padding. A layout picture with the islands drawn and named
+# is written beside each atlas, and a JSON of where each part is (for the tattoo overlay and for painting by hand).
+
+def _part_of_body(c, n):
+    if abs(c.x) > 0.6:
+        return "hand_l" if c.x > 0 else "hand_r"
+    if abs(c.x) > 0.245 and c.y > 0.66:
+        return "arm_l" if c.x > 0 else "arm_r"
+    if c.y < 0.44:
+        return "leg_l" if c.x > 0 else "leg_r"
+    return "front" if n.z >= 0.0 else "back"
+
+
+def _part_of_head(c, n, cap_band, chin):
+    if n.y > 0.75 and c.y > cap_band:
+        return "cap_top"
+    if n.z > 0.4 and chin < c.y < cap_band:
+        return "face"
+    return "head_round"
+
+
+# Each part: (projection, share of texels). Projections: "x" a strip round the x axis (arms), "y" round the y axis
+# (legs, the head), "front" / "back" flat panels, "top" flat from above, "hand" flat from above and below.
+PARTS = {"arm": ("x", 1.0), "hand": ("hand", 1.6), "leg": ("y", 0.6), "front": ("front", 1.3), "back": ("back", 0.8),
+         "face": ("front", 3.2), "head_round": ("y", 1.0), "cap_top": ("top", 0.6)}
+
+
+def plan_uvs(objs, name, kind, mirror, pad=0.006):
+    """Unwraps the objects (one atlas between them) by plan; gives {part: (u0, v0, u1, v1, width_m, height_m)}.
+    kind: "body" or ("head", cap_band, chin). mirror: parts whose left and right share their island."""
+    import collections
+    faces = []
+    for o in objs:
+        me = o.data
+        while me.uv_layers:
+            me.uv_layers.remove(me.uv_layers[0])
+        me.uv_layers.new(name="UVMap")
+        for poly in me.polygons:
+            c = G(poly.center)
+            nn = G(poly.normal)
+            if kind == "body":
+                part = _part_of_body(c, nn)
+            else:
+                part = _part_of_head(c, nn, kind[1], kind[2])
+            if mirror and part.endswith(("_l", "_r")):
+                part = part[:-2]
+            faces.append((o, poly, part))
+    groups = collections.defaultdict(list)
+    for f in faces:
+        groups[f[2]].append(f)
+    raw = {}
+    for part, fs in groups.items():
+        proj = PARTS[part.rstrip("_lr") if part[-2:] in ("_l", "_r") else part][0]
+        pts = [G(f[0].data.vertices[i].co) for f in fs for i in f[1].vertices]
+        cx = sum(p.x for p in pts) / len(pts)
+        cy = sum(p.y for p in pts) / len(pts)
+        cz = sum(p.z for p in pts) / len(pts)
+        if proj == "x":
+            radius = sum(math.hypot(p.y - cy, p.z - cz) for p in pts) / len(pts)
+        elif proj == "y":
+            radius = sum(math.hypot(p.x - cx, p.z - cz) for p in pts) / len(pts)
+        else:
+            radius = 1.0
+        side = 1.0 if cx >= 0.0 else -1.0
+        coords = {}
+        for o, poly, _ in fs:
+            loop = []
+            for li in poly.loop_indices:
+                p = G(o.data.vertices[o.data.loops[li].vertex_index].co)
+                x = abs(p.x) if mirror else p.x
+                if proj == "x":
+                    a = math.atan2(p.z - cz, p.y - cy)  # 0 on top, the seam underneath
+                    loop.append([a * radius, abs(p.x) if True else p.x, a])
+                elif proj == "y":
+                    if part.startswith("leg"):
+                        dx = (p.x - cx) * side if not mirror else abs(p.x) - abs(cx)
+                        a = math.atan2(p.z - cz, dx)  # the seam on the inside of the leg
+                    else:
+                        a = math.atan2(p.x, -(p.z - cz))  # the head: the seam down the back
+                    loop.append([a * radius, p.y, a])
+                elif proj == "front":
+                    loop.append([x, p.y, 0.0])
+                elif proj == "back":
+                    loop.append([-x if not mirror else x, p.y, 0.0])
+                elif proj == "top":
+                    loop.append([x, -p.z, 0.0])
+                else:  # hand: from above (the back of the hand) on the left, from below (the palm) shifted right
+                    up = G(poly.normal).y >= 0.0
+                    loop.append([p.z + (0.0 if up else 0.25), abs(p.x), 0.0])
+            if proj in ("x", "y"):
+                angles = [l[2] for l in loop]
+                if max(angles) - min(angles) > math.pi:
+                    for l in loop:
+                        if l[2] < 0.0:
+                            l[0] += math.tau * radius
+            coords[(o.name, poly.index)] = [(l[0], l[1]) for l in loop]
+        us = [c[0] for v in coords.values() for c in v]
+        vs = [c[1] for v in coords.values() for c in v]
+        weight = PARTS[part.rstrip("_lr") if part[-2:] in ("_l", "_r") else part][1]
+        raw[part] = (coords, min(us), min(vs), max(us) - min(us), max(vs) - min(vs), weight)
+    # Shelf packing, tallest first, each island at its true size times sqrt(its share).
+    sizes = {p: (r[3] * math.sqrt(r[5]), r[4] * math.sqrt(r[5])) for p, r in raw.items()}
+    total = sum(w * h for w, h in sizes.values())
+    order = sorted(sizes, key=lambda p: -sizes[p][1])
+    width = math.sqrt(total) * 0.9
+    while True:
+        x = y = shelf = 0.0
+        places = {}
+        for p in order:
+            w, h = sizes[p]
+            gap = width * pad * 2
+            if x + w > width and x > 0.0:
+                x, y, shelf = 0.0, y + shelf + gap, 0.0
+            places[p] = (x, y)
+            x += w + gap
+            shelf = max(shelf, h)
+        height = y + shelf
+        if height <= width * 1.02:
+            break
+        width *= 1.05
+    side_ = max(width, height)
+    rects = {}
+    for p, (coords, u0, v0, w, h, weight) in raw.items():
+        k = math.sqrt(weight) / side_
+        ox, oy = places[p]
+        for (oname, pi), loop in coords.items():
+            o = bpy.data.objects[oname]
+            uv = o.data.uv_layers.active.data
+            for li, (u, v) in zip(o.data.polygons[pi].loop_indices, loop):
+                uv[li].uv = ((ox / side_) + (u - u0) * k, (oy / side_) + (v - v0) * k)
+        rects[p] = (ox / side_, oy / side_, ox / side_ + w * k, oy / side_ + h * k, w, h)
+    return rects
+
+
+_FONT = {  # 3 by 5 letters, for naming islands in the layout pictures
+    "A": "010101111101101", "B": "110101110101110", "C": "011100100100011", "D": "110101101101110", "E": "111100110100111",
+    "F": "111100110100100", "G": "011100101101011", "H": "101101111101101", "I": "111010010010111", "K": "101101110101101",
+    "L": "100100100100111", "M": "101111111101101", "N": "110101101101101", "O": "010101101101010", "P": "110101110100100",
+    "R": "110101110101101", "S": "011100010001110", "T": "111010010010010", "U": "101101101101111", "W": "101101111111101",
+    "Y": "101101010010010", "_": "000000000000111", " ": "000000000000000",
+}
+
+
+def write_layout(objs, rects, path, size=1024):
+    """The UV layout as a picture: every face's edges, and each island's name, for painting by hand."""
+    import numpy as np
+    img = np.ones((size, size, 3)) * 0.12
+    for o in objs:
+        uv = o.data.uv_layers.active.data
+        for poly in o.data.polygons:
+            pts = [tuple(uv[li].uv) for li in poly.loop_indices]
+            for (a, b) in zip(pts, pts[1:] + pts[:1]):
+                steps = int(max(abs(b[0] - a[0]), abs(b[1] - a[1])) * size) + 2
+                for t in np.linspace(0.0, 1.0, steps):
+                    x = int((a[0] + (b[0] - a[0]) * t) * (size - 1))
+                    y = int((a[1] + (b[1] - a[1]) * t) * (size - 1))
+                    img[y, x] = (0.55, 0.75, 0.95)
+    for part, (u0, v0, u1, v1, _, _) in rects.items():
+        x, y = int(u0 * size) + 3, int(v1 * size) - 4
+        for ch in part.upper():
+            glyph = _FONT.get(ch, _FONT[" "])
+            for gy in range(5):
+                for gx in range(3):
+                    if glyph[gy * 3 + gx] == "1":
+                        img[max(0, y - gy * 3 - 2):max(0, y - gy * 3 + 1), x + gx * 3:x + gx * 3 + 3] = (1.0, 0.85, 0.2)
+            x += 12
+    save_picture("layout", img, path)
+    print("LAYOUT %s" % path)
+
+
+# His tattoos, movable (the user: "the tattoos need to be moveable so we can postion them eventually"): each tattoo
+# its own picture with a clear background, a table of where each sits, and an overlay picture made from the table and
+# drawn as a see-through layer over his bare skin. The skin's own picture has no tattoos. Kept where the game can read
+# them (tools/ is hidden from Godot): textures/tattoos/<name>.png, textures/tattoos/captain_tattoos.json (the table)
+# and textures/tattoos/captain_skin_layout.json (where each part of his skin lies in its picture).
+TATTOO_DIR = os.path.join(ROOT, "textures", "tattoos")
+TATTOO_INK = (0.17, 0.22, 0.29)
+# One row per placed tattoo. part: an island of his skin's layout (arm_l, arm_r, hand_l, hand_r, front, back, leg_l,
+# leg_r); x, y: where its middle is within that island, 0 to 1 (on an arm x runs round it, 0.5 on top, more toward
+# the front, and y from the shoulder 0 to the wrist 1; on the front and back x runs across from his right to his left
+# as seen, y up from his hips); size: its width on his skin in metres; turn: degrees; mirror: flipped left to right;
+# strength: how dark, 0 to 1.
+TATTOO_ROWS = [
+    {"picture": "anchor", "part": "arm_r", "x": 0.55, "y": 0.72, "size": 0.07, "turn": 0, "mirror": False, "strength": 0.85},
+    {"picture": "star", "part": "arm_r", "x": 0.62, "y": 0.9, "size": 0.035, "turn": 0, "mirror": False, "strength": 0.8},
+    {"picture": "swallow", "part": "arm_r", "x": 0.4, "y": 0.86, "size": 0.04, "turn": 25, "mirror": True, "strength": 0.8},
+    {"picture": "heart", "part": "arm_r", "x": 0.55, "y": 0.3, "size": 0.045, "turn": 0, "mirror": False, "strength": 0.8},
+    {"picture": "swallow", "part": "arm_l", "x": 0.6, "y": 0.6, "size": 0.045, "turn": 20, "mirror": False, "strength": 0.8},
+    {"picture": "ship", "part": "arm_l", "x": 0.55, "y": 0.78, "size": 0.06, "turn": 0, "mirror": False, "strength": 0.85},
+    {"picture": "heart", "part": "arm_l", "x": 0.6, "y": 0.93, "size": 0.03, "turn": 0, "mirror": False, "strength": 0.8},
+    {"picture": "ship", "part": "arm_l", "x": 0.5, "y": 0.3, "size": 0.07, "turn": 0, "mirror": False, "strength": 0.8},
+    {"picture": "anchor", "part": "front", "x": 0.68, "y": 0.83, "size": 0.05, "turn": -15, "mirror": False, "strength": 0.8},
+    {"picture": "swallow", "part": "front", "x": 0.22, "y": 0.88, "size": 0.04, "turn": 20, "mirror": True, "strength": 0.75},
+    {"picture": "ship", "part": "back", "x": 0.33, "y": 0.75, "size": 0.085, "turn": 0, "mirror": False, "strength": 0.8},
+    {"picture": "swallow", "part": "back", "x": 0.7, "y": 0.8, "size": 0.05, "turn": -20, "mirror": False, "strength": 0.8},
+    {"picture": "heart", "part": "back", "x": 0.64, "y": 0.66, "size": 0.04, "turn": 0, "mirror": False, "strength": 0.8},
+    {"picture": "star", "part": "back", "x": 0.86, "y": 0.86, "size": 0.045, "turn": 0, "mirror": False, "strength": 0.75},
+    {"picture": "swallow", "part": "hand_r", "x": 0.3, "y": 0.5, "size": 0.035, "turn": 0, "mirror": False, "strength": 0.8},
+]
+
+
+def tattoo_pictures(size=128):
+    """Draws each tattoo as its own picture: faded blue-black ink on a clear background (no letters). Gives
+    {name: RGBA array (rows bottom up)}, saved as textures/tattoos/<name>.png."""
+    import numpy as np
+    j, i = np.mgrid[0:size, 0:size]
+    X = (i + 0.5) / size * 2.0 - 1.0
+    Y = (j + 0.5) / size * 2.0 - 1.0
+
+    def poly(pts):
+        inside = np.zeros(X.shape, bool)
+        for (ax, ay), (bx, by) in zip(pts, pts[1:] + pts[:1]):
+            inside ^= ((ay > Y) != (by > Y)) & (X < (bx - ax) * (Y - ay) / (by - ay + 1e-9) + ax)
+        return inside
+
+    disc = lambda x, y, r: (X - x) ** 2 + (Y - y) ** 2 < r * r  # noqa: E731
+    ring = lambda x, y, r, w: np.abs(np.sqrt((X - x) ** 2 + (Y - y) ** 2) - r) < w  # noqa: E731
+    shapes = {}
+    m = (np.abs(X) < 0.07) & (np.abs(Y + 0.05) < 0.6)
+    m |= ring(0.0, 0.72, 0.13, 0.05) | ((np.abs(X) < 0.36) & (np.abs(Y - 0.42) < 0.06)) | (ring(0.0, -0.15, 0.5, 0.07) & (Y < -0.15))
+    for sx in (1.0, -1.0):
+        m |= poly([(sx * 0.5, 0.0), (sx * 0.72, -0.28), (sx * 0.34, -0.22)])
+    shapes["anchor"] = (m, m)
+    m = ((X / 0.36) ** 2 + ((Y + 0.02) / 0.17) ** 2 < 1.0) | disc(0.36, 0.06, 0.13)
+    m |= poly([(0.05, 0.08), (-0.55, 0.75), (-0.2, 0.05)]) | poly([(0.1, -0.05), (-0.45, -0.6), (-0.15, -0.08)])
+    m |= poly([(-0.3, 0.0), (-0.85, 0.22), (-0.62, 0.0), (-0.85, -0.2)])
+    shapes["swallow"] = (m, m & (Y > 0.0) & (X > -0.3))
+    pts = []
+    for k in range(10):
+        a = math.pi / 2 + k * math.pi / 5
+        r = 0.75 if k % 2 == 0 else 0.3
+        pts.append((r * math.cos(a), r * math.sin(a)))
+    m = poly(pts) | ring(0.0, 0.0, 0.85, 0.04)
+    shapes["star"] = (m, m & (((np.arctan2(Y, X) - math.pi / 2) % (2 * math.pi / 5)) < math.pi / 5))
+    m = disc(-0.25, 0.15, 0.3) | disc(0.25, 0.15, 0.3) | poly([(-0.53, 0.06), (0.53, 0.06), (0.0, -0.62)])
+    hollow = disc(-0.22, 0.17, 0.17) | disc(0.22, 0.17, 0.17) | poly([(-0.36, 0.1), (0.36, 0.1), (0.0, -0.4)])
+    shapes["heart"] = (m, m & ~hollow)
+    hull = poly([(-0.62, 0.0), (0.62, 0.0), (0.45, -0.24), (-0.45, -0.24)])
+    m = hull | ((np.abs(X + 0.15) < 0.03) & (Y > 0.0) & (Y < 0.85)) | ((np.abs(X - 0.22) < 0.03) & (Y > 0.0) & (Y < 0.7))
+    m |= poly([(-0.13, 0.8), (-0.13, 0.08), (-0.52, 0.1)]) | poly([(0.24, 0.66), (0.24, 0.08), (0.56, 0.1)])
+    wave = Y + 0.05 * np.sin(X * 7.0)
+    m |= (np.abs(X) < 0.8) & (wave < -0.32) & (wave > -0.52) & ~poly([(0.8, -0.3), (0.66, -0.42), (0.8, -0.54)]) \
+        & ~poly([(-0.8, -0.3), (-0.66, -0.42), (-0.8, -0.54)])
+    shapes["ship"] = (m, hull)
+    os.makedirs(TATTOO_DIR, exist_ok=True)
+    out = {}
+    rng = np.random.default_rng(5)
+    for name, (shape, dark) in shapes.items():
+        alpha = np.where(shape, np.where(dark, 0.9, 0.55), 0.0)
+        soft = alpha.copy()
+        for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            soft += np.roll(np.roll(alpha, di, 1), dj, 0)
+        alpha = soft / 5.0 * (0.85 + 0.15 * rng.random(alpha.shape))
+        rgba = np.concatenate([np.ones((size, size, 3)) * np.array(TATTOO_INK), alpha[..., None]], axis=2).astype(np.float32)
+        image = bpy.data.images.new("tattoo_" + name, size, size, alpha=True)
+        image.pixels.foreach_set(np.ravel(rgba))
+        image.filepath_raw = os.path.join(TATTOO_DIR, name + ".png")
+        image.file_format = "PNG"
+        image.save()
+        bpy.data.images.remove(image)
+        out[name] = rgba
+    return out
+
+
+def composite_tattoos(rows, rects, pictures, size):
+    """The overlay picture (RGBA, rows bottom up) from the table: each row's picture stamped into its part's island,
+    sized in metres by that island's own scale. TitleFigures.lay_tattoos does the same in the game."""
+    import numpy as np
+    out = np.zeros((size, size, 4), np.float32)
+    for row in rows:
+        if row["part"] not in rects or row["picture"] not in pictures:
+            continue
+        u0, v0, u1, v1, wm, hm = rects[row["part"]]
+        pic = pictures[row["picture"]]
+        ph, pw = pic.shape[:2]
+        w_px = row["size"] / wm * (u1 - u0) * size
+        h_px = row["size"] * ph / pw / hm * (v1 - v0) * size
+        cx = (u0 + row["x"] * (u1 - u0)) * size
+        cy = (v0 + (1.0 - row["y"] if row["part"].startswith("arm") else row["y"]) * (v1 - v0)) * size
+        turn = math.radians(row.get("turn", 0.0))
+        reach = int(max(w_px, h_px) * 0.75) + 2
+        ys, xs = np.mgrid[int(cy) - reach:int(cy) + reach, int(cx) - reach:int(cx) + reach]
+        ok = (xs >= 0) & (xs < size) & (ys >= 0) & (ys < size)
+        dx, dy = xs + 0.5 - cx, ys + 0.5 - cy
+        if row["part"].startswith("arm"):
+            dy = -dy  # (on an arm the picture's top is toward his shoulder)
+        rx = dx * math.cos(turn) + dy * math.sin(turn)
+        ry = -dx * math.sin(turn) + dy * math.cos(turn)
+        px = rx / w_px + 0.5
+        py = ry / h_px + 0.5
+        if row.get("mirror"):
+            px = 1.0 - px
+        inside = ok & (px >= 0) & (px < 1) & (py >= 0) & (py < 1)
+        a = pic[(py[inside] * ph).astype(int), (px[inside] * pw).astype(int), 3] * row.get("strength", 1.0)
+        yy, xx = ys[inside], xs[inside]
+        out[yy, xx, :3] = np.array(TATTOO_INK)
+        out[yy, xx, 3] = np.maximum(out[yy, xx, 3], a)
+    return out
+
+
+def lay_tattoos(collection, armature, rects, size):
+    """Writes the tattoo pictures, the table (unless one is already there: it is the place to move them) and the
+    layout, composites the overlay and adds the see-through layer over each bare piece."""
+    import numpy as np
+    pictures = tattoo_pictures()
+    table = os.path.join(TATTOO_DIR, "captain_tattoos.json")
+    if not os.path.exists(table):
+        with open(table, "w") as f:
+            json.dump({"skin": "captain_skin_layout.json", "rows": TATTOO_ROWS}, f, indent=1)
+    with open(table) as f:
+        rows = json.load(f)["rows"]
+    with open(os.path.join(TATTOO_DIR, "captain_skin_layout.json"), "w") as f:
+        json.dump({"size": size, "parts": {p: {"rect": [round(c, 5) for c in r[:4]], "metres": [round(r[4], 4), round(r[5], 4)]}
+                                           for p, r in rects.items()}}, f, indent=1)
+    overlay = composite_tattoos(rows, rects, pictures, size)
+    image = bpy.data.images.new("captain_tattoo_overlay", size, size, alpha=True)
+    image.pixels.foreach_set(np.ravel(overlay))
+    image.filepath_raw = os.path.join(TATTOO_DIR, "captain_tattoo_overlay.png")
+    image.file_format = "PNG"
+    image.save()
+    image.pack()
+    material = bpy.data.materials.new("captain_tattoos")
+    material.use_nodes = True
+    shader = next(nd for nd in material.node_tree.nodes if nd.type == "BSDF_PRINCIPLED")
+    tex = material.node_tree.nodes.new("ShaderNodeTexImage")
+    tex.image = image
+    material.node_tree.links.new(tex.outputs["Color"], shader.inputs["Base Color"])
+    material.node_tree.links.new(tex.outputs["Alpha"], shader.inputs["Alpha"])
+    material.blend_method = "BLEND"
+    for name in ("captain_skin__boxers", "captain_forearms__open_boxers", "captain_neck__open_boxers", "captain_scoop__open_boxers", "captain"):
+        o = next((x for x in collection.objects if x.name == name), None)
+        if not o:
+            continue
+        ink = o.copy()
+        ink.data = o.data.copy()
+        part, _, looks_ = name.partition("__")
+        ink.name = ink.data.name = (part + "_ink" + ("__" + looks_ if looks_ else ""))
+        for c in o.users_collection:
+            c.objects.link(ink)
+        for v in ink.data.vertices:
+            v.co += v.normal * 0.0006
+        ink.data.materials.clear()
+        ink.data.materials.append(material)
+        for poly in ink.data.polygons:
+            poly.material_index = 0
+    print("TATTOOS %d placed from %s" % (len(rows), table))
+
+def build_captain(collection):
+    m = {name: make_material("captain_" + name, c, 0.35 if name in ("brass", "steel", "gold") else 0.0, 0.5 if name in ("brass", "steel", "peak", "rubber", "oilskin", "gold") else 1.0)
+         for name, c in CAPTAIN_COLOURS.items()}
+    m["inked"] = textured_material("captain_inked", paint_skin(CAPTAIN_COLOURS["skin"]))
+    m["boxers"] = textured_material("captain_boxers", paint_boxers())
+    joints, body, legs = import_man(CAPTAIN_KEYS)
+    head_joint = next(at for name, at, _ in joints if name == "head")
+    parts = []
+
+    # His hands, the same in every look.
+    parts.append(hands_of(body, "captain_hands", m["skin"], 1.25))
+    # (big, thick-fingered, as the hands sheet has them: the fingers and palm made thicker across too)
+    for v in parts[-1].data.vertices:
+        p = G(v.co)
+        k = 1.0 + 0.22 * ease(HAND_FROM + 0.01, HAND_FROM + 0.05, abs(p.x))
+        v.co = B(Vector((p.x, ARM_Y + (p.y - ARM_Y) * k, p.z * k)))
+    # His looks (TitleFigures.wear): "open" (concept_captain.jpg; the default), "closed" (concept_characters.jpg) and
+    # "boxers" (his base body, concept_captain_tpose.jpg). Each mesh is named <part>__<the looks it shows in>, joined
+    # from the pieces listed under that name in `looks`.
+    opened, closed = [], []
+    # His two faces (TitleFigures.face): "painted" (a low-poly head with a painted face, the test) and "mask".
+    mask = []
+    looks = {}
+
+    # His base body: his own skin from the neck to the wrists and the soles, painted with his tattoos and the light
+    # fuzz of hair (paint_skin), cut into the pieces the outfits leave bare or cover.
+    skin = copy_of(body, "captain_skin")
+    keep_only(skin, lambda p: p.y < 1.04 and abs(p.x) < HAND_FROM + 0.012)
+    decimate(skin, 3600)
+    recolour(skin, {}, m["inked"])
+    smooth_shade(skin)
+    skin_uvs(skin)
+    for name, inside in (("captain_forearms__open_boxers", lambda p: abs(p.x) > COAT_SLEEVE - 0.035 and p.y > 0.8),
+                         ("captain_neck__open_boxers", lambda p: p.y > 0.95 and math.hypot(p.x, p.z) < 0.085),
+                         ("captain_scoop__open_boxers", lambda p: p.z > 0.0 and abs(p.x) < 0.11 and p.y > SCOOP - 0.02 + 5.6 * p.x * p.x)):
+        piece = copy_of(skin, name.split("__")[0])
+        keep_only(piece, inside)
+        keep_only(skin, lambda p, inside=inside: not inside(p))
+        looks[name] = [piece]
+    looks["captain_skin__boxers"] = [skin]
+
+    # The striped undershirt, cut low: his body stood off, from the hips to the neck, no sleeves (the coat's cover
+    # his arms), the stripes cut in as faces of two colours.
+    vest = copy_of(body, "captain_vest")
+
+    def in_vest(p):
+        if not 0.54 < p.y < 1.04 or abs(p.x) > 0.21:
+            return False
+        if p.y > 0.96 and math.hypot(p.x, p.z) < 0.075:
+            return False
+        return not (p.z > 0.0 and abs(p.x) < 0.095 and p.y > SCOOP + 7.0 * p.x * p.x)
+
+    keep_only(vest, in_vest)
+    stand_off(vest, lambda p: 0.007, smooth=6)
+    cut(vest, Vector((0.0, VEST_HEM, 0.0)), Y)
+    for s in (1.0, -1.0):
+        cut(vest, Vector((s * 0.19, 0.0, 0.0)), -X * s)
+    decimate(vest, 480)
+    bm = bmesh.new()
+    bm.from_mesh(vest.data)
+    y = VEST_HEM + STRIPE
+    while y < 1.0:
+        bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], plane_co=B(Vector((0.0, y, 0.0))), plane_no=B(Y))
+        y += STRIPE
+    bm.to_mesh(vest.data)
+    bm.free()
+    vest.data.materials.clear()
+    vest.data.materials.append(m["vest"])
+    vest.data.materials.append(m["stripe"])
+    for poly in vest.data.polygons:
+        poly.material_index = int((G(poly.center).y - VEST_HEM) / STRIPE) % 2
+    smooth_shade(vest)
+    opened.append(vest)
+
+
+    # The coat, hanging open: his body stood well off, open down the front and wider toward the neck (where it
+    # turns back), sleeves pushed up to below the elbow and bunched there; given an inside (solid), so the open
+    # front shows its lining, not nothing.
+    coat = copy_of(body, "captain_coat")
+
+    def in_coat(p):
+        if p.y < COAT_HEM - 0.02 or abs(p.x) > COAT_SLEEVE + 0.03:
+            return False
+        if p.y > 0.95 and math.hypot(p.x, p.z) < 0.078:
+            return False
+        return not (p.z > 0.0 and abs(p.x) < coat_open(p.y) - 0.025)
+
+    keep_only(coat, in_coat)
+    stand_off(coat, lambda p: 0.017 + 0.01 * ease(0.66, 0.58, p.y) - 0.003 * ease(0.17, 0.22, abs(p.x)), smooth=10)
+    # (the open front cut clean, each side by a slanting plane through its front only)
+    for s in (1.0, -1.0):
+        cut_front(coat, Vector((s * coat_open(COAT_HEM), COAT_HEM, 0.0)), Vector((s, -0.1, 0.0)))
+    rolls = [band_of(coat, "captain_roll", lambda p, s=s: p.x * s > COAT_SLEEVE - 0.05,
+                     [(Vector((s * (COAT_SLEEVE - 0.036), 0.0, 0.0)), X * s), (Vector((s * (COAT_SLEEVE + 0.004), 0.0, 0.0)), -X * s)],
+                     0.01, 0.02, m["coat"]) for s in (1.0, -1.0)]
+    cut(coat, Vector((0.0, COAT_HEM, 0.0)), Y)
+    for s in (1.0, -1.0):
+        cut(coat, Vector((s * COAT_SLEEVE, 0.0, 0.0)), -X * s)
+    decimate(coat, 700)
+    # (slivers left by the cuts and the decimation would be thrown far out by the solidify: dissolved first)
+    bm = bmesh.new()
+    bm.from_mesh(coat.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0008)
+    bmesh.ops.dissolve_degenerate(bm, dist=0.0008, edges=bm.edges)
+    # (and a stray point the cut at the sleeve ends left far off, with its faces)
+    stray = [v for v in bm.verts if (G(v.co) - Vector((0.0, 0.75, 0.0))).length > 0.8]
+    print("CAPTAIN coat: %d stray points taken away" % len(stray))
+    bmesh.ops.delete(bm, geom=stray, context="VERTS")
+    bm.to_mesh(coat.data)
+    bm.free()
+    solid = coat.modifiers.new("solid", "SOLIDIFY")
+    solid.thickness = 0.006
+    solid.offset = -1.0
+    from mathutils import kdtree
+    was = kdtree.KDTree(len(coat.data.vertices))
+    for v in coat.data.vertices:
+        was.insert(v.co, v.index)
+    was.balance()
+    activate(coat)
+    bpy.ops.object.modifier_apply(modifier=solid.name)
+    # (and any point the solidify still threw out is put back where the surface was)
+    thrown = 0
+    for v in coat.data.vertices:
+        at, _, far = was.find(v.co)
+        if far > 0.02:
+            v.co = at
+            thrown += 1
+    print("CAPTAIN coat: %d points thrown out by the solidify, put back" % thrown)
+    recolour(coat, {}, m["coat"])
+    smooth_shade(coat)
+    for roll in rolls:
+        decimate(roll, 200)
+    opened += [coat] + rolls
+    # (its skirt, hanging free below his hips to his thighs, as the clothed sheet has it: a laid sheet of cloth round
+    # him, open at the front as the coat is, flaring a little)
+    sx, sback, sfront = extents(coat, COAT_HEM + 0.01, 0.01)
+    scz, srz = (sback + sfront) * 0.5, (sfront - sback) * 0.5
+    rows = []
+    for k, y in enumerate((COAT_HEM + 0.012, COAT_HEM - 0.03, COAT_HEM - 0.07, COAT_HEM - 0.11, COAT_HEM - 0.135)):
+        flare = -0.012 + 0.03 * (COAT_HEM - y)
+        rx, rz = sx + flare, srz + flare
+        gap = math.asin(min(0.95, coat_open(y) / rx))
+        row = []
+        for c in range(17):
+            a = gap + (math.tau - 2.0 * gap) * c / 16.0
+            p = Vector((math.sin(a) * rx, y, scz + math.cos(a) * rz))
+            n = Vector((math.sin(a) / rx, 0.0, math.cos(a) / rz)).normalized()
+            row.append((p - n * 0.006, n))
+        rows.append(row)
+    opened.append(sheet("captain_skirt", rows, 0.006, m["coat"], lambda p: blended_weights(body, p)))
+    weigh = lambda p: blended_weights(body, p)  # noqa: E731
+    # (its collar, turned down round the back of his neck)
+    neck_axis = lambda p: Vector((0.0, p.y, 0.0))  # noqa: E731
+    for s in (1.0, -1.0):
+        path = [Vector((s * math.sin(a) * 0.1, 0.975 - 0.03 * ease(1.6, 0.9, a), math.cos(a) * 0.1)) for a in
+                (math.pi - (math.pi - 0.9) * k / 7.0 for k in range(8))]
+        opened.append(sheet("captain_collar", laid_strip([coat], path, [0.024] * 7 + [0.012], neck_axis, 0.001, 5), 0.008,
+                           m["coat"], weigh))
+
+    # The braces: in front on the undershirt, from clips at the trousers up under the coat; behind, over the coat
+    # from his shoulders to a Y and down (as the concept draws them).
+    b, clips = kit.Builder(), kit.Builder()
+    front = lambda p: Vector((0.0, p.y, 0.0))  # noqa: E731
+    for s in (1.0, -1.0):
+        path = [Vector((s * x, y, 0.3)) for x, y in ((0.085, VEST_HEM + 0.012), (0.088, 0.66), (0.092, 0.76), (0.1, 0.86), (0.11, 0.93))]
+        laid = lay([vest], smooth_path(path, 2), front, 0.005)
+        strap(b, [p for p, n in laid], [n for p, n in laid], 0.011, 0.0025, 4)
+        clips.ellipsoid(laid[0][0] + laid[0][1] * 0.003 + Vector((0.0, 0.006, 0.0)), Vector((0.012, 0.014, 0.004)), None, 8, 3)
+        path = [Vector((s * x, y, -0.3)) for x, y in ((0.11, 0.96), (0.09, 0.88), (0.05, 0.81), (0.012, 0.77))]
+        laid = lay([coat], smooth_path(path, 2), lambda p: Vector((p.x * 0.5, p.y, 0.0)), 0.005)
+        strap(b, [p for p, n in laid], [n for p, n in laid], 0.011, 0.0025, 4)
+    path = [Vector((0.0, y, -0.3)) for y in (0.775, 0.71, 0.65, 0.6, COAT_HEM + 0.02)]
+    laid = lay([coat], smooth_path(path, 2), lambda p: Vector((0.0, p.y, 0.0)), 0.005)
+    strap(b, [p for p, n in laid], [n for p, n in laid], 0.012, 0.0025, 4)
+    opened.append(from_builder("captain_braces", b, None, m["braces"], weigh))
+    opened.append(from_builder("captain_clips", clips, None, m["steel"], weigh))
+
+    # His body hair where it is a tufted mass, drawn by the hair shader as the boy's hair is (each its own mesh: the
+    # shader reads UV along the hair and UV2 in metres): a thick grey bush on his chest (in the low neck of the open
+    # outfit's undershirt, so that look shows it too) and a trail of it down his belly (the boxers alone). The light
+    # fuzz elsewhere is painted on his skin (paint_skin).
+    import random
+    rnd = random.Random(5)
+
+    def hair_mass(name, keep, width_at, y0, y1, count, length, width, up):
+        shell = copy_of(body, name)
+        keep_only(shell, keep)
+        stand_off(shell, lambda p: 0.007, smooth=3, lam=0.3)
+        decimate(shell, 160)
+        tufts = kit.Builder()
+        for k in range(count):
+            y = y0 + (y1 - y0) * rnd.random()
+            x = width_at(y) * rnd.uniform(-0.95, 0.95)
+            (base, n), = lay([shell], [Vector((x, y, 0.3))], lambda p: Vector((p.x * 0.5, p.y, 0.0)), -0.003)
+            way = Vector((rnd.uniform(-0.6, 0.6) + x * 6.0, up, 0.0))
+            way -= n * way.dot(n)
+            way.normalize()
+            hair_lock(tufts, base, n, way, rnd.uniform(*length), rnd.uniform(*width), rnd.uniform(0.6, 1.0))
+        locks = from_builder(name + "_locks", tufts, None, m["chesthair"], rigid("chest"))
+        recolour(shell, {}, m["chesthair"])
+        smooth_shade(shell)
+        mesh = shell.data
+        while mesh.uv_layers:
+            mesh.uv_layers.remove(mesh.uv_layers[0])
+        plain, metres = mesh.uv_layers.new(name="UVMap"), mesh.uv_layers.new(name="Metres")
+        for li, loop in enumerate(mesh.loops):
+            p = G(mesh.vertices[loop.vertex_index].co)
+            plain.data[li].uv = ((p.y - y0) / 0.1, p.x / 0.16 + 0.5)
+            metres.data[li].uv = (p.y - y0, p.x)
+        activate(shell)
+        locks.select_set(True)
+        bpy.ops.object.join()
+        shell.name = shell.data.name = name
+        for g in list(shell.vertex_groups):
+            shell.vertex_groups.remove(g)
+        groups = {}
+        for v in mesh.vertices:
+            for bone, share in blended_weights(body, G(v.co)).items():
+                if share > 0.001:
+                    if bone not in groups:
+                        groups[bone] = shell.vertex_groups.new(name=bone)
+                    groups[bone].add([v.index], share, "REPLACE")
+        return shell
+
+    chest_width = lambda y: 0.022 + 0.42 * (y - SCOOP)  # noqa: E731
+    belly_width = lambda y: 0.016 + 0.3 * max(0.0, y - 0.72)  # noqa: E731
+    if TUFTED_HAIR:
+        looks["captain_chesthair__open_boxers"] = [hair_mass(
+            "captain_chesthair", lambda p: p.z > 0.02 and SCOOP - 0.005 < p.y < 0.97 and abs(p.x) < chest_width(p.y) + 0.004,
+        chest_width, SCOOP + 0.008, SCOOP + 0.096, 26, (0.018, 0.03), (0.009, 0.013), 1.0)]
+        looks["captain_bellyhair__boxers"] = [hair_mass(
+            "captain_bellyhair", lambda p: p.z > 0.02 and BOXER_TOP - 0.01 < p.y < SCOOP + 0.002 and abs(p.x) < belly_width(p.y) + 0.004,
+        belly_width, BOXER_TOP + 0.005, SCOOP - 0.005, 18, (0.014, 0.024), (0.007, 0.011), -0.4)]
+
+    # His boxer shorts, loose, white with red hearts, a plain waistband, the same modest fullness at the fly.
+    shorts = copy_of(body, "captain_shorts")
+    keep_only(shorts, lambda p: BOXER_HEM - 0.03 < p.y < BOXER_TOP + 0.03 and abs(p.x) < 0.3)
+    stand_off(shorts, lambda p: 0.012 + 0.014 * ease(0.6, 0.47, p.y), smooth=8)
+    band = band_of(shorts, "captain_waistband", lambda p: p.y > BOXER_TOP - 0.04,
+                   [(Vector((0.0, BOXER_TOP - 0.022, 0.0)), Y), (Vector((0.0, BOXER_TOP + 0.002, 0.0)), -Y)], 0.004, 0.008, m["boxerband"])
+    cut(shorts, Vector((0.0, BOXER_TOP, 0.0)), -Y)
+    cut(shorts, Vector((0.0, BOXER_HEM, 0.0)), Y)
+    for v in shorts.data.vertices:
+        p = G(v.co)
+        if p.z > 0.0:
+            p.z += 0.008 * math.exp(-((p.x / 0.032) ** 2 + ((p.y - 0.53) / 0.035) ** 2))
+            v.co = B(p)
+    decimate(shorts, 700)
+    decimate(band, 160)
+    recolour(shorts, {}, m["boxers"])
+    smooth_shade(shorts)
+    boxer_uvs(shorts)
+    looks["captain_shorts__boxers"] = [shorts, band]
+
+    # The closed outfit, as the first concept has him: a navy gansey with ribbed bands, braces over it.
+    # The gansey, grown from his body: stood off it, smoothed of his muscles, ending at the hem, cuffs and neck.
+    gansey = copy_of(body, "captain_gansey")
+    keep_only(gansey, lambda p: p.y > GANSEY_HEM - 0.02 and abs(p.x) < CUFF + 0.02 and not (p.y > 0.975 and abs(p.x) < 0.07) and p.y < 1.04)
+    # (standing further off over the hips, where his trousers are worn under it)
+    stand_off(gansey, lambda p: 0.014 + 0.022 * ease(0.74, 0.6, p.y), smooth=24)
+    # (clean edges at the hem and cuffs: cut by planes)
+    cut(gansey, Vector((0.0, GANSEY_HEM, 0.0)), Y)
+    cut(gansey, Vector((CUFF, 0.0, 0.0)), -X)
+    cut(gansey, Vector((-CUFF, 0.0, 0.0)), X)
+    decimate(gansey, 1000)
+    recolour(gansey, {}, m["gansey"])
+    smooth_shade(gansey)
+    closed.append(gansey)
+    # Ribbed bands at the hem and the cuffs, round the gansey as it is there, a little proud.
+    b = kit.Builder()
+    hx, hback, hfront = extents(gansey, GANSEY_HEM + 0.012, 0.012)
+    hcz, hrz = (hback + hfront) * 0.5, (hfront - hback) * 0.5
+    b.tube([kit.upright(0.0, y, hcz, hx + d, hrz + d) for y, d in ((GANSEY_HEM - 0.003, 0.004), (GANSEY_HEM, 0.011), (GANSEY_HEM + 0.036, 0.009), (GANSEY_HEM + 0.04, 0.0))], RIBS["hem"])
+    for side in (1.0, -1.0):
+        c, r = sleeve_at(gansey, side * (CUFF - 0.02))
+        b.tube([(Vector((side * x, c.y, c.z)), Y * (r + d), Z * (r + d)) for x, d in ((CUFF - 0.036, -0.004), (CUFF - 0.032, 0.005), (CUFF - 0.002, 0.005), (CUFF + 0.002, 0.0))], RIBS["cuff"])
+    closed.append(from_builder("captain_bands", b, None, m["rib"], lambda p, g=gansey: nearest_weights(g, p)))
+    cuff_centres = {}
+    for side in (1.0, -1.0):
+        cuff_centres[side] = sleeve_at(gansey, side * (CUFF - 0.02))[0]
+
+    # Braces (the concept's): dark straps from clips at the hem over each shoulder, meeting in a Y at his back.
+    fx, fback, ffront = extents(gansey, 0.75, 0.02, lambda p: abs(p.x) < 0.2)
+    b = kit.Builder()
+    clips = kit.Builder()
+
+    def centre_of(p):
+        return Vector((0.0, p.y, 0.0)) if p.y < 0.93 else Vector((p.x * 0.35, 0.80, 0.0))
+
+    for s in (1.0, -1.0):
+        path = [Vector((s * x, y, z)) for x, y, z in (
+            (0.072, GANSEY_HEM + 0.012, 0.2), (0.075, 0.62, 0.2), (0.08, 0.72, 0.2), (0.088, 0.82, 0.2), (0.095, 0.90, 0.15),
+            (0.10, 0.95, 0.08), (0.10, 0.985, 0.0), (0.095, 0.95, -0.08), (0.085, 0.90, -0.15), (0.06, 0.83, -0.2),
+            (0.028, 0.77, -0.2), (0.004, 0.74, -0.2))]
+        laid, normals = surface_path(gansey, smooth_path(path, 1), centre_of, 0.004)
+        strap(b, laid, normals, 0.011, 0.0025, 4)
+        clip_at, clip_n = laid[0], normals[0]
+        clips.ellipsoid(clip_at + clip_n * 0.003 + Vector((0.0, 0.006, 0.0)), Vector((0.012, 0.014, 0.004)), None, 8, 3)
+    path = [Vector((0.0, y, -0.2)) for y in (0.745, 0.70, 0.64, 0.59, GANSEY_HEM + 0.012)]
+    laid, normals = surface_path(gansey, smooth_path(path, 2), centre_of, 0.004)
+    strap(b, laid, normals, 0.012, 0.0025, 4)
+    clips.ellipsoid(laid[-1] + normals[-1] * 0.003 + Vector((0.0, 0.006, 0.0)), Vector((0.013, 0.014, 0.004)), None, 8, 3)
+    closed.append(from_builder("captain_braces", b, None, m["braces"], lambda p, g=gansey: nearest_weights(g, p)))
+    closed.append(from_builder("captain_clips", clips, None, m["steel"], lambda p, g=gansey: nearest_weights(g, p)))
+
+    # The closed look rebuilt to its own sheet (concept_captain_closed.jpg): a double-breasted pea coat, buttoned to a
+    # small V where the gansey's turtleneck shows, its collar up, turned-back cuffs, to his thighs. Its buttons,
+    # lapels and pockets are paint (from the sheet). Of the gansey only the top is kept (the rest is under the coat),
+    # and its bands and the braces go (hidden too).
+    keep_only(gansey, lambda p: p.y > 0.84 and abs(p.x) < 0.17)
+    for o in closed[1:]:
+        bpy.data.objects.remove(o, do_unlink=True)
+    del closed[1:]
+    pea = copy_of(body, "captain_peacoat")
+    keep_only(pea, lambda p: p.y > COAT_HEM - 0.02 and abs(p.x) < CUFF + 0.02 and not (p.y > 0.95 and math.hypot(p.x, p.z) < 0.078))
+    stand_off(pea, lambda p: 0.036 + 0.012 * ease(0.66, 0.58, p.y), smooth=10)
+    cuffs = [band_of(pea, "captain_peacuff", lambda p, s=s: p.x * s > CUFF - 0.07,
+                     [(Vector((s * (CUFF - 0.05), 0.0, 0.0)), X * s), (Vector((s * (CUFF + 0.002), 0.0, 0.0)), -X * s)],
+                     0.008, 0.016, m["coat"]) for s in (1.0, -1.0)]
+    for s in (1.0, -1.0):
+        cut_front(pea, Vector((s * 0.001, 0.87, 0.0)), Vector((s, -0.9, 0.0)))
+    cut(pea, Vector((0.0, COAT_HEM, 0.0)), Y)
+    for s in (1.0, -1.0):
+        cut(pea, Vector((s * CUFF, 0.0, 0.0)), -X * s)
+    decimate(pea, 900)
+    solid_cloth(pea, 0.006)
+    recolour(pea, {}, m["coat"])
+    smooth_shade(pea)
+    for cuff in cuffs:
+        decimate(cuff, 160)
+    closed += [pea] + cuffs
+    # (its skirt, closed all round)
+    sx, sback, sfront = extents(pea, COAT_HEM + 0.01, 0.01)
+    scz, srz = (sback + sfront) * 0.5, (sfront - sback) * 0.5
+    rows = []
+    for y in (COAT_HEM + 0.012, COAT_HEM - 0.03, COAT_HEM - 0.07, COAT_HEM - 0.11, COAT_HEM - 0.135):
+        flare = -0.006 + 0.03 * (COAT_HEM - y)
+        rx, rz = sx + flare, srz + flare
+        row = []
+        for c in range(25):
+            a = math.tau * c / 24.0
+            p = Vector((math.sin(a) * rx, y, scz + math.cos(a) * rz))
+            nn = Vector((math.sin(a) / rx, 0.0, math.cos(a) / rz)).normalized()
+            row.append((p - nn * 0.006, nn))
+        rows.append(row)
+    closed.append(sheet("captain_peaskirt", rows, 0.006, m["coat"], lambda p: blended_weights(body, p)))
+    # (its collar, standing up round his neck)
+    nx_, nb_, nf_ = extents(body, 0.99, 0.01, lambda p: abs(p.x) < 0.1)
+    ncz_, nrz_ = (nb_ + nf_) * 0.5, (nf_ - nb_) * 0.5
+    rows = []
+    for y, out in ((0.94, 0.05), (0.975, 0.045), (1.01, 0.04), (1.035, 0.042)):
+        row = []
+        for c in range(25):
+            a = math.tau * c / 24.0
+            p = Vector((math.sin(a) * (nx_ + out), y, ncz_ + math.cos(a) * (nrz_ + out)))
+            nn = Vector((math.sin(a), 0.0, math.cos(a))).normalized()
+            row.append((p, nn))
+        rows.append(row)
+    closed.append(sheet("captain_peacollar", rows, 0.008, m["coat"], lambda p: blended_weights(body, p)))
+
+
+    # The man's own trousers piece, in oilskin and rubber, its top (under the undershirt) cut away and drawn in a
+    # little; with a modest fullness at the fly (the user: "the captain should have a tasteful bulge").
+    # (baggy, as the clothed sheet has them: stood off between the boot tops and the waist)
+    stand_off(legs, lambda p: 0.006 * ease(0.15, 0.24, p.y) * ease(TROUSERS_TOP, TROUSERS_TOP - 0.06, p.y), smooth=2, lam=0.3)
+    # (and slimmer across than his bare legs, as the clothed sheet draws them: the skin under them is hidden in the
+    # looks that wear them, so they can be)
+    for v in legs.data.vertices:
+        p = G(v.co)
+        k = 1.0 - 0.2 * ease(0.12, 0.2, p.y)
+        centre = math.copysign(0.063, p.x) * (1.0 - ease(0.5, 0.6, p.y))
+        v.co = B(Vector((centre + (p.x - centre) * k, p.y, p.z)))
+    cut(legs, Vector((0.0, TROUSERS_TOP, 0.0)), -Y)
+    for v in legs.data.vertices:
+        p = G(v.co)
+        k = 1.0 - 0.16 * ease(TROUSERS_TOP - 0.05, TROUSERS_TOP, p.y)
+        q = Vector((p.x * k, p.y, 0.015 + (p.z - 0.015) * k))
+        if q.z > 0.0:
+            q.z += 0.006 * math.exp(-((q.x / 0.03) ** 2 + ((q.y - 0.515) / 0.03) ** 2))
+        v.co = B(q)
+    decimate(legs, 600)
+    recolour(legs, {"hose": m["oilskin"], "boots": m["rubber"]}, m["oilskin"])
+    smooth_shade(legs)
+    legs.name = "captain_legs"
+    looks["captain_legs__open_closed"] = [legs]
+
+    # The boy's mask head, a man's size.
+    made = import_glb(BOY_FULL)
+    head = next(o for o in made if o.type == "MESH" and o.name.split(".")[0] == "boy_head__base")
+    for o in made:
+        if o is not head:
+            bpy.data.objects.remove(o, do_unlink=True)
+    settle(head)
+    weld(head)
+    reshape_head(head, CAPTAIN_HEAD)
+    for v in head.data.vertices:
+        p = G(v.co)
+        v.co = B(head_joint + (p - BOY_JOINT) * HEAD_SCALE + Vector((0.0, 0.0, HEAD_FORWARD)))
+    head.data.update()
+    head.name = "captain_head"
+    recolour(head, {}, m["skin"])
+    smooth_shade(head)
+    pts = [G(v.co) for v in head.data.vertices]
+    top = max(p.y for p in pts)
+    centre_z = (min(p.z for p in pts) + max(p.z for p in pts)) * 0.5
+    tree = BVHTree.FromObject(head, bpy.context.evaluated_depsgraph_get())
+
+    def front_at(y, x=0.0):
+        hit = tree.ray_cast(B(Vector((x, y, 0.5))), B(Vector((0.0, 0.0, -1.0))) - B(Vector()))
+        return G(hit[0]).z if hit[0] else centre_z + 0.06
+
+    nose_y = head_joint.y + (top - head_joint.y) * 0.40
+    face = front_at(nose_y)
+    print("CAPTAIN head top %.3f centre z %.3f nose y %.3f face z %.3f" % (top, centre_z, nose_y, face))
+
+    # The beard: his face's own surface below the nose, stood off it, thick at the chin, thinning to nothing at its
+    # edges; and under the chin, hanging a little.
+    mouth_y = nose_y - 0.022
+    beard = copy_of(head, "captain_beard")
+    keep_only(beard, lambda p: p.y < mouth_y + 0.004 and p.z > centre_z - 0.035)
+
+    def beard_depth(p):
+        edge = ease(mouth_y + 0.004, mouth_y - 0.012, p.y) * ease(centre_z - 0.035, centre_z - 0.012, p.z)
+        chin = ease(mouth_y, mouth_y - 0.05, p.y)
+        return edge * (0.007 + 0.013 * chin)
+
+    stand_off(beard, beard_depth, smooth=3, lam=0.4)
+    bm = bmesh.new()
+    bm.from_mesh(beard.data)
+    for v in bm.verts:
+        p = G(v.co)
+        hang = ease(mouth_y - 0.03, mouth_y - 0.07, p.y) * ease(centre_z - 0.01, centre_z + 0.03, p.z)
+        v.co = B(p + Vector((0.0, -0.012 * hang, 0.006 * hang)))
+    bm.to_mesh(beard.data)
+    bm.free()
+    decimate(beard, 450)
+    recolour(beard, {}, m["beard"])
+    smooth_shade(beard)
+
+    # His hair, close under the cap at the back and sides: the head's own surface, a little proud.
+    hair = copy_of(head, "captain_hair")
+    keep_only(hair, lambda p: 1.0 < p.y < top - 0.036 and (p.z < centre_z - 0.012 or (p.y > nose_y - 0.03 and abs(p.x) > 0.048 and p.z < centre_z + 0.008)))
+    stand_off(hair, lambda p: 0.008, smooth=3, lam=0.3)
+    decimate(hair, 260)
+    recolour(hair, {}, m["hair"])
+    smooth_shade(hair)
+    # (the sculpted beard and hair shells are not used: the user, "Dont try to model the beard it should be made with
+    # a hair shader"; see head_hair, below)
+    for o in (beard, hair):
+        bpy.data.objects.remove(o, do_unlink=True)
+
+    # The nose: big and round, set on the mask (the one feature it is given).
+    b = kit.Builder()
+    b.ellipsoid(Vector((0.0, nose_y + 0.012, face - 0.004)), Vector((0.010, 0.020, 0.012)))
+    b.ellipsoid(Vector((0.0, nose_y - 0.004, face + 0.008)), Vector((0.017, 0.015, 0.015)))
+    for side in (1.0, -1.0):
+        b.ellipsoid(Vector((side * 0.011, nose_y - 0.009, face + 0.002)), Vector((0.010, 0.009, 0.010)))
+    mask.append(from_builder("captain_nose", b, (0.002, 2, 420), m["nose"], rigid("head")))
+
+    # His eyes (the user: "his eyes should just be wrinkly slits", "maybe added on as afacial feature"): on the mask,
+    # as the nose is, two narrow creased squints between puffy lids, under heavy white brows, with crow's feet at the
+    # outer corners. No eyeballs.
+    slits, lids, brows, creases = kit.Builder(), kit.Builder(), kit.Builder(), kit.Builder()
+    eye_y = nose_y + 0.023
+    for s in (1.0, -1.0):
+        x = s * 0.031
+        z = front_at(eye_y, x)
+        tilt = Matrix.Rotation(s * 0.12, 3, "Z")
+        slits.ellipsoid(Vector((x, eye_y, z - 0.0012)), Vector((0.0135, 0.0019, 0.003)), tilt, 8, 2)
+        lids.ellipsoid(Vector((x, eye_y + 0.0042, z - 0.0002)), Vector((0.0155, 0.0045, 0.0048)), tilt, 8, 2)
+        lids.ellipsoid(Vector((x, eye_y - 0.004, z - 0.001)), Vector((0.014, 0.0034, 0.0042)), tilt, 8, 2)
+        by = eye_y + 0.0135
+        bz = front_at(by, x)
+        brows.ellipsoid(Vector((x + s * 0.002, by, bz + 0.002)), Vector((0.021, 0.0062, 0.0075)), Matrix.Rotation(s * -0.18, 3, "Z"), 8, 3)
+        brows.ellipsoid(Vector((x + s * 0.012, by - 0.003, bz - 0.002)), Vector((0.01, 0.0045, 0.006)), Matrix.Rotation(s * -0.5, 3, "Z"), 8, 2)
+        corner = Vector((x + s * 0.016, eye_y, 0.0))
+        for turn in (-0.45, 0.0, 0.4):
+            way = Vector((s * math.cos(turn), math.sin(turn), 0.0))
+            pts = [corner + way * d for d in (0.002, 0.006, 0.01)]
+            pts = [Vector((p.x, p.y, front_at(p.y, p.x) + 0.0002)) for p in pts]
+            creases.strand(pts, [0.0007, 0.0008, 0.0004], 4)
+    mask.append(from_builder("captain_slits", slits, None, m["slit"], rigid("head")))
+    mask.append(from_builder("captain_lids", lids, None, m["skin"], rigid("head")))
+    mask.append(from_builder("captain_brows", brows, None, m["beard"], rigid("head")))
+    mask.append(from_builder("captain_creases", creases, None, m["crease"], rigid("head")))
+
+    # The moustache: two soft rolls under the nose, into the beard.
+    b = kit.Builder()
+    for side in (1.0, -1.0):
+        b.ellipsoid(Vector((side * 0.014, mouth_y + 0.002, front_at(mouth_y, side * 0.014) + 0.006)), Vector((0.019, 0.008, 0.010)),
+                    Matrix.Rotation(side * -0.32, 3, "Z"))
+    moustache = from_builder("captain_moustache", b, (0.002, 2, 300), m["beard"], rigid("head"))
+    bpy.data.objects.remove(moustache, do_unlink=True)
+
+    # The cap: a band round his head, a soft crown standing out over it, a short peak, a cord.
+    head_now = bpy.data.objects["captain_head"]
+    rings = []
+    band_y = top - 0.052
+    bx, bback, bfront = extents(head_now, band_y + 0.008, 0.006)
+    bcz, brz = (bback + bfront) * 0.5, (bfront - bback) * 0.5
+    # (height, how far out past the band, how far forward): a band, then a soft crown flaring over it
+    for y, out, fwd in ((band_y, 0.005, 0.0), (band_y + 0.02, 0.006, 0.0), (band_y + 0.034, 0.016, 0.004), (top + 0.004, 0.022, 0.007),
+                        (top + 0.014, 0.020, 0.007)):
+        rings.append((y, bx + out, brz + out, bcz + fwd))
+    rings.append((top + 0.020, rings[-1][1] * 0.8, rings[-1][2] * 0.8, rings[-1][3]))
+    rings.append((top + 0.023, rings[-1][1] * 0.45, rings[-1][2] * 0.45, rings[-1][3]))
+    b = kit.Builder()
+    b.tube([kit.upright(0.0, y, cz, rx, rz) for y, rx, rz, cz in rings], 24)
+    mask.append(from_builder("captain_cap", b, None, m["cap"], rigid("head")))
+    y0, rx0, rz0, cz0 = rings[0]
+    front = cz0 + rz0
+    b = kit.Builder()
+    peak = [(Vector((0.0, y0 + 0.004 - 0.3 * dz, front - 0.006 + dz)), X * half, Y * 0.0035)
+            for dz, half in ((0.0, rx0 * 0.95), (0.016, rx0 * 0.9), (0.03, rx0 * 0.74), (0.04, rx0 * 0.5))]
+    b.tube(peak + kit.dome(peak[-1], Z, 0.005, 2), 14)
+    mask.append(from_builder("captain_peak", b, None, m["peak"], rigid("head")))
+    b = kit.Builder()
+    cord = [Vector((math.sin(a) * (rx0 + 0.002), y0 + 0.009, cz0 + math.cos(a) * (rz0 + 0.002))) for a in (-0.85, -0.4, 0.0, 0.4, 0.85)]
+    b.strand(cord, [0.0026] * len(cord), 6)
+    mask.append(from_builder("captain_cord", b, None, m["brass"], rigid("head")))
+    # (what of the head is under the cap is not kept)
+    cut(head_now, Vector((0.0, top - 0.03, 0.0)), -Y)
+    decimate(head_now, 1000)
+    mask.append(head_now)
+    mask_half = max(abs(G(v.co).x) for v in head_now.data.vertices if abs(G(v.co).y - (nose_y + 0.021)) < 0.008)
+    looks["captain_beard__mask"] = [head_hair("captain_beard__mask", [head_now], (top - 0.052, nose_y + 0.035, nose_y + 0.021, mouth_y, mouth_y - 0.075,
+                                                                                    head_joint.y - 0.01), lambda y: centre_z, mask_half, m["beard"])]
+
+    # The painted face (the test the user asked for: "can the models look that good? remember twilight princess",
+    # "lets try it"): a low-poly head built to the head turnaround's own silhouettes (front and side: rings, row by
+    # row, as wide as the front view and as deep as the side view, the beard a mass of it; the ears and the nose
+    # their own shapes), with its own UV island and a picture painted onto it by projecting the turnaround's front,
+    # side and back views (paint_face). Eyes, brows, wrinkles and lips are paint, not geometry.
+    eye_y = nose_y + 0.021
+    eye_z = front_at(eye_y, 0.0) - 0.012
+    span = [G(v.co) for v in head_now.data.vertices if abs(G(v.co).y - eye_y) < 0.006]
+    s_f = FACE_FRONT["half"] / max(abs(p.x) for p in span)  # picture pixels a unit (the mask head's width at the eyes)
+    ph, ph_hair = painted_head(eye_y, eye_z, s_f, m)
+    print("CAPTAIN painted head: %d triangles; eye at y %.4f z %.4f, %.1f picture px a unit" % (kit.triangle_count(ph.data), eye_y, eye_z, s_f))
+
+    # A gold ring in his left ear (the concept's): a small hoop through the lobe.
+    (lobe, ln), = lay([head_now], [Vector((0.2, nose_y - 0.018, centre_z - 0.008))], lambda p: Vector((0.0, p.y, centre_z - 0.008)), 0.0)
+    b = kit.Builder()
+    across = (Z * 0.8 + X * 0.6).normalized()
+    hoop = [lobe + ln * 0.01 + (Y * -(1.0 - math.cos(a)) + across * math.sin(a)) * 0.0065 for a in (math.tau * k / 12 for k in range(13))]
+    b.strand(hoop, [0.0014] * len(hoop), 4)
+    mask.append(from_builder("captain_earring", b, None, m["gold"], rigid("head")))
+
+    # (the closed outfit's roll collar of the gansey, round his neck)
+    span = extents(body, 1.0, 0.008, lambda p: abs(p.x) < 0.08 and p.z < 0.075)
+    nx, nb, nf = span
+    ncz, nrz = (nb + nf) * 0.5, (nf - nb) * 0.5
+    b = kit.Builder()
+    b.tube([kit.upright(0.0, y, ncz, nx + g, nrz + g) for y, g in ((0.955, 0.03), (0.972, 0.037), (0.998, 0.034), (1.022, 0.022), (1.034, 0.006))], RIBS["collar"])
+    closed.append(from_builder("captain_rollcollar", b, None, m["rib"],
+                               lambda p: {"neck": ease(0.97, 1.02, p.y), "chest": 1.0 - ease(0.97, 1.02, p.y)}))
+
+    # A short briar pipe, out of the beard at the left corner of where his mouth would be.
+    beard_front = front_at(mouth_y - 0.006, 0.02)
+    b = kit.Builder()
+    stem = [Vector((0.018, mouth_y - 0.004, beard_front - 0.006)), Vector((0.03, mouth_y - 0.01, beard_front + 0.022)),
+            Vector((0.040, mouth_y - 0.016, beard_front + 0.042))]
+    b.strand(stem, [0.0032, 0.0035, 0.004], 8)
+    bowl = Vector((0.045, mouth_y - 0.012, beard_front + 0.050))
+    b.tube([(bowl + Y * y, X * r, Z * r) for y, r in ((-0.012, 0.005), (-0.009, 0.009), (0.003, 0.010), (0.011, 0.009), (0.012, 0.007))], 12)
+    mask.append(from_builder("captain_pipe", b, None, m["pipe"], rigid("head")))
+
+    from mathutils import noise
+
+    def rib(a, count):
+        # (each point of a band is a rib's ridge or its groove, in turn round it)
+        return 0.78 if round(a / math.tau * count) % 2 else 1.0
+
+    def shade(material, p):
+        if material == "rib":
+            if abs(p.x) > 0.3:
+                c = cuff_centres[1.0 if p.x > 0 else -1.0]
+                return rib(math.atan2(p.z - c.z, p.y - c.y), RIBS["cuff"])
+            if p.y > 0.9:
+                return rib(math.atan2((p.z - ncz) / nrz, p.x / nx), RIBS["collar"])
+            return rib(math.atan2((p.z - hcz) / hrz, p.x / hx), RIBS["hem"])
+        if material == "gansey":
+            # knit: faint ribs up and down the body
+            return 0.93 + 0.07 * math.cos(math.atan2(p.x, p.z) * 60.0) if abs(p.x) < 0.25 else 1.0
+        if material in ("oilskin", "cap", "coat"):
+            # worn: soft lighter and darker patches
+            return 0.92 + 0.1 * noise.noise(p * 9.0)
+        if material in ("vest", "stripe"):
+            return 0.95 + 0.05 * noise.noise(p * 14.0)
+        return 1.0
+
+    bpy.data.objects.remove(body, do_unlink=True)
+    looks["captain_outfit__open"] = opened
+    looks["captain_face__mask"] = mask
+    looks["captain_face__painted"] = [ph]
+    looks["captain_beard__painted"] = [ph_hair]
+    looks["captain_outfit__closed"] = closed
+    for name, group in [("parts", parts)] + list(looks.items()):
+        print("CAPTAIN %s:" % name, ", ".join("%s %d" % (o.name, kit.triangle_count(o.data)) for o in group))
+    # His proportions (WARP) and his grating, for everything of him at once, and his skeleton's new joints.
+    everything = parts + [o for group in looks.values() for o in group]
+    joints = warp_captain(everything, joints)
+    armature = finish("captain", joints, parts, collection, shade)
+    for name, group in looks.items():
+        activate(group[0])
+        for o in group[1:]:
+            o.select_set(True)
+        if len(group) > 1:
+            bpy.ops.object.join()
+        one = group[0]
+        one.name = one.data.name = name
+        # (hair is coloured by the hair shader; the rest takes its tint)
+        paint_tint(one, None if "hair" in name else shade)
+        one.parent = armature
+        one.modifiers.new("Armature", "ARMATURE").object = armature
+        for c in one.users_collection:
+            c.objects.unlink(one)
+        collection.objects.link(one)
+        print("FIGURE %s tris=%d" % (name, kit.triangle_count(one.data)))
+    # His body and clothes: unwrapped by plan (plan_uvs), one atlas per look's pieces, a layout picture beside each,
+    # then painted from the modelling sheets (paint_from_sheet) in the sheets' pose as the first paint; the vertex
+    # tint is not wanted on them. (atlas, its meshes, sheet, size, mirrored left onto right, clean the sheet's ink)
+    face_mesh = next(o for o in collection.objects if o.name == "captain_face__painted")
+    sheet_pose(armature, True)
+    ev = face_mesh.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    em = ev.to_mesh()
+    cap_top = max((ev.matrix_world @ v.co).z for v in em.vertices)
+    ev.to_mesh_clear()
+    atlases = (
+        ("skin", ("captain", "captain_skin__boxers", "captain_forearms__open_boxers", "captain_neck__open_boxers",
+                  "captain_scoop__open_boxers"), "base", 1024, False, True),
+        ("boxers", ("captain_shorts__boxers",), "base", 512, True, False),
+        ("open", ("captain_outfit__open",), "open", 1024, True, False),
+        ("legs", ("captain_legs__open_closed",), "open", 512, True, False),
+        ("closed", ("captain_outfit__closed",), "closed", 1024, True, False))
+    for atlas, names, sheet_name, size, mirror, clean in atlases:
+        objs = [o for o in collection.objects if o.name in names]
+        if not objs:
+            continue
+        for o in objs:
+            paint_tint(o, None)
+        rects = plan_uvs(objs, atlas, "body", mirror)
+        base = os.path.join(HERE, "art_src", "captain_%s" % atlas)
+        paint_from_sheet(objs, sheet_name, cap_top, size, "captain_%s" % atlas, ACCEPT.get(atlas), clean)
+        write_layout(objs, rects, base + "_layout.png", size)
+        with open(base + "_layout.json", "w") as f:
+            json.dump({"picture": "captain_%s.png" % atlas, "size": size,
+                       "parts": {p: {"rect": [round(c, 5) for c in r[:4]], "metres": [round(r[4], 4), round(r[5], 4)]} for p, r in rects.items()}},
+                      f, indent=1)
+        if atlas == "skin":
+            skin_rects = rects
+    sheet_pose(armature, False)
+    # His tattoos: an overlay on his skin (lay_tattoos), drawn as a second, see-through layer over each bare piece.
+    lay_tattoos(collection, armature, skin_rects, 1024)
+    # The grating he stands on at the wheel (not skinned: it stays on the deck): a frame round slats, oak.
+    b = kit.Builder()
+    top = GRATING
+    for x0, x1, z0, z1 in ((-0.2, 0.2, -0.17, -0.14), (-0.2, 0.2, 0.19, 0.22), (-0.2, -0.17, -0.17, 0.22), (0.17, 0.2, -0.17, 0.22)):
+        b.tube([(Vector(((x0 + x1) / 2, y, (z0 + z1) / 2)), X * (x1 - x0) / 2 + Z * (z1 - z0) / 2, -X * (x1 - x0) / 2 + Z * (z1 - z0) / 2)
+                for y in (0.0, top)], 4)
+    for k in range(6):
+        x = -0.15 + k * 0.06
+        b.tube([(Vector((x, y, 0.025)), X * 0.018 + Z * 0.18, -X * 0.018 + Z * 0.18) for y in (top - 0.022, top - 0.002)], 4)
+    grating = from_builder("captain_grating", b, None, m["grating"], lambda p: {})
+    paint_tint(grating, lambda material, p: 0.85 + 0.15 * noise.noise(p * 20.0))
+    for c in grating.users_collection:
+        c.objects.unlink(grating)
+    collection.objects.link(grating)
+    return armature
+
+
+# =====================================================================================================
+# The diver (design sheet: tools/TITLE_FIGURES.md)
+# =====================================================================================================
+
+DIVER_COLOURS = {
+    # (after the concept art, tools/art_src/concept_characters.jpg: muted, a little greyed)
+    "skin": (0.76, 0.58, 0.48), "suit": (0.55, 0.49, 0.39), "rubber": (0.10, 0.10, 0.10), "copper": (0.64, 0.41, 0.30),
+    "brass": (0.70, 0.58, 0.34), "glass": (0.10, 0.13, 0.13), "lead": (0.38, 0.39, 0.40), "leather": (0.36, 0.23, 0.14),
+    "boots": (0.30, 0.30, 0.30), "steel": (0.48, 0.48, 0.49), "glove": (0.11, 0.11, 0.11),
+}
+METAL = {"copper": (0.5, 0.55), "brass": (0.6, 0.38), "glass": (0.0, 0.15), "rubber": (0.0, 0.55), "lead": (0.0, 0.7),
+         "steel": (0.5, 0.4), "glove": (0.0, 0.5)}
+BOOT_TOP = 0.20
+NECK_RING = 1.02
+
+
+def build_diver(collection):
+    m = {name: make_material("diver_" + name, c, *METAL.get(name, (0.0, 1.0))) for name, c in DIVER_COLOURS.items()}
+    joints, body, legs = import_man({})
+    bpy.data.objects.remove(legs, do_unlink=True)
+    at = {name: p for name, p, _ in joints}
+    # Black rubber gauntlet gloves (the concept's): his own hands, a size bigger.
+    parts = [hands_of(body, "diver_gloves", m["glove"], 1.18, 420)]
+
+    # The dress: grown from his body, stood well off it and smoothed into baggy canvas.
+    dress = copy_of(body, "diver_dress")
+    keep_only(dress, lambda p: BOOT_TOP - 0.03 < p.y < 1.0 and abs(p.x) < 0.475 and not (p.y > 0.965 and abs(p.x) < 0.08))
+    stand_off(dress, lambda p: 0.026, smooth=14, lam=0.6)
+    # (under the corselet the dress goes with the chest, as the corselet does, so a raised arm does not push its
+    # shoulder out through the copper)
+    held_by_chest(dress, lambda p: 0.80 + 0.075 * min(1.0, (abs(p.x) / 0.22) ** 2), 0.17)
+    cut(dress, Vector((0.455, 0.0, 0.0)), -X)
+    cut(dress, Vector((-0.455, 0.0, 0.0)), X)
+    # Black rubber cuffs round the ends of the sleeves.
+    b = kit.Builder()
+    for side in (1.0, -1.0):
+        c, r = sleeve_at(dress, side * 0.44)
+        b.tube([(Vector((side * x, c.y, c.z)), Y * (r + d), Z * (r + d)) for x, d in ((0.385, -0.004), (0.39, 0.012), (0.43, 0.014), (0.452, 0.008), (0.458, -0.004))], 14)
+    cuffs = from_builder("diver_cuffs", b, None, m["glove"], lambda p, g=dress: nearest_weights(g, p))
+    parts.append(cuffs)
+    belt = copy_of(dress, "diver_belt")
+    keep_only(belt, lambda p: 0.585 < p.y < 0.642 and abs(p.x) < 0.2)
+    cut(belt, Vector((0.0, 0.595, 0.0)), Y)
+    cut(belt, Vector((0.0, 0.632, 0.0)), -Y)
+    stand_off(belt, lambda p: 0.006, smooth=1)
+    for piece, tris, mat in ((dress, 850, "suit"), (belt, 180, "leather")):
+        decimate(piece, tris)
+        recolour(piece, {}, m[mat])
+        smooth_shade(piece)
+        parts.append(piece)
+
+    # Measure the dress for the corselet, the boots and the belt's fittings.
+    torso = lambda p: abs(p.x) < 0.2
+    print("DIVER dress spans", [(y, tuple(round(v, 3) for v in (extents(dress, y, 0.008, torso) or (0, 0, 0)))) for y in (0.62, 0.8, 0.86, 0.9, 0.95, 0.98)])
+    belt_span = extents(dress, 0.615, 0.01, torso)
+    leg_span = extents(dress, BOOT_TOP - 0.015, 0.02, lambda p: p.x > 0.0)
+    print("DIVER leg span", leg_span)
+
+    # The corselet: a copper yoke on chest, back and shoulders, its edge riding up over the shoulders.
+    profile = []
+    for y in (0.80, 0.84, 0.88, 0.92, 0.95):
+        rx, back, front = extents(dress, y, 0.01, torso)
+        grow = 0.024 + 0.014 * ease(0.84, 0.92, y)
+        profile.append((y, max(rx, 0.19) + grow, (front - back) * 0.5 + grow, (front + back) * 0.5))
+    cz = profile[-1][3]
+    profile += [(0.975, 0.232, 0.142, cz), (0.995, 0.19, 0.124, cz), (1.008, 0.125, 0.1, cz), (NECK_RING - 0.002, 0.088, 0.082, cz)]
+    edge_rx, edge_rz = profile[0][1], profile[0][2]
+
+    def lift(p):
+        up = 0.075 * min(1.0, (abs(p.x) / edge_rx) ** 2) * kit.blend(0.93, 0.80, p.y)
+        return Vector((p.x, p.y + up, p.z))
+
+    b = kit.Builder()
+    b.place = lift
+    b.tube([kit.upright(0.0, y, z, rx, rz) for y, rx, rz, z in profile], 24)
+    parts.append(from_builder("diver_corselet", b, None, m["copper"], rigid("chest")))
+
+    # Brass: the band round the corselet's edge and its twelve studs, the neck ring, the valve, the inlet's
+    # goose-neck, the lights' rims and guards, the belt's buckle, the knife's sheath.
+    ccz = profile[0][3]
+    b = kit.Builder()
+    b.place = lift
+    b.tube([kit.upright(0.0, y, ccz, edge_rx + d, edge_rz + d) for y, d in ((0.795, 0.0), (0.798, 0.006), (0.822, 0.006), (0.826, 0.0))], 24)
+    b.place = None
+    for k in range(12):
+        a = math.tau * (k + 0.5) / 12
+        stud = lift(Vector((math.sin(a) * (edge_rx + 0.007), 0.81, ccz + math.cos(a) * (edge_rz + 0.007))))
+        b.ellipsoid(stud, Vector((0.007, 0.007, 0.007)), None, 4, 2)
+    b.tube([kit.upright(0.0, y, cz, r, r * 0.95) for y, r in ((NECK_RING - 0.006, 0.086), (NECK_RING - 0.002, 0.096), (NECK_RING + 0.02, 0.096), (NECK_RING + 0.024, 0.088))], 20)
+    for centre, normal, radius, grille in LIGHTS(cz):
+        u = normal.cross(Y if abs(normal.y) < 0.9 else X).normalized()
+        v = normal.cross(u)
+        rim = 12 if radius > 0.04 else 8
+        ring = [centre + normal * 0.006 + (u * math.cos(a) + v * math.sin(a)) * (radius + 0.006) for a in (math.tau * k / rim for k in range(rim + 1))]
+        b.strand(ring, [0.0072] * len(ring), 4)
+        # the guards over the glass (the concept's): a cross over the front light, bars over the sides, a grid on top
+        lines = []
+        if grille == "cross":
+            lines = [(u + v).normalized(), (u - v).normalized()]
+            spans = [(d, 0.0) for d in lines]
+        else:
+            count = 3 if grille == "bars" else 2
+            spans = [(u, (k - (count - 1) / 2) * radius * 0.6) for k in range(count)]
+            if grille == "grid":
+                spans += [(v, (k - (count - 1) / 2) * radius * 0.6) for k in range(count)]
+        for along, off in spans:
+            side = normal.cross(along).normalized()
+            reach = math.sqrt(max(radius * radius - off * off, 0.0))
+            b.strand([centre + normal * 0.014 + side * off + along * reach * s for s in (-1.0, 0.0, 1.0)], [0.0038] * 3, 3)
+    valve = Vector((-0.082, NECK_RING + 0.075, cz + 0.08))
+    axis = Vector((-0.75, 0.0, 0.66)).normalized()
+    b.tube([(valve + axis * d, Y * r, axis.cross(Y) * r) for d, r in ((0.0, 0.016), (0.028, 0.016), (0.03, 0.02), (0.04, 0.02), (0.042, 0.011))], 10)
+    goose = [Vector((0.035, NECK_RING + 0.15, cz - 0.10)), Vector((0.038, NECK_RING + 0.172, cz - 0.13)), Vector((0.04, NECK_RING + 0.168, cz - 0.16))]
+    b.strand(goose, [0.015, 0.015, 0.016], 8)
+    bx, bback, bfront = belt_span
+    parts.append(from_builder("diver_brass", b, None, m["brass"], lambda p: {"hips": 1.0} if p.y < 0.75 else {"chest": 1.0}))
+
+    # The knife: a brass-tipped sheath and a wooden handle on his right hip (made with the belt's leather).
+    b = kit.Builder()
+    knife_at = Vector((-bx * 0.72, 0.54, bfront * 0.75))
+    turn = Matrix.Rotation(-0.6, 3, "Y")
+    b.ellipsoid(knife_at, Vector((0.018, 0.062, 0.011)), turn, 10, 4)
+    b.ellipsoid(knife_at + Vector((0.0, 0.085, 0.003)), Vector((0.013, 0.03, 0.012)), turn, 10, 4)
+    parts.append(from_builder("diver_knife", b, None, m["leather"], rigid("hips")))
+
+    # The copper bonnet on the neck ring.
+    b = kit.Builder()
+    base = NECK_RING + 0.024
+    bonnet = [(0.0, 0.092), (0.025, 0.106), (0.065, 0.116), (0.105, 0.118), (0.145, 0.112), (0.18, 0.097),
+              (0.205, 0.074), (0.221, 0.045), (0.227, 0.02)]
+    b.tube([kit.upright(0.0, base + h, cz, r, r * 0.98) for h, r in bonnet], 24)
+    parts.append(from_builder("diver_helmet", b, None, m["copper"], rigid("chest")))
+
+    b = kit.Builder()
+    for centre, normal, radius, _grille in LIGHTS(cz):
+        u = normal.cross(Y if abs(normal.y) < 0.9 else X).normalized()
+        v = normal.cross(u)
+        b.tube([(centre + normal * h, u * r, v * r) for h, r in ((-0.01, radius * 0.98), (0.0, radius), (0.006, radius * 0.9), (0.008, radius * 0.5))], 10)
+    parts.append(from_builder("diver_glass", b, None, m["glass"], rigid("chest")))
+
+    # The concept's gear on his chest and belt: two lead weights on leather straps (up under the corselet's edge
+    # and down to the belt), a strap crossed on his back, a small brass plate on the corselet, a steel buckle,
+    # a pouch on his left hip.
+    corselet = bpy.data.objects["diver_corselet"]
+    def round_x(p):
+        return Vector((p.x * 0.6, p.y, ccz))
+    lead, straps, steel, plate = kit.Builder(), kit.Builder(), kit.Builder(), kit.Builder()
+    for s in (1.0, -1.0):
+        spot, n = surface_path(dress, [Vector((s * 0.075, 0.72, 0.3))], round_x, 0.0)
+        spot, n = spot[0], n[0]
+        rings = []
+        for dy, w in ((-0.05, 0.026), (-0.046, 0.032), (0.046, 0.032), (0.05, 0.026)):
+            rings.append((spot + n * 0.019 + Y * dy, n.cross(Y).normalized() * w, n * 0.017))
+        lead.tube(rings, 6)
+        up_path = [Vector((s * 0.075, y, 0.3)) for y in (0.84, 0.80, 0.77, 0.74)]
+        down_path = [Vector((s * 0.075, y, 0.3)) for y in (0.70, 0.67, 0.64, 0.615)]
+        for path in (up_path, down_path):
+            laid, normals = surface_path(dress, path, round_x, 0.004)
+            strap(straps, laid, normals, 0.012, 0.003, 4)
+        back = [Vector((s * x, y, -0.3)) for x, y in ((0.13, 0.835), (0.09, 0.77), (0.03, 0.70), (-0.04, 0.645), (-0.07, 0.615))]
+        laid, normals = surface_path(dress, smooth_path(back, 2), round_x, 0.004)
+        strap(straps, laid, normals, 0.012, 0.003, 4)
+    spot, n = surface_path(corselet, [Vector((0.0, 0.952, 0.4))], lambda p: Vector((0.0, 0.93, ccz)), 0.001)
+    side = n[0].cross(Y).normalized() * -1.0
+    up = n[0].cross(side).normalized() * -1.0
+    plate.tube([(spot[0] + n[0] * h, side * w, up * w * 0.42) for h, w in ((-0.002, 0.032), (0.002, 0.034), (0.004, 0.03))], 12)
+    bx, bback, bfront = belt_span
+    steel.tube([(Vector((0.0, 0.614, bfront + 0.012 + h)), X * w, Y * w * 0.75) for h, w in ((-0.004, 0.022), (0.0, 0.026), (0.004, 0.024))], 4)
+    parts.append(from_builder("diver_lead", lead, None, m["lead"], rigid("chest")))
+    parts.append(from_builder("diver_straps", straps, None, m["leather"], lambda p, g=dress: nearest_weights(g, p)))
+    parts.append(from_builder("diver_plate", plate, None, m["brass"], rigid("chest")))
+    parts.append(from_builder("diver_buckle", steel, None, m["steel"], rigid("hips")))
+    b = kit.Builder()
+    pouch_at = Vector((bx * 0.78, 0.585, bfront * 0.7))
+    b.tube([(pouch_at + Y * y, X * 0.03, Z * 0.016) for y in (-0.035, -0.03, 0.025, 0.03)], 6)
+    parts.append(from_builder("diver_pouch", b, None, m["leather"], rigid("hips")))
+
+    # The boots: canvas uppers over the dress's legs, lead soles, brass toe caps and ankle straps.
+    lx, lback, lfront = leg_span
+    leg_r = (lx - at["foot_l"].x) + 0.008
+    leg_rz = (lfront - lback) * 0.5 + 0.01
+    up, sole, toe, bands = kit.Builder(), kit.Builder(), kit.Builder(), kit.Builder()
+    for side in (1.0, -1.0):
+        ankle = Vector((side * at["foot_l"].x, at["foot_l"].y, (lfront + lback) * 0.5))
+        foot = [(-0.06, 0.0, 0.046, 0.042), (-0.03, 0.01, 0.054, 0.054), (0.02, 0.0, 0.058, 0.048),
+                (0.07, -0.012, 0.06, 0.036), (0.115, -0.015, 0.058, 0.028), (0.150, -0.017, 0.047, 0.022)]
+        rings = [(ankle + Vector((0.0, y, z)), X * rx, Y * ry) for z, y, rx, ry in foot]
+        up.tube(kit.dome(rings[0], -Z, 0.016, 3)[::-1] + rings + kit.dome(rings[-1], Z, 0.02, 3), 14, 0.032)
+        up.tube([kit.upright(ankle.x, y, ankle.z, r * leg_r, r * leg_rz) for y, r in ((0.05, 0.85), (0.12, 0.94), (BOOT_TOP - 0.02, 1.0), (BOOT_TOP + 0.015, 1.06), (BOOT_TOP + 0.02, 0.94))], 14)
+        sole.tube([(Vector((ankle.x, 0.017, ankle.z + z)), X * w, Y * 0.017) for z, w in ((-0.075, 0.045), (-0.06, 0.056), (0.0, 0.062), (0.08, 0.064), (0.15, 0.060), (0.185, 0.045))], 10, 0.0)
+        toe.ellipsoid(ankle + Vector((0.0, -0.008, 0.15)), Vector((0.052, 0.034, 0.05)), None, 10, 3)
+        bands.tube([kit.upright(ankle.x, y, ankle.z - 0.002, r * leg_r / 0.066, r * leg_rz / 0.066) for y, r in ((0.13, 0.064), (0.132, 0.07), (0.152, 0.071), (0.154, 0.065))], 12)
+
+    def boot_weights(p):
+        s = "_l" if p.x > 0 else "_r"
+        shin = kit.blend(0.06, 0.11, p.y)
+        return {"shin" + s: shin, "foot" + s: 1.0 - shin}
+
+    parts.append(from_builder("diver_boots", up, (0.005, 2, 380), m["boots"], boot_weights))
+    parts.append(from_builder("diver_soles", sole, None, m["lead"], boot_weights))
+    parts.append(from_builder("diver_toes", toe, None, m["brass"], boot_weights))
+    parts.append(from_builder("diver_bootstraps", bands, None, m["rubber"], boot_weights))
+
+    # The air hose: from the goose-neck, down his back on his right, to the deck and away to the pump; and (the
+    # concept's) a coil of spare hose hung on his back over his left shoulder.
+    pts = [goose[-1], Vector((0.02, NECK_RING + 0.15, cz - 0.20)), Vector((-0.03, 1.08, cz - 0.235)), Vector((-0.06, 0.92, cz - 0.255)),
+           Vector((-0.07, 0.68, cz - 0.27)), Vector((-0.08, 0.40, cz - 0.30)), Vector((-0.09, 0.17, cz - 0.35)),
+           Vector((-0.10, 0.06, cz - 0.42)), Vector((-0.11, 0.026, cz - 0.52)), Vector((-0.13, 0.024, cz - 0.64))]
+    b = kit.Builder()
+    b.strand(smooth_path(pts, 2), [0.016] * len(smooth_path(pts, 2)), 4)
+    back_z = min(extents(corselet, y, 0.012, lambda p: p.x > 0.0)[1] for y in (0.84, 0.88, 0.92)) - 0.004
+    for k in range(3):
+        c = Vector((0.115 + 0.014 * k, 0.765 - 0.01 * k, back_z - 0.017 - 0.012 * k))
+        loop = [c + Vector((0.07 * math.sin(a) + 0.012 * math.cos(a), 0.17 * math.cos(a), 0.0)) for a in (math.tau * i / 11 for i in range(12))]
+        b.strand(loop, [0.0145] * len(loop), 4)
+    parts.append(from_builder("diver_hose", b, None, m["rubber"], lambda p: {"chest": 1.0 - kit.blend(0.66, 0.5, p.y), "hips": kit.blend(0.66, 0.5, p.y)}))
+
+    from mathutils import noise
+
+    def shade(material, p):
+        if material == "suit":
+            # the concept's worn canvas: soft darker stains, and dirtier toward the boots
+            stain = ease(0.05, 0.5, noise.noise(p * 7.0 + Vector((3.1, 0.0, 1.7))))
+            return 1.0 - 0.3 * stain - 0.14 * ease(0.5, 0.2, p.y) + 0.05 * noise.noise(p * 23.0)
+        if material in ("copper", "brass"):
+            # old metal: darker patches of tarnish
+            return 0.84 + 0.16 * noise.noise(p * 16.0) - 0.22 * ease(0.0, 0.5, noise.noise(p * 5.0))
+        if material in ("boots", "lead"):
+            return 0.9 + 0.1 * noise.noise(p * 12.0)
+        return 1.0
+
+    bpy.data.objects.remove(body, do_unlink=True)
+    return finish("diver", joints, parts, collection, shade)
+
+
+def LIGHTS(cz):
+    """(centre, which way it looks out, glass radius, its guard) of the bonnet's four lights."""
+    mid = NECK_RING + 0.024 + 0.105
+    return [
+        (Vector((0.0, mid, cz + 0.121)), Vector((0.0, 0.0, 1.0)), 0.048, "cross"),
+        (Vector((0.117, mid, cz)), Vector((1.0, 0.0, 0.0)), 0.034, "bars"),
+        (Vector((-0.117, mid, cz)), Vector((-1.0, 0.0, 0.0)), 0.034, "bars"),
+        # (on the dome, tipped forward: the concept's top light with its grid)
+        (Vector((0.0, mid + 0.106, cz + 0.066)), Vector((0.0, 0.8, 0.6)).normalized(), 0.03, "grid"),
+    ]
+
+
+# =====================================================================================================
+
+def export(collection, path):
+    for o in bpy.context.view_layer.objects:
+        o.select_set(False)
+    for o in collection.objects:
+        o.select_set(True)
+    bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_yup=True,
+                              export_animations=False, export_skins=True, export_vertex_color="ACTIVE",
+                              # (the captain's painted pictures as JPEG: his glb stays a few MB)
+                              **({"export_image_format": "JPEG", "export_jpeg_quality": 88} if "captain" in os.path.basename(path) else {}))
+    tris = sum(kit.triangle_count(o.data) for o in collection.objects if o.type == "MESH")
+    print("EXPORTED %s tris=%d" % (os.path.basename(path), tris))
+
+
+# (`-- --try <boy|captain|diver> <folder>` builds that one figure alone and writes only its glb and a .blend of it
+# there, for trying it out; tools/blend/title_figures.blend and the game's models are left alone)
+ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+ONLY, TRY = (ARGS[ARGS.index("--try") + 1], ARGS[ARGS.index("--try") + 2]) if "--try" in ARGS else (None, None)
+BUILDS = {"boy": build_boy, "captain": build_captain, "diver": build_diver}
+bpy.ops.wm.read_factory_settings(use_empty=True)
+made = {}
+for name in (ONLY,) if ONLY else ("boy", "captain", "diver"):
+    made[name] = bpy.data.collections.new(name)
+    bpy.context.scene.collection.children.link(made[name])
+    BUILDS[name](made[name])
+for mat in list(bpy.data.materials):
+    if mat.users == 0:
+        bpy.data.materials.remove(mat)
+for c in list(bpy.data.collections):
+    if c.name.startswith("glTF_not_exported"):
+        bpy.data.collections.remove(c)
+if TRY:
+    os.makedirs(TRY, exist_ok=True)
+    export(made[ONLY], os.path.join(TRY, "title_%s.glb" % ONLY))
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(TRY, "title_%s.blend" % ONLY))
+else:
+    os.makedirs(os.path.join(HERE, "blend"), exist_ok=True)
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "blend", "title_figures.blend"))
+    for name, collection in made.items():
+        export(collection, os.path.join(ROOT, "models", "title_%s.glb" % name))

@@ -1,0 +1,155 @@
+{
+ "skin": "captain_skin_layout.json",
+ "rows": [
+  {
+   "picture": "anchor",
+   "part": "arm_r",
+   "x": 0.55,
+   "y": 0.72,
+   "size": 0.07,
+   "turn": 0,
+   "mirror": false,
+   "strength": 0.85
+  },
+  {
+   "picture": "star",
+   "part": "arm_r",
+   "x": 0.62,
+   "y": 0.9,
+   "size": 0.035,
+   "turn": 0,
+   "mirror": false,
+   "strength": 0.8
+  },
+  {
+   "picture": "swallow",
+   "part": "arm_r",
+   "x": 0.4,
+   "y": 0.86,
+   "size": 0.04,
+   "turn": 25,
+   "mirror": true,
+   "strength": 0.8
+  },
+  {
+   "picture": "heart",
+   "part": "arm_r",
+   "x": 0.55,
+   "y": 0.3,
+   "size": 0.045,
+   "turn": 0,
+   "mirror": false,
+   "strength": 0.8
+  },
+  {
+   "picture": "swallow",
+   "part": "arm_l",
+   "x": 0.6,
+   "y": 0.6,
+   "size": 0.045,
+   "turn": 20,
+   "mirror": false,
+   "strength": 0.8
+  },
+  {
+   "picture": "ship",
+   "part": "arm_l",
+   "x": 0.55,
+   "y": 0.78,
+   "size": 0.06,
+   "turn": 0,
+   "mirror": false,
+   "strength": 0.85
+  },
+  {
+   "picture": "heart",
+   "part": "arm_l",
+   "x": 0.6,
+   "y": 0.93,
+   "size": 0.03,
+   "turn": 0,
+   "mirror": false,
+   "strength": 0.8
+  },
+  {
+   "picture": "ship",
+   "part": "arm_l",
+   "x": 0.5,
+   "y": 0.3,
+   "size": 0.07,
+   "turn": 0,
+   "mirror": false,
+   "strength": 0.8
+  },
+  {
+   "picture": "anchor",
+   "part": "front",
+   "x": 0.68,
+   "y": 0.83,
+   "size": 0.05,
+   "turn": -15,
+   "mirror": false,
+   "strength": 0.8
+  },
+  {
+   "picture": "swallow",
+   "part": "front",
+   "x": 0.22,
+   "y": 0.88,
+   "size": 0.04,
+   "turn": 20,
+   "mirror": true,
+   "strength": 0.75
+  },
+  {
+   "picture": "ship",
+   "part": "back",
+   "x": 0.33,
+   "y": 0.75,
+   "size": 0.085,
+   "turn": 0,
+   "mirror": false,
+   "strength": 0.8
+  },
+  {
+   "picture": "swallow",
+   "part": "back",
+   "x": 0.7,
+   "y": 0.8,
+   "size": 0.05,
+   "turn": -20,
+   "mirror": false,
+   "strength": 0.8
+  },
+  {
+   "picture": "heart",
+   "part": "back",
+   "x": 0.64,
+   "y": 0.66,
+   "size": 0.04,
+   "turn": 0,
+   "mirror": false,
+   "strength": 0.8
+  },
+  {
+   "picture": "star",
+   "part": "back",
+   "x": 0.86,
+   "y": 0.86,
+   "size": 0.045,
+   "turn": 0,
+   "mirror": false,
+   "strength": 0.75
+  },
+  {
+   "picture": "swallow",
+   "part": "hand_r",
+   "x": 0.3,
+   "y": 0.5,
+   "size": 0.035,
+   "turn": 0,
+   "mirror": false,
+   "strength": 0.8
+  }
+ ]
+}
