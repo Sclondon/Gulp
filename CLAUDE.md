@@ -51,7 +51,7 @@ Keep it that way.
 - The online arena (`scripts/arena.gd`, `arena_net.gd`; after Liquid Metal's): players share a room on the site's
   server and eat each other by the one rule; each game keeps its own sea life (Claude's simplification); the high
   scores are the longest fish by name, kept in the server's memory only (lost on a deploy: not the site's
-  leaderboard yet). The server part is the branch `gulp-arena` in the worktree `C:Projectsscareathonwt-gulp-arena`
+  leaderboard yet). The server part is the branch `gulp-arena` in the worktree `C:/Projects/scareathon/wt-gulp-arena`
   (one commit, NOT pushed or merged: the live server has no /gulp/ws yet, so a web build plays alone until it is).
   `sh tests/arena.sh /c/Projects/scareathon/wt-gulp-arena/server` passes (a tuna eats a sardine, two copies).
 - Not started: trench fish (GameCommon has an `anglerfish`, a monster made for Warren: look before

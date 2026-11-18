@@ -133,6 +133,9 @@ func _ready() -> void:
 	_viewport.add_child(sea)
 	player = Player.new()
 	_viewport.add_child(player)
+	var scenery := Scenery.new()
+	scenery.player = player
+	_viewport.add_child(scenery)
 	life = Life.new()
 	life.player = player
 	life.hunting = not calm
@@ -208,6 +211,10 @@ func _go_near() -> void:
 	var what := Vector3.ZERO
 	var big := 1.0
 	match _near:
+		"kelp", "grass", "reef", "sand", "river", "open", "trench":
+			var zone: Vector2 = Sea.ZONES[_near].at
+			what = Vector3(zone.x, Sea.ground(zone.x, zone.y) + 3.0, zone.y)
+			big = 4.0
 		"jelly":
 			what = life.jellies[life.jellies.size() - 1].global_position
 		"sardines":

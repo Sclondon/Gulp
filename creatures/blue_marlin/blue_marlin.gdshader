@@ -1,0 +1,241 @@
+shader_type spatial;
+// The blue marlin (blue_marlin.gd): every marking drawn here (no texture files), its mouth opened
+// and its swimming. What each point is comes from the model (tools/build_blue_marlin.py): UV2.y the
+// part (0 body, 1 the first dorsal, 2 the small middle fins, 3 the lower jaw, 4 the tail, 5 a
+// pectoral fin, 6 a pelvic fin, 7 an eye). UV, on the body: x how far along, y how high on its
+// side (1 the ridge of the back, 0 the keel of the belly); on a fin: x root (0) to tip (1), y
+// leading edge (0) to trailing edge (1); on the lower jaw: x tip (0) to rear end (1), y the middle
+// of the mouth's floor (0) round to the chin (1); on an eye: x middle (0) to rim (1). UV2.x, on the
+// body and the lower jaw: how much the point is inside the mouth (the roof and the floor).
+//
+// It swims as tunas and billfish do (thunniform): the head and bill one stiff piece, the body all
+// but rigid, a wave that only grows large in the last third, the tail wrist flexing and the stiff
+// crescent tail swung as one plate. All of it is a function of `phase` alone, so a picture of it
+// loops exactly.
+// Nothing here needs more than GL Compatibility has; it runs the same under Forward+.
+render_mode cull_back;
+
+// Kept in step with the model.
+const float LENGTH = 3.6;
+const float HALF = 1.8;
+// Ahead of this (metres behind the bill's tip) the head and bill are one stiff piece.
+const float HEAD = 1.1;
+// Where the tail fin is hinged: behind it the tail is one stiff plate.
+const float JOINT = 3.22;
+// The lower jaw's hinge (metres behind the bill's tip, metres above the middle line) and how far
+// it swings down at `gape` 1 (radians).
+const vec2 HINGE = vec2(0.81, -0.05);
+const float GAPE_MAX = 0.42;
+const float DORSAL_RAYS = 41.0;
+const vec2 EYE_AT = vec2(0.775, 0.05);
+
+// How far through a beat of its tail (0..1, it wraps). Set by BlueMarlin.
+uniform float phase = 0.0;
+// Turning: how far the body is bent round to one side behind the head, in radians from the gills
+// to the tail (0 straight; more than 0 the tail comes round to +X, its left, as it turns left).
+// The bill and head stay as they are; set it from how tightly the fish is turning.
+uniform float curl = 0.0;
+// How widely it beats, for 1 as a marlin cruising (its tail tips swing about 0.3 m either way).
+uniform float sway = 1.0;
+// The mouth: 0 shut, 1 wide open, as when it bites (the lower jaw swings down about its hinge).
+uniform float gape : hint_range(0.0, 1.0) = 0.0;
+// How long the wave along its body is, in body lengths.
+uniform float wave = 1.2;
+
+// The back, and the cobalt it turns to towards the flank and where light glances off it.
+uniform vec3 back : source_color = vec3(0.008, 0.02, 0.09);
+uniform vec3 back_blue : source_color = vec3(0.02, 0.13, 0.62);
+// The lower flank and the belly.
+uniform vec3 silver : source_color = vec3(0.7, 0.75, 0.8);
+uniform vec3 belly : source_color = vec3(0.95, 0.96, 0.96);
+// The upright pale bars down the flanks, and how strongly they show.
+uniform vec3 bars : source_color = vec3(0.42, 0.68, 1.0);
+uniform float bars_show = 0.75;
+// The fins, the bill, the inside of the mouth.
+uniform vec3 fin_dark : source_color = vec3(0.012, 0.03, 0.11);
+uniform vec3 bill : source_color = vec3(0.02, 0.035, 0.09);
+uniform vec3 mouth : source_color = vec3(0.07, 0.018, 0.022);
+
+varying vec3 rest;
+varying float part;
+varying float inside;
+
+float hash2(vec2 p) {
+	vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+	q += dot(q, q.yzx + 33.33);
+	return fract((q.x + q.y) * q.z);
+}
+
+float noise2(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+
+// How far to one side the middle line of the body is, `xm` metres behind the bill's tip: a wave
+// that runs back along it, all but nothing as far as the middle, large only near the tail.
+float side_at(float xm) {
+	float s = xm / JOINT;
+	float reach = LENGTH * 0.4 * (0.006 - 0.02 * s + 0.02 * s * s + 0.09 * s * s * s * s);
+	return sway * reach * sin(6.2831853 * (phase - s / wave));
+}
+
+// The body behind the head laid round an arc (see `curl`).
+void curl_bend(inout vec3 v, inout vec3 n) {
+	float from = 1.15 - HALF;
+	float d = v.z - from;
+	if (abs(curl) < 0.001 || d <= 0.0) {
+		return;
+	}
+	float k = curl / (LENGTH - 1.15);
+	float a = d * k;
+	float r = 1.0 / k;
+	float c = cos(a);
+	float sn = sin(a);
+	n = vec3(n.x * c + n.z * sn, n.y, -n.x * sn + n.z * c);
+	v = vec3(r + (v.x - r) * c, v.y, from + (r - v.x) * sn);
+}
+
+void vertex() {
+	part = UV2.y;
+	inside = UV2.x;
+	rest = VERTEX;
+	vec3 v = VERTEX;
+	vec3 n = NORMAL;
+	if (part > 2.5 && part < 3.5) {
+		// The lower jaw swings down about its hinge; its rear end, in the throat, stays.
+		float a = clamp(gape, 0.0, 1.0) * GAPE_MAX * smoothstep(HINGE.x + 0.06, HINGE.x - 0.01, v.z + HALF);
+		vec2 hinge = vec2(HINGE.y, HINGE.x - HALF);
+		vec2 d = v.yz - hinge;
+		float c = cos(a);
+		float sn = sin(a);
+		v.yz = hinge + vec2(d.x * c + d.y * sn, d.y * c - d.x * sn);
+		n.yz = vec2(n.y * c + n.z * sn, n.z * c - n.y * sn);
+	}
+	float xm = v.z + HALF;
+	// (the head and bill ahead, and the tail behind its hinge, are stiff: they turn as one piece)
+	float zc = clamp(xm, HEAD, JOINT);
+	float h = side_at(zc);
+	float slope = (side_at(zc + 0.004) - side_at(zc - 0.004)) / 0.008;
+	// (the wrist flexes a little further than the body's own line)
+	float turn = atan(slope) * (1.0 + 0.3 * smoothstep(0.86 * JOINT, JOINT, zc));
+	float c = cos(turn);
+	float sn = sin(turn);
+	vec3 o = vec3(v.x, v.y, xm - zc);
+	VERTEX = vec3(h + o.x * c + o.z * sn, o.y, zc - HALF - o.x * sn + o.z * c);
+	NORMAL = vec3(n.x * c + n.z * sn, n.y, -n.x * sn + n.z * c);
+	vec3 curled = VERTEX;
+	vec3 curled_normal = NORMAL;
+	curl_bend(curled, curled_normal);
+	VERTEX = curled;
+	NORMAL = curled_normal;
+}
+
+// The edge of the gill cover, as the model has it.
+float gill_x(float y) {
+	return 1.07 - 1.5 * (y + 0.03) * (y + 0.03);
+}
+
+void fragment() {
+	int p = int(part + 0.5);
+	float glance = 1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0);
+	vec3 c;
+	float rough = 0.42;
+	float spec = 0.5;
+	if (p == 0) {
+		float xm = rest.z + HALF;
+		float y = rest.y;
+		float q = UV.y * 2.0 - 1.0;
+		// (a fine grain, like small scales)
+		float grain = 0.6 * noise2(vec2(xm * 400.0, q * 90.0)) + 0.4 * noise2(vec2(xm * 900.0 + 7.0, q * 200.0));
+		float cloud = noise2(vec2(xm * 5.0, q * 3.0) + 4.0);
+		// The belly white, the lower flank silver, the back cobalt blue, nearly black along its ridge.
+		c = mix(belly, silver, smoothstep(-0.8, -0.1, q));
+		c *= 0.95 + 0.1 * grain;
+		float dark = smoothstep(-0.12, 0.2, q + (cloud - 0.5) * 0.1);
+		vec3 top = mix(back_blue, back, smoothstep(0.35, 0.9, q));
+		top += back_blue * (0.8 * glance * glance + 0.1 * (grain - 0.5));
+		c = mix(c, top, dark);
+		// The bars: about fifteen upright pale blue bars down the flanks, each a narrow stripe broken
+		// into round dots, from behind the gill cover to the tail wrist.
+		float lane = (xm - 1.13) / 0.125;
+		float row = floor(lane);
+		float lean = (noise2(vec2(row * 3.1, y * 9.0)) - 0.5) * 0.03;
+		float across = (fract(lane) - 0.5) * 0.125 + lean;
+		float stripe = 1.0 - smoothstep(0.007, 0.02, abs(across));
+		float down = y / 0.034 + hash2(vec2(row, 5.0));
+		float bead = 1.0 - smoothstep(0.2, 0.5, abs(fract(down) - 0.5));
+		float pale = stripe * (0.45 + 0.55 * bead);
+		float where = smoothstep(1.13, 1.2, xm) * (1.0 - smoothstep(2.95, 3.05, xm)) * (1.0 - smoothstep(0.6, 0.85, q)) * smoothstep(-0.55, -0.15, q);
+		c = mix(c, bars, pale * where * bars_show);
+		// The bill and the top of the head: blue-black, paler underneath.
+		float beak = (1.0 - smoothstep(0.55, 0.85, xm)) * smoothstep(-0.7, 0.0, q);
+		c = mix(c, bill * (0.9 + 0.2 * grain), beak);
+		// The gill cover's edge.
+		float span = smoothstep(-0.95, -0.8, q) * (1.0 - smoothstep(0.4, 0.6, q));
+		float behind = xm - gill_x(y);
+		float crease = (1.0 - smoothstep(0.0, 0.006, abs(behind - 0.003))) * 0.6 + (1.0 - smoothstep(0.0, 0.05, behind)) * step(0.0, behind) * 0.22;
+		c = mix(c, c * 0.35, crease * span);
+		// The tail wrist: dark along its keels.
+		float wrist = smoothstep(3.0, 3.12, xm) * (1.0 - smoothstep(0.35, 0.75, abs(q)));
+		c = mix(c, back, wrist * 0.85);
+		rough = mix(0.3, 0.5, max(dark, wrist));
+		spec = mix(0.65, 0.4, max(dark, wrist));
+		// The roof of the mouth.
+		float in_mouth = smoothstep(0.3, 0.7, inside);
+		c = mix(c, mouth, in_mouth);
+		rough = mix(rough, 0.6, in_mouth);
+		spec = mix(spec, 0.2, in_mouth);
+	} else if (p == 1) {
+		// The first dorsal: blue-black, darker along its rays, a little cobalt where light glances.
+		float ray = pow(abs(cos(3.14159265 * UV.y * DORSAL_RAYS)), 10.0);
+		float cloud = noise2(vec2(rest.z * 6.0, rest.y * 6.0) + 11.0);
+		c = mix(fin_dark * 0.7, fin_dark * 1.6 + back_blue * 0.12, smoothstep(0.0, 0.5, UV.x)) * (0.8 + 0.4 * cloud);
+		c = mix(c, fin_dark * 0.4, ray * 0.6);
+		c += back_blue * 0.4 * glance * glance;
+		rough = 0.5;
+		spec = 0.4;
+	} else if (p == 2) {
+		// The second dorsal and the anal fins: blue-black, fine rays.
+		float ray = 0.5 + 0.5 * cos(UV.y * 50.0);
+		c = fin_dark * (0.8 + 0.4 * ray) + back_blue * 0.3 * glance * glance;
+		rough = 0.5;
+	} else if (p == 3) {
+		// The lower jaw: silver-white, dusky towards its tip; its top is the floor of the mouth.
+		c = mix(silver, belly, smoothstep(0.55, 0.95, UV.y));
+		c = mix(c, bill * 3.0, (1.0 - smoothstep(0.0, 0.5, UV.x)) * 0.6);
+		float in_mouth = smoothstep(0.3, 0.7, inside);
+		c = mix(c, mouth, in_mouth);
+		rough = mix(0.4, 0.6, in_mouth);
+		spec = mix(0.5, 0.2, in_mouth);
+	} else if (p == 4) {
+		// The tail: blue-black, fine rays.
+		float ray = 0.5 + 0.5 * cos(UV.y * 90.0);
+		c = fin_dark * (0.8 + 0.4 * ray);
+		c += back_blue * 0.4 * glance * glance;
+		rough = 0.45;
+	} else if (p == 5) {
+		// A pectoral fin: blue-black, a little paler towards its root.
+		float ray = 0.5 + 0.5 * cos(UV.y * 60.0);
+		c = mix(fin_dark * 2.0 + silver * 0.08, fin_dark, smoothstep(0.0, 0.5, UV.x)) * (0.85 + 0.3 * ray);
+		c += back_blue * 0.35 * glance * glance;
+		rough = 0.5;
+		spec = 0.35;
+	} else if (p == 6) {
+		// A pelvic fin: blue-black.
+		c = fin_dark * 1.2 + back_blue * 0.25 * glance * glance;
+		rough = 0.5;
+	} else {
+		// An eye: a big black pupil, a silver-blue iris, a dark rim.
+		float r = UV.x;
+		vec3 iris = mix(vec3(0.42, 0.47, 0.52), vec3(0.55, 0.6, 0.55), smoothstep(0.7, 0.95, r) * 0.4) * (0.85 + 0.15 * noise2(vec2(atan(rest.y - EYE_AT.y, rest.z + HALF - EYE_AT.x) * 14.0, r * 3.0)));
+		c = mix(vec3(0.004, 0.005, 0.008), iris, smoothstep(0.56, 0.62, r));
+		c = mix(c, back * 2.0, smoothstep(0.84, 1.0, r) * 0.9);
+		rough = 0.14;
+		spec = 0.6;
+	}
+	ALBEDO = c;
+	ROUGHNESS = rough;
+	SPECULAR = spec;
+}
