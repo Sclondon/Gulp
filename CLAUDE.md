@@ -353,3 +353,7 @@ a half on a Windows desktop browser. Build the web export from the clean worktre
   gemini.google.com/app/62f2ff6ee62c21f9 (the boy, captain and diver sheet, the boat); the set pieces, sailor boy,
   diving suits, monsters and creatures are in /app/d2fe19426ff0ebc4. Check a new sheet still has the mask faces (no
   eyes or mouth): a fresh prompt drew the captain with eyes.
+- The loading screen is built but NOT yet shown by the game: `scripts/loading_swarm.gd` (LoadingSwarm: set `progress`,
+  call `finish()`, wait for `done`), seen alone with `tests/loading_view.gd`. To wire in: show it over everything from
+  the first frame, feed it the warm-up's share done (`Main._warm`), finish it when the title is ready. The captain
+  also gets "a tasteful bulge" (the user), passed to the figure builder.
