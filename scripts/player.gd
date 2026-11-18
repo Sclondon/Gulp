@@ -75,6 +75,11 @@ const GRAVITY := 9.0
 const LEAP_LEAST := 0.25
 const LEAP_PER_LENGTH := 0.9
 
+## How deep it may go (m under the surface: the amplifier's reach, set by Main; INF: anywhere).
+## Below it, it is turned back upwards, and it is never let more than LIMIT_GIVE metres deeper.
+var deepest := INF
+const LIMIT_GIVE := 3.0
+
 ## How many times it has become something bigger this run.
 var stage := 0
 ## How far through its stage it has eaten its way (0..1).
@@ -172,6 +177,13 @@ func choose(what: String) -> void:
 	grew.emit(stage)
 
 
+## Hauled up in the boat's net: the run ends as a sale (not a death: `died` is not sent).
+func haul() -> void:
+	alive = false
+	visible = false
+	choosing = false
+
+
 ## Something has eaten it (or stung it).
 func die(by: String) -> void:
 	if not alive or safe > 0.0:
@@ -219,6 +231,10 @@ func step(delta: float) -> void:
 		_landed -= delta
 		if absf(stick.y) < 0.3 and pitch < -0.3:
 			pitch = move_toward(pitch, -0.3, 1.6 * delta)
+	if Sea.SURFACE - global_position.y > deepest:
+		# Below where the machine's signal reaches (DESIGN.md: the amplifier): it is turned back
+		# up, whatever the stick says (and held no more than LIMIT_GIVE under that depth).
+		pitch = move_toward(pitch, 0.7, 2.6 * delta)
 	heading = _way()
 	boosting = boost_held and stamina > 0.0
 	if boosting:
@@ -244,6 +260,7 @@ func step(delta: float) -> void:
 		leapt.emit(Vector3(next.x, Sea.SURFACE, next.z))
 	else:
 		global_position = Sea.clear_of_rocks(Sea.keep_in(next, room), room)
+		global_position.y = maxf(global_position.y, Sea.SURFACE - deepest - LIMIT_GIVE)
 		# (held under the surface, it levels off along it)
 		if next.y > Sea.SURFACE - room and pitch > 0.0:
 			pitch = maxf(pitch - 2.0 * delta, 0.0)

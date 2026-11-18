@@ -10,7 +10,7 @@ extends TextureRect
 ##
 ## Ahead of the fish is up. What hunts it is red, what it can eat green. A landmark is a small
 ## sign for a part of the sea (LANDMARKS: the river mouth, the sea grass, the sand, the kelp, the
-## reef, the open sea, the trench), where it lies from the fish; one further off than the scope
+## reef, the open sea, the trench; and the boat, whose net the fish is sold into), where it lies from the fish; one further off than the scope
 ## sees is held at the rim, on its bearing, so the scope always points the way to each.
 
 const SIZE := 256
@@ -30,6 +30,8 @@ const LANDMARKS := {
 	"ruins": {"strokes": [[Vector2(-0.8, -0.8), Vector2(0.8, -0.8)], [Vector2(-0.55, -0.8), Vector2(-0.55, 0.35)], [Vector2(0.0, -0.8), Vector2(0.0, 0.35)], [Vector2(0.55, -0.8), Vector2(0.55, 0.35)], [Vector2(-0.8, 0.35), Vector2(0.0, 0.9), Vector2(0.8, 0.35), Vector2(-0.8, 0.35)]], "colour": Color(1.0, 0.85, 0.45)},
 	# (crossed cutlasses: the pirate ship)
 	"pirate": {"strokes": [[Vector2(-0.75, -0.8), Vector2(0.7, 0.85)], [Vector2(0.75, -0.8), Vector2(-0.7, 0.85)], [Vector2(-0.95, -0.45), Vector2(-0.45, -0.95)], [Vector2(0.95, -0.45), Vector2(0.45, -0.95)]], "colour": Color(0.95, 0.75, 0.6)},
+	# (the shrimp boat, where its net is: a hull, a mast and a net hanging off it; DESIGN.md's loop)
+	"boat": {"strokes": [[Vector2(-0.9, 0.1), Vector2(0.9, 0.1), Vector2(0.55, -0.35), Vector2(-0.6, -0.35), Vector2(-0.9, 0.1)], [Vector2(-0.1, 0.1), Vector2(-0.1, 0.9)], [Vector2(-0.1, 0.9), Vector2(0.7, 0.45)], [Vector2(0.7, 0.45), Vector2(0.7, -0.75)], [Vector2(0.5, -0.6), Vector2(0.9, -0.6)]], "colour": Color(1.0, 0.95, 0.75)},
 	"open": {"strokes": [[Vector2(-0.9, 0.0), Vector2(-0.45, 0.45), Vector2(0.0, 0.0), Vector2(0.45, 0.45), Vector2(0.9, 0.0)]], "colour": Color(0.6, 0.8, 1.0)},
 	"trench": {"strokes": [[Vector2(-0.9, 0.7), Vector2(-0.3, 0.7), Vector2(0.0, -0.9), Vector2(0.3, 0.7), Vector2(0.9, 0.7)]], "colour": Color(0.8, 0.65, 1.0)},
 }

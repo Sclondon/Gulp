@@ -23,6 +23,9 @@ uniform float shafts = 0.0;
 uniform vec4 haze[8];
 // How strongly streaks run out past the edges (0 none; while it bursts, by how fast it goes).
 uniform float streaks = 0.0;
+// The machine's signal failing (0 clear to 1 lost): below the depth its amplifier reaches the
+// picture fills with static (DESIGN.md; scripts/main.gd sets it).
+uniform float signal_loss = 0.0;
 
 const float BAYER[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0,
 		3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
@@ -72,6 +75,21 @@ void fragment() {
 		// (by how far out towards the corners, whichever way up the screen is)
 		float edge = smoothstep(0.35, 0.95, r / length(vec2(aspect, 1.0) * 0.5));
 		c.rgb = mix(c.rgb, vec3(0.85, 0.95, 1.0), thin * lit * edge * streaks * 0.55);
+	}
+	if (signal_loss > 0.001) {
+		// Static: grey snow in blocks of the low picture, changing every frame, rolling bands and
+		// lines torn sideways; the picture behind it greyed and fading as the signal goes.
+		vec2 cell = floor(UV / TEXTURE_PIXEL_SIZE);
+		float frame = floor(TIME * 30.0);
+		float snow = hash1(cell.x * 1.37 + cell.y * 113.1 + frame * 7.13);
+		float band = 0.5 + 0.5 * sin(UV.y * 9.0 - TIME * 5.0);
+		float tear = step(1.0 - 0.25 * signal_loss, hash1(cell.y * 0.71 + frame * 3.1));
+		vec4 torn = texture(TEXTURE, clamp(uv + vec2(0.04 * tear * signal_loss, 0.0), vec2(0.001), vec2(0.999)));
+		vec3 base = mix(c.rgb, torn.rgb, tear);
+		vec3 grey = vec3(dot(base, vec3(0.3, 0.5, 0.2)));
+		vec3 under = mix(base, grey, signal_loss) * (1.0 - 0.6 * signal_loss);
+		float amount = clamp(signal_loss * (0.5 + 0.3 * band), 0.0, 0.85);
+		c.rgb = mix(under, vec3(snow), amount);
 	}
 	ivec2 px = ivec2(mod(floor(UV / TEXTURE_PIXEL_SIZE), 4.0));
 	float threshold = BAYER[px.y * 4 + px.x] / 16.0;

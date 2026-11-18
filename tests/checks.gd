@@ -24,6 +24,9 @@ func _run() -> void:
 	var life: Life = main.life
 	var player: Player = main.player
 	life.hunting = false
+	# (the depth limit is off but for its own check: other checks put the fish deep)
+	main.limited = false
+	player.deepest = INF
 	await _frames(30)
 	_check("the sea is stocked", life.creatures.size() >= 30 and life.schools.size() >= 10 and life.jellies.size() == 9,
 			"%d fish, %d schools, %d jellies, %d nettles" % [life.creatures.size(), life.schools.size(), life.jellies.size(), life.nettles.size()])
@@ -107,6 +110,7 @@ func _run() -> void:
 	_check("a big jelly stings it", not player.alive)
 	await _schooling()
 	await _fishing()
+	await _loop()
 	print("GULP SMOKE PASSED" if _bad == 0 else "GULP SMOKE FAILED (%d)" % _bad)
 	get_tree().quit()
 
@@ -412,6 +416,80 @@ func _fishing() -> void:
 	fishers.always = false
 
 
+## The treasure game's loop (DESIGN.md): swum into the boat's net the run ends as a sale, which pays
+## the right sum and is saved; buying an amplifier step spends money and lets the fish deeper; below
+## the amplifier's depth the picture fills with static and the fish is turned back up. (Into a test
+## file, never the player's own save.)
+func _loop() -> void:
+	var life: Life = main.life
+	var player: Player = main.player
+	var purse: Purse = main.purse
+	var path := "user://gulp_check.cfg"
+	life.hunting = false
+	purse.path = path
+	purse.reset()
+	main.restart()
+	await _frames(3)
+	player.begin(player.global_position, "salmon")
+	main.set(&"_run_for", 99.0)
+	var hoop: Vector3 = main.title.hoop()
+	player.global_position = hoop + Vector3(2.0, 0.0, 0.3)
+	_aim(player, hoop - player.mouth())
+	for n in 240:
+		await _frames(1)
+		if main.selling or not player.alive:
+			break
+		_aim(player, hoop - player.mouth())
+	_check("swimming into the boat's net ends the run as a sale", main.selling and not player.alive and not main.over and main.sale.visible,
+			"selling %s, alive %s, %.2f m from the hoop" % [main.selling, player.alive, player.mouth().distance_to(hoop)])
+	var got: Dictionary = main.receipt
+	var worth: int = Purse.WORTH["salmon"]
+	var expected := roundi(worth * float(got.get("length", 0.0))) + roundi(worth * Purse.FIRST_METRES)
+	var kept := Purse.new(path)
+	_check("a sale pays the right sum and saves it", got.get("kind", "") == "salmon" and int(got.total) == expected and purse.money == expected and kept.money == expected and "salmon" in kept.sold,
+			"%s %.2f m: %d (expected %d), purse %d, saved %d" % [got.get("kind", ""), float(got.get("length", 0.0)), int(got.get("total", -1)), expected, purse.money, kept.money])
+	_check("the first-sale bonus is paid once; the last of a line at full size is doubled",
+			purse.price_of("salmon", 1.0, false).bonus == 0 and purse.price_of("orca", 8.0, true).total == Purse.WORTH["orca"] * 8 * 2 + roundi(Purse.WORTH["orca"] * Purse.FIRST_METRES))
+	# The sale's button goes on to the shop; there a step of the amplifier is bought.
+	main.limited = true
+	main.sale.set(&"_for", 1.0)
+	main.sale.call(&"_finish")
+	await _frames(2)
+	purse.money = Purse.AMP_PRICE[1] + 10
+	var bought: bool = main.shop.visible and main.shop.buy_next()
+	var again: bool = main.shop.buy_next()
+	_check("buying a step spends money and raises the limit", bought and not again and purse.money == 10 and purse.amp == 1 and purse.depth() == Purse.AMP_DEPTH[1] and Purse.new(path).amp == 1,
+			"shop %s, bought %s, money %d, depth %.0f m" % [main.shop.visible, bought, purse.money, purse.depth()])
+	# The shop's button sends a new fish down from the boat, as deep as the amplifier now reaches.
+	main.shop.set(&"_for", 1.0)
+	main.shop.call(&"_finish")
+	for n in 300:
+		await _frames(1)
+		if not main.get(&"_on_deck"):
+			break
+	_check("from the shop a new run starts by the boat, with the new limit", player.alive and not main.selling and not main.get(&"_on_deck") and player.deepest == Purse.AMP_DEPTH[1]
+			and Vector2(player.global_position.x, player.global_position.z).distance_to(Vector2(main.title.global_position.x, main.title.global_position.z)) < 12.0,
+			"alive %s, limit %.0f m" % [player.alive, player.deepest])
+	# Below the amplifier's depth: static, and the fish is turned back up.
+	purse.amp = 0
+	player.deepest = purse.depth()
+	var zone: Vector2 = Sea.ZONES["trench"].at
+	player.global_position = Vector3(zone.x, Sea.SURFACE - purse.depth() - 1.0, zone.y)
+	_aim(player, Vector3(0.3, -0.8, 0.0))
+	var deepest_seen := 0.0
+	var snow := 0.0
+	for n in 180:
+		await _frames(1)
+		deepest_seen = maxf(deepest_seen, Sea.SURFACE - player.global_position.y)
+		snow = maxf(snow, float(main.get(&"_post").get_shader_parameter(&"signal_loss")))
+	var now := Sea.SURFACE - player.global_position.y
+	_check("below the limit the picture fills with static and the fish is turned back", player.alive and now < purse.depth() and deepest_seen <= purse.depth() + Player.LIMIT_GIVE + 0.01 and snow > 0.5,
+			"limit %.0f m: down to %.1f m, now %.1f m, static %.2f" % [purse.depth(), deepest_seen, now, snow])
+	main.limited = false
+	player.deepest = INF
+	purse.reset()
+
+
 # Holds the player's mouth at a rig's bait until it bites (or `frames` go by).
 func _to_bait(rig: Fishers.Rig, frames := 60) -> void:
 	var player: Player = main.player
@@ -519,6 +597,20 @@ func _touches() -> void:
 	_touch(0, middle, false)
 	await _frames(10)
 	_check("a tap on it starts another run", not main.over and player.alive and pad.visible)
+	# The sale's round button goes on to the shop; a tap on the amplifier's next step buys it; the
+	# shop's round button sends a new fish down from the boat.
+	main.call(&"_sell")
+	main.purse.money = 100
+	# (each screen takes no touch for its first 0.4 s, so that a touch meant for the sea does not go through)
+	await get_tree().create_timer(0.6).timeout
+	await _tap(main.sale.get_child(0))
+	_check("a tap on the sale's button opens the shop", not main.sale.visible and main.shop.visible)
+	await get_tree().create_timer(0.6).timeout
+	await _tap(main.shop.get_child(1))
+	_check("a tap on the amplifier's next step buys it", main.purse.amp == 1 and main.purse.money == 100 - Purse.AMP_PRICE[1], "step %d, money %d" % [main.purse.amp, main.purse.money])
+	await _tap(main.shop.get_child(main.shop.get_child_count() - 1))
+	await _frames(5)
+	_check("a tap on the shop's button dives again", not main.shop.visible and main.get(&"_on_deck") and player.alive)
 	print("GULP TOUCH PASSED" if _bad == 0 else "GULP TOUCH FAILED (%d)" % _bad)
 	get_tree().quit()
 
@@ -530,6 +622,15 @@ func _touch(finger: int, at: Vector2, down: bool) -> void:
 	event.position = get_viewport().get_final_transform() * at
 	event.pressed = down
 	Input.parse_input_event(event)
+
+
+# A finger down and up again on the middle of a control.
+func _tap(control: Control) -> void:
+	var middle := control.global_position + control.size * 0.5
+	_touch(0, middle, true)
+	await _frames(3)
+	_touch(0, middle, false)
+	await _frames(5)
 
 
 func _drag(finger: int, to: Vector2) -> void:

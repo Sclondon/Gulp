@@ -18,7 +18,13 @@ extends Control
 ## (tests/checks.gd) and quits, --check=touch its touch checks (in a window); --as=<kind> starts runs as that animal (a name in Player.GROWTH; --stage=<n> is the old five by number); --calm:
 ## nothing hunts; --over ends the run at once (for a picture of that screen); --shot=<seconds>
 ## saves a picture at that time and quits (--out=<file>); --near=<jelly|shark|salmon|sardines|krill>
-## starts the run beside one of those, with nothing hunting (to look at it).
+## starts the run beside one of those, with nothing hunting (to look at it); --sell sells the fish
+## a second in (a picture of the sale screen), --shop then opens the shop.
+##
+## The loop (DESIGN.md): swimming into the net hung beside the boat ends a run as a sale (Purse,
+## Sale), then the shop (Shop) buys the amplifier's steps, then the eye goes down from the boat
+## to a new fish. Below the amplifier's depth the picture fills with static and the fish is
+## turned back up.
 
 const SAVE := "user://gulp.cfg"
 ## The shared sea of players lives on the site's server (--server=<url> for another; a web build
@@ -31,11 +37,32 @@ var player: Player
 var camera: Camera3D
 var hud: Hud
 var pad: TouchPad
-## The boat the game starts on (null once the game is under way), its card, and how far the eye
-## has gone on its way down to the fish (-1: not yet started).
+## The boat: the game starts on it (steaming round), and once under way it lies hove-to with its
+## net out, where the fish is sold (DESIGN.md's loop); never null after _ready. Its card (null once
+## the game has started), whether the eye is with the boat or on its way down from it to the fish
+## (`_on_deck`), and how far down it has gone (-1: not yet started).
 var title: Title
 var _card: Title.Card
+var _on_deck := false
 var _dive := -1.0
+## Money, gear and what has been sold, kept between runs (memory only when a test, the bot or a
+## picture drives); the sale and shop screens; whether they are up (the run ended in the net).
+var purse: Purse
+var sale: Sale
+var shop: Shop
+var selling := false
+## What the last sale fetched (Purse.sell's receipt).
+var receipt := {}
+## The machine's depth limit holds (the smoke test turns it off but for its own check).
+var limited := true
+## How close the fish's mouth must come to the middle of the net's hoop to be hauled in (m; more
+## for a big fish: a share of its length).
+const NET_REACH := 0.9
+const NET_REACH_PER_LENGTH := 0.4
+## A run must have gone on this long before the net takes it (s): it starts by the boat.
+const NET_AFTER := 4.0
+var _selling_for := 0.0
+var _run_for := 0.0
 var _dive_from := Transform3D()
 var _titled := false
 # The kinds whose models are still to be shown once behind the title (see _warm), how many there
@@ -116,7 +143,7 @@ func _ready() -> void:
 		elif arg.begins_with("--stage="):
 			# (the old five stages, by number)
 			_start_kind = ["sardine", "smolt", "salmon", "tuna", "shark"][clampi(int(arg.get_slice("=", 1)), 0, 4)]
-		elif arg == "--feed" or arg == "--leap":
+		elif arg == "--feed" or arg == "--leap" or arg == "--sell" or arg == "--shop":
 			_trick = arg
 		elif arg.begins_with("--server="):
 			_server = arg.get_slice("=", 1)
@@ -216,13 +243,27 @@ func _ready() -> void:
 		bot.player = player
 		bot.life = life
 		bot.fishers = fishers
+	purse = Purse.new(SAVE if _saves else "")
 	if _saves:
-		var kept := ConfigFile.new()
-		if kept.load(SAVE) == OK:
-			hud.best = float(kept.get_value("best", "length", 0.0))
+		hud.best = purse.best
+	sale = Sale.new()
+	add_child(sale)
+	sale.done.connect(_open_shop)
+	shop = Shop.new()
+	add_child(shop)
+	shop.bought.connect(func() -> void: player.deepest = _deepest())
+	shop.dive.connect(_dive_again)
+	# The game opens on the boat, unless something is driving it (a test, a bot, a picture): then
+	# the boat lies hove-to by where the fish starts.
+	var opening := _titled or not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0 or _role != "" or _near != "" or _end_now)
+	if not opening:
+		title = Title.new()
+		title.hove = true
+		title.eye_node = camera
+		title.position = Vector3(_start.x, Sea.SURFACE, _start.y + 4.0)
+		_viewport.add_child(title)
 	restart()
-	# The game opens on the boat, unless something is driving it (a test, a bot, a picture).
-	if _titled or not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0 or _role != "" or _near != "" or _end_now):
+	if opening:
 		_open_title()
 	if _checking or _touching:
 		var checks: Node = (load("res://tests/checks.gd") as GDScript).new()
@@ -235,6 +276,8 @@ func _ready() -> void:
 func restart() -> void:
 	var at := Sea.clear_of_rocks(Vector3(_start.x, maxf(Sea.SURFACE - 7.0, Sea.ground(_start.x, _start.y) + 1.5), _start.y), 0.5)
 	player.begin(at, _start_kind)
+	player.deepest = _deepest()
+	_run_for = 0.0
 	if arena:
 		arena.spawn()
 	hud.offer([])
@@ -269,6 +312,10 @@ func _go_near() -> void:
 			big = 3.0
 		"krill":
 			what = (life.schools[0].flock as Flock).global_position
+		"boat":
+			# (the boat's own net, where the fish is sold)
+			what = title.hoop() if title else Vector3(_start.x, Sea.SURFACE - 3.0, _start.y)
+			big = 2.0
 		"hook", "skiff", "net", "trawl":
 			what = fishers.near(_near)
 			big = 0.6 if _near == "hook" or _near == "skiff" else 4.0
@@ -287,7 +334,7 @@ func _go_near() -> void:
 func _process(delta: float) -> void:
 	_clock += delta
 	delta = minf(delta, 0.05)
-	if title:
+	if _on_deck:
 		_title_step(delta)
 		sea.set_above(camera.global_position.y > Sea.SURFACE)
 		_post.set_shader_parameter(&"underwater", 0.0 if sea.above else 1.0)
@@ -304,6 +351,14 @@ func _process(delta: float) -> void:
 		player.global_position.y = Sea.SURFACE - 1.5
 		player.pitch = 0.9
 		player.boost_held = true
+	elif (_trick == "--sell" or _trick == "--shop") and _clock > 1.0:
+		# (for a picture of the sale, or of the shop after it)
+		var then := _trick
+		_trick = ""
+		_sell()
+		if then == "--shop":
+			sale.visible = false
+			_open_shop()
 	# (while it is choosing what to become, or paused, the sea stands still)
 	if Input.is_action_just_pressed(&"ui_cancel") or (Input.is_physical_key_pressed(KEY_P) and not _p_was):
 		_toggle_pause()
@@ -319,6 +374,20 @@ func _process(delta: float) -> void:
 				player.feed(Life.PLANKTON_LENGTH)
 		life.step(delta)
 		fishers.step(delta)
+		# The boat's net: swum into, the fish is hauled up and sold (DESIGN.md's loop).
+		if player.alive:
+			_run_for += delta
+			if _run_for > NET_AFTER and not player.in_air and not player.caught and player.mouth().distance_to(title.hoop()) < maxf(NET_REACH, player.length * NET_REACH_PER_LENGTH):
+				_sell()
+	if selling:
+		_selling_for += delta
+		if bot and _selling_for > 1.0:
+			# (the bot does not shop: it swims again)
+			sale.visible = false
+			shop.visible = false
+			selling = false
+			hud.visible = true
+			restart()
 	if arena:
 		arena.step(delta)
 		if _role != "":
@@ -349,7 +418,11 @@ func _process(delta: float) -> void:
 	pad.progress = player.progress
 	pad.length = player.length
 	pad.heading = atan2(player.heading.x, -player.heading.z)
-	pad.depth = clampf((Sea.SURFACE - player.global_position.y) / 100.0, 0.0, 1.0)
+	# (the depth dial's full scale is as deep as the signal reaches: the needle at its stop is the
+	# limit; past that the picture fills with static)
+	var down := Sea.SURFACE - player.global_position.y
+	pad.depth = clampf(down / (purse.depth() if limited else 100.0), 0.0, 1.0)
+	_post.set_shader_parameter(&"signal_loss", clampf((down - purse.depth() + 3.0) / 5.0, 0.0, 1.0) if limited and player.alive else 0.0)
 	if _frames % 6 == 0:
 		_sound_out()
 	if over:
@@ -370,9 +443,13 @@ func _open_title() -> void:
 	_viewport.add_child(title)
 	_card = Title.Card.new()
 	add_child(_card)
+	title.eye_node = camera
+	_on_deck = true
 	_card.go.connect(func() -> void:
 		if _dive < 0.0 and _card.primed >= 1.0:
-			# (the fish is put in the water under the boat, wherever that has got to)
+			# (the fish is put in the water under the boat, wherever that has got to, and the boat
+			# heaves to there, its net out, for the rest of the game)
+			title.heave_to()
 			_start = Vector2(title.global_position.x, title.global_position.z)
 			restart()
 			pad.visible = false
@@ -461,7 +538,7 @@ func _title_step(delta: float) -> void:
 		camera.global_transform = title.eye(size.y > size.x)
 		_warm()
 		_card.primed = 1.0 if _warm_all == 0 else clampf(float(_warm_all - _warming.size()) / maxf(_warm_first, 1.0), 0.0, 1.0)
-		if _trick == "--dive" and _clock > 0.6:
+		if _trick == "--dive" and _clock > 0.6 and _card.primed >= 1.0:
 			_trick = ""
 			_card.go.emit()
 		return
@@ -473,19 +550,62 @@ func _title_step(delta: float) -> void:
 		if _warm_now:
 			_warm_now.queue_free()
 			_warm_now = null
-		_warm_view.queue_free()
-		title.queue_free()
-		title = null
-		_card.queue_free()
-		_card = null
+		if _warm_view:
+			_warm_view.queue_free()
+			_warm_view = null
+		# (the boat stays, hove-to with its net out: DESIGN.md's loop)
+		_on_deck = false
+		_dive = -1.0
+		if _card:
+			_card.queue_free()
+			_card = null
 		hud.visible = true
 		pad.visible = true
 		pad.release()
 
 
+## The fish was swum into the boat's net: it is hauled up and sold, and the sale shows, then the
+## shop (DESIGN.md's loop, 3 and 4).
+func _sell() -> void:
+	receipt = purse.sell(player.kind, player.length, player.is_biggest())
+	player.haul()
+	effects.splash(Vector3(player.global_position.x, Sea.SURFACE, player.global_position.z))
+	hud.best = maxf(hud.best, hud.reached)
+	hud.offer([])
+	hud.visible = false
+	pad.visible = false
+	pad.release()
+	paused = false
+	pad.paused = false
+	selling = true
+	_selling_for = 0.0
+	sale.show_receipt(receipt)
+
+
+func _open_shop() -> void:
+	shop.open(purse)
+
+
+## From the shop back into the sea: a new run, the eye starting on the boat and going down
+## through the surface to the fish under it, as from the title.
+func _dive_again() -> void:
+	selling = false
+	restart()
+	pad.visible = false
+	camera.global_transform = title.eye(size.y > size.x)
+	_dive_from = camera.global_transform
+	_dive = 0.0
+	_on_deck = true
+
+
+## How deep the fish may go just now (m).
+func _deepest() -> float:
+	return purse.depth() if limited else INF
+
+
 ## Pauses the game, or goes on (the panel's pause button; P or Escape).
 func _toggle_pause() -> void:
-	if over or title:
+	if over or _on_deck or selling:
 		return
 	paused = not paused
 	pad.paused = paused
@@ -581,6 +701,10 @@ func _sound_out() -> void:
 			var middle: Vector2 = Sea.ZONES[zone].at
 			var to := Vector3(middle.x - player.global_position.x, 0.0, middle.y - player.global_position.z)
 			marks.append([zone, Vector2(to.dot(aside), to.dot(forward))])
+		# (the boat, where its net hangs: the way to end a run as a sale)
+		var hoop := title.hoop()
+		var to_boat := Vector3(hoop.x - player.global_position.x, 0.0, hoop.z - player.global_position.z)
+		marks.append(["boat", Vector2(to_boat.dot(aside), to_boat.dot(forward))])
 	pad.landmarks = marks
 
 
@@ -694,8 +818,7 @@ func _on_died(by: String) -> void:
 	hud.over = true
 	pad.visible = false
 	pad.release()
-	if _saves:
-		var kept := ConfigFile.new()
-		kept.set_value("best", "length", hud.best)
-		kept.save(SAVE)
+	# (kept with the purse: Purse.save writes the money and gear as well as the longest)
+	purse.best = maxf(purse.best, hud.best)
+	purse.save()
 

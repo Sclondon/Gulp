@@ -179,6 +179,11 @@ const ALL := {
 	"humpback": {"script": "humpback_whale/humpback_whale", "how": "giant", "breathes": true, "zones": ["open"], "band": [0.5, 0.95], "count": 1, "size": [13.0, 14.0], "habit": "filter"},
 	"gray_whale": {"script": "gray_whale/gray_whale", "how": "giant", "breathes": true, "zones": ["open"], "band": [0.4, 0.9], "count": 1, "size": [12.0, 13.0], "habit": "graze"},
 	"fin_whale": {"script": "fin_whale/fin_whale", "how": "giant", "breathes": true, "zones": ["open"], "band": [0.5, 0.95], "count": 1, "size": [19.0, 20.0], "habit": "filter"},
+	# Sea monsters (the user, 2026-11-18: "leviathan, sea monster, cthulu old one, and godzilla like designs"):
+	# the leviathan a harmless giant of the deep, the sea serpent a stalker along the shelf's edge (Claude's
+	# places, numbers and sizes).
+	"leviathan": {"script": "leviathan/leviathan", "how": "giant", "zones": ["open", "trench"], "band": [0.2, 0.7], "count": 1, "size": [36.0, 40.0], "habit": "filter"},
+	"sea_serpent": {"script": "sea_serpent/sea_serpent", "zones": ["open"], "band": [0.3, 0.9], "count": 1, "size": [22.0, 25.0], "habit": "stalk"},
 	"blue_whale": {"script": "blue_whale/blue_whale", "how": "giant", "breathes": true, "zones": ["open"], "band": [0.5, 0.95], "count": 1, "size": [24.0, 25.0], "habit": "filter"},
 	"sperm_whale": {"script": "sperm_whale/sperm_whale", "how": "giant", "breathes": true, "zones": ["open"], "band": [0.05, 0.9], "count": 1, "size": [14.0, 15.0]},
 }

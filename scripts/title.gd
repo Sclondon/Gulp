@@ -18,7 +18,10 @@ extends Node3D
 ## in a helmet (models/brain_helmet.glb) cabled to it, his hands on its stick and its button; the
 ## diver winds the crank of his air pump on the aft deck. When the game is started, Main puts
 ## the fish in the water under the boat and sends the eye down through the surface to it: what
-## the boy steers.
+## the boy steers. Then the boat heaves to there (`heave_to`) and stays for the whole game, its net
+## (models/boat_net.glb) hung in the water off the starboard outrigger: a fish swum into its hoop
+## (`hoop`) is hauled up and sold (DESIGN.md's loop; Main). While hove-to the people and the
+## computer are drawn only when the eye is above the water and near.
 ##
 ## This node is where the boat is and how it is headed (its origin on the waterline, the bow
 ## towards its -Z); `boat` under it rocks. The boat's markers say where things go and which way
@@ -31,6 +34,14 @@ const PANEL := "res://models/control_panel.glb"
 const HELMET := "res://models/brain_helmet.glb"
 const HELMET_PAINT := "res://textures/panel/helmet_atlas.png"
 const FIGURES := "res://scripts/title_figures.gd"
+## The net the fish is sold into (tools/build_boat_net.py): its origin is the middle of its hoop, its
+## line runs NET_LINE metres straight up from there; it hangs from the starboard outrigger's end
+## (NET_TIP, measured off models/shrimp_boat.glb), so the hoop is about 3.6 m under the water.
+const NET := "res://models/boat_net.glb"
+const NET_TIP := Vector3(3.41, 8.39, 1.78)
+const NET_LINE := 12.0
+## How far off the eye may be for the figures and the computer to be drawn (m), during a run.
+const DETAIL_SEEN := 45.0
 ## How big the computer is beside the model it shares with the TouchPad, and how high its bench is (m).
 const COMPUTER := 0.25
 const BENCH := 0.5
@@ -70,6 +81,16 @@ var _sockets: Array[Node3D] = []
 var _clock := 0.0
 var _middle := Vector3.ZERO
 var _round := PI
+## Hove-to (the game is under way, DESIGN.md's loop): it no longer steams round but lies where it
+## is, its net out. Set by `heave_to`, or before it is added to start so.
+var hove := false
+## The game's camera: during a run the figures and the computer are drawn only while it is above
+## the water and near.
+var eye_node: Node3D
+## The net (null if its model is not built).
+var net: Node3D
+var _detail: Array[Node3D] = []
+var _foams: Array[CPUParticles3D] = []
 
 
 func _ready() -> void:
@@ -166,10 +187,49 @@ func _ready() -> void:
 				_cables.append(one)
 			cable.free()
 	parts.free()
+	for each: Node3D in [bench, computer, monitor, stool, boy, _captain, _diver]:
+		if each:
+			_detail.append(each)
+	_detail.append_array(_cables)
 	logo = TitleLogo.new()
 	add_child(logo)
 	_foam("BowWave", 40, 0.4, 1.6, 1.4)
 	_foam("Wake", 50, 0.55, 2.4, 0.7)
+	# The net, hung from the starboard outrigger's end (two-sided, drawn as the fishers' nets are).
+	if ResourceLoader.exists(NET):
+		net = (load(NET) as PackedScene).instantiate()
+		var mesh_paint := ShaderMaterial.new()
+		mesh_paint.shader = load("res://shaders/net.gdshader")
+		mesh_paint.set_shader_parameter(&"panel", false)
+		mesh_paint.set_shader_parameter(&"mesh", 0.12)
+		mesh_paint.set_shader_parameter(&"strand", 0.014)
+		for mesh: MeshInstance3D in net.find_children("*", "MeshInstance3D", true, false):
+			for surface in mesh.mesh.get_surface_count():
+				var made := mesh.mesh.surface_get_material(surface)
+				if made and made.resource_name == "net":
+					mesh.set_surface_override_material(surface, mesh_paint)
+		net.position = NET_TIP - Vector3(0.0, NET_LINE, 0.0)
+		boat.add_child(net)
+	if hove:
+		heave_to()
+	elif net:
+		net.visible = false
+
+
+## Stops it where it is, its net out: the game is under way. The name over it goes.
+func heave_to() -> void:
+	hove = true
+	if logo:
+		logo.visible = false
+	for foam in _foams:
+		foam.emitting = false
+	if net:
+		net.visible = true
+
+
+## The middle of the net's hoop (in the world), where a fish swims in to be sold.
+func hoop() -> Vector3:
+	return net.global_position if net else global_transform * (NET_TIP - Vector3(0.0, NET_LINE, 0.0))
 
 
 # Foam left on the water where the boat cuts it (at a marker on the waterline): white puffs that
@@ -206,6 +266,7 @@ func _foam(at: String, amount: int, big: float, lasts: float, apart: float) -> v
 	foam.position = (_spots[at] as Transform3D).origin + Vector3(0.0, 0.06, 0.0)
 	# (on this node, not the rocking boat: the foam lies on the water)
 	add_child(foam)
+	_foams.append(foam)
 
 
 # Takes a part out of a model, to put it somewhere else.
@@ -238,7 +299,14 @@ func _steam(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	_clock += delta
-	_steam(delta)
+	if not hove:
+		_steam(delta)
+	elif eye_node:
+		# (hove-to, under way: the people and the computer only while they could be seen)
+		var near := eye_node.global_position.y > Sea.SURFACE and eye_node.global_position.distance_to(global_position) < DETAIL_SEEN
+		if _detail.size() > 0 and _detail[0].visible != near:
+			for each in _detail:
+				each.visible = near
 	# The boat on the swell (seen broadside: it rolls towards and away, and pitches a little).
 	boat.rotation.z = sin(_clock * 0.8) * 0.03
 	boat.rotation.x = sin(_clock * 0.6 + 1.0) * 0.018

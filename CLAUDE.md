@@ -367,3 +367,51 @@ a half on a Windows desktop browser. Build the web export from the clean worktre
 - "the captain should have the outfit from teh first concept as well to switch into" (the user, 2026-11-18): two
   outfits on the captain (the first sheet's closed coat, and the open coat with chest hair and tattoos), switchable in
   `scripts/title_figures.gd`; nothing in the game switches it yet.
+
+## The treasure loop, stage 1 (2026-11-18): money, the net and the sale, the shop, the depth limit
+
+DESIGN.md's "Order of building" item 1, built at the user's "yes make the design and implement it". Plain screens;
+stage 2 rebuilds them in brass, so each is its own script with a small interface.
+
+- `scripts/purse.gd` (Purse): money, the amplifier's step, kinds sold, treasure pieces (unused), the longest fish, in
+  `user://gulp.cfg` (the old `[best] length` is read and written as before). `path` empty keeps it in memory: Main does
+  that whenever a test, the bot or a picture drives. The checks write `user://gulp_check.cfg`.
+- Worth (`Purse.WORTH`, money a metre, a table of its own, not in Species): sardine 8; flying fish 18, mackerel 16,
+  smolt 18, surfperch 16; bonito and barracuda 24, salmon 28, kelp bass and rockfish 26; snapper, leopard shark and
+  grouper 36, tuna, mahi and wahoo 40; sea bass 50, blue shark 55, bluefin and sailfish 60; swordfish 80, marlin 85,
+  white shark 90; orca 120 (the old code-built shark 50). Price = worth x length (rounded), x2 for the last of a line
+  at full length (`Player.is_biggest`), plus a first-sale bonus of one metre's worth (`FIRST_METRES`).
+- The amplifier (`Purse.AMP_DEPTH`/`AMP_PRICE`): 15 m (had from the start), 30 m for 30, 50 m for 150, 100 m for 600.
+  The start is about 20 m deep, the shelf 20 to 24 m, the canyon 45 to 75 m. A salmon at 0.72 m fetches 48 the first
+  time; a full sardine 11 and a mackerel at 0.48 m 24 (so one or two small sales buy 30 m).
+- The boat stays: once the dive starts, `Title.heave_to` stops it where it is (tests and pictures: hove-to 4 m south
+  of `Sea.START`), and its net (`tools/build_boat_net.py` -> `models/boat_net.glb`: a 0.8 m steel hoop, a 2.4 m net
+  bag drawn two-sided with `shaders/net.gdshader`, a 12 m line to the starboard outrigger's end, measured off the boat
+  at (3.41, 8.39, 1.78): the hoop is 3.6 m under) hangs out. While hove-to, the figures, computer, bench and cables
+  are drawn only with the eye above water within 45 m. The sonar shows it as "boat" (`Sonar.LANDMARKS`).
+- The sale: the fish's mouth within 0.9 m of the hoop's middle (or 0.4 of its length, for big fish), after the run has
+  gone 4 s (`Main.NET_*`), ends the run (`Player.haul`, not `died`). `scripts/sale.gd` (Sale: `show_receipt`, `done`)
+  shows the animal, length x worth, the crown x2, the star bonus, the sum and the purse; its arrow (Enter, Space, A)
+  opens `scripts/shop.gd` (Shop: `open(purse)`, `bought`, `dive`): the four steps, the next one pressable when it can
+  be paid (or B); its down arrow (Enter, Space, A) starts a new run and sends the eye down from the boat
+  (`Main._dive_again`, the title's dive). The bot skips the screens and swims again.
+- The depth limit: `Player.deepest` (from the purse): below it the fish is turned nose-up (whatever the stick says) and
+  is never let more than `Player.LIMIT_GIVE` (3 m) deeper. The post shader's one new uniform `signal_loss` draws the
+  static, from 3 m above the limit to full 2 m below. The depth dial's full scale is now the limit (its needle at the
+  stop = the limit). `Main.limited` (the smoke checks turn it off but for their own check).
+- Tests: four checks at the end of the smoke test (the net ends the run as a sale; the right sum, saved; the bonus once
+  and the doubling; buying a step; the new run from the shop with the new limit; static and turned back) and three in
+  the touch test (the sale's button, a step, the shop's button, all by touch). Pictures: `-- --as=tuna --sell` or
+  `--shop` with `--shot`, `--near=boat` looks at the net, `--near=trench` shows the static.
+- Claude's picks: every number above; the worth table being Purse's; the shop showing only the amplifier (the suit,
+  anchorages, tools and tackle are left out until the stages that use them); dying still goes to the old "again"
+  button, not the shop (so money can only be spent after a sale); the boat stays where the first dive started (it
+  can stop anywhere on its title circle); the name of the kind written under it on the sale screen.
+- Rough or unverified: nobody has played the loop by hand; the arena does not know about a sale (the player just
+  vanishes for the others); the `--dive` picture argument now waits until the start button is ready.
+- "we might add a manual sailing minigame where you conrtol the captain" (an idea, 2026-11-18: not designed or built).
+  "the diver is the older brother to the vr kid" (the user): the diver on the boat is the boy's older brother.
+  "and make the concpet art for other outfits as well, and make sure to capture his staunch proportions": the
+  captain's outfit sheet is `tools/art_src/concept_captain_outfits.jpg`.
+- In the sea: `leviathan` (a harmless giant, open ocean and canyon) and `sea_serpent` (a stalker, open ocean); both
+  wear one shared shader, `creatures/sea_monster/sea_monster.gdshader` (a copy ships with each component: keep them alike).
