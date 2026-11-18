@@ -477,12 +477,18 @@ choices below are Claude's.
   shouldnt just be a big open flat area, it should be built into the trench sides", then the circle above; concept
   `tools/art_src/concept_atlantis_canyon.png`). `tools/RUINS.md` has the layout, depths and decisions. In short: ONE
   table, `data/ruins_layout.json`, says where every building, ledge and stair is; the model's build
-  (`tools/build_atlantis_canyon.py` -> `models/atlantis_canyon.glb`), `Bay.ruins_ledges()` (small cut-only ledges
-  under each, never a flat disc; `Bay.RUINS_TERRACE` is gone) and `Ruins` (routes, `covers` for the plants) all read
-  it. After a floor rebake or a table change: `tools/ruins_ground.gd`, then the build, then `--import`, then
-  `tests/ruins_view.gd -- --check`. The temple is on the north shelf's edge (26 m) jutting over the drop, the bridge
-  and the crystal at 40 m, the colonnade and its rock-cut front at 54, the pyramid at 68, the rock-cut tomb at 82, the
-  fallen head on the deepest floor at 96 (needs the 100 m amplifier). The first, flat Atlantis (`build_ruins.py`,
+  (`tools/build_atlantis_canyon.py` -> `models/atlantis_canyon.glb`, about 15 minutes with its bake),
+  `Bay.ruins_ledges()` (small ledges under each, never a flat disc; `Bay.RUINS_TERRACE` is gone) and `Ruins` (routes,
+  `covers` for the plants) all read it. A ledge `cut`s (only lowers the floor: behind a rock-cut front, so the wall
+  does not fill its chamber) or fills `both` ways (terraces, stairs, the tread before each front): filled, the floor
+  itself carries each terrace and stair as a tread of the wall (masonry footings hung from them looked like curtains).
+  Fills are kept square to the world's axes: a diagonal one came out saw-toothed on the floor's grid. After a floor
+  rebake or a table change: `tools/ruins_ground.gd`, the build, `--import`, `tests/setpiece_hits.gd -- --fit-ruins
+  --no-ruins-extra`, then `tests/ruins_view.gd -- --check`. Every building stands on one of the trench's treads: the
+  gate and the temple on the north rim (26 m, the temple jutting over the drop on a crag), the bridge across the
+  canyon's mouth and the crystal on the east rim at 40, the colonnade and its rock-cut front at 54, the pyramid half
+  into the east wall at 68, rock-cut fronts at 70 (south wall) and 82 (foot of the north wall), the fallen head on the
+  basin floor at 96 (needs the 100 m amplifier). The first, flat Atlantis (`build_ruins.py`,
   `atlantis_ruins.glb` and its atlases, `ruins_extra.json`) is retired, unused; its helpers are still run by the new
   build.
 - **Skinnier canyons** (2026-11-18, superseded by the note above). The user drew rough lines over the overhead chart ("The trench area
@@ -879,3 +885,14 @@ Claude's.
   match reference" (the head was 21% too small with an invented neck: size and place the head from the BODY sheet).
   The user follows on a phone: send a short line between steps, and do not go quiet during long browser or build work
   ("I only stopped you because you weren't responding to my messages on my phone").
+- Townsfolk (NPC) bodies (the user, 2026-11-18, afternoon): "I've like all thr older brother bodys you've sent, so we
+  should make different models for each and generate a lanky build and women builds and we need models for them so we
+  can make npcs out of them". So every body sheet becomes its own NPC base body (bare, on the shared bone names, heads
+  and hands by `tools/FIGURE_HEADS.md`): from the brother's earlier sheets `concept_brother_tpose2.jpg` (short, sturdy,
+  lean), `_tpose3.jpg` (short, sturdy, square-faced), `_tpose4.jpg` (tall, athletic, defined), `_tpose5.jpg` (tall,
+  solid); and new sheets `concept_npc_man_lanky.jpg`, `concept_npc_woman_slender.jpg`, `_stout.jpg`, `_tall.jpg`,
+  `_old.jpg` (women in period chemise and drawers). The NPC sheets were made in a NEW Gemini conversation,
+  gemini.google.com/app/a896ddb450545c99 (a fresh chat draws fast and shows the picture at once; the set-pieces
+  conversation /app/d2fe19426ff0ebc4 is also used by another session for biome covers: do not type into it while it is
+  generating). Builder: `tools/build_npc.py` -> `models/npc/<name>.glb`. Which builds, faces, names and outfits the
+  townsfolk get is not decided: ask.
