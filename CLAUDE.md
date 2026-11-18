@@ -262,3 +262,45 @@ the sea (they need placing like scenery or the nettles, not as swimmers): `anemo
   pyrosome. Installed but not yet used: `sea_sparkle` (needs `stir` from Life), the four new jellyfish (need Life's
   jelly handling), `sea_slug`/`clam`/`oyster` when their builder finishes.
 - About 9 ms a frame on the desktop in the kelp now (it was about 6).
+
+## Asked for on 2026-11-18 and where each stands (the user's words; update as they land)
+
+How to work on anything visual here (the user: "We need a concept are solution", "spend more time coming up with a design
+... maybe generate concept art ... and do a couple qualitu passes"): CONCEPT ART FIRST. Generate it with Gemini in the
+user's Chrome (gemini.google.com, signed in; free; ChatGPT's free image limit runs out after three), keep it in
+`tools/art_src/concept_*.jpg`, give it to whoever builds, and have them do quality passes against it. Gemini drops the
+first prompt typed right after the page loads (send it twice), and a new picture often shows only after a reload.
+
+In progress with builders (each has a notes file in tools/): the Monterey Bay map with docks, beach, two kelp forests,
+the mangrove river at the centre, a pirate-wreck outcrop with a seal island, Atlantis in the lower trench
+(`MONTEREY.md`; the user drew the layout: it is described in the map builder's brief, not saved as a picture); the
+liner wreck reef (`WRECK.md`), the Atlantis ruins (`RUINS.md`), the pirate wreck (`PIRATE_WRECK.md`); water effects,
+day and night, the jump and splash (`WATER_FX.md`); schooling, swarms and species habits (`SCHOOLING.md`); the boat's
+quality pass (`SHRIMP_BOAT.md`).
+
+Not started:
+- "come up with some special abilities like inking as a squid" (the two switches on the panel are for them).
+- "Pause menu and other Uis need the same treat ment as the the controls, and we need a way to view the evolution
+  tree, and to add some roguelike elements" (concept: `tools/art_src/concept_menus.jpg`).
+- "we should take the current concept from salmon run like rails to get around the map faster".
+- "there should also be classic under water mines".
+- "we should add some birds, cormoratns, sea gulls etc", "some sea gulls on the boat at the beginning and following
+  along windwaker style".
+- "try to think of any animals we're missing and do a pass making them".
+- "look up how abzu animated their animals and we need to do an animtaion quality pass on how the fish turning and
+  stuff works, the flapping needs to be tied to acceleration for example, and some animals need special case passes
+  like the whales, squids, crustcateans. Im a big fan of phscially based and rope phsysics and seing soft body
+  reactions".
+- "the loading screen needs to be a swarm of sardines making up the wayside interactive logo sequence while it loads".
+- "the sonar needs to point out things you can eat, or something on the ui does i think, or maybe they need to have a
+  subtle outline and sparkle"; "the sonar map needs to show objects relation to you in 3d".
+- "the logo needs to be made up of a bunch of our fish models making the letters, trying to eat each other"
+  (concept: `tools/art_src/concept_fish_logo.jpg`; the picture logo on the title now is a stand-in).
+- "the little antenna on the control panel needs to be a bit shorter"; "the boat needs a wake" (foam puffs exist; a
+  proper V wake does not).
+
+Web build: a browser on Windows compiles each shader in about a second, so (1) animals get their models only when first
+seen (`Creature.become(kind, bare)`, `Life.mark_dressed`), (2) behind the title each kind is shown once to a tiny view
+(`Main._begin_warm`), the start button waiting for the starting waters' kinds. First load is still about a minute and
+a half on a Windows desktop browser. Build the web export from the clean worktree `../Gulp-build` (`git checkout
+--detach main` there; `git checkout -- build` first if it refuses), after `sh tools/web_excludes.sh` here.
