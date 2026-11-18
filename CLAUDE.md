@@ -432,6 +432,16 @@ choices below are Claude's.
   (`peninsula_source`: inside an ellipse, blended out to 1.4 times it, so the trench, the liner and Monterey's
   docks barely move). What was placed by its coast moved by `peninsula_target`: Carmel's pier, harbour, market,
   white beach and reef, the south kelp and its arch.
+- **Biomes the user drew** (2026-11-18): "We need to make proper biomes, with concept art for each considering our
+  needs. Green is kelp forest, yellow is sand dune sea, red is sea grassy fields, purple is rocky crags" (coloured
+  outlines over the overhead chart, kept as `tools/art_src/user_biome_lines.png`); then "This trench needs to be
+  enlarged and then the green section should be kelp forest not dune sea" (`tools/art_src/user_trench_soquel.png`);
+  and, when Claude began tracing the colours pixel by pixel: "You shouldnt be that exact just look at the map and see
+  the areas I was trying to highlight". So `scripts/biome_regions.gd` (BiomeRegions) holds rough outlines read off
+  the drawings by eye, world metres, kelp over dunes where they overlap (`at`, `weight`); `tests/overhead.gd
+  --biomes` draws them. The Soquel branch of the trench is wider (`bake_bay.gd` `TRENCH_ADD`). Not yet built:
+  concept art per biome, then dressing each region to it (the old circle-shaped zones and Biomes' tables still
+  place everything).
 - **A second rocky islet** (2026-11-18, the user: "lets add another rocky outcrop island just south south west of the
   pirate ship to fill in that empty spot a bit as well"): `Scenery.OUTCROP_SOUTH` (-74, -14), built by the same
   `_build_outcrop` (now taking its middle, a name, the islet's turn and whether seals lie on it: these have none;

@@ -47,6 +47,11 @@ const USE_TRENCH_MASK := true
 ## Carmel Canyon: the user asked for it there.
 const CARMEL_DRAWN := Vector2(-82.0, 66.0)
 const TRENCH := "res://data/trench_mask.png"
+## More trench, rough outlines the user drew later (world x, z): the Soquel Canyon branch north of the main
+## canyon, wider ("This trench needs to be enlarged", 2026-11-18; the user: "You shouldnt be that exact").
+const TRENCH_ADD := [
+	[Vector2(-16.0, -21.0), Vector2(-2.0, -48.0), Vector2(9.0, -78.0), Vector2(13.0, -84.0), Vector2(16.0, -80.0), Vector2(16.0, -34.0), Vector2(8.0, -19.0)],
+]
 const SHELF := 26.0
 const SHELF_EASE := 5.0
 const WALL := 3.0
@@ -309,6 +314,9 @@ func _trench(src: PackedFloat32Array, cols: int, rows: int) -> PackedFloat32Arra
 	for r in rows:
 		for c in cols:
 			var m := mask.get_pixel(mini(c, mask.get_width() - 1), mini(r, mask.get_height() - 1)).r > 0.5
+			# (and what the user asked to add to it since: TRENCH_ADD)
+			for shape: Array in TRENCH_ADD:
+				m = m or Geometry2D.is_point_in_polygon(Vector2(WEST + c * CELL, NORTH + r * CELL), PackedVector2Array(shape))
 			inside[r * cols + c] = 1.0 if m else -1.0
 	var to_out := _chamfer(inside, cols, rows, true)
 	var to_in := _chamfer(inside, cols, rows, false)

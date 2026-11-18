@@ -144,6 +144,24 @@ func _label(whole: Image, wide: float, high: float) -> void:
 	sheet.add_child(picture)
 	var scale := w / wide
 	var to_px := func(p: Vector2) -> Vector2: return Vector2((p.x - Sea.WEST) * scale, (p.y - Sea.NORTH) * scale)
+	# (--biomes: BiomeRegions' outlines, tinted, under the names)
+	if OS.get_cmdline_user_args().has("--biomes"):
+		var tint := {"kelp": Color(0.1, 0.9, 0.2), "dunes": Color(1.0, 0.9, 0.1), "grass": Color(1.0, 0.25, 0.25), "crags": Color(0.9, 0.2, 0.9)}
+		for biome: String in BiomeRegions.SHAPES:
+			for shape: Array in BiomeRegions.SHAPES[biome]:
+				var pts := PackedVector2Array()
+				for v: Vector2 in shape:
+					pts.append(to_px.call(v))
+				var fill := Polygon2D.new()
+				fill.polygon = pts
+				fill.color = Color(tint[biome], 0.22)
+				sheet.add_child(fill)
+				var edge := Line2D.new()
+				edge.points = pts
+				edge.closed = true
+				edge.width = 4.0
+				edge.default_color = tint[biome]
+				sheet.add_child(edge)
 	var marks := {}
 	for zone: String in Sea.ZONES:
 		if float(Sea.ZONES[zone].radius) > 0.0:
