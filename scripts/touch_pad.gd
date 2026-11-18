@@ -10,6 +10,11 @@ extends Control
 ## - The speed lever: an engine-order arc round the burst button, from dead slow (at its left
 ##   end) to full ahead (at its top), with a brass handle that stays where it is put.
 ##
+## They are pictures (textures/controls/*.png), rendered from brass models built in Blender by
+## tools/build_controls.py, and drawn see-through (`SEE`) so the sea shows behind them (the user:
+## "The controls should still be see through", "can you generate images for the controls ? Rather
+## than shapes"). Only what changes is drawn here: the gauge's level and the lit orders.
+##
 ## All are always drawn. A touch anywhere in the lower left takes the helm (it moves under the
 ## thumb); a touch on the arc takes the lever; a touch anywhere else in the lower right holds the
 ## burst. A mouse works as a finger (the project turns mouse presses into touches).
@@ -19,6 +24,10 @@ const BRASS_LIGHT := Color(1.0, 0.88, 0.55)
 const BRASS_DARK := Color(0.33, 0.23, 0.09)
 const IRON := Color(0.10, 0.12, 0.14)
 const GLASS := Color(0.75, 0.95, 0.9)
+const ART := "res://textures/controls/%s.png"
+## How solid the fittings are drawn: at rest, and the part under a finger.
+const SEE := 0.58
+const SEE_HELD := 0.9
 ## The lever's arc round the burst button: where dead slow and full ahead are (radians, as the
 ## screen has them: 0 to the right, a quarter turn back is straight up).
 const SLOW_AT := PI * 1.03
@@ -36,6 +45,7 @@ var _stick_touch := -1
 var _boost_touch := -1
 var _lever_touch := -1
 var _stick_from := Vector2.ZERO
+var _art := {}
 
 
 func _ready() -> void:
@@ -141,91 +151,38 @@ func _pull(at: Vector2) -> void:
 
 func _draw() -> void:
 	var u := unit()
-	_draw_helm(u)
-	_draw_lever(u)
-	_draw_burst(u)
-
-
-# A round brass plate: a dark rim, the brass, a bright edge towards the light, rivets round it.
-func _plate(at: Vector2, r: float, rivets: int, see := 0.82) -> void:
-	draw_circle(at, r + 5.0 * unit(), Color(IRON, 0.55))
-	draw_circle(at, r, Color(BRASS_DARK, see))
-	draw_arc(at, r - 4.0 * unit(), 0.0, TAU, 64, Color(BRASS, see), 8.0 * unit(), true)
-	draw_arc(at, r - 4.0 * unit(), PI * 1.05, PI * 1.6, 24, Color(BRASS_LIGHT, see * 0.8), 3.0 * unit(), true)
-	for k in rivets:
-		var way := Vector2.from_angle(TAU * (k + 0.5) / rivets)
-		draw_circle(at + way * (r - 4.0 * unit()), 3.6 * unit(), Color(BRASS_DARK, see))
-		draw_circle(at + way * (r - 4.0 * unit()) - Vector2(1.0, 1.0) * unit(), 2.0 * unit(), Color(BRASS_LIGHT, see))
-
-
-# The helm: the plate, an engraved arrowhead each way, the stick's shaft and its brass ball.
-func _draw_helm(u: float) -> void:
+	# The helm: its plate, and the stick's brass ball where the thumb has pushed it.
 	var home := _stick_from if _stick_touch != -1 else stick_home()
-	var reach := 105.0 * u
-	_plate(home, reach, 12, 0.6)
-	draw_circle(home, reach * 0.74, Color(IRON, 0.45))
-	draw_arc(home, reach * 0.74, 0.0, TAU, 48, Color(BRASS, 0.7), 2.5 * u, true)
-	for k in 4:
-		var way := Vector2.RIGHT.rotated(k * PI * 0.5)
-		var tip := home + way * reach * 0.68
-		var across := way.orthogonal() * reach * 0.1
-		draw_colored_polygon(PackedVector2Array([tip, tip - way * reach * 0.14 + across, tip - way * reach * 0.14 - across]), Color(BRASS_LIGHT, 0.75))
-	var knob := home + Vector2(stick.x, -stick.y) * reach * 0.58
-	# (the shaft, from its boot in the middle to the ball)
-	draw_circle(home, reach * 0.2, Color(IRON, 0.8))
-	draw_line(home, knob, Color(BRASS_DARK, 0.95), reach * 0.16, true)
-	draw_line(home, knob, Color(BRASS, 0.95), reach * 0.08, true)
-	var held := _stick_touch != -1
-	draw_circle(knob, reach * 0.36, Color(BRASS_DARK, 0.95))
-	draw_circle(knob, reach * 0.32, Color(BRASS, 1.0 if held else 0.9))
-	draw_circle(knob - Vector2(reach, reach) * 0.1, reach * 0.11, Color(BRASS_LIGHT, 0.9))
-
-
-# The speed lever: a slotted brass arc with a tick for each order, growing from dead slow to full
-# ahead, and the handle.
-func _draw_lever(u: float) -> void:
+	_stamp("helm_plate", home, 240.0 * u, SEE)
+	var knob := home + Vector2(stick.x, -stick.y) * 105.0 * u * 0.58
+	draw_line(home, knob, Color(BRASS_DARK, SEE), 14.0 * u, true)
+	_stamp("helm_knob", knob, 90.0 * u, SEE_HELD if _stick_touch != -1 else SEE + 0.15)
+	# The speed lever: its track round the burst button, the orders lit up to where the handle is,
+	# and the handle, turned to reach in to the hub.
 	var at := boost_home()
-	var r := lever_radius()
-	draw_arc(at, r, SLOW_AT - 0.08, FULL_AT + 0.08, 40, Color(IRON, 0.6), 40.0 * u, true)
-	draw_arc(at, r, SLOW_AT - 0.08, FULL_AT + 0.08, 40, Color(BRASS_DARK, 0.85), 32.0 * u, true)
-	draw_arc(at, r + 14.0 * u, SLOW_AT - 0.08, FULL_AT + 0.08, 40, Color(BRASS, 0.9), 3.0 * u, true)
-	draw_arc(at, r - 14.0 * u, SLOW_AT - 0.08, FULL_AT + 0.08, 40, Color(BRASS, 0.9), 3.0 * u, true)
-	# (the slot the handle runs in)
-	draw_arc(at, r, SLOW_AT, FULL_AT, 40, Color(IRON, 0.9), 7.0 * u, true)
-	# the orders: five ticks, each longer and brighter than the last, lit up to the lever
+	_stamp("lever_arc", at, 420.0 * u, SEE)
 	for k in 5:
 		var share := k / 4.0
-		var way := Vector2.from_angle(lerpf(SLOW_AT, FULL_AT, share))
-		var long := (9.0 + 5.0 * k) * u
-		var lit := throttle >= share - 0.02
-		draw_line(at + way * (r + 22.0 * u), at + way * (r + 22.0 * u + long), Color(BRASS_LIGHT if lit else BRASS_DARK, 0.95), (3.0 + 0.8 * k) * u, true)
-	# the handle: an arm from the hub's rim, and a brass grip
+		if throttle >= share - 0.02:
+			var way := Vector2.from_angle(lerpf(SLOW_AT, FULL_AT, share))
+			var near := lever_radius() + 23.0 * u
+			draw_line(at + way * near, at + way * (near + (9.0 + 5.0 * k) * u), Color(BRASS_LIGHT, 0.9), (3.2 + 0.8 * k) * u, true)
 	var grip := lever_at(throttle)
-	var way_out := (grip - at).normalized()
-	draw_line(at + way_out * 92.0 * u, grip, Color(BRASS_DARK, 0.95), 12.0 * u, true)
-	draw_line(at + way_out * 92.0 * u, grip, Color(BRASS, 0.95), 6.0 * u, true)
-	draw_circle(grip, 25.0 * u, Color(IRON, 0.7))
-	draw_circle(grip, 22.0 * u, Color(BRASS_DARK, 1.0))
-	draw_circle(grip, 18.0 * u, Color(BRASS_LIGHT if _lever_touch != -1 else BRASS, 1.0))
-	draw_circle(grip - Vector2(6.0, 6.0) * u, 5.0 * u, Color(BRASS_LIGHT, 0.9))
-
-
-# The burst: a brass plunger with a double arrowhead, in a pressure gauge that shows what is left.
-func _draw_burst(u: float) -> void:
-	var at := boost_home()
-	var r := 88.0 * u
-	_plate(at, r, 10)
-	# the gauge: a glass ring, green where there is burst left, a red stop at empty
-	draw_arc(at, r - 15.0 * u, 0.0, TAU, 64, Color(IRON, 0.85), 11.0 * u, true)
+	_stamp("lever_handle", grip, 200.0 * u, SEE_HELD if _lever_touch != -1 else SEE + 0.2, (grip - at).angle())
+	# The burst: its plate, the gauge's level in the plate's channel, and the plunger's cap (sunk
+	# and lit while it is held).
+	_stamp("burst_plate", at, 200.0 * u, SEE)
 	if stamina > 0.01:
-		draw_arc(at, r - 15.0 * u, -PI * 0.5, -PI * 0.5 + TAU * stamina, 64, Color(0.45, 0.95, 0.7, 0.95), 8.0 * u, true)
-	draw_line(at + Vector2(0.0, -(r - 22.0 * u)), at + Vector2(0.0, -(r - 8.0 * u)), Color(0.95, 0.25, 0.15, 0.95), 4.0 * u, true)
-	# the plunger: sunk a little while it is held
-	var cap := r - 26.0 * u - (4.0 * u if boost else 0.0)
-	draw_circle(at, cap + 3.0 * u, Color(BRASS_DARK, 1.0))
-	draw_circle(at, cap, Color(BRASS, 1.0) if not boost else Color(BRASS.darkened(0.15), 1.0))
-	draw_arc(at, cap - 4.0 * u, PI * 1.05, PI * 1.6, 20, Color(BRASS_LIGHT, 0.0 if boost else 0.9), 3.0 * u, true)
-	for k in 2:
-		var x := (k - 0.5) * cap * 0.55 - cap * 0.08
-		draw_polyline(PackedVector2Array([at + Vector2(x - cap * 0.18, -cap * 0.36), at + Vector2(x + cap * 0.22, 0.0), at + Vector2(x - cap * 0.18, cap * 0.36)]),
-				Color(IRON if not boost else GLASS, 0.9), 7.0 * u, true)
+		draw_arc(at, 70.0 * u, -PI * 0.5, -PI * 0.5 + TAU * stamina, 64, Color(0.45, 0.95, 0.7, 0.85), 9.0 * u, true)
+	_stamp("burst_cap", at, (124.0 if boost else 130.0) * u, SEE_HELD if boost else SEE + 0.12)
+	if boost:
+		draw_circle(at, 58.0 * u, Color(GLASS, 0.18))
+
+
+# One of the pictures, its middle at a place, `wide` across, so solid, turned.
+func _stamp(named: String, at: Vector2, wide: float, solid: float, turn := 0.0) -> void:
+	if not _art.has(named):
+		_art[named] = load(ART % named)
+	draw_set_transform(at, turn)
+	draw_texture_rect(_art[named], Rect2(Vector2(-wide, -wide) * 0.5, Vector2(wide, wide)), false, Color(1.0, 1.0, 1.0, solid))
+	draw_set_transform(Vector2.ZERO)
