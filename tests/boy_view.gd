@@ -8,10 +8,10 @@ extends SceneTree
 ## sides; and a few poses to see how he bends (arm down and forward, elbow and knee bent). Then quits.
 
 const MODEL := "res://models/boy.glb"
-const SHEET_S := 1.5 / (1462.0 - 135.0)      # metres a sheet pixel (build_boy.py's S)
-## The head sheet (concept_boy_head.jpg): metres a pixel, and the height of its row 1010 (build_boy.py's HS, hz)
-const HEAD_S := 0.000635
-const HEAD_MID_Y := (1462.0 - 380.0) * SHEET_S + (1165.0 - 1010.0) * HEAD_S
+const SHEET_S := 1.5 / (1495.0 - 73.0)       # metres a sheet pixel (build_boy.py's S; fifth pass: concept_boy_tpose2.jpg)
+## The head sheet (concept_boy_head2.jpg): metres a pixel, and the height of its row 1150 (build_boy.py HS, hz)
+const HEAD_S := SHEET_S * 0.535
+const HEAD_MID_Y := (1495.0 - 310.0) * SHEET_S + (1305.0 - 1150.0) * HEAD_S
 
 var _out := ""
 var _cam: Camera3D
@@ -62,7 +62,7 @@ func _initialize() -> void:
 	_cam.projection = Camera3D.PROJECTION_ORTHOGONAL
 	world.add_child(_cam)
 	var body_size := 1440.0 * SHEET_S
-	var body_at := Vector3(0, (1462.0 - 780.0) * SHEET_S, 0)
+	var body_at := Vector3(0, (1495.0 - 780.0) * SHEET_S, 0)
 	# (name, eye direction from him, look-at, ortho size, lit, pose, eye distance, plain grey)
 	# The plain grey shots (every surface one grey, lit by a low raking sun from his front left) show the forms that are
 	# in the mesh, without the paint.
@@ -71,7 +71,7 @@ func _initialize() -> void:
 		for b in body:
 			_shots.append([("grey_" if grey else "") + b[0], b[1], body_at, body_size, true, "", 5.0, grey])
 	_shots.append(["body_front_unlit", Vector3(0, 0, 1), body_at, body_size, false, "", 5.0, false])
-	var head_at := Vector3(0, 1.36, 0.035)
+	var head_at := Vector3(0, 1.35, 0.03)
 	var head := [["head_front", Vector3(0, 0, 1)], ["head_three_quarter", Vector3(0.62, 0, 0.78)], ["head_side", Vector3(-1, 0, 0)], ["head_back", Vector3(0, 0, -1)], ["head_below", Vector3(0, -0.6, 0.8)]]
 	for grey in [false, true]:
 		for h in head:
@@ -105,6 +105,12 @@ func _initialize() -> void:
 			_shots.append([b[0], Vector3(-sin(a), 0.22, cos(a)).normalized(), at, 0.0, true, "", 2.9, false, true])
 		_shots.append(["beauty_head_q", Vector3(-sin(deg_to_rad(35.0)), 0.05, cos(deg_to_rad(35.0))).normalized(), Vector3(0, 1.3, 0), 0.0, true, "", 0.95, false, true])
 		_shots.append(["beauty_head_front", Vector3(0, 0.05, 1).normalized(), Vector3(0, 1.3, 0), 0.0, true, "", 0.95, false, true])
+		# (fifth pass) close-ups of his left hand and left foot, lit, and the stride and the sitting pose in grey
+		_shots.append(["beauty_hand", Vector3(0.9, 0.1, 0.45).normalized(), hand_at, 0.0, true, "", 0.42, false, true])
+		var foot_at := _bone_at("foot_l") * 0.45 + _bone_at("toe_l") * 0.55 + Vector3(0, -0.04, 0)
+		_shots.append(["beauty_foot", Vector3(0.55, 0.55, 0.65).normalized(), foot_at, 0.0, true, "", 0.6, false, true])
+		_shots.append(["beauty_stride_grey", Vector3(0.7, 0.15, 0.7).normalized(), at, 0.0, true, "stride", 2.9, true, true])
+		_shots.append(["beauty_sit_grey", Vector3(0.7, 0.15, 0.7).normalized(), at, 0.0, true, "sit", 2.9, true, true])
 	_grey = StandardMaterial3D.new()
 	_grey.albedo_color = Color(0.7, 0.7, 0.72)
 	_grey.roughness = 0.8
