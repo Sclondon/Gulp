@@ -427,7 +427,11 @@ choices below are Claude's.
   and rounded the points; the user: "Nope you totally ruined the shape of the peninsula". It is off
   (`PENINSULA_GROW` 0; the floor is byte for byte as before) and Carmel's pier, harbour, market, beach and reef are
   back. Lesson: an even offset of a coastline loses its bays and points; if it is to be bigger, scale its shape, and
-  show a picture before building it. Not yet redone.
+  show a picture before building it. Then redone that way, approved ("The bigger peninsula looks good"): the bake
+  reads the floor round the peninsula from a copy scaled `PEN_SCALE` (1.15) from where it joins the land
+  (`peninsula_source`: inside an ellipse, blended out to 1.4 times it, so the trench, the liner and Monterey's
+  docks barely move). What was placed by its coast moved by `peninsula_target`: Carmel's pier, harbour, market,
+  white beach and reef, the south kelp and its arch.
 - **The pirate ship moved** (2026-11-18): on the overlay the user's red line ran from the pirate ship to a circle;
   Claude first read it as moving the start; the user: "why havent you moved the pirate ship like I showed in the
   overlay". `Sea.PIRATE_AT` (-65, 19, -42) and its hollow, the seal rock (`Scenery.OUTCROP` (-93, -52), off its west
@@ -441,6 +445,18 @@ choices below are Claude's.
   Canyon under the liner about 38 m); the broad south-western basin still reaches 95 m. Outside the trench the floor
   is raised to 26 m right up to its edge (an ease there left a moat). Same message: "the ruins need to be way further
   out in the deepest part of the trench", circled at about (-60, 53): passed to the Atlantis builder.
+- **Atlantis is built into the stepped walls of that basin** (2026-11-18; the user: "The Atlantis ruines area
+  shouldnt just be a big open flat area, it should be built into the trench sides", then the circle above; concept
+  `tools/art_src/concept_atlantis_canyon.png`). `tools/RUINS.md` has the layout, depths and decisions. In short: ONE
+  table, `data/ruins_layout.json`, says where every building, ledge and stair is; the model's build
+  (`tools/build_atlantis_canyon.py` -> `models/atlantis_canyon.glb`), `Bay.ruins_ledges()` (small cut-only ledges
+  under each, never a flat disc; `Bay.RUINS_TERRACE` is gone) and `Ruins` (routes, `covers` for the plants) all read
+  it. After a floor rebake or a table change: `tools/ruins_ground.gd`, then the build, then `--import`, then
+  `tests/ruins_view.gd -- --check`. The temple is on the north shelf's edge (26 m) jutting over the drop, the bridge
+  and the crystal at 40 m, the colonnade and its rock-cut front at 54, the pyramid at 68, the rock-cut tomb at 82, the
+  fallen head on the deepest floor at 96 (needs the 100 m amplifier). The first, flat Atlantis (`build_ruins.py`,
+  `atlantis_ruins.glb` and its atlases, `ruins_extra.json`) is retired, unused; its helpers are still run by the new
+  build.
 - **Skinnier canyons** (2026-11-18, superseded by the note above). The user drew rough lines over the overhead chart ("The trench area
   needs to be skinner, just showing roughish boundaries"), and the first try traced them (below); then: "I didnt want
   it to be based exactly on my rough drawing just meant trench needs to be skinnier". So the bake now keeps the real

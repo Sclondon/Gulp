@@ -60,6 +60,13 @@ const TERRACE_WIDE := 6.0
 ## Carmel Bay and rounded the points)
 const PENINSULA_GROW := 0.0
 const PENINSULA := Vector2(58.0, 56.0)
+## The peninsula scaled (see peninsula_source): how much bigger, from where, inside which ellipse (middle,
+## radii, world m) and fading out to PEN_FADE times it.
+const PEN_SCALE := 1.15
+const PEN_ROOT := Vector2(58.0, 110.0)
+const PEN_MIDDLE := Vector2(30.0, 108.0)
+const PEN_RADII := Vector2(36.0, 56.0)
+const PEN_FADE := 1.4
 const TERRACE_STEP := 14.0
 const TERRACE_TREAD := 0.6
 ## The smoothing: box blurs this many cells round, this many times (about a Gaussian).
@@ -123,7 +130,7 @@ func _initialize() -> void:
 	raw.resize(cols * rows)
 	for r in rows:
 		for c in cols:
-			var ll := to_lon_lat(Vector2(WEST + c * CELL, NORTH + r * CELL))
+			var ll := to_lon_lat(peninsula_source(Vector2(WEST + c * CELL, NORTH + r * CELL)))
 			var h := _height(ll.x, ll.y)
 			raw[r * cols + c] = game_depth(-h) if h < 0.0 else -clampf(h * 0.04, 0.0, 4.0)
 	raw = _grow_peninsula(raw, cols, rows)
@@ -211,7 +218,34 @@ func _narrow(src: PackedFloat32Array) -> PackedFloat32Array:
 	return out
 
 
-# The Monterey Peninsula a little bigger (the user, 2026-11-18: "The peninsula needs to be a little bigger"):
+# The Monterey Peninsula bigger, its own shape scaled up (the user, 2026-11-18: "The peninsula needs to be a
+# little bigger"; then, of an even coast offset that filled Carmel Bay: "you totally ruined the shape"; then
+# "Yes I want the peninsula bigger"). Where the floor at a world point is read from: inside the ellipse
+# PEN_MIDDLE / PEN_RADII, from PEN_ROOT + (p - PEN_ROOT) / PEN_SCALE (a copy PEN_SCALE times as big, growing out
+# from where the peninsula joins the land); outside it the real place; between (out to PEN_FADE times the
+# ellipse), a smooth blend. `peninsula_target` is the other way: where something placed by the real coast
+# goes.
+static func peninsula_source(p: Vector2) -> Vector2:
+	var w := _pen_weight(p)
+	if w <= 0.0:
+		return p
+	return p.lerp(PEN_ROOT + (p - PEN_ROOT) / PEN_SCALE, w)
+
+
+static func peninsula_target(q: Vector2) -> Vector2:
+	var p := PEN_ROOT + (q - PEN_ROOT) * PEN_SCALE
+	# (a few rounds to undo the blend near the edge)
+	for k in 6:
+		p += q - peninsula_source(p)
+	return p
+
+
+static func _pen_weight(p: Vector2) -> float:
+	var d := ((p - PEN_MIDDLE) / PEN_RADII).length()
+	return 1.0 - smoothstep(1.0, PEN_FADE, d)
+
+
+# (unused: the even coast offset that ruined the shape) The Monterey Peninsula a little bigger (the user, 2026-11-18: "The peninsula needs to be a little bigger"):
 # its coast moved PENINSULA_GROW metres out to sea, inside PENINSULA (x from, z from: Point Pinos round to
 # Point Lobos, west of Monterey's harbour), fading to nothing over 10 m at the box's edges. The new land rises
 # gently from the old shore line; the water beyond it keeps its own floor (the near shore is eased later).

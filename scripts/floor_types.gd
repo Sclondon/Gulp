@@ -31,7 +31,7 @@ const ROCKY_POINTS := [
 	[Vector2(24.0, 110.0), Vector2(24.0, 150.0), 14.0],  # Pescadero Point to Point Lobos
 ]
 ## Carmel's beach (world): white sand within this.
-const CARMEL_BEACH := [Vector2(34.0, 118.0), 10.0]
+const CARMEL_BEACH := [Vector2(30.4, 119.2), 11.0]
 ## Steep ground (rise over run) that may be rock, where the noise allows: canyon walls, the shelf's edge.
 const STEEP := 0.6
 

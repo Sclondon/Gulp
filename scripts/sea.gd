@@ -40,7 +40,7 @@ const EDGE := Bay.EDGE * Bay.K
 const ZONES := {
 	"beach": {"at": Vector2(60.0, -125.0), "radius": 0.0},
 	"river": {"at": Vector2(106.0, -38.0), "radius": 9.0},
-	"kelp": {"at": Vector2(44.0, 55.0), "radius": 16.0, "also": [[Vector2(35.0, -130.0), 13.0]]},
+	"kelp": {"at": Vector2(42.4, 48.6), "radius": 16.0, "also": [[Vector2(35.0, -130.0), 13.0]]},
 	"docks": {"at": Vector2(66.0, 68.0), "radius": 16.0, "also": [[Vector2(3.0, -123.0), 12.0]]},
 	"sand": {"at": Vector2(-10.0, -105.0), "radius": 22.0},
 	"pirate": {"at": Vector2(-65.0, -42.0), "radius": 18.0},
@@ -70,7 +70,7 @@ const PIRATE_HEADING := 1.57
 ## The fish markets' landings (the user: "the fish markets should be at monteray, santa cruz, and carmel";
 ## the places are Claude's): the end of Monterey's commercial wharf, the end of the Santa Cruz wharf,
 ## the end of Carmel's pier at Stillwater Cove (world x, z). Selling there is another stage's.
-const MARKETS := {"monterey": Vector2(82.0, 56.0), "santa_cruz": Vector2(-8.0, -107.0), "carmel": Vector2(27.0, 121.0)}
+const MARKETS := {"monterey": Vector2(82.0, 56.0), "santa_cruz": Vector2(-8.0, -107.0), "carmel": Vector2(22.4, 122.6)}
 ## Where a run starts (x, z): over the sand off Santa Cruz, east of the pirate ship, with room east of it
 ## for the title boat's circle (45 m round a middle 45 m east: Title.COURSE).
 const START := Vector2(-40.0, -55.0)
