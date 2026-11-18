@@ -372,6 +372,27 @@ choices below are Claude's.
   hour in `Sea._look`, shown only with the eye above water (under it the background is the water colour as before). It
   lights nothing (ambient stays a colour, reflections off) and is redrawn into its small radiance only when `_look`
   changes it (the drift is a uniform, not TIME).
+- **Decision: caustics as one pass over the picture** (2026-11-18, the user: "The caustics need to appear on fish and
+  props etc"; the way is Claude's pick). What: `scripts/caustics.gd` (made by `Sea._caustics`) draws one full-screen
+  quad with `shaders/caustics.gdshader`, first among the see-through things (`render_priority` lowest, so before the
+  water's surface, jellies, bubbles and shafts). It reads `hint_depth_texture` and `hint_screen_texture`, rebuilds each
+  pixel's world position (Compatibility's depth is turned to NDC as `vec3(SCREEN_UV, depth) * 2 - 1`, through
+  `INV_PROJECTION_MATRIX`; tested), takes the surface's facing from `dFdx`/`dFdy` of that position, and lights what
+  faces up with the sand's old net (same texture, scale, drift, `water_clock`, depth and distance fades); the fog's
+  share of the pixel is taken out first so far things are not lit through the murk. The net is no longer put into the
+  sand's shader (`_caustics` still makes the sand's copy for the rock walls), so floor and animals agree exactly. Why:
+  one program for every surface (about 156 programs otherwise, 130 of them GameCommon creatures', and a browser
+  compiles each on first draw), nothing to keep in step, and its cost is per pixel of a half-size picture, not per
+  object. The practice: deferred/screen-space decals and "projected caustics" (world position rebuilt from depth,
+  pattern projected from above, masked by facing), as in Godot's own advanced post-processing recipe and Unity/Unreal
+  water kits. Alternatives: (b) a shared include and a global sampler in every material (150-odd shaders to edit,
+  GameCommon's to fork, every program bigger), (c) a light cookie on the sun (Godot's projector textures work only on
+  omni and spot lights, not directional ones, and the sea has no sun shadows; a spot light the size of the view would
+  light everything, faces down too, and costs a light per object in Compatibility). Costs measured on the desktop
+  (`--perf`, with and without `--no-caustics`): one more draw, GPU time within the run-to-run noise (0.15 to 0.5 ms
+  either way). What Compatibility adds for it: one copy of the colour and depth buffers after the solid pass. Rough:
+  the facing from neighbouring pixels speckles on thin, busy plants, and the net is about a metre a cell, so a small
+  fish only brightens and dims as it swims through it. Not tried in a browser or on a phone.
 - The user (2026-11-18, of the overhead chart): "The giant monsters should not just spawn, those will need special
   conditions, and the map needs a lot of work, should be based on a real topography of the bay". So the leviathan, sea
   serpent and ghost whale (Species `monster`) and the old one and reef-back (`Scenery.MONSTERS` off) are no longer in

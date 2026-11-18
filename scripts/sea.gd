@@ -105,7 +105,7 @@ var _snow: CPUParticles3D
 var shafts: LightShafts
 var _sun: DirectionalLight3D
 var _water: ShaderMaterial
-var _sand_look: ShaderMaterial
+var _caustic_pass: Caustics
 var _look_wait := 0.0
 var _shaft_strength := 0.0
 
@@ -411,32 +411,24 @@ func _look() -> void:
 	shafts.slant = Vector3(aside.x, -sqrt(1.0 - bent * bent), aside.y)
 	shafts.colour = lit.lerp(Color.WHITE, 0.3)
 	_shaft_strength = 0.2 * lerpf(0.3, 1.0, day)
-	if _sand_look:
-		_sand_look.set_shader_parameter(&"caustics", 0.85 * lerpf(0.35, 1.0, day))
+	if _caustic_pass:
+		_caustic_pass.set_light(0.85 * lerpf(0.35, 1.0, day), _env.fog_light_color, _env.fog_density)
 
 
-## Caustics: the rippling net of light the surface throws on the sea bed in the shallows. They
-## are added to the sand's own shader (GameCommon's sand, whose copy in scripts/sand.gd is left as
-## it is): a copy of its code is made with a few lines put in, and the sand is drawn with that
-## instead (still one shader, made before anything is drawn). The net brightens only the light
-## from above (the sun, or the moon), fades out between 5 and 12 m of water, and further off.
+## Caustics: the rippling net of light the surface throws on everything under it in the shallows
+## (the floor, rocks, plants, wrecks, piles and every animal). One pass over the picture
+## (scripts/caustics.gd, shaders/caustics.gdshader; CLAUDE.md, "Decision: caustics as one pass over
+## the picture"), not lines in each material: until 2026-11-18 they were put into the sand's own
+## shader here and fell only on the sand. The sand's shader still gets its copy made here, for the
+## rock walls and the softer rock.
 func _caustics() -> void:
+	_caustic_pass = Caustics.new()
+	add_child(_caustic_pass)
 	var material := sand.material()
 	if material == null or material.shader == null:
 		return
 	var code := material.shader.code
-	var anchors := ["varying vec3 plain;", "// Ground that has dried and split", "	ALBEDO = colour * (1.0 - veil);", "	DIFFUSE_LIGHT += lit * sun + (LIGHT_IS_DIRECTIONAL ? sky : vec3(0.0));"]
-	for anchor: String in anchors:
-		if code.count(anchor) != 1:
-			push_warning("Sea: the sand's shader has changed; no caustics")
-			return
-	code = code.replace(anchors[0], anchors[0] + "\nvarying vec3 caustic_k;\nuniform float caustics = 0.0;\nuniform float caustic_surface = 40.0;\nuniform sampler2D caustic_tex : repeat_enable, filter_linear_mipmap;\nglobal uniform float water_clock;")
-	code = code.replace(anchors[1], CAUSTIC_NET + anchors[1])
-	# (strongest in the shallows, a quarter of it at 30 m, none below 45 m; on what faces up; fading off
-	# beyond 40 m of the eye)
-	code = code.replace(anchors[2], "	float caustic_deep = caustic_surface - at.y;\n	caustic_k = mix(vec3(1.0), vec3(0.55) + caustic_net(at) * 1.0, caustics * mix(1.0, 0.3, smoothstep(3.0, 30.0, caustic_deep)) * (1.0 - smoothstep(30.0, 45.0, caustic_deep)) * smoothstep(0.35, 0.85, unrippled.y) * (1.0 - smoothstep(25.0, 40.0, length(VERTEX))));\n	colour *= mix(vec3(1.0), caustic_k, 0.5);\n" + anchors[2])
-	code = code.replace(anchors[3], "	DIFFUSE_LIGHT += lit * sun * (LIGHT_IS_DIRECTIONAL ? caustic_k : vec3(1.0)) + (LIGHT_IS_DIRECTIONAL ? sky : vec3(0.0));")
-	# (and steep ground is rock painted from the sides, not sand stretched down it: WALL_ROCK)
+	# (steep ground is rock painted from the sides, not sand stretched down it: WALL_ROCK)
 	var walls := ["void fragment() {", "	float distance_off = length(VERTEX);"]
 	if code.count(walls[0]) == 1 and code.count(walls[1]) == 1:
 		code = code.replace(walls[0], WALL_ROCK + walls[0])
@@ -449,9 +441,6 @@ func _caustics() -> void:
 	var shader := Shader.new()
 	shader.code = code
 	material.shader = shader
-	material.set_shader_parameter(&"caustic_surface", SURFACE)
-	material.set_shader_parameter(&"caustic_tex", caustic_texture())
-	_sand_look = material
 
 
 ## Rock walls (the user, 2026-11-18: "we need to work on a way to make the trench cliffs look good,
@@ -501,33 +490,7 @@ const WALL_MIX := """	float wall = smoothstep(wall_from, wall_to, 1.0 - unripple
 """
 
 
-## The net itself (the user, 2026-11-18: "We need better looking caustics as well"): the usual way
-## games draw caustics, two copies of one sharp, tileable net of light (caustic_texture: the edges of
-## a Voronoi pattern, thin bright lines round soft dark cells) panning different ways at different
-## sizes, a little warped, and combined by min, so their lines merge and split as real ones do; each
-## colour read a little apart, for the thin rainbow fringe real caustics have. In patches, so that
-## some stretches have more of it. Its brightness (`caustics`) follows the hour.
-const CAUSTIC_NET := """
-vec3 caustic_layer(vec2 uv, float split) {
-	return vec3(texture(caustic_tex, uv + vec2(split, 0.0)).r, texture(caustic_tex, uv).r, texture(caustic_tex, uv - vec2(split, 0.0)).r);
-}
-
-vec3 caustic_net(vec3 p) {
-	float t = water_clock;
-	vec2 q = p.xz;
-	vec2 warp = (vec2(patches(q * 0.18 + vec2(t * 0.05, 0.0)), patches(q * 0.18 + vec2(3.7, t * 0.04))) - 0.5) * 0.12;
-	vec3 a = caustic_layer(q * 0.11 + warp + vec2(t * 0.013, t * 0.008), 0.0015);
-	vec3 b = caustic_layer(q * 0.15 - warp + vec2(-t * 0.011, t * 0.012) + 0.37, 0.0015);
-	// (each net bright along its lines, brightest where the two cross)
-	vec3 net = max(a, b) * 0.55 + a * b * 1.3;
-	net = pow(net, vec3(1.3)) * 1.6;
-	float spread = 0.5 + 0.5 * smoothstep(0.3, 0.65, patches(p.xz * 0.035 + 4.0));
-	return net * spread;
-}
-
-"""
-
-
+## (the net drawn from this picture is in shaders/caustics.gdshader, `caustic_net`)
 static var _caustic_tex: ImageTexture
 
 
