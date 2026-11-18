@@ -26,15 +26,18 @@ extends Node3D
 ## exactly every beat. Either call `step(velocity, delta)` each frame, or set `phase` yourself
 ## (with `beat` 0, `step` leaves `phase` alone).
 ##
-## A game that keeps its own MeshInstance3Ds needs no Carp node: `Carp.mesh_of(low)` is the
-## mesh and `Carp.new_material(type, pattern_seed)` a material for it.
+## A game that keeps its own MeshInstance3Ds needs no Carp node: `Carp.mesh_of(low)` (or
+## `Carp.game_mesh()`) is the mesh and `Carp.new_material(type, pattern_seed)` a material for it.
 ##
-## The models are creatures/carp/models/carp.glb (and carp_lo.glb), built by
-## tools/build_carp.py; its shader is carp.gdshader.
+## The models are creatures/carp/models/carp.glb (the full model), carp_game.glb (the game
+## model: about 3,000 triangles, `game`) and carp_lo.glb, built by tools/build_carp.py; its
+## shader is carp.gdshader. Each is loaded only when it is first shown: with `game` on, the
+## full model is never loaded.
 
 enum Type { COMMON, KOHAKU, SANKE, SHOWA, YAMABUKI_OGON, PLATINUM_OGON }
 
 const MODEL := "res://creatures/carp/models/carp%s.glb"
+const GAME_MODEL := "res://creatures/carp/models/carp_game.glb"
 const SHADER := preload("res://creatures/carp/carp.gdshader")
 ## Snout to tail tip (metres, at scale 1), as built.
 const LENGTH := 0.69
@@ -137,11 +140,33 @@ static var _meshes := {}
 	set(value):
 		gape = clampf(value, 0.0, 1.0)
 		_send(&"gape", gape)
-## The low model (far off, phones) in place of the full one.
+## The low model (far off, phones) in place of the full one (or of the game model).
 @export var low := false:
 	set(value):
 		low = value
 		_show()
+## The game model (about 3,000 triangles, as a Twilight Princess figure spends them) in place
+## of the full one. With it on, the full model is never loaded.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye: 0 the eye as the species has it, 1 a bigger cartoon eye (a gold iris, a big
+## round pupil, a highlight, a heavy placid upper lid).
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send(&"cartoon_eyes", cartoon_eyes)
+## Where it looks: the iris and pupil slide that way (x towards its snout, y up; -1..1).
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		_send(&"eye_look", eye_look)
+## 0 eyes open, 1 shut (squashed flat, the lid drawn down).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send(&"blink", blink)
 ## How far through a beat it is, 0 to 1. `step` moves it on; or set it yourself.
 var phase := 0.0:
 	set(value):
@@ -149,8 +174,8 @@ var phase := 0.0:
 		_send(&"phase", phase)
 
 var _material: ShaderMaterial
-var _full: MeshInstance3D
-var _low: MeshInstance3D
+# The MeshInstance3Ds made so far, by model ("", "_lo", "_game"): each made when first shown.
+var _shown := {}
 var _effort := 0.6
 
 
@@ -164,6 +189,20 @@ static func mesh_of(low_wanted := false) -> Mesh:
 		_meshes[path] = found.mesh
 		made.free()
 	return _meshes[path]
+
+
+## The game model's mesh, loaded once and kept, without the importer's automatic LODs (a body
+## bent in the vertex shader would bend in straight pieces far off).
+static func game_mesh() -> Mesh:
+	if not _meshes.has(GAME_MODEL):
+		var made := (load(GAME_MODEL) as PackedScene).instantiate()
+		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+		var plain := ArrayMesh.new()
+		for surface in found.mesh.get_surface_count():
+			plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, found.mesh.surface_get_arrays(surface))
+		_meshes[GAME_MODEL] = plain
+		made.free()
+	return _meshes[GAME_MODEL]
 
 
 ## A new material for the mesh, in a type's colours and pattern (`seed`: where a koi's
@@ -184,8 +223,6 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of("Carp", mesh_of(false))
-	_low = _instance_of("Carp_lo", mesh_of(true))
 	_show()
 	for setting: StringName in [&"tail_beats", &"sculls"]:
 		_send(setting, float(get(setting)))
@@ -193,6 +230,9 @@ func _ready() -> void:
 	_send(&"gape", gape)
 	_send(&"pattern_seed", float(pattern_seed))
 	_send(&"phase", phase)
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 
 
 ## Each frame, after putting it where it is: moves its beat on by `delta` seconds (unless
@@ -233,9 +273,20 @@ static func _wear(on: ShaderMaterial, type_wanted: Type) -> void:
 
 
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if not is_node_ready():
+		return
+	var wanted := "_lo" if low else ("_game" if game else "")
+	if not _shown.has(wanted):
+		var mesh := mesh_of(true) if low else (game_mesh() if game else mesh_of(false))
+		_shown[wanted] = _instance_of("Carp" + wanted, mesh)
+	for which: String in _shown:
+		_shown[which].visible = which == wanted
+
+
+## The MeshInstance3D showing now (the full, game or low model).
+func shown_mesh() -> MeshInstance3D:
+	_show()
+	return _shown.get("_lo" if low else ("_game" if game else ""))
 
 
 func _instance_of(called: String, mesh: Mesh) -> MeshInstance3D:

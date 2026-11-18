@@ -26,11 +26,15 @@ extends Node3D
 ## same pose. `step` moves it on by delta / `beat`; with `beat` 0 it is left
 ## alone, for whoever is making a picture that loops to set it each frame.
 ##
-## The model is creatures/moray_eel/models/moray_eel.glb (and _lo), built by
-## tools/build_moray_eel.py; its shader (moray_eel.gdshader) lays it along the
-## spine, swings its jaw and draws its skin.
+## The models are creatures/moray_eel/models/moray_eel.glb (the full model),
+## moray_eel_game.glb (the game model: about 3,800 triangles, `game`) and
+## moray_eel_lo.glb, built by tools/build_moray_eel.py; its shader
+## (moray_eel.gdshader) lays them along the spine, swings the jaw and draws the
+## skin. Each model is loaded only when it is first shown: with `game` on, the
+## full model is never loaded.
 
 const MODEL := "res://creatures/moray_eel/models/moray_eel%s.glb"
+const GAME_MODEL := "res://creatures/moray_eel/models/moray_eel_game.glb"
 const SHADER := preload("res://creatures/moray_eel/moray_eel.gdshader")
 ## As the model is built (tools/build_moray_eel.py) and as the shader has them: keep them in step.
 const LENGTH := 1.8
@@ -64,6 +68,30 @@ const BEND := 0.45
 @export var body_sink := 0.06
 ## Full detail within this of the camera; the low model further off.
 @export var detail_range := 14.0
+## Within `detail_range`, the game model (about 3,800 triangles, as a Twilight Princess figure
+## spends them) in place of the full one; the low model further off as ever. With it on, the full
+## model is never loaded.
+@export var game := false:
+	set(value):
+		game = value
+		if is_node_ready():
+			_show(_near)
+## The cartoon eye: 0 the eye as the species has it, 1 a cartoon eye (a moray's small mean one: a
+## pale icy iris, a small pupil, a heavy scowling lid).
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send_eyes()
+## Where it looks: the iris and pupil slide that way (x towards its snout, y up; -1..1).
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		_send_eyes()
+## 0 eyes open, 1 shut (squashed flat, the lid drawn down).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send_eyes()
 ## A round tank it is kept inside (the user, 2026-11-17, of a tube of water it swam in: "make sure
 ## the squid and eel dont clip out the sides of the tank"): the tank's radius (world metres; 0
 ## none) about the upright line through `tank_at`. Its ropes are put back inside the wall.
@@ -74,8 +102,9 @@ var phase := 0.0
 ## How far open the jaw is now, of a whole gape (0..1).
 var gape := 0.0
 
-var _full: MeshInstance3D
-var _low: MeshInstance3D
+# The MeshInstance3Ds made so far, by model ("", "_lo", "_game"): each made when first shown.
+var _shown := {}
+var _near := true
 var _material: ShaderMaterial
 # The spine's points (world), where each was a step ago, the body as it is drawn (the spine with
 # the swimming wave on it: its points, world, and which way the eel's back is at each), and the
@@ -90,27 +119,69 @@ var _laid := false
 var _was_at := Vector3.ZERO
 
 
+static var _meshes := {}
+
+
 func _ready() -> void:
 	_material = ShaderMaterial.new()
 	_material.shader = SHADER
-	_full = _mesh_of("")
-	_low = _mesh_of("_lo")
-	_low.visible = false
+	_send_eyes()
+	_show(true)
+
+
+## The game model's mesh, loaded once and kept, without the importer's automatic LODs (a body laid
+## along the spine in the vertex shader would bend in straight pieces far off). For a game that
+## draws its own meshes; its material needs the spine picture MorayEel sends.
+static func game_mesh() -> Mesh:
+	if not _meshes.has(GAME_MODEL):
+		var made := (load(GAME_MODEL) as PackedScene).instantiate()
+		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+		var plain := ArrayMesh.new()
+		for surface in found.mesh.get_surface_count():
+			plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, found.mesh.surface_get_arrays(surface))
+		_meshes[GAME_MODEL] = plain
+		made.free()
+	return _meshes[GAME_MODEL]
+
+
+## The near (full or game) model, or the far one, made the first time it is shown.
+func _show(near: bool) -> void:
+	_near = near
+	var wanted := ("_game" if game else "") if near else "_lo"
+	if not _shown.has(wanted):
+		_shown[wanted] = _mesh_of(wanted)
+	for which: String in _shown:
+		_shown[which].visible = which == wanted
+
+
+## The MeshInstance3D showing now (the full, game or low model).
+func shown_mesh() -> MeshInstance3D:
+	return _shown.get(("_game" if game else "") if _near else "_lo")
 
 
 func _mesh_of(suffix: String) -> MeshInstance3D:
-	var scene := load(MODEL % suffix) as PackedScene
-	var made := scene.instantiate()
-	var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = found.mesh
+	if suffix == "_game":
+		mesh.mesh = game_mesh()
+	else:
+		var scene := load(MODEL % suffix) as PackedScene
+		var made := scene.instantiate()
+		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+		mesh.mesh = found.mesh
+		made.free()
 	mesh.set_surface_override_material(0, _material)
 	# (its body may lie anywhere within its length of its head)
 	mesh.extra_cull_margin = LENGTH * 1.1
 	mesh.name = "Eel" + suffix
-	made.free()
 	add_child(mesh)
 	return mesh
+
+
+func _send_eyes() -> void:
+	if _material:
+		_material.set_shader_parameter(&"cartoon_eyes", cartoon_eyes)
+		_material.set_shader_parameter(&"eye_look", eye_look)
+		_material.set_shader_parameter(&"blink", blink)
 
 
 ## Each frame, after putting it where it is. Its body follows however it has been moved and
@@ -139,12 +210,13 @@ func step(velocity: Vector3, delta: float) -> void:
 	var camera := get_viewport().get_camera_3d()
 	if camera:
 		var near := camera.global_position.distance_to(global_position) < detail_range
-		_full.visible = near
-		_low.visible = not near
+		if near != _near:
+			_show(near)
 
 
 ## Sets one of the shader's settings (its colours: `skin`, `skin_deep`, `mouth`, `tooth`, `iris`;
-## how deep its wrinkles are: `wrinkles`; how much its fin ripples: `fin_ripple`).
+## how deep its wrinkles are: `wrinkles`; how much its fin ripples: `fin_ripple`). The eye's
+## settings are the properties `cartoon_eyes`, `eye_look`, `blink`.
 func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)
 

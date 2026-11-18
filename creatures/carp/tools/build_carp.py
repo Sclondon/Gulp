@@ -6,8 +6,9 @@ Run from the game's root:
 
 One shape for every type (the common carp and the koi are one species, Cyprinus carpio: Carp.Type picks the
 colours and the pattern, all drawn by the shader). It writes creatures/carp/models/carp.glb (the full model, for
-close pictures), carp_lo.glb (far off, phones, packs of fish) and the editable creatures/carp/tools/carp.blend
-(this folder has a .gdignore). Each model is one still mesh with one surface: the shader (carp.gdshader) bends it to
+close pictures), carp_game.glb (the game model: about 3,000 triangles, spent as a Twilight Princess figure spends
+them), carp_lo.glb (far off, phones, packs of fish) and the editable creatures/carp/tools/carp.blend (this folder has
+a .gdignore). Each model is one still mesh with one surface: the shader (carp.gdshader) bends it to
 swim, opens and pushes out its mouth, sculls its fins and draws every marking. It prints a WINDING line for each
 model: the check that nothing is inside out.
 
@@ -78,6 +79,16 @@ def to_b(p):
     return Vector((p.x, -p.z, p.y))
 
 
+# Which model is being built: FULL (close pictures), LOW (far off) or GAME (the game model: a Twilight Princess
+# weight of about 2,900 triangles, spent on the outline, the eye, the lips and the fins' edges).
+FULL, LOW, GAME = 0, 1, 2
+
+
+def pick(lod, full, low, game):
+    """The number for this model. (`lod` may be False or True, for FULL and LOW.)"""
+    return (full, low, game)[int(lod)]
+
+
 def smooth(a, b, x):
     t = max(0.0, min(1.0, (x - a) / (b - a)))
     return t * t * (3.0 - 2.0 * t)
@@ -144,9 +155,10 @@ class Section:
         u = max(0.0, min(1.0, u))
         return hw * (1.0 - u ** n) ** (1.0 / n)
 
-    def outline(self, s, half):
+    def outline(self, s, half, bunch=0.0):
         """half + 1 points down its right side from the top line to the bottom line, evenly spaced along the
-        skin: (x, y, how far round from the top)."""
+        skin (`bunch` more than 0: closer together at the top and bottom lines, where the outline seen from in
+        front turns, and further apart across the flat flank): (x, y, how far round from the top)."""
         top, bot, hw, ycf, nt, nb = self.at(s)
         yc = bot + ycf * (top - bot)
         dense = []
@@ -166,7 +178,8 @@ class Section:
         whole = acc[-1]
         out = []
         for j in range(half + 1):
-            want = whole * j / half
+            u = j / half
+            want = whole * (u - bunch * math.sin(TAU * u) / TAU) if bunch else whole * j / half
             i = min(bisect.bisect_right(acc, want) - 1, steps - 1)
             span = acc[i + 1] - acc[i]
             t = (want - acc[i]) / span if span > 1e-12 else 0.0
@@ -354,11 +367,11 @@ def flip_x(d):
     return d[0], (-d[1][0], d[1][1]), d[2]
 
 
-def skin(part, section, places, half, kind):
+def skin(part, section, places, half, kind, bunch=0.0):
     """Lofts a Section into a Part. `kind` is BODY or JAW."""
     rings = []
     for s in places:
-        side, whole = section.outline(s, half)
+        side, whole = section.outline(s, half, bunch)
         top, bot = section.top(s), section.bot(s)
         ring = []
         ends = s <= section.first or s >= section.last
@@ -385,6 +398,12 @@ def skin(part, section, places, half, kind):
 
 
 def body_places(low):
+    if low == GAME:
+        # (close together where the outline turns: round the snout and the mouth, over the gill cover's
+        # crescent, and at the tail wrist and the flare into the tail; far apart along the smooth flank)
+        return [0.0, 0.004, 0.01, 0.018, 0.028, 0.04, 0.053, 0.066, 0.08, 0.096, 0.114, 0.134, 0.154, 0.172,
+                0.188, 0.2, 0.21, 0.218, 0.226, 0.25, 0.29, 0.335, 0.385, 0.44, 0.495, 0.55, 0.6, 0.645, 0.69,
+                0.73, 0.765, 0.795, 0.82, 0.842, 0.861, 0.877, 0.89, 0.9, 0.907, 0.911]
     head = 22 if low else 90
     rest = 26 if low else 96
     behind = GILL_S + 0.014
@@ -427,8 +446,8 @@ def lips(low):
     """The upper lip, a thick roll round the front of the snout from corner to corner of the mouth, and the lower
     lip, a thick roll along the jaw's edge (a part of the jaw: it swings with it)."""
     made = []
-    stations = 24 if low else 72
-    around = 6 if low else 14
+    stations = pick(low, 72, 24, 14)
+    around = pick(low, 14, 6, 6)
     corner = HINGE_S - 0.004
     for which in ("upper", "lower"):
         part = Part(which + "_lip")
@@ -476,8 +495,8 @@ BARBELS = [
 
 def barbels(low):
     made = []
-    stations = 6 if low else 16
-    around = 5 if low else 10
+    stations = pick(low, 16, 6, 5)
+    around = pick(low, 10, 5, 4)
     for name, s, long, thick, way in BARBELS:
         part = Part("barbel_" + name)
         y = BODY_SKIN.bot(s) + 0.002
@@ -505,8 +524,8 @@ def eye(low):
     seen = math.sqrt(1.0 - (1.0 - stands / ball) ** 2)
     reach = math.asin(min(seen / shown, 0.999))
     centre = at - out * (ball - stands)
-    rows = 4 if low else 10
-    around = 10 if low else 32
+    rows = pick(low, 10, 4, 3)
+    around = pick(low, 32, 10, 24)
     rings = []
     for i in range(rows + 1):
         a = reach * i / rows
@@ -525,17 +544,21 @@ def eye(low):
     return part
 
 
-def fin(name, kind, rays, base, direction, length, normal, thick, low, ridge_from=0.0):
+def fin(name, kind, rays, base, direction, length, normal, thick, low, ridge_from=0.0, game_cols=None):
     """A fin: `rays` rays fanned from the line `base(t)` (t 0 its leading edge to 1 its trailing edge), each
-    going the way `direction(t)` for `length(t)`; flat, facing `normal`; `thick` at its root."""
+    going the way `direction(t)` for `length(t)`; flat, facing `normal`; `thick` at its root. For the game
+    model, `game_cols` is (how many columns, where column u (0..1) falls along the fin: a function)."""
     part = Part(name)
     per_ray = 1 if low else 4
-    rows = 3 if low else 12
+    rows = pick(low, 12, 3, 2)
     cols = max(rays * per_ray, 6)
+    spread = lambda u: u
+    if low == GAME:
+        cols, spread = game_cols
     normal = normal.normalized()
     left, right = [], []
     for i in range(cols + 1):
-        t = i / cols
+        t = spread(i / cols)
         b, d, long = base(t), direction(t).normalized(), length(t)
         ridge = 0.5 + 0.5 * math.cos(TAU * (t * rays - 0.5)) if (rays > 1 and not low) else 0.0
         edge = min(1.0, t / 0.06) ** 0.5 * min(1.0, (1.0 - t) / 0.1) ** 0.5
@@ -602,7 +625,7 @@ def fins(low):
         rake(64.0, 30.0),
         lambda t: (0.05 + 0.062 * (1.0 - smooth(0.02, 0.42, t)) - 0.008 * t) * (0.86 + 0.14 * smooth(0.0, 0.07, t))
         * (1.0 - 0.12 * smooth(0.86, 1.0, t)),
-        Vector((1.0, 0.0, 0.0)), 0.009, low))
+        Vector((1.0, 0.0, 0.0)), 0.009, low, game_cols=(12, lambda u: u ** 1.5)))
     # The tail: nineteen rays, forked, its lobes rounded at their ends.
     t_mid, t_long, t_power, t_spread = 0.088, 0.19, 1.35, 30.0
 
@@ -616,7 +639,7 @@ def fins(low):
         "tail", TAIL, 19,
         lambda t: Vector((0.0, lerp(0.05, -0.05, t), 0.852 - 0.022 * (2.0 * t - 1.0) ** 2 - 0.5)),
         lambda t: Vector((0.0, math.sin(math.radians(t_spread * (1.0 - 2.0 * t))), math.cos(math.radians(t_spread * (1.0 - 2.0 * t))))),
-        tail_long, Vector((1.0, 0.0, 0.0)), 0.02, low, 0.3))
+        tail_long, Vector((1.0, 0.0, 0.0)), 0.02, low, 0.3, game_cols=(16, lambda u: 0.5 + 0.5 * (0.5 * (2.0 * u - 1.0) + 0.5 * math.sin(math.pi * (u - 0.5))))))
     # The anal fin: short (eight rays; the species has two or three spines and five or six soft rays), its spine
     # the longest.
     as_, ae = 0.655, 0.735
@@ -625,7 +648,7 @@ def fins(low):
         lambda t: Vector((0.0, BODY_SKIN.bot(lerp(as_, ae, t)) + 0.007, lerp(as_, ae, t) - 0.5)),
         rake(56.0, 26.0, True),
         lambda t: (0.094 - 0.055 * t ** 0.85) * (0.9 + 0.1 * smooth(0.0, 0.14, t)) * (1.0 - 0.12 * smooth(0.82, 1.0, t)),
-        Vector((1.0, 0.0, 0.0)), 0.0085, low))
+        Vector((1.0, 0.0, 0.0)), 0.0085, low, game_cols=(6, lambda u: u)))
 
     # The paired fins, the right one of each (the left is its mirror picture).
     def on_body(s, up, sunk=0.004):
@@ -637,7 +660,7 @@ def fins(low):
     pelvic = fin(
         "pelvic", PELVIC, 9, lambda t: p0.lerp(p1, t), lambda t: turn(d0, d1, t),
         lambda t: (0.102 - 0.05 * t ** 1.2) * (0.88 + 0.12 * smooth(0.0, 0.16, t)) * (1.0 - 0.12 * smooth(0.8, 1.0, t)),
-        d0.cross(d1), 0.0075, low)
+        d0.cross(d1), 0.0075, low, game_cols=(7, lambda u: u))
     made += [pelvic, pelvic.mirrored("pelvic_left", flip_x)]
     print("CLEARANCE pelvic fin to body, sculling: %.1f mm" % clearance(pelvic, d0.cross(d1), lambda r: 0.012 * r * r))
     q0, q1 = on_body(GILL_S + 0.006, 0.04), on_body(GILL_S + 0.026, 0.02)
@@ -645,7 +668,7 @@ def fins(low):
     pectoral = fin(
         "pectoral", PECTORAL, 16, lambda t: q0.lerp(q1, t), lambda t: turn(e0, e1, t),
         lambda t: (0.13 - 0.066 * t ** 1.15) * (0.88 + 0.12 * smooth(0.0, 0.14, t)) * (1.0 - 0.12 * smooth(0.8, 1.0, t)),
-        e0.cross(e1), 0.008, low)
+        e0.cross(e1), 0.008, low, game_cols=(8, lambda u: u))
     made += [pectoral, pectoral.mirrored("pectoral_left", flip_x)]
     print("CLEARANCE pectoral fin to body, sculling: %.1f mm" % clearance(pectoral, e0.cross(e1), lambda r: 0.03 * (0.65 * r + 0.7 * r * r)))
     return made
@@ -654,12 +677,12 @@ def fins(low):
 def make(name, low):
     parts = []
     body = Part("body")
-    skin(body, BODY_SKIN, body_places(low), 10 if low else 32, BODY)
+    skin(body, BODY_SKIN, body_places(low), pick(low, 32, 10, 9), BODY, pick(low, 0.0, 0.0, 0.45))
     parts.append(body)
     jaw = Part("jaw")
-    jaw_rings = 14 if low else 44
+    jaw_rings = pick(low, 44, 14, 10)
     skin(jaw, JAW_SKIN, [lerp(JAW_SKIN.first, JAW_SKIN.last, (i / jaw_rings) ** 1.25) for i in range(jaw_rings + 1)],
-         5 if low else 14, JAW)
+         pick(low, 14, 5, 5), JAW)
     parts.append(jaw)
     parts += lips(low)
     parts += barbels(low)
@@ -753,18 +776,18 @@ def render(folder, made):
              ("front", (0, 1, 0), (0, 0, 0), 0.24), ("back", (0, -1, 0), (0, 0, 0), 0.24),
              ("quarter", (0.7, 0.6, 0.35), (0, 0, 0), 0.44), ("head", (1, 0.15, 0.05), (0, 0.15, 0), 0.16),
              ("head_under", (0.5, 0.5, -0.7), (0, 0.15, -0.01), 0.16)]
-    for low, obj in ((False, made[0]), (True, made[1])):
+    for low, obj in ((FULL, made[0]), (LOW, made[1]), (GAME, made[2])):
         for other in made:
             other.hide_render = other is not obj
         for view, direction, target, frame in views:
-            if low and view not in ("right", "quarter"):
+            if low == LOW and view not in ("right", "quarter"):
                 continue
             size = LENGTH / 0.4
             offset = Vector(direction).normalized() * 10.0
             camera.data.ortho_scale = frame * size
             camera.location = Vector(target) * size + offset
             camera.rotation_euler = (-offset).to_track_quat("-Z", "X" if view in ("top", "under") else "Y").to_euler()
-            scene.render.filepath = os.path.join(folder, "%s%s.png" % ("lo_" if low else "", view))
+            scene.render.filepath = os.path.join(folder, "%s%s.png" % (("", "lo_", "game_")[low], view))
             bpy.ops.render.render(write_still=True)
 
 
@@ -773,16 +796,24 @@ def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.preferences.filepaths.save_version = 0
     print("SHAPE carp: hinge_s=%.4f hinge_y=%.4f gill_s=%.4f body depth=%.4f m width=%.4f m" % (HINGE_S, HINGE_Y, GILL_S, LENGTH * max(BODY_SKIN.top(i / 400.0) - BODY_SKIN.bot(i / 400.0) for i in range(400)), LENGTH * 2.0 * max(BODY_SKIN.at(i / 400.0)[2] for i in range(400))))
-    full = make("carp", False)
-    low = make("carp_lo", True)
+    at, out, up = body_frame(*EYE_AT)
+    centre = at - out * (EYE_BALL[0] - EYE_BALL[1])
+    print("EYE carp (the right eye, Godot metres, for the shader's cartoon eye): centre=(%.5f, %.5f, %.5f) out=(%.4f, %.4f, %.4f)" % (
+        centre.x * LENGTH, centre.y * LENGTH, centre.z * LENGTH, out.x, out.y, out.z))
+    full = make("carp", FULL)
+    low = make("carp_lo", LOW)
+    game = make("carp_game", GAME)
     export_one(full, os.path.join(OUT, "carp.glb"))
     export_one(low, os.path.join(OUT, "carp_lo.glb"))
+    export_one(game, os.path.join(OUT, "carp_game.glb"))
     low.location.x = 0.5
+    game.location.x = 1.0
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "carp.blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low])
+        render(PREVIEW, [full, low, game])
 
 
 if __name__ == "__main__":

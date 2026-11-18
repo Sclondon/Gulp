@@ -38,6 +38,13 @@ leading end (0) to its trailing end (1); on an eye: x from its middle (0) to its
 flips V: what is written here is 1 - v, so that Godot reads v.)
 
 The numbers marked "as the shader has it" are in california_halibut.gdshader too: change one, change the other.
+
+THE GAME MODEL (models/california_halibut_game.glb, made in the same run; the .blend holds all three): the same curves and
+profiles as the full model with far fewer, better placed points (the user, 2026-11-18: "We should have a twilight
+princess model to compare to so we can make low poly versions while maintaining high quality looks and
+silhouettes"). Its rows go where the outline and the profile bend most (`greedy`), with more round the eyes, the
+mouth and the edges, and every UV, UV2 and part the shader reads, so it swims, opens its mouth and is marked as
+the full one is. The full and low models come out exactly as before (their .glb files are byte for byte the same).
 """
 
 NAME = "california_halibut"
@@ -61,6 +68,59 @@ TAU = math.tau
 UP = Vector((0.0, 1.0, 0.0))
 DOWN = Vector((0.0, -1.0, 0.0))
 SIDE = Vector((1.0, 0.0, 0.0))
+
+# True while the game model is being made: every count then comes from its own game numbers (in make), and
+# the full and low models are made exactly as before.
+GAME = False
+
+
+def pick(full, low_value, game_value, low):
+    """How many of something: on the game model, the low one, or the full one."""
+    if GAME:
+        return game_value
+    return low_value if low else full
+
+
+def greedy(fns, seeds, n, max_step):
+    """`n` intervals from seeds[0] to seeds[-1], spent where the curves `fns` bend most: each interval longer
+    than `max_step` is halved, then the interval whose middle strays furthest from the straight line between its
+    ends (in any of `fns`) is halved, until there are `n`. For the game model: its points go where the outline
+    and the profile need them."""
+    xs = sorted(set(seeds))
+
+    def err(a, b):
+        worst = 0.0
+        for f in fns:
+            fa, fb = f(a), f(b)
+            for s in (0.25, 0.5, 0.75):
+                x = a + (b - a) * s
+                worst = max(worst, abs(f(x) - (fa + (fb - fa) * s)))
+        return worst
+
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(xs) - 1):
+            if xs[i + 1] - xs[i] > max_step:
+                xs.insert(i + 1, 0.5 * (xs[i] + xs[i + 1]))
+                changed = True
+                break
+    while len(xs) - 1 < n:
+        best = max(range(len(xs) - 1), key=lambda i: err(xs[i], xs[i + 1]) if xs[i + 1] - xs[i] > 1e-4 else -1.0)
+        xs.insert(best + 1, 0.5 * (xs[best] + xs[best + 1]))
+    return xs
+
+
+def smooth(a, b, x):
+    t = max(0.0, min(1.0, (x - a) / (b - a)))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def soft(a):
+    """|a| with its corner at the middle line rounded off (0 at 0)."""
+    return math.sqrt(a * a + 0.0016) - 0.04
+
+
 
 
 def to_b(p):
@@ -223,14 +283,17 @@ def blade(m, part, name, point, place, facing, thick, nt, nu, extra=None):
 
 def dome(m, part, name, skin, at, radius, height, toward, low):
     """An eye: a dome lying on the skin. `skin(a, b)` is a place on the skin by two coordinates (metres)."""
-    spokes = 10 if low else 32
-    rings = 3 if low else 10
+    spokes = pick(32, 10, GAME_EYE[0], low)
+    rings = pick(10, 3, GAME_EYE[1], low)
     a0, b0 = at
     e = 0.003
     out = (skin(a0 + e, b0) - skin(a0 - e, b0)).cross(skin(a0, b0 + e) - skin(a0, b0 - e))
     out.normalize()
     if out.dot(toward) < 0.0:
         out = -out
+    if not low and not GAME:
+        base = skin(a0, b0)
+        print("EYE at vec3(%.5f, %.5f, %.5f) out vec3(%.5f, %.5f, %.5f) radius %.4f" % (base.x, base.y, base.z, out.x, out.y, out.z, radius))
     middle = m.add(skin(a0, b0) + out * height, (0.0, 0.0), part)
     last = None
     for k in range(1, rings + 1):
@@ -365,14 +428,22 @@ def render(folder, made, frame, head_at):
 def build_all(make, colour, frame, head_at):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.preferences.filepaths.save_version = 0
+    global GAME
     full = make_object(NAME, make(False), colour)
     low = make_object(NAME + "_lo", make(True), colour)
+    GAME = True
+    game = make_object(NAME + "_game", make(False), colour)
+    GAME = False
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, NAME + ".glb"))
     export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
+    export_one(game, os.path.join(OUT, NAME + "_game.glb"))
     low.location.x = frame
+    game.location.x = -frame
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
+    game.hide_render = True
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
         render(PREVIEW, [full, low], frame, head_at)
@@ -440,7 +511,7 @@ def skin(xm, x):
 
 
 def body(m, low):
-    n = 7 if low else 24
+    n = pick(24, 7, 6, low)
 
     def columns(xm):
         a, b, _, _ = outline(xm)
@@ -454,8 +525,14 @@ def body(m, low):
     def jaw_data(xm, x, upper):
         return (xm / LENGTH, 0.5 + x / 0.34), JAW, 0.0
 
-    front = list(reversed(steps(0.0012, [(0.012, 0.0012), (HINGE, 0.003)], low, 3.0)))
-    back = steps(HINGE, [(0.30, 0.005), (0.84, 0.0075), (BODY_TO, 0.004)], low)
+    if GAME:
+        # (rows where the outline from above and the profile from the side bend most, and round the eyes)
+        fns = [lambda xm, k=k: outline(xm)[k] for k in range(4)]
+        front = list(reversed(greedy(fns + [cut_x], [0.0012, 0.012, 0.06, 0.0755, 0.088, 0.098, 0.1105, HINGE], 10, 0.03)))
+        back = greedy(fns, [HINGE, 0.30, 0.84, 0.87, BODY_TO], 20, 0.06)
+    else:
+        front = list(reversed(steps(0.0012, [(0.012, 0.0012), (HINGE, 0.003)], low, 3.0)))
+        back = steps(HINGE, [(0.30, 0.005), (0.84, 0.0075), (BODY_TO, 0.004)], low)
     rows = slab_rows(m, back, columns, top, bot, data)
     slab_faces(m, rows, "body")
     slab_cap(m, rows[-1], m.add(Vector((0.0, SEAM, BODY_TO + 0.003 - HALF)), (BODY_TO / LENGTH, 0.5), BODY), "body")
@@ -515,7 +592,7 @@ def fins(m, low):
             h = high(u)
             return (xr + math.sin(lean) * h * t, way * (outline(xr)[column] - 0.008 + (h * math.cos(lean) + 0.008) * t))
 
-        blade(m, FRINGE, name, point, flat, UP, 0.005, max(2, 6 // d), 140 // d)
+        blade(m, FRINGE, name, point, flat, UP, 0.005, pick(6, max(2, 6 // d), 2, low), pick(140, 140 // d, 36, low))
 
     # The tail: a fan, its middle rays the longest and its edge a little hollowed either side of them.
     def tail_point(t, u):
@@ -523,7 +600,7 @@ def fins(m, low):
         reach = 0.1535 - 0.01 * math.sin(math.pi * u) ** 2 * math.cos(TAU * (u - 0.5)) - 0.018 * abs(2.0 * u - 1.0) ** 2
         return (0.855 + t * reach * math.cos(angle), (u - 0.5) * 0.066 + t * reach * math.sin(angle))
 
-    blade(m, TAIL, "tail", tail_point, flat, UP, 0.007, 16 // d, 32 // d)
+    blade(m, TAIL, "tail", tail_point, flat, UP, 0.007, pick(16, 16 // d, 5, low), pick(32, 32 // d, 12, low))
 
     # The pectoral fin of the upper side: behind the gill cover, pointing back, lying just over the skin.
     def paddle(length, wide):
@@ -536,12 +613,16 @@ def fins(m, low):
     span = Vector((-0.08, 0.14, 1.0)).normalized()
     chord = Vector((1.0, 0.0, 0.08)).normalized()
     blade(m, PAIRED, "pectoral", paddle(0.125, 0.05), lambda p: root + span * p[0] + chord * p[1],
-          span.cross(chord).normalized() * (1.0 if span.cross(chord).y > 0.0 else -1.0), 0.005, 16 // d, 12 // d)
+          span.cross(chord).normalized() * (1.0 if span.cross(chord).y > 0.0 else -1.0), 0.005, pick(16, 16 // d, 5, low), pick(12, 12 // d, 4, low))
     # The pelvic fin: small, at the -X edge ahead of the anal fin.
     proot = Vector((-(outline(0.2)[1] - 0.012), SEAM, 0.2 - HALF))
     pspan = Vector((-0.55, 0.0, 0.83)).normalized()
     pchord = Vector((0.83, 0.0, 0.55)).normalized()
-    blade(m, PAIRED, "pelvic", paddle(0.06, 0.03), lambda p: proot + pspan * p[0] + pchord * p[1], UP, 0.004, 10 // d, 8 // d)
+    blade(m, PAIRED, "pelvic", paddle(0.06, 0.03), lambda p: proot + pspan * p[0] + pchord * p[1], UP, 0.004, pick(10, 10 // d, 3, low), pick(8, 8 // d, 3, low))
+
+
+# The game model's eye: (spokes, rings).
+GAME_EYE = (28, 3)
 
 
 def make(low):

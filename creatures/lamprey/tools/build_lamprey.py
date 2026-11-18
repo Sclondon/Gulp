@@ -4,8 +4,8 @@ Run from the game's root:
     blender --background --factory-startup --python creatures/lamprey/tools/build_lamprey.py
     blender --background --factory-startup --python creatures/lamprey/tools/build_lamprey.py -- <preview folder>
 
-It writes creatures/lamprey/models/lamprey.glb (the full model, for close pictures), lamprey_lo.glb (far off,
-phones) and the editable creatures/lamprey/tools/lamprey.blend (this folder has a .gdignore). Each model is one
+It writes creatures/lamprey/models/lamprey.glb (the full model, for close pictures), lamprey_game.glb (the game
+model: about 2,600 triangles, spent as a Twilight Princess figure spends them), lamprey_lo.glb (far off, phones) and the editable creatures/lamprey/tools/lamprey.blend (this folder has a .gdignore). Each model is one
 still mesh with one surface: the shader (lamprey.gdshader) bends it to swim, opens and closes its sucker and draws
 every marking. It prints a WINDING line for each model: the check that nothing is inside out.
 
@@ -75,6 +75,16 @@ def to_b(p):
     return Vector((p.x, -p.z, p.y))
 
 
+# Which model is being built: FULL (close pictures), LOW (far off) or GAME (the game model: a Twilight Princess
+# weight of about 2,600 triangles, spent on the outline, the sucker's round rim, the eye and the fins' edges).
+FULL, LOW, GAME = 0, 1, 2
+
+
+def pick(lod, full, low, game):
+    """The number for this model. (`lod` may be False or True, for FULL and LOW.)"""
+    return (full, low, game)[int(lod)]
+
+
 def smooth(a, b, x):
     t = max(0.0, min(1.0, (x - a) / (b - a)))
     return t * t * (3.0 - 2.0 * t)
@@ -140,7 +150,9 @@ class Section:
         u = max(0.0, min(1.0, u))
         return hw * (1.0 - u ** n) ** (1.0 / n)
 
-    def outline(self, s, half):
+    def outline(self, s, half, bunch=0.0):
+        """(`bunch` more than 0: the points closer together at the top and bottom lines, where the outline seen
+        from in front turns, and further apart across the flank.)"""
         top, bot, hw, ycf, nt, nb = self.at(s)
         yc = bot + ycf * (top - bot)
         dense = []
@@ -160,7 +172,8 @@ class Section:
         whole = acc[-1]
         out = []
         for j in range(half + 1):
-            want = whole * j / half
+            u = j / half
+            want = whole * (u - bunch * math.sin(TAU * u) / TAU) if bunch else whole * j / half
             i = min(bisect.bisect_right(acc, want) - 1, steps - 1)
             span = acc[i + 1] - acc[i]
             t = (want - acc[i]) / span if span > 1e-12 else 0.0
@@ -306,14 +319,20 @@ def flip_x(d):
 
 def body(low):
     part = Part("body")
-    half = 8 if low else 24
+    half = pick(low, 24, 8, 9)
     head = 16 if low else 90
     rest = 30 if low else 150
     places = [lerp(BODY_SKIN.first, 0.13, (i / head) ** 1.3) for i in range(head)]
     places += [lerp(0.13, BODY_SKIN.last, i / rest) for i in range(rest + 1)]
+    if low == GAME:
+        # (close together where the outline turns: the slanted front of the head behind the sucker, and the
+        # tapering tail; far apart along the even middle of the body)
+        places = [0.02, 0.022, 0.026, 0.03, 0.034, 0.039, 0.044, 0.05, 0.056, 0.062, 0.07, 0.08, 0.095, 0.11, 0.13,
+                  0.17, 0.22, 0.28, 0.34, 0.4, 0.46, 0.52, 0.58, 0.64, 0.7, 0.75, 0.8, 0.84, 0.88, 0.91, 0.935,
+                  0.955, 0.97, 0.98, 0.987, 0.992]
     rings = []
     for s in places:
-        side, whole = BODY_SKIN.outline(s, half)
+        side, whole = BODY_SKIN.outline(s, half, 0.3 if low == GAME else 0.0)
         top, bot = BODY_SKIN.top(s), BODY_SKIN.bot(s)
         ring = []
         for j in list(range(half + 1)) + list(range(half, 0, -1)):
@@ -341,15 +360,22 @@ def disc(low):
     """The sucker, built open: one profile (how far out from its middle, how far forward) turned round its axis,
     from the bottom of the throat out over the inner face, round the fringed rim, and back over its outside."""
     part = Part("disc")
-    around = 18 if low else 120
-    face_steps = 4 if low else 14
+    around = pick(low, 120, 18, 20)
+    face_steps = pick(low, 14, 4, 3)
     profile = [(0.0, -0.0165, 0), (0.0035, -0.016, 0), (0.0042, -0.0145, 0), (0.0048, -0.0125, 0)]
+    if low == GAME:
+        profile = [(0.0, -0.0165, 0), (0.0042, -0.0145, 0), (0.0048, -0.0125, 0)]
     for i in range(face_steps + 1):
         r = lerp(0.0055, 0.029, i / face_steps)
         profile.append((r, face_f(r), 1))
-    profile += [(0.0305, 0.0012, 2), (0.0318, 0.0004, 2), (0.0322, -0.0012, 2), (0.0315, -0.003, 2),
-                (0.0305, -0.008, 3), (0.029, -0.016, 3), (0.027, -0.024, 3), (0.022, -0.031, 3), (0.012, -0.035, 3),
-                (0.004, -0.036, 3), (0.0, -0.036, 3)]
+    if low == GAME:
+        # (the rim's round lip, and the outside of the cup back into the head, in fewer rings)
+        profile += [(0.0305, 0.0012, 2), (0.0322, -0.0012, 2), (0.0305, -0.008, 3), (0.025, -0.027, 3),
+                    (0.0, -0.036, 3)]
+    else:
+        profile += [(0.0305, 0.0012, 2), (0.0318, 0.0004, 2), (0.0322, -0.0012, 2), (0.0315, -0.003, 2),
+                    (0.0305, -0.008, 3), (0.029, -0.016, 3), (0.027, -0.024, 3), (0.022, -0.031, 3),
+                    (0.012, -0.035, 3), (0.004, -0.036, 3), (0.0, -0.036, 3)]
     rings = []
     for r, f, region in profile:
         ring = []
@@ -370,8 +396,23 @@ def disc(low):
     return part
 
 
-def cone(part, root, way, wide, tall, sides, kind, sunk=0.0007):
-    """A closed cone: its base round `root` (sunk a little), pointing along `way`."""
+def cone(part, root, way, wide, tall, sides, kind, sunk=0.0007, plain=False):
+    """A closed cone: its base round `root` (sunk a little), pointing along `way`. `plain`: straight sides,
+    with no ring halfway up (the game model's teeth)."""
+    if plain:
+        way = way.normalized()
+        side_a = way.cross(Vector((0.0, 0.0, 1.0)) if abs(way.z) < 0.9 else Vector((1.0, 0.0, 0.0))).normalized()
+        side_b = way.cross(side_a)
+        base = root - way * sunk
+        ring = [part.add(base + (side_a * math.cos(TAU * k / sides) + side_b * math.sin(TAU * k / sides)) * wide,
+                         (0.0, 1.0), (0.0, 1.0), (kind / 10.0, 0.0, 0.0)) for k in range(sides)]
+        tip = part.add(base + way * (tall + sunk), (1.0, 1.0), (0.0, 1.0), (kind / 10.0, 0.0, 0.0))
+        bottom = part.add(base, (0.0, 1.0), (0.0, 1.0), (kind / 10.0, 0.0, 0.0))
+        for k in range(sides):
+            n = (k + 1) % sides
+            part.faces.append((ring[k], ring[n], tip))
+            part.faces.append((ring[n], ring[k], bottom))
+        return
     way = way.normalized()
     side_a = way.cross(Vector((0.0, 0.0, 1.0)) if abs(way.z) < 0.9 else Vector((1.0, 0.0, 0.0))).normalized()
     side_b = way.cross(side_a)
@@ -389,7 +430,7 @@ def cone(part, root, way, wide, tall, sides, kind, sunk=0.0007):
         part.faces.append((ring[n], ring[k], bottom))
 
 
-def tooth_at(made, r, q, wide, tall, sides, lean=0.4):
+def tooth_at(made, r, q, wide, tall, sides, lean=0.4, plain=False):
     """A tooth on the sucker's inner face at `r` out and `q` round, leaning in towards the mouth: a closed solid
     of its own (some stand close enough to touch, and each is checked alone)."""
     part = Part("tooth")
@@ -398,13 +439,29 @@ def tooth_at(made, r, q, wide, tall, sides, lean=0.4):
     out = DISC_X * math.cos(q) + DISC_V * math.sin(q)
     normal = (DISC_AXIS - out * slope).normalized()
     way = (normal - out * lean).normalized()
-    cone(part, disc_point(r, face_f(r), q), way, wide * 1.35, tall * 1.4, sides, TEETH)
+    cone(part, disc_point(r, face_f(r), q), way, wide * 1.35, tall * 1.4, sides, TEETH, plain=plain)
     made.append(part)
 
 
 def teeth(low):
     part = []
     sides = 3 if low else 6
+    if low == GAME:
+        # Fewer and plainer, but every kind still there: the supraoral's two cusps, the infraoral's row, an
+        # inner lateral pair each side and two rings out towards the rim, each half a step round from the last.
+        up = math.pi * 0.5
+        for q in (up - 0.2, up + 0.2):
+            tooth_at(part, 0.0074, q, 0.0021, 0.0042, 3, 0.55, True)
+        for i in range(5):
+            tooth_at(part, 0.0078, -up + lerp(-0.62, 0.62, i / 4), 0.0012, 0.0028, 3, 0.55, True)
+        for centre in (0.0, math.pi):
+            for d in (-0.35, 0.35):
+                tooth_at(part, 0.0082, centre + d, 0.0015, 0.0032, 3, 0.5, True)
+        for n, (r, count, wide, tall) in enumerate([(0.0135, 12, 0.0013, 0.0028), (0.0205, 16, 0.00105, 0.0021)]):
+            for i in range(count):
+                q = TAU * (i + 0.5 * (n % 2)) / count + 0.07 * math.sin(i * 2.3 + n)
+                tooth_at(part, r, q, wide, tall, 3, 0.35, True)
+        return part
     up = math.pi * 0.5
     # The supraoral plate: two big cusps above the mouth.
     for q in (up - 0.2, up + 0.2):
@@ -433,7 +490,7 @@ def teeth(low):
 def nostril(low):
     """The one nostril: a short tube on the top of the head, open at its tip."""
     part = Part("nostril")
-    around = 8 if low else 20
+    around = pick(low, 20, 8, 6)
     s = NOSTRIL_S
     top = BODY_SKIN.top(s)
     centre = Vector((0.0, top, s - 0.5))
@@ -463,8 +520,8 @@ def eye(low):
     seen = math.sqrt(1.0 - (1.0 - stands / ball) ** 2)
     reach = math.asin(min(seen / shown, 0.999))
     centre = at - out * (ball - stands)
-    rows = 4 if low else 10
-    around = 10 if low else 28
+    rows = pick(low, 10, 4, 3)
+    around = pick(low, 28, 10, 24)
     rings = []
     for i in range(rows + 1):
         a = reach * i / rows
@@ -483,13 +540,13 @@ def eye(low):
     return part
 
 
-def fin(name, kind, rays, base, direction, length, thick, low):
+def fin(name, kind, rays, base, direction, length, thick, low, game_cols=8):
     """A fin on the middle plane: `rays` (soft lines drawn by the shader) fanned from the line `base(t)` (t 0 its
     front to 1 its rear), each going the way `direction(t)` for `length(t)`; thin, `thick` at its root."""
     part = Part(name)
     per_ray = 1 if low else 3
-    rows = 3 if low else 10
-    cols = max(rays * per_ray, 6)
+    rows = pick(low, 10, 3, 2)
+    cols = max(rays * per_ray, 6) if low != GAME else game_cols
     normal = Vector((1.0, 0.0, 0.0))
     left, right = [], []
     for i in range(cols + 1):
@@ -533,7 +590,7 @@ def fins(low):
         lambda t: Vector((0.0, BODY_SKIN.top(lerp(d0, d1, t)) - 0.004, lerp(d0, d1, t) - 0.5)),
         rake(82.0, 50.0),
         lambda t: 0.004 + 0.02 * math.sin(math.pi * min(1.0, t ** 0.75)) ** 0.7,
-        0.0042, low))
+        0.0042, low, 8))
     # The second dorsal, taller, running back into the tail fin round the tip of the tail.
     e0, e1 = 0.662, 0.988
     made.append(fin(
@@ -542,7 +599,7 @@ def fins(low):
         rake(80.0, 6.0),
         lambda t: (0.005 + 0.027 * smooth(0.0, 0.2, t) * (1.0 - 0.4 * smooth(0.3, 0.72, t))
                    + 0.009 * smooth(0.72, 0.92, t)) * (1.0 - 0.45 * smooth(0.93, 1.0, t)),
-        0.0042, low))
+        0.0042, low, 16))
     # The tail fin's lower lobe, under the tail.
     c0, c1 = 0.885, 0.988
     made.append(fin(
@@ -550,7 +607,7 @@ def fins(low):
         lambda t: Vector((0.0, BODY_SKIN.bot(lerp(c0, c1, t)) + 0.003, lerp(c0, c1, t) - 0.5)),
         rake(70.0, 8.0, True),
         lambda t: (0.004 + 0.017 * smooth(0.0, 0.45, t)) * (1.0 - 0.4 * smooth(0.9, 1.0, t)),
-        0.0038, low))
+        0.0038, low, 7))
     return made
 
 
@@ -664,17 +721,17 @@ def render(folder, made):
              ("front", (0, 1, 0), (0, 0, 0), 0.1), ("back", (0, -1, 0), (0, 0, 0), 0.1),
              ("quarter", (0.7, 0.6, 0.35), (0, 0, 0), 0.75), ("head", (1, 0.15, 0.05), (0, 0.3, 0), 0.16),
              ("head_under", (0.4, 0.5, -0.7), (0, 0.32, -0.01), 0.12), ("tail", (1, -0.2, 0.1), (0, -0.28, 0), 0.2)]
-    for low, obj in ((False, made[0]), (True, made[1])):
+    for low, obj in ((FULL, made[0]), (LOW, made[1]), (GAME, made[2])):
         for other in made:
             other.hide_render = other is not obj
         for view, direction, target, frame in views:
-            if low and view not in ("right", "quarter", "head_under"):
+            if low == LOW and view not in ("right", "quarter", "head_under"):
                 continue
             offset = Vector(direction).normalized() * 10.0
             camera.data.ortho_scale = frame
             camera.location = Vector(target) + offset
             camera.rotation_euler = (-offset).to_track_quat("-Z", "X" if view in ("top", "under") else "Y").to_euler()
-            scene.render.filepath = os.path.join(folder, "%s%s.png" % ("lo_" if low else "", view))
+            scene.render.filepath = os.path.join(folder, "%s%s.png" % (("", "lo_", "game_")[low], view))
             bpy.ops.render.render(write_still=True)
 
 
@@ -685,16 +742,24 @@ def main():
     print("SHAPE lamprey: body depth=%.4f m width=%.4f m" % (
         LENGTH * max(BODY_SKIN.top(i / 400.0) - BODY_SKIN.bot(i / 400.0) for i in range(400)),
         LENGTH * 2.0 * max(BODY_SKIN.at(i / 400.0)[2] for i in range(400))))
-    full = make("lamprey", False)
-    low = make("lamprey_lo", True)
+    at, out, up = body_frame(*EYE_AT)
+    centre = at - out * (EYE_BALL[0] - EYE_BALL[1])
+    print("EYE lamprey (the right eye, Godot metres, for the shader's cartoon eye): centre=(%.5f, %.5f, %.5f) out=(%.4f, %.4f, %.4f)" % (
+        centre.x * LENGTH, centre.y * LENGTH, centre.z * LENGTH, out.x, out.y, out.z))
+    full = make("lamprey", FULL)
+    low = make("lamprey_lo", LOW)
+    game = make("lamprey_game", GAME)
     export_one(full, os.path.join(OUT, "lamprey.glb"))
     export_one(low, os.path.join(OUT, "lamprey_lo.glb"))
+    export_one(game, os.path.join(OUT, "lamprey_game.glb"))
     low.location.x = 0.3
+    game.location.x = 0.6
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "lamprey.blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low])
+        render(PREVIEW, [full, low, game])
 
 
 if __name__ == "__main__":

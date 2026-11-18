@@ -34,6 +34,13 @@ on top, -1 beneath, 0 along the edges. On a cephalic fin: UV.x from its root (0)
 across from its top edge, UV2.x metres off the middle of the sheet (+ its inner skin). On the tail: UV.x
 from its root to its tip. On the other fins: UV.x root to tip, UV.y leading to trailing edge. On an eye:
 UV.x from its middle (0) to its rim (1). (The glTF writer flips V: what is written here is 1 - v.)
+
+THE GAME MODEL (models/manta_ray_game.glb, made in the same run; the .blend holds all three): the same curves and
+profiles as the full model with far fewer, better placed points (the user, 2026-11-18: "We should have a twilight
+princess model to compare to so we can make low poly versions while maintaining high quality looks and
+silhouettes"). Its rows go where the outline and the profile bend most (`greedy`), with more round the eyes, the
+mouth and the edges, and every UV, UV2 and part the shader reads, so it swims, opens its mouth and is marked as
+the full one is. The full and low models come out exactly as before (their .glb files are byte for byte the same).
 """
 
 import math
@@ -52,6 +59,46 @@ PREVIEW = ARGS[0] if ARGS else ""
 
 SKIN, MOUTH, CEPH, TAIL, DORSAL, SPINE, EYE = range(7)
 TAU = math.tau
+# True while the game model is being made (see GAME below SPECS): every count then comes from the species'
+# "game" numbers, and the full and low models are made exactly as before.
+GAME = False
+
+
+def pick(full, low_value, game_value, low):
+    """How many of something: on the game model, the low one, or the full one."""
+    if GAME:
+        return game_value
+    return low_value if low else full
+
+
+def greedy(fns, seeds, n, max_step):
+    """`n` intervals from seeds[0] to seeds[-1], spent where the curves `fns` bend most: each interval longer
+    than `max_step` is halved, then the interval whose middle strays furthest from the straight line between its
+    ends (in any of `fns`) is halved, until there are `n`. For the game model: its points go where the outline
+    and the profile need them."""
+    xs = sorted(set(seeds))
+
+    def err(a, b):
+        worst = 0.0
+        for f in fns:
+            fa, fb = f(a), f(b)
+            for s in (0.25, 0.5, 0.75):
+                x = a + (b - a) * s
+                worst = max(worst, abs(f(x) - (fa + (fb - fa) * s)))
+        return worst
+
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(xs) - 1):
+            if xs[i + 1] - xs[i] > max_step:
+                xs.insert(i + 1, 0.5 * (xs[i] + xs[i + 1]))
+                changed = True
+                break
+    while len(xs) - 1 < n:
+        best = max(range(len(xs) - 1), key=lambda i: err(xs[i], xs[i + 1]) if xs[i + 1] - xs[i] > 1e-4 else -1.0)
+        xs.insert(best + 1, 0.5 * (xs[best] + xs[best + 1]))
+    return xs
 
 
 def smooth(a, b, x):
@@ -156,7 +203,22 @@ SPECS = {
     ),
 }
 
+# The game model's counts (the full and low ones come from SPECS): `gaps` stations across each half of the span,
+# placed by `greedy` where the outline and the section's thickness bend most, none more than `max_step` of the
+# half span apart (so that the wing bends as a curve); `nu` points round each section's top and bottom skin;
+# `pocket` points down each side of the mouth; (along, across) for a cephalic fin, (rings, around) for the
+# tail, (spokes, rings) for an eye, (along, across) for the dorsal fin and a spine.
+GAMES = {
+    "manta_ray": dict(gaps=24, max_step=0.07, nu=18, pocket=3, ceph=(10, 6), tail=(24, 8), eye=(28, 4),
+                      dorsal=(5, 4), spines=(5, 3)),
+    "devil_ray": dict(gaps=18, max_step=0.1, nu=12, pocket=3, ceph=(7, 5), tail=(16, 6), eye=(24, 3),
+                      dorsal=(4, 3), spines=(4, 3)),
+    "spotted_eagle_ray": dict(gaps=21, max_step=0.08, nu=15, pocket=3, ceph=None, tail=(30, 8), eye=(26, 3),
+                              dorsal=(4, 3), spines=(5, 3)),
+}
+
 S = SPECS[SPECIES]
+G = GAMES[SPECIES]
 HALF = S["half"]
 DISC = S["disc"]
 MID = DISC * 0.5
@@ -236,6 +298,15 @@ class Mesh:
 
 
 def stations(low):
+    if GAME:
+        # (and stations across the mouth, so that the jaw opens as a curve)
+        seeds = [0.0, 0.14] + [S["mouth_half"] / HALF * k for k in (0.35, 0.7, 0.92, 1.0)] + [until for until, _ in S["stations"]]
+        # (and round the eye, so that the skin there keeps its curve and does not bury the eye)
+        seeds += [(S["eye"]["at"][0] + k * S["eye"]["radius"]) / HALF for k in (-1.5, 0.0, 1.5)]
+        fns = [lead, trail, lambda a: skin(a, 0.3, True).y, lambda a: skin(a, 0.3, False).y,
+               lambda a: skin(a, 0.08, True).y]
+        xs = greedy(fns, seeds, G["gaps"], G["max_step"])
+        return [-v for v in reversed(xs[1:])] + xs
     xs = [0.0]
     x = 0.0
     for until, step in S["stations"]:
@@ -249,8 +320,8 @@ def stations(low):
 
 
 def disc(m, low):
-    nu = max(8, S["around"] // 3) if low else S["around"]
-    pocket = max(2, S["pocket"] // 2) if low else S["pocket"]
+    nu = pick(S["around"], max(8, S["around"] // 3), G["nu"], low)
+    pocket = pick(S["pocket"], max(2, S["pocket"] // 2), G["pocket"], low)
     us = [0.5 * (1.0 - math.cos(math.pi * k / nu)) for k in range(nu + 1)]
     front = S["mouth"] == "front"
     mouth_half = S["mouth_half"]
@@ -394,8 +465,8 @@ def ceph_point(t, h, off, sx, scoops):
 
 def cephs(m, low):
     c = S["ceph"]
-    nt = max(6, c["nt"] // 3) if low else c["nt"]
-    nh = max(5, c["nh"] // 3) if low else c["nh"]
+    nt = pick(c["nt"], max(6, c["nt"] // 3), G["ceph"][0], low)
+    nh = pick(c["nh"], max(5, c["nh"] // 3), G["ceph"][1], low)
     for sx in (1.0, -1.0):
         for side in (1.0, -1.0):
             grid = []
@@ -433,8 +504,8 @@ def tail_radius(zd):
 
 def tail(m, low):
     t = S["tail"]
-    rings = max(8, t["rings"] // 3) if low else t["rings"]
-    around = 5 if low else t["around"]
+    rings = pick(t["rings"], max(8, t["rings"] // 3), G["tail"][0], low)
+    around = pick(t["around"], 5, G["tail"][1], low)
     start = t["start"] * DISC
     end = DISC + t["length"]
     grid = []
@@ -515,7 +586,7 @@ def fins(m, low):
     tip = (x1 + 0.25 * f["chord"], top_y(x1) + f["high"])
     blade(m, DORSAL, "dorsal", swept(((x0, top_y(x0) - sink), (x0 + 0.55 * f["chord"], top_y(x0) + f["high"] * 0.9), tip),
                                      ((x1, top_y(x1) - sink), (x1 + 0.1 * f["chord"], top_y(x1) + f["high"] * 0.35), tip)),
-          upright, SIDE, f["high"] * 0.16, 12 // d, 9 // d)
+          upright, SIDE, f["high"] * 0.16, pick(12, 12 // d, G["dorsal"][0], low), pick(9, 9 // d, G["dorsal"][1], low))
     for behind in S["spines"]:
         # a barbed spine lying back along the top of the tail
         x0 = DISC + behind
@@ -523,13 +594,13 @@ def fins(m, low):
         tip = (x0 + 0.13, tail_radius(x0 + 0.13) + 0.016)
         blade(m, SPINE, "spines", swept(((x0, y0), (x0 + 0.05, y0 + 0.024), tip),
                                         ((x0 + 0.03, y0 - 0.002), (x0 + 0.07, y0 + 0.006), tip)),
-              upright, SIDE, 0.007, 10 // d, 6 // d)
+              upright, SIDE, 0.007, pick(10, 10 // d, G["spines"][0], low), pick(6, 6 // d, G["spines"][1], low))
 
 
 def eye(m, sx, low):
     e = S["eye"]
-    spokes = 10 if low else 28
-    steps = 3 if low else 8
+    spokes = pick(28, 10, G["eye"][0], low)
+    steps = pick(8, 3, G["eye"][1], low)
     here = Vector((e["at"][0] * sx, e["at"][1], e["at"][2] - MID))
     out = Vector((e["out"][0] * sx, e["out"][1], e["out"][2])).normalized()
     one = out.cross(Vector((0.0, 1.0, 0.0))).normalized()
@@ -620,6 +691,10 @@ def shader_numbers():
                  "CEPH_ALONG = " + v(along), "CEPH_DOWN = " + v(down), "CEPH_IN = " + v(inward),
                  "CEPH_LENGTH = %.4f" % c["length"], "CEPH_WIDTH = %.4f" % c["width"],
                  "CEPH_ROLL0 = %.2f" % c["roll0"], "CEPH_ROLL1 = %.2f" % c["roll1"], "CEPH_CUP = %.2f" % c["cup"]]
+    e = S["eye"]
+    out = Vector(e["out"]).normalized()
+    told += ["EYE_AT = vec3(%.5f, %.5f, %.5f)" % (e["at"][0], e["at"][1], e["at"][2] - MID),
+             "EYE_OUT = vec3(%.5f, %.5f, %.5f)" % (out.x, out.y, out.z), "EYE_RADIUS = %.4f" % e["radius"]]
     print("SHADER %s: %s" % (SPECIES, "; ".join(told)))
 
 
@@ -674,15 +749,23 @@ def render(folder, made):
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.preferences.filepaths.save_version = 0
+    global GAME
     full = make(SPECIES, False)
     low = make(SPECIES + "_lo", True)
+    GAME = True
+    game = make(SPECIES + "_game", False)
+    GAME = False
     shader_numbers()
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, SPECIES + ".glb"))
     export_one(low, os.path.join(OUT, SPECIES + "_lo.glb"))
+    export_one(game, os.path.join(OUT, SPECIES + "_game.glb"))
     low.location.x = HALF * 2.3
+    game.location.x = -HALF * 2.3
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, SPECIES + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
+    game.hide_render = True
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
         render(PREVIEW, [full, low])

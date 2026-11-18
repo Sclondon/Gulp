@@ -30,6 +30,13 @@ on a fin or the mouth's plate: x from its root (0) to its edge (1), y along it; 
 1 - v, so that Godot reads v.)
 
 The numbers marked "as the shader has it" are in round_stingray.gdshader too: change one, change the other.
+
+THE GAME MODEL (models/round_stingray_game.glb, made in the same run; the .blend holds all three): the same curves and
+profiles as the full model with far fewer, better placed points (the user, 2026-11-18: "We should have a twilight
+princess model to compare to so we can make low poly versions while maintaining high quality looks and
+silhouettes"). Its rows go where the outline and the profile bend most (`greedy`), with more round the eyes, the
+mouth and the edges, and every UV, UV2 and part the shader reads, so it swims, opens its mouth and is marked as
+the full one is. The full and low models come out exactly as before (their .glb files are byte for byte the same).
 """
 
 NAME = "round_stingray"
@@ -53,6 +60,59 @@ TAU = math.tau
 UP = Vector((0.0, 1.0, 0.0))
 DOWN = Vector((0.0, -1.0, 0.0))
 SIDE = Vector((1.0, 0.0, 0.0))
+
+# True while the game model is being made: every count then comes from its own game numbers (in make), and
+# the full and low models are made exactly as before.
+GAME = False
+
+
+def pick(full, low_value, game_value, low):
+    """How many of something: on the game model, the low one, or the full one."""
+    if GAME:
+        return game_value
+    return low_value if low else full
+
+
+def greedy(fns, seeds, n, max_step):
+    """`n` intervals from seeds[0] to seeds[-1], spent where the curves `fns` bend most: each interval longer
+    than `max_step` is halved, then the interval whose middle strays furthest from the straight line between its
+    ends (in any of `fns`) is halved, until there are `n`. For the game model: its points go where the outline
+    and the profile need them."""
+    xs = sorted(set(seeds))
+
+    def err(a, b):
+        worst = 0.0
+        for f in fns:
+            fa, fb = f(a), f(b)
+            for s in (0.25, 0.5, 0.75):
+                x = a + (b - a) * s
+                worst = max(worst, abs(f(x) - (fa + (fb - fa) * s)))
+        return worst
+
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(xs) - 1):
+            if xs[i + 1] - xs[i] > max_step:
+                xs.insert(i + 1, 0.5 * (xs[i] + xs[i + 1]))
+                changed = True
+                break
+    while len(xs) - 1 < n:
+        best = max(range(len(xs) - 1), key=lambda i: err(xs[i], xs[i + 1]) if xs[i + 1] - xs[i] > 1e-4 else -1.0)
+        xs.insert(best + 1, 0.5 * (xs[best] + xs[best + 1]))
+    return xs
+
+
+def smooth(a, b, x):
+    t = max(0.0, min(1.0, (x - a) / (b - a)))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def soft(a):
+    """|a| with its corner at the middle line rounded off (0 at 0)."""
+    return math.sqrt(a * a + 0.0016) - 0.04
+
+
 
 
 def to_b(p):
@@ -215,14 +275,17 @@ def blade(m, part, name, point, place, facing, thick, nt, nu, extra=None):
 
 def dome(m, part, name, skin, at, radius, height, toward, low):
     """An eye: a dome lying on the skin. `skin(a, b)` is a place on the skin by two coordinates (metres)."""
-    spokes = 10 if low else 32
-    rings = 3 if low else 10
+    spokes = pick(32, 10, GAME_EYE[0], low)
+    rings = pick(10, 3, GAME_EYE[1], low)
     a0, b0 = at
     e = 0.003
     out = (skin(a0 + e, b0) - skin(a0 - e, b0)).cross(skin(a0, b0 + e) - skin(a0, b0 - e))
     out.normalize()
     if out.dot(toward) < 0.0:
         out = -out
+    if not low and not GAME:
+        base = skin(a0, b0)
+        print("EYE at vec3(%.5f, %.5f, %.5f) out vec3(%.5f, %.5f, %.5f) radius %.4f" % (base.x, base.y, base.z, out.x, out.y, out.z, radius))
     middle = m.add(skin(a0, b0) + out * height, (0.0, 0.0), part)
     last = None
     for k in range(1, rings + 1):
@@ -357,14 +420,22 @@ def render(folder, made, frame, head_at):
 def build_all(make, colour, frame, head_at):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.preferences.filepaths.save_version = 0
+    global GAME
     full = make_object(NAME, make(False), colour)
     low = make_object(NAME + "_lo", make(True), colour)
+    GAME = True
+    game = make_object(NAME + "_game", make(False), colour)
+    GAME = False
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, NAME + ".glb"))
     export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
+    export_one(game, os.path.join(OUT, NAME + "_game.glb"))
     low.location.x = frame
+    game.location.x = -frame
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
+    game.hide_render = True
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
         render(PREVIEW, [full, low], frame, head_at)
@@ -411,9 +482,13 @@ def tail_radius(xm):
     return lerp(0.017, 0.004, max(0.0, (xm - 0.25) / 0.225) ** 0.8)
 
 
+# The game model's eye: (spokes, rings).
+GAME_EYE = (24, 3)
+
+
 def make(low):
     m = Mesh()
-    n = 17 if low else 57
+    n = pick(57, 17, 15, low)
 
     def columns(xm):
         w = half_width(xm)
@@ -423,7 +498,12 @@ def make(low):
     def data(xm, x, upper):
         return (xm / LENGTH, 0.5 + x / 0.3), BODY, 0.0
 
-    xs = steps(0.0005, [(0.012, 0.001), (0.05, 0.003), (0.24, 0.0042), (0.287, 0.003)], low, 3.5)
+    if GAME:
+        # (rows where the outline from above and the profile from the side bend most, and round the eyes)
+        xs = greedy([half_width, lambda xm: top(xm, 0.0), lambda xm: bot(xm, 0.0), lambda xm: top(xm, EYE_AT[1])],
+                    [0.0005, 0.012, 0.05, EYE_AT[0] - 0.007, EYE_AT[0], EYE_AT[0] + 0.007, 0.24, 0.287], 17, 0.03)
+    else:
+        xs = steps(0.0005, [(0.012, 0.001), (0.05, 0.003), (0.24, 0.0042), (0.287, 0.003)], low, 3.5)
     rows = slab_rows(m, xs, columns, top, bot, data)
     slab_faces(m, rows, "body")
     slab_cap(m, rows[0], m.add(Vector((0.0, PLANE, -HALF)), (0.0, 0.5), BODY), "body")
@@ -437,19 +517,19 @@ def make(low):
             return (lerp(0.245, 0.285, u) + 0.8 * reach * t, lerp(0.03, 0.014, u) + 0.6 * reach * t)
 
         blade(m, FIN, "pelvics", pelvic, lambda p, sx=sx: Vector((sx * p[1], PLANE, p[0] - HALF)), UP, 0.004,
-              3 if low else 8, 5 if low else 14)
+              pick(8, 3, 2, low), pick(14, 5, 4, low))
 
     # The mouth's plate, underneath: hinged along its rear edge.
     def plate(t, u):
         return (MOUTH_HINGE - MOUTH_LONG * t, (u - 0.5) * MOUTH_WIDE * (1.0 - 0.25 * t * t))
 
     blade(m, JAW, "mouth", plate, lambda p: Vector((p[1], bot(p[0], p[1]) - 0.001, p[0] - HALF)), DOWN, 0.002,
-          2 if low else 6, 4 if low else 12)
+          pick(6, 2, 2, low), pick(12, 4, 3, low))
     print("MOUTH hinge y %.4f" % (bot(MOUTH_HINGE, 0.0) - 0.001))
     # The tail: short and stout.
     tube(m, TAIL, "tail", lambda t: Vector((0.0, TAIL_Y, lerp(0.25, 0.475, t) - HALF)),
          lambda t: (tail_radius(lerp(0.25, 0.475, t)), 0.8 * tail_radius(lerp(0.25, 0.475, t))),
-         8 if low else 30, 6 if low else 12)
+         pick(30, 8, 10, low), pick(12, 6, 8, low))
 
     # The tail fin: a small leaf round the end of the tail, a lobe above and a lobe below.
     for way, tall in ((1.0, 0.017), (-1.0, 0.013)):
@@ -457,7 +537,7 @@ def make(low):
             xm = lerp(0.385, 0.5, u)
             return (xm, TAIL_Y + way * tall * (0.08 + 0.92 * math.sin(math.pi * u ** 0.75) ** 0.7) * t)
 
-        blade(m, TAILFIN, "tail fin", lobe, lambda p: Vector((0.0, p[1], p[0] - HALF)), SIDE, 0.004, 3 if low else 8, 5 if low else 20)
+        blade(m, TAILFIN, "tail fin", lobe, lambda p: Vector((0.0, p[1], p[0] - HALF)), SIDE, 0.004, pick(8, 3, 2, low), pick(20, 5, 7, low))
 
     # The sting: a spine lying along the top of the tail, half way down it.
     def spine_middle(t):
@@ -465,7 +545,7 @@ def make(low):
         return Vector((0.0, TAIL_Y + 0.8 * tail_radius(xm) + 0.001 + 0.004 * t, xm - HALF))
 
     tube(m, SPINE, "spine", spine_middle, lambda t: (0.0022 * (1.0 - t) + 0.0003, 0.0016 * (1.0 - t) + 0.0003),
-         3 if low else 8, 4 if low else 8)
+         pick(8, 3, 3, low), pick(8, 4, 4, low))
     return m
 
 

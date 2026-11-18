@@ -37,6 +37,30 @@ uniform vec3 skin_deep : source_color = vec3(0.2, 0.3, 0.09);
 uniform vec3 mouth : source_color = vec3(0.4, 0.36, 0.34);
 uniform vec3 tooth : source_color = vec3(0.93, 0.92, 0.86);
 uniform vec3 iris : source_color = vec3(0.62, 0.72, 0.8);
+// The cartoon eye (the user, 2026-11-18: "the eyes for most of them should be more cartoony and
+// personalized"): 0 the eye as the species has it, 1 the cartoon eye: a moray's small mean one, only a
+// little bigger, a pale icy iris round a small pupil, little white, and a heavy brow of a lid slanting
+// down towards the snout in a scowl. `eye_look` slides the iris and pupil (x towards the snout, y up;
+// -1..1); `blink` 0 open to 1 shut (the eye squashed flat and the lid drawn down).
+uniform float cartoon_eyes : hint_range(0.0, 1.0) = 0.0;
+uniform vec2 eye_look = vec2(0.0);
+uniform float blink : hint_range(0.0, 1.0) = 0.0;
+
+// The right eye's middle (metres, the model as it lies) and the way it looks out (the build prints the
+// EYE line); how far round its face (UV.y) the skin covers it; the cartoon eye's width, how far it bulges
+// and stands out, how far the iris slides, its size, the pupil's, and the lid's line (x towards the
+// snout, y up, 1 the eye's rim).
+const vec3 EYE_MIDDLE = vec3(0.02019, 0.01955, 0.05708);
+const vec3 EYE_OUT = vec3(0.8146, 0.4651, -0.3466);
+const float EYE_SEEN = 0.45;
+const float EYE_GROW = 1.4;
+const float EYE_BULGE = 1.1;
+const float EYE_PUSH = 0.0015;
+const float IRIS_TRAVEL = 0.18;
+const float IRIS_R = 0.66;
+const float PUPIL_R = 0.27;
+const float LID_Y = 0.3;
+const float LID_SLANT = -0.55;
 
 varying float part;
 varying float fin;
@@ -67,6 +91,28 @@ void vertex() {
 	rest = VERTEX;
 	vec3 p = VERTEX;
 	vec3 n = NORMAL;
+	if (part > 0.5 && part < 0.7 && (cartoon_eyes > 0.0 || blink > 0.0)) {
+		// The eye: a little bigger and prouder as a cartoon eye, squashed flat to blink.
+		vec3 mid = EYE_MIDDLE;
+		vec3 o = EYE_OUT;
+		if (p.x < 0.0) {
+			mid.x = -mid.x;
+			o.x = -o.x;
+		}
+		vec3 up = normalize(vec3(0.0, 1.0, 0.0) - o * o.y);
+		float wide = mix(1.0, EYE_GROW, cartoon_eyes);
+		float proud = mix(1.0, EYE_BULGE, cartoon_eyes);
+		float shut = 1.0 - 0.8 * clamp(blink, 0.0, 1.0);
+		vec3 d = p - mid;
+		float d_out = dot(d, o);
+		vec3 flat_d = d - o * d_out;
+		float d_up = dot(flat_d, up);
+		p = mid + o * (d_out * proud + EYE_PUSH * cartoon_eyes) + (flat_d - up * d_up) * wide + up * (d_up * wide * shut);
+		float n_out = dot(n, o);
+		vec3 n_flat = n - o * n_out;
+		float n_up = dot(n_flat, up);
+		n = o * (n_out / proud) + (n_flat - up * n_up) / wide + up * (n_up / (wide * shut));
+	}
 	if (part < 0.1) {
 		// It breathes: the throat swells as the mouth shuts and falls as it opens.
 		float throat = smoothstep(0.07, 0.17, p.z) * (1.0 - smoothstep(0.2, 0.32, p.z)) * (1.0 - smoothstep(-0.03, 0.02, p.y));
@@ -102,6 +148,34 @@ void vertex() {
 	VERTEX = on_line + right * p.x + back * p.y + way * (p.z - along);
 	NORMAL = normalize(right * n.x + back * n.y + way * n.z);
 }
+
+// The cartoon eye's colour at `e` on its face (x towards the snout, y up, 1 where the skin meets it),
+// `nv` the way it faces (view space): a pale icy iris filling most of it round a small pupil, a
+// highlight that stays towards the light (where the dome faces it), a dark outline.
+vec3 cartoon_eye(vec2 e, vec3 nv) {
+	float r = length(e);
+	vec2 q = e - clamp(eye_look, vec2(-1.0), vec2(1.0)) * IRIS_TRAVEL;
+	float ri = length(q);
+	vec3 c = vec3(0.9, 0.9, 0.82);
+	vec3 ic = mix(iris * 1.2, iris * 0.7, smoothstep(0.1, IRIS_R, ri));
+	ic = mix(ic, iris * 0.3, smoothstep(IRIS_R - 0.1, IRIS_R - 0.02, ri));
+	c = mix(c, ic, 1.0 - smoothstep(IRIS_R - 0.02, IRIS_R + 0.02, ri));
+	c = mix(c, vec3(0.01), 1.0 - smoothstep(PUPIL_R - 0.02, PUPIL_R + 0.02, ri));
+	vec3 light = normalize(vec3(-0.3, 0.35, 0.9));
+	c = mix(c, vec3(1.0), smoothstep(0.993, 0.996, dot(nv, light)));
+	return mix(c, vec3(0.02, 0.025, 0.015), smoothstep(0.86, 0.93, r));
+}
+
+
+// The lid over an eye (`c` its colour, at `e` on its face): the cartoon eye's heavy scowling brow of a
+// lid with a dark line along its edge (none on the eye as the species has it), drawn down to blink.
+vec3 eye_lid(vec2 e, vec3 c, vec3 lid_c) {
+	float line = mix(mix(1.2, LID_Y + LID_SLANT * e.x, cartoon_eyes), -1.2, clamp(blink, 0.0, 1.0));
+	float edge = (1.0 - smoothstep(0.0, 0.12, line - e.y)) * smoothstep(-1.1, -0.7, line) * max(cartoon_eyes, step(0.001, blink));
+	c = mix(c, vec3(0.02, 0.025, 0.015), edge);
+	return mix(c, lid_c, smoothstep(line - 0.01, line + 0.01, e.y));
+}
+
 
 // The normal turned by a bumpy surface `high` (metres) over it, from how `high` changes across the screen.
 vec3 bumped(vec3 normal, vec3 where, float high) {
@@ -166,6 +240,15 @@ void fragment() {
 		c = mix(c, iris * 0.3, smoothstep(0.5, 0.56, r));
 		c = mix(c, skin_deep, smoothstep(0.58, 0.66, r));
 		rough = mix(0.08, 0.34, smoothstep(0.58, 0.66, r));
+		if (cartoon_eyes > 0.0 || blink > 0.0) {
+			// (where on its face: round it by UV.x, out from the middle by UV.y; forward is the other
+			// way round on the left eye)
+			float a = at.x * TAU;
+			vec2 e = vec2(-cos(a) * sign(rest.x), -sin(a)) * (r / EYE_SEEN);
+			c = mix(c, cartoon_eye(e, normalize(NORMAL)), cartoon_eyes * (1.0 - smoothstep(0.58, 0.66, r)));
+			c = eye_lid(e, c, mix(skin, skin_deep, 0.5));
+			rough = mix(rough, 0.1, cartoon_eyes);
+		}
 		shine = 0.8;
 	} else {
 		c = vec3(0.02, 0.025, 0.02);

@@ -4,8 +4,9 @@ Run from anywhere:
     blender --background --python creatures/moray_eel/tools/build_moray_eel.py
     blender --background --python creatures/moray_eel/tools/build_moray_eel.py -- <preview folder>   # with pictures
 
-Writes creatures/moray_eel/models/moray_eel.glb (the full model, near) and moray_eel_lo.glb (far off), and the
-editable creatures/moray_eel/tools/moray_eel.blend (this folder has a .gdignore). Each model is one still mesh,
+Writes creatures/moray_eel/models/moray_eel.glb (the full model, near), moray_eel_game.glb (the game model, near
+in a game: about 3,700 triangles, spent as a Twilight Princess figure spends them) and moray_eel_lo.glb (far off),
+and the editable creatures/moray_eel/tools/moray_eel.blend (this folder has a .gdignore). Each model is one still mesh,
 lying straight: MorayEel simulates its spine and the shader (moray_eel.gdshader) lays the mesh along it, opens
 its jaw and draws its skin. It prints a WINDING line: the check that nothing is inside out.
 
@@ -59,6 +60,16 @@ SKIN, MOUTH_IN, TOOTH, EYE, HOLE = 0.0, 0.2, 0.4, 0.6, 0.8
 
 def to_b(p):
     return Vector((p.x, -p.z, p.y))
+
+
+# Which model is being built: FULL (close pictures), LOW (far off) or GAME (the game model: a Twilight Princess
+# weight, spent on the head, the mouth and the eye, and on the fin's outline; few across the long flanks).
+FULL, LOW, GAME = 0, 1, 2
+
+
+def pick(lod, full, low, game):
+    """The number for this model. (`lod` may be False or True, for FULL and LOW.)"""
+    return (full, low, game)[int(lod)]
 
 
 def smooth(a, b, x):
@@ -204,9 +215,12 @@ def jaw_weight(s, y):
 def stations(low):
     """Where the rings are, snout to tail, and which is the one at the corner of the mouth."""
     first = 0.0012
-    n_mouth = 8 if low else 26
+    n_mouth = pick(low, 26, 8, 12)
     out = [first + (MOUTH - first) * (j / n_mouth) ** 1.5 for j in range(n_mouth + 1)]
-    for to, step in ((0.34, 0.03 if low else 0.0075), (1.72, 0.046 if low else 0.0125), (1.797, 0.026 if low else 0.0097)):
+    # (the game model: close rings over the head, where the nape rises and the fin begins; far apart along the
+    # body, whose outline runs straight; close again where the tail and its fin round off)
+    for to, step in ((0.34, pick(low, 0.0075, 0.03, 0.025)), (1.72, pick(low, 0.0125, 0.046, 0.06)),
+                     (1.797, pick(low, 0.0097, 0.026, 0.016))):
         n = max(1, round((to - out[-1]) / step))
         from_s = out[-1]
         out += [from_s + (to - from_s) * (i + 1) / n for i in range(n)]
@@ -220,7 +234,7 @@ def inner_lip(s):
 
 
 def body(m, low):
-    nb, nf, n_in = (4, 2, 3) if low else (14, 7, 9)
+    nb, nf, n_in = pick(low, (14, 7, 9), (4, 2, 3), (5, 2, 3))
     rings, at_mouth = stations(low)
     upper = []
     lower = []
@@ -320,9 +334,9 @@ def cone(m, base, way, long, radius, sides, jaw):
 
 
 def teeth(m, low):
-    sides = 4 if low else 6
-    n_up = 8 if low else 17
-    n_lo = 7 if low else 15
+    sides = pick(low, 6, 4, 3)
+    n_up = pick(low, 17, 8, 10)
+    n_lo = pick(low, 15, 7, 9)
     for count, upper in ((n_up, True), (n_lo, False)):
         sign = -1.0 if upper else 1.0
         for i in range(count):
@@ -366,17 +380,21 @@ def eye(m, side, low):
     middle = at - out * 0.006
     a = out.cross(Vector((0.0, 1.0, 0.0))).normalized()
     b = out.cross(a)
-    n_lat, n_lon = (4, 8) if low else (9, 20)
+    n_lat, n_lon = pick(low, (9, 20), (4, 8), (5, 24))
     reach = math.radians(112.0)
     pole = m.v(*(middle + out * radius), 0.0, 0.0, EYE)
     rows = []
-    for i in range(1, n_lat + 1):
-        polar = reach * i / n_lat
+    # (the game model's rows close together over the part that shows, out of the skin, and then one wide step
+    # down under it)
+    polars = [reach * i / n_lat for i in range(1, n_lat + 1)]
+    if low == GAME:
+        polars = [math.radians(d) for d in (14.0, 28.0, 40.0, 54.0, 112.0)]
+    for i, polar in enumerate(polars, 1):
         row = []
         for k in range(n_lon + 1):
             around = math.tau * k / n_lon
             p = middle + (out * math.cos(polar) + (a * math.cos(around) + b * math.sin(around)) * math.sin(polar)) * radius
-            row.append(m.v(p.x, p.y, p.z, k / n_lon, i / n_lat, EYE))
+            row.append(m.v(p.x, p.y, p.z, k / n_lon, i / n_lat if low != GAME else polar / reach, EYE))
         rows.append(row)
     for k in range(n_lon):
         m.face([pole, rows[0][k], rows[0][k + 1]], "eyes", m.verts[rows[0][k]] - middle)
@@ -394,7 +412,7 @@ def nostril(m, base, way, long, wide, low):
         a = way.cross(Vector((1.0, 0.0, 0.0)))
     a.normalize()
     b = way.cross(a)
-    sides = 6 if low else 12
+    sides = pick(low, 12, 6, 6)
     v = base.z / LENGTH
     # [how far along, how wide, the part]
     shape = [(-0.003, wide * 1.15, SKIN), (long * 0.6, wide * 0.92, SKIN), (long, wide, SKIN),
@@ -526,34 +544,43 @@ def render(folder, made):
              ("head_right", (1, 0.0, 0.0), head, 0.42), ("head_front", (0.6, 1, 0.3), head, 0.42),
              ("head_top", (0, -0.001, 1), head, 0.42), ("head_under", (0.3, 0.5, -1), head, 0.42),
              ("tail", (1, 0, 0.2), (0, -1.6, 0), 0.6)]
-    for low, obj in ((False, made[0]), (True, made[1])):
+    for low, obj in ((FULL, made[0]), (LOW, made[1]), (GAME, made[2])):
         for other in made:
             other.hide_render = other is not obj
         for view, direction, target, frame in views:
-            if low and view not in ("right", "head_front"):
+            if low == LOW and view not in ("right", "head_front"):
                 continue
             offset = Vector(direction).normalized() * 40.0
             camera.data.ortho_scale = frame
             camera.location = Vector(target) + offset
             camera.rotation_euler = (-offset).to_track_quat("-Z", "Y").to_euler()
-            scene.render.filepath = os.path.join(folder, "%s%s.png" % ("lo_" if low else "", view))
+            scene.render.filepath = os.path.join(folder, "%s%s.png" % (("", "lo_", "game_")[low], view))
             bpy.ops.render.render(write_still=True)
 
 
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.preferences.filepaths.save_version = 0
-    full = make("moray_eel", False)
-    low = make("moray_eel_lo", True)
+    at, out = skin_at(EYE_AT, math.radians(54.0))
+    out = (out + Vector((0.0, 0.0, -0.18))).normalized()
+    middle = at - out * 0.006
+    print("EYE moray_eel (the right eye, Godot metres, for the shader's cartoon eye): centre=(%.5f, %.5f, %.5f) out=(%.4f, %.4f, %.4f)" % (
+        middle.x, middle.y, middle.z, out.x, out.y, out.z))
+    full = make("moray_eel", FULL)
+    low = make("moray_eel_lo", LOW)
+    game = make("moray_eel_game", GAME)
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, "moray_eel.glb"))
     export_one(low, os.path.join(OUT, "moray_eel_lo.glb"))
+    export_one(game, os.path.join(OUT, "moray_eel_game.glb"))
     low.location.x = 0.6
+    game.location.x = 1.2
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "moray_eel.blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low])
+        render(PREVIEW, [full, low, game])
 
 
 if __name__ == "__main__":
