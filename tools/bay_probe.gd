@@ -12,6 +12,8 @@ func _initialize() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--fit="):
 			_fit(arg.get_slice("=", 1).split(","))
+		elif arg.begins_with("--span="):
+			_span(arg.get_slice("=", 1).split(","))
 		elif arg.begins_with("--grid="):
 			var v := arg.get_slice("=", 1).split(",")
 			var head := "z\\x  "
@@ -107,6 +109,50 @@ func _fit(v: PackedStringArray) -> void:
 		var f: Array = found[k]
 		var plane: Vector3 = f[3]
 		print("FIT %s heading %.2f: depth %.1f, slope (x %.3f, z %.3f), strays %.1f m" % [f[1], f[2], plane.x, plane.y, plane.z, f[0]])
+
+
+# `--span=x0,z0,x1,z1,step,length,rest`: a long thing laid across a canyon like a bridge. For each
+# point and heading (every 7.5 degrees): the floor under its two ends (the shallowest within `rest`
+# metres of each end, along it) and under its middle third (the shallowest there). Kept when both ends
+# rest on ground at most 6 m apart in depth, 20 to 55 m down, and the middle is at least 15 m deeper
+# than the ends; the best (ends most alike, middle deepest) first.
+func _span(v: PackedStringArray) -> void:
+	var half := float(v[5]) * 0.5
+	var rest := float(v[6])
+	var found := []
+	var z := float(v[1])
+	while z <= float(v[3]):
+		var x := float(v[0])
+		while x <= float(v[2]):
+			for k in 24:
+				var turn := k * PI / 24.0
+				var along := Vector2(sin(turn), cos(turn))
+				var mid := Vector2(x, z)
+				var ends := []
+				for side: float in [-1.0, 1.0]:
+					var best := INF
+					var a := half - rest
+					while a <= half:
+						best = minf(best, _depth(mid + along * a * side, true))
+						a += 1.0
+					ends.append(best)
+				var under := INF
+				var m := -half / 3.0
+				while m <= half / 3.0:
+					under = minf(under, _depth(mid + along * m, true))
+					m += 1.0
+				var e0: float = ends[0]
+				var e1: float = ends[1]
+				var top := maxf(e0, e1)
+				if absf(e0 - e1) <= 6.0 and minf(e0, e1) >= 20.0 and top <= 55.0 and under >= top + 15.0 \
+						and Bay.shore_distance(mid + along * half) > 3.0 and Bay.shore_distance(mid - along * half) > 3.0:
+					found.append([absf(e0 - e1) - (under - top) * 0.2, mid, turn, e0, e1, under])
+			x += float(v[4])
+		z += float(v[4])
+	found.sort_custom(func(p: Array, q: Array) -> bool: return p[0] < q[0])
+	for k in mini(found.size(), 12):
+		var f: Array = found[k]
+		print("SPAN %s heading %.2f: ends %.1f and %.1f m deep, middle %.1f m" % [f[1], f[2], f[3], f[4], f[5]])
 
 
 # Least squares of depth = c + sx * x + sz * z over [x, z, depth] points: Vector3(c, sx, sz).

@@ -409,8 +409,11 @@ choices below are Claude's.
   shelf off Pacific Grove (the user's pick of three), then the user: "The ship should be off the coast of carmel not
   in the kelp forest". The floor off Carmel is the Carmel Canyon's head (`tools/bay_probe.gd --fit=` found no hull
   placement under 30 degrees there), so it lies along the coast between Cypress Point and Point Lobos, 40 m down
-  (needs the 50 m amplifier), on a broad spur raised for it: `Bay.WRECK_SHELF`'s 7th item makes a shelf fill only
-  (never dig: Carmel Cove keeps its 8 to 13 m for the pier), level under the hull itself, its sides spread to 84 m.
+  (needs the 50 m amplifier), on a broad spur raised for it. Then the user: "The liner should sit across the carmel
+  trench top like a bridge". Now it spans the Carmel Canyon's head nearly north-south (heading 0.13, middle (6, 124)),
+  its ends on the two rims 33 m down, the canyon open under its middle to 60 to 70 m (`tools/bay_probe.gd --span=`
+  found it: the rims within 0.3 m of each other). The ends rest on two small seats, `Bay.WRECK_SHELF` (north) and
+  `WRECK_SEAT_SOUTH`, whose 7th item makes a shelf fill only (never dig), level under what rests on it.
 - `tests/overhead.gd` now tints the land and draws the shoreline in cyan (the user: "Need too see where the shoreline
   is on the map").
 - **Decision: rock walls** (the cliffs). What: steep floor (`wall_from`/`wall_to` on 1 - the normal's y) is painted

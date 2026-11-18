@@ -37,6 +37,8 @@ func _initialize() -> void:
 			["docks_santacruz", Vector3(s.x + 4.0, 37.0, s.y + 22.0), Vector3(s.x - 8.0, 36.0, s.y)],
 			["river_mangroves", Vector3(96.0, 38.0, -30.0), Vector3(108.0, 37.0, -39.0)],
 			["wreck_shelf", Sea.WRECK_AT + Vector3(0.0, 14.0, -30.0), Sea.WRECK_AT],
+			["wreck_bridge_from_canyon", Sea.WRECK_AT + Vector3(-28.0, -22.0, 2.0), Sea.WRECK_AT + Vector3(0.0, 2.0, 0.0)],
+			["wreck_bridge_side", Sea.WRECK_AT + Vector3(-40.0, 2.0, 0.0), Sea.WRECK_AT + Vector3(0.0, -8.0, 0.0)],
 			["ruins_terrace", Sea.RUINS_AT + Vector3(22.0, 14.0, -26.0), Sea.RUINS_AT],
 			["pirate_hollow", Sea.PIRATE_AT + Vector3(16.0, 10.0, -18.0), Sea.PIRATE_AT],
 			["seal_rock_above", Vector3(Scenery.OUTCROP.x + 14.0, 45.0, Scenery.OUTCROP.y + 12.0), Vector3(Scenery.OUTCROP.x, 40.5, Scenery.OUTCROP.y)],

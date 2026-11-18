@@ -49,8 +49,10 @@ const HARBOURS := [
 ## Shelves made level (world metres): middle, flat out to, blended out to, depth at the middle (m),
 ## and how much deeper it gets per metre (x, z); a long one also its heading (as rotation.y) and how
 ## much narrower it is across (the liner's, along its hull).
-## (the liner's is a spur raised off Carmel, which only fills: its 7th item)
-const WRECK_SHELF := [Vector2(0.0, 122.0), 36.0, 84.0, 40.0, Vector2(-0.06, 0.0), Vector2(0.32, 1.9), true]
+## (the liner lies across the Carmel Canyon's head like a bridge: these are the two seats its ends rest on,
+## each only filling the floor under it (the 7th item), level at its keel)
+const WRECK_SHELF := [Vector2(2.6, 98.2), 7.0, 14.0, 33.2, Vector2(0.0, 0.0), Vector2(0.13, 1.0), true]
+const WRECK_SEAT_SOUTH := [Vector2(9.6, 151.8), 6.0, 12.0, 33.2, Vector2(0.0, 0.0), Vector2(0.13, 1.0), true]
 const RUINS_TERRACE := [Vector2(-53.0, 26.0), 34.0, 56.0, 93.0, Vector2(0.0, 0.0)]
 const PIRATE_HOLLOW := [Vector2(-20.0, -62.0), 20.0, 38.0, 21.0, Vector2(0.0, 0.06)]
 
@@ -136,7 +138,7 @@ static func height(x: float, z: float) -> float:
 	var p := Vector2(x, z)
 	var flat := 0.0
 	var deep := depth(p)
-	for shelf: Array in [WRECK_SHELF, RUINS_TERRACE, PIRATE_HOLLOW]:
+	for shelf: Array in [WRECK_SHELF, WRECK_SEAT_SOUTH, RUINS_TERRACE, PIRATE_HOLLOW]:
 		flat = maxf(flat, shelf_weight(p, shelf))
 	var bumps := 0.6 * sin(x * 0.07 + 1.3) * cos(z * 0.06) + 0.2 * sin(x * 0.21 + z * 0.17)
 	return SURFACE - deep + bumps * clampf(deep * 0.15, 0.0, 1.0) * (1.0 - flat)
@@ -165,7 +167,7 @@ static func depth(p: Vector2) -> float:
 		var w := (1.0 - smoothstep(r * 0.6, r, p.distance_to(harbour[0]))) * smoothstep(0.5, 2.5, d)
 		deep = lerpf(deep, maxf(deep, float(harbour[2])), w)
 	# The level shelves (Atlantis's terrace stands up out of the canyon's floor).
-	for shelf: Array in [WRECK_SHELF, RUINS_TERRACE, PIRATE_HOLLOW]:
+	for shelf: Array in [WRECK_SHELF, WRECK_SEAT_SOUTH, RUINS_TERRACE, PIRATE_HOLLOW]:
 		var middle: Vector2 = shelf[0]
 		# (never right up to a shore: the shallows stay as they are)
 		var w := shelf_weight(p, shelf) * smoothstep(3.0, 10.0, d)
