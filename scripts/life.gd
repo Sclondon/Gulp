@@ -101,6 +101,13 @@ func _ready() -> void:
 		pack.count = 22
 		pack.bounds_size = Vector3(3.0, 2.0, 3.0)
 		_school(pack, Fish.school_mesh("piranha"), 0.3, "river", 0.3, 0.8, 400)
+	if ResourceLoader.exists("res://creatures/lanternfish/lanternfish.gd"):
+		for i in 2:
+			var lights := _sardine_rules()
+			lights.size = 2.0
+			lights.count = 40
+			lights.bounds_size = Vector3(4.0, 3.0, 4.0)
+			_school(lights, Fish.school_mesh("lanternfish"), 0.16, "trench", 0.1, 0.6, 500 + i)
 	if Species.has("mackerel"):
 		for i in 2:
 			var rules := _sardine_rules()
