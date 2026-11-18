@@ -13,9 +13,13 @@ enum { SAND, ROCK, MUD, SHELL, CRUST, WHITE }
 const SAND_KIND := [-1, Sand.Kind.SANDSTONE, Sand.Kind.DIRT, Sand.Kind.COARSE, Sand.Kind.RED, Sand.Kind.WHITE]
 ## The colours they are drawn in here (Claude's picks, against the sea's grey sand): rock a cool
 ## grey-brown, mud a dark olive, crust coralline pink, Carmel's sand a pale white.
-const ROCK_COLOUR := Color(0.38, 0.36, 0.36)
-const MUD_COLOUR := Color(0.34, 0.31, 0.24)
-const CRUST_COLOUR := Color(0.78, 0.5, 0.55)
+## (2026-11-18, second pass: rock darker and warmer, the reef's floor under the kelp; the sand's
+## rock bands are softened in Sea's copy of its shader; mud is the sand's damp kind, tinted)
+const ROCK_COLOUR := Color(0.3, 0.27, 0.23)
+const MUD_TINT := Color(0.56, 0.5, 0.36)
+const CRUST_COLOUR := Color(0.74, 0.44, 0.5)
+## How much darker the sand under a kelp forest is (the damp kind's share, 0 to 1).
+const UNDER_KELP := 0.85
 const WHITE_COLOUR := Color(0.86, 0.85, 0.8)
 ## Rocky shores: within this of the shore (m) near the rocky points (world: a segment and how far
 ## along the shore from it the rock goes).
@@ -75,11 +79,33 @@ static func paint(sand: SandGround) -> void:
 		shares.resize(_types.size())
 		for i in _types.size():
 			shares[i] = 255 if _types[i] == type else 0
-		sand.paint_all(SAND_KIND[type], shares)
+		if type == MUD:
+			# (mud is the sand's damp, hard-packed kinds, darkened to an olive brown by `damp_tint`:
+			# smooth, no ripples. The sand's DIRT drew as cracked dry ground in the harbours.)
+			sand.paint_all(Sand.Kind.DAMP, shares)
+			sand.paint_all(Sand.Kind.PACKED, shares)
+		else:
+			sand.paint_all(SAND_KIND[type], shares)
+	# (the sand between a kelp forest's reefs is darker and richer: drift weed and shade, damp
+	# kind at part strength; BIOMES.md 5.2)
+	var under := PackedByteArray()
+	under.resize(_types.size())
+	for r in _rows:
+		for c in _cols:
+			var i := r * _cols + c
+			if _types[i] != SAND:
+				continue
+			var p := Vector2(Bay.WEST + c * Bay.GRID, Bay.NORTH + r * Bay.GRID)
+			for reef: Dictionary in Biomes.REEFS:
+				if String(reef.name).begins_with("kelp") or reef.name == "carmel":
+					var off := p.distance_to(reef.at) / float(reef.r)
+					if off < 1.0:
+						under[i] = maxi(under[i], int(UNDER_KELP * 255.0 * (1.0 - smoothstep(0.7, 1.0, off))))
+	sand.paint_all(Sand.Kind.DAMP, under)
 	var look := sand.material()
 	if look:
 		look.set_shader_parameter(&"stone_colour", ROCK_COLOUR)
-		look.set_shader_parameter(&"dirt_colour", MUD_COLOUR)
+		look.set_shader_parameter(&"damp_tint", MUD_TINT)
 		look.set_shader_parameter(&"red_sand", CRUST_COLOUR)
 		look.set_shader_parameter(&"white_sand", WHITE_COLOUR)
 

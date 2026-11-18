@@ -617,3 +617,8 @@ Claude's.
 - **The boat and the fishing gear** have baked painted atlases (2048 and 1024), drawn LIT by the game's sun (not unlit
   like the panel: the boat turns on its circle and lives through the night above water). Other offenders, ranked, are
   in QUALITY.md (the docks and the outcrops first).
+- The plant kit (2026-11-18, second biome pass): `scripts/kit.gd` and `models/kit/*.glb` (reef slabs, understory kelp,
+  bull kelp, kelp canopy mats, surfgrass, sea pens, sand dollar beds, drift kelp rafts), each built by its own
+  `tools/build_<name>.py` over `tools/kit_build.py`; placed by rule in `scripts/biomes.gd`. See tools/BIOMES.md,
+  "Phase two, second pass" for what is built, the budget table and what is next (pile sleeves, a big plumose
+  anemone for the cold wrecks, the whale fall, Carmel's fish shed).

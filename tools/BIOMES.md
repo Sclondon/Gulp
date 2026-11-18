@@ -118,7 +118,7 @@ slough round them; (5) sargassum cut to 3 mats (the asset kept); (6) a subtle wa
 - **Set pieces**: the old one (GameCommon `old_one`) asleep on the canyon's deep floor at (-40, 26), about 85 m, facing
   Atlantis, its body and head as rocks, `wake` eased towards 1 within 22 to 55 m of the player; the reef back walking a
   15 m loop at 0.45 m/s on the deep floor west of the shelf's edge round (-138, -62); both light models beyond 60 m.
-- **Not built: the kit** (section 8). None of the new models; stand-ins are noted above. Next in order: reef slabs,
+- **The kit** (section 8): see "Phase two, second pass" below for what is built since. Was the order: reef slabs,
   understory kelp, bull kelp, pile sleeves, surfgrass, sea pens, sand dollars, whale fall, kelp rafts (so the open
   ocean still has 3 sargassum mats and no rafts yet).
 
@@ -143,6 +143,63 @@ slough round them; (5) sargassum cut to 3 mats (the asset kept); (6) a subtle wa
 reef: PERF.md), grass (102k of it is a sea nettle and 55k a flock: animals, not plants), pirate, river (both on triangles,
 lower than before) and the docks on draws (179: the kelp and seaweed cells along the breakwater, two draws a piece type
 of the floor kit). The frame's ms vary 1 to 3 ms with other sessions running.
+
+### Phase two, second pass (2026-11-18, later): forests, floor paint, growth on structures, the kit
+
+All choices here are Claude's (the user's asks: "the foliage needs a smart realistic distrbtion ...", "make sure
+things have textures that fit our art style", models built in Blender by script).
+
+- **The kelp forests read as forests**: giant kelp now stands in clumps of 4 to 7 plants round one spot (each plant
+  three stipes, so 12 to 20 stipes a clump) at fewer, wider-spaced clump sites, the noise leaving lanes between; core
+  plants 1.2 to 1.6 times the depth long so they lie along the surface; over each core clump 3 mats of **canopy**
+  (`kelp_canopy`) float down-current at the surface: a dark lid with light between seen from below. The understory is
+  the new **understory kelp** (Pterygophora and Laminaria variants) instead of the sea palm stand-in; **reef slabs** pave
+  the rock; the reef's rock pieces are tinted darker; the sand inside the kelp circles is painted with the sand's damp
+  kind (`FloorTypes.UNDER_KELP`), a darker olive floor. Kelp blocks are 12 m (not 8): half the draws.
+  The north forest is now the **bull kelp** one (78 plants on the ledges, a few giant kelp deeper); bull kelp also at the
+  south forest's and Carmel's outer edges.
+- **The floor paint**: rock's beds of colour softened in Sea's copy of the sand shader (one `replace` in `_caustics`,
+  the same program); rock darker and warmer; **mud is the sand's DAMP + PACKED kinds** tinted by `damp_tint` (smooth,
+  no ripples), no longer DIRT, which drew as cracked dry ground in the harbours.
+- **Growth on structures** (`Scenery._grow_on_structures`, `Biomes.grow_on_skin`): on the liner, the pirate ship and
+  Atlantis, rays from outside find the real skin of their meshes (`Mesh.generate_triangle_mesh`), so pieces sit on what
+  is seen; by which way the face looks (3.4's lists, warm for the liner, cold for the rest), depth, height and the
+  current; never within a swim route's room + 1.2 m (each set piece's own routes). On the outcrop's islet, stacks and
+  shards, the same rules on their spheres: a waterline band of mussels (0.3 to 2.5 m), anemones and stars on lit tops,
+  sponges and fans on the deeper sides. About 600 pieces, drawn by their own LodField with full models only within
+  4 m (`GROWTH_NEAR`). wreck_view, pirate_view and ruins_view `--check` pass (growth adds no rocks).
+- **The kit** (section 8), each by its own `tools/build_<name>.py` on GameCommon's sea floor kit machinery
+  (`tools/kit_build.py` imports it; vertex colours, the kit's own rock and soft shaders, no new program), into
+  `models/kit/`, read by `scripts/kit.gd` (Kit: SeaFloorProps' calls, plus the sea's own pieces), each looked at from
+  six sides and checked for inside-out faces (closed parts by volume, sheets two-sided): built **reef slabs** (3),
+  **understory kelp** (2), **bull kelp**, **surfgrass** (on the rocky points), **sea pens** (orange on the sand flats,
+  587; tall white and **sea whips** on the canyon's mud, 1,212), **sand dollar beds** (the 3.5 to 5 m band), the
+  **kelp canopy** mat and the **drift kelp paddy** (4 afloat over the open ocean, still: no drift). Not built: pile
+  growth sleeves, the whale fall, Carmel's fish shed, and 11 to 16.
+- **Not right yet**: growth on the pirate ship reads only close up (the kit's cold pieces are small for a 30 m hull: a
+  big plumose anemone piece would carry it); the outcrop's bull kelp ring found no rock shallower than 14 m (the
+  outcrop's floor is 18 to 24 m), so the ring is not there; the paddies do not drift; rock still shows faint banding.
+
+| place (390x844) | draws before | after | triangles before | after | frame ms before | after |
+| --- | --- | --- | --- | --- | --- | --- |
+| start | 19 | 19 | 96k | 94k | 6.5 | 7.3 |
+| kelp | 100 | 96 | 146k | 145k | 7.5 | 9.3 |
+| grass | 54 | 59 | 247k | 249k | 6.2 | 9.1 |
+| sand | 15 | 20 | 147k | 150k | 7.3 | 9.1 |
+| reef (liner) | 151 | 171 | 351k | 379k | 8.9 | 6.8 |
+| pirate | 71 | 84 | 193k | 217k | 7.6 | 7.2 |
+| ruins | 69 | 79 | 137k | 139k | 6.5 | 7.7 |
+| docks | 183 | 124 | 146k | 142k | 6.3 | 8.1 |
+| river | 25 | 23 | 179k | 172k | 9.8 | 9.7 |
+| trench | 9 | 14 | 72k | 74k | 6.3 | 6.7 |
+| open | 11 | 16 | 70k | 72k | 6.3 | 6.3 |
+| beach | 14 | 15 | 85k | 89k | 7.0 | 7.5 |
+
+(`tests/perf.gd`, same harness both times; frame ms swing 1 to 3 ms with other sessions on the machine: the GPU
+column of the after run was 1 ms higher everywhere, the start included. Between the runs another session's title
+boat began to draw at the liner: about 20 of its draws there are not this pass's.) Within the proxy (150k triangles,
+150 draws): start, kelp, sand, ruins, docks (now), trench, open, beach. Still over: the liner (its own reef), grass
+(animals), pirate (the growth added 24k), river.
 
 ---
 

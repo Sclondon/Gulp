@@ -47,6 +47,10 @@ const DOCKS_SEEN := 80.0
 ## light ones out to PIECES_SEEN, none beyond (m, to the nearest edge of the piece's cube).
 const PIECES_NEAR := 8.0
 const PIECES_SEEN := 60.0
+## Growth on the set pieces and the outcrop: full models only this near (m).
+const GROWTH_NEAR := 4.0
+## How many drift kelp paddies float over the open ocean.
+const RAFTS := 4
 ## The clear lanes kept for the wrecks' hulls (long, wide: m, along their headings).
 const WRECK_LANE := Vector2(64.0, 14.0)
 const PIRATE_LANE := Vector2(34.0, 12.0)
@@ -90,12 +94,16 @@ var _shell_spots: Array[Vector2] = []
 var _old_one: Node3D
 var _reef_back: Node3D
 var _reef_turn := 0.0
+# The set pieces (by script path), and the spheres of the outcrop's islet, stacks and shards.
+var _landmarks := {}
+var _outcrop_spheres: Array = []
 
 
 func _ready() -> void:
 	_rng.seed = 11
 	if ResourceLoader.exists(PROPS):
-		_props = load(PROPS)
+		# (GameCommon's sea floor kit and the sea's own pieces: scripts/kit.gd)
+		_props = Kit
 	_place_biomes()
 	if _props:
 		_place_reef()
@@ -117,9 +125,10 @@ func _ready() -> void:
 		_plant_live_anemones()
 	if ResourceLoader.exists(DOCKS):
 		_build_docks()
-	if _props:
-		_draw_pieces()
 	_add_landmarks()
+	if _props:
+		_grow_on_structures()
+		_draw_pieces()
 	_add_giants()
 
 
@@ -337,6 +346,8 @@ func _draw_pieces() -> void:
 func _plant_kelp() -> void:
 	var forest: Node3D = (load(KELP) as GDScript).new()
 	forest.set(&"far", SEEN)
+	# (blocks of 12 m, not 8: half the draws in a forest, a few more full pieces near the eye; tools/BIOMES.md budget)
+	forest.set(&"cell", 12.0)
 	forest.set(&"current", Vector2(0.3, 0.1))
 	add_child(forest)
 	forest.call(&"plant", _biomes.kelp_places, _biomes.kelp_lengths, Sea.SURFACE)
@@ -360,6 +371,19 @@ func _plant_grass() -> void:
 # open ocean (BIOMES.md 4: sargassum is Atlantic; the open's drifting things are kelp rafts,
 # `_place_rafts`; Claude's default for the user's question 5).
 func _plant_seaweed() -> void:
+	# The open ocean's drift kelp paddies (BIOMES.md 5.13, kit item 10): RAFTS of them afloat where the
+	# water is over 30 m deep. They lie still (the design's slow drift is not done).
+	if _props and Kit.exists("kelp_raft"):
+		var made := 0
+		var tries := 0
+		while made < RAFTS and tries < 200:
+			tries += 1
+			var at := _in_zone("open", 0.9)
+			if Sea.SURFACE - Sea.ground(at.x, at.y) < 30.0:
+				continue
+			_add_placed("kelp_raft", Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * _rng.randf_range(0.8, 1.2)),
+					Vector3(at.x, Sea.SURFACE - 0.08, at.y)))
+			made += 1
 	var places := _biomes.weed_places
 	var sizes := _biomes.weed_sizes
 	var kinds := _biomes.weed_kinds
@@ -374,7 +398,7 @@ func _plant_seaweed() -> void:
 			kinds.append(int(row[0]))
 	var bed: Node3D = (load(SEAWEED) as GDScript).new()
 	bed.set(&"far", SEEN)
-	bed.set(&"cell", 8.0)
+	bed.set(&"cell", 12.0)
 	bed.set(&"current", Vector2(0.3, 0.1))
 	add_child(bed)
 	bed.call(&"plant", places, sizes, kinds, Sea.SURFACE)
@@ -554,6 +578,7 @@ func _build_outcrop(kit: Node3D) -> void:
 	while y < top:
 		var r := lerpf(5.0, 3.6, clampf((y - (top - 26.0)) / 24.0, 0.0, 1.0))
 		Sea.add_rock(Vector4(middle.x, y, middle.y, r))
+		_outcrop_spheres.append(Vector4(middle.x, y, middle.y, r))
 		y += 2.0
 	# The stacks (some out of the water) and the shards round it.
 	var stacks := [[Vector2(7.0, -7.0), 1.6], [Vector2(-8.0, -9.0), 1.2], [Vector2(9.0, 5.0), 0.9], [Vector2(-10.0, 4.0), 1.5],
@@ -568,7 +593,9 @@ func _build_outcrop(kit: Node3D) -> void:
 		site.add("Pillar", Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(wide, tall, wide)), Vector3(at.x, foot, at.y)))
 		var h := 0.0
 		while h < 13.5 * tall:
-			Sea.add_rock(Vector4(at.x, foot + h, at.y, 1.5 * wide * lerpf(1.0, 0.6, h / (14.0 * tall))))
+			var stack := Vector4(at.x, foot + h, at.y, 1.5 * wide * lerpf(1.0, 0.6, h / (14.0 * tall)))
+			Sea.add_rock(stack)
+			_outcrop_spheres.append(stack)
 			h += 1.6
 	for k in 9:
 		var turn := _rng.randf() * TAU
@@ -582,6 +609,7 @@ func _build_outcrop(kit: Node3D) -> void:
 		for s: float in [0.15, 0.45, 0.75]:
 			var p := where * Vector3(0.35 * 9.0 * s, 9.0 * s, 0.0)
 			Sea.add_rock(Vector4(p.x, p.y, p.z, 1.1 * big * (1.0 - s * 0.7)))
+			_outcrop_spheres.append(Vector4(p.x, p.y, p.z, 1.1 * big * (1.0 - s * 0.7)))
 	_draw_site(site, kit, "Outcrop")
 	# The seals and a sea lion hauled out on it.
 	for each: Array in [["harbor_seal/harbor_seal", Vector2(0.6, -0.4), 0.3, 0.0], ["harbor_seal/harbor_seal", Vector2(-1.2, 0.9), 2.2, 0.0],
@@ -764,6 +792,92 @@ func _trawler(at: Vector3, turn: float) -> void:
 
 # ------------------------------------------------------------------------------------- the landmarks
 
+## What grows on structures by which way a face looks (BIOMES.md 3.4): [up, side, under] lists of
+## the kit's pieces, cold water (the outcrop, the pirate ship, Atlantis) and the liner's warm pocket.
+const COLD_UP := ["ochre_star", "bat_star", "puffball_sponges", "vase_sponge"]
+const COLD_UP_SHALLOW := ["green_anemone", "ochre_star", "urchin_purple"]
+const COLD_SIDE := ["hydrocoral", "sea_fan_gold", "vase_sponge", "puffball_sponges", "sea_fan_red"]
+const COLD_UNDER := ["strawberry_anemones", "puffball_sponges"]
+const WARM_UP := ["table_coral", "pillar_coral", "giant_clam", "table_coral"]
+const WARM_SIDE := ["sea_rods", "barrel_sponge", "sea_fan_purple"]
+const WARM_UNDER := ["puffball_sponges"]
+
+
+# Growth by rule on the structures that were bare of it (BIOMES.md 3.4, second pass 2026-11-18):
+# the liner's hull and decks, the pirate ship, Atlantis's stones, the outcrop's stacks, shards and
+# seal rock. Placed on each one's collision spheres by which way the face looks and how deep it is,
+# thickest high up and on the faces the current runs onto, and never within a swim route's room
+# (each set piece's own routes; growth adds no rocks, so the routes' checks are untouched). How many
+# of each is Claude's pick, held down where the place is already dear (the liner: tools/PERF.md).
+func _grow_on_structures() -> void:
+	var growth := Biomes.new()
+	growth._props = _props
+	growth._rng.seed = 91
+	var liner: Node3D = _landmarks.get(WRECK)
+	if liner and liner.has_method(&"spheres"):
+		var routes: Array = liner.call(&"routes")
+		var off_route := func(at: Vector3) -> bool:
+			for route: Dictionary in routes:
+				var points: PackedVector3Array = route.points
+				for i in points.size() - 1:
+					if Geometry3D.get_closest_point_to_segment(at, points[i], points[i + 1]).distance_to(at) < float(route.room) + 1.2:
+						return true
+			return false
+		var hull := Biomes.skin_of(liner)
+		growth.grow_on_skin(hull, WARM_UP, 30, 0.6, 1.0, Vector2(0.6, 1.1), Vector2(0.3, 999.0), off_route)
+		growth.grow_on_skin(hull, WARM_SIDE, 30, -0.3, 0.6, Vector2(0.6, 1.2), Vector2(0.3, 999.0), off_route)
+		growth.grow_on_skin(hull, WARM_UNDER, 10, -1.0, -0.3, Vector2(0.6, 1.0), Vector2(0.3, 999.0), off_route)
+	var pirate: Node3D = _landmarks.get(PIRATE)
+	if pirate:
+		var checks: Array = pirate.call(&"route_checks") if pirate.has_method(&"route_checks") else []
+		var off_route := func(at: Vector3) -> bool:
+			for c: Vector4 in checks:
+				if Vector3(c.x, c.y, c.z).distance_to(at) < c.w + 1.2:
+					return true
+			return false
+		var hull := Biomes.skin_of(pirate)
+		# (a cold wreck: plumose-like white and orange growth on her high points, sponges and fans on her sides)
+		growth.grow_on_skin(hull, COLD_UP, 100, 0.6, 1.0, Vector2(1.3, 2.2), Vector2(0.3, 999.0), off_route)
+		growth.grow_on_skin(hull, COLD_SIDE, 120, -0.3, 0.6, Vector2(1.3, 2.3), Vector2(0.3, 999.0), off_route)
+		growth.grow_on_skin(hull, COLD_UNDER, 30, -1.0, -0.3, Vector2(1.0, 1.6), Vector2(0.3, 999.0), off_route)
+	var ruins: Node3D = _landmarks.get(RUINS)
+	if ruins and ruins.has_method(&"rocks"):
+		var place := ruins.global_transform
+		var routes: Dictionary = ruins.get_script().call(&"routes")
+		var off_route := func(at: Vector3) -> bool:
+			for name: String in routes:
+				var points: PackedVector3Array = routes[name][0]
+				for i in points.size() - 1:
+					if Geometry3D.get_closest_point_to_segment(at, place * points[i], place * points[i + 1]).distance_to(at) < float(routes[name][1]) + 1.2:
+						return true
+			return false
+		var stones := Biomes.skin_of(ruins)
+		# (42 m: no light for anything green; the giant deep forms, bigger)
+		growth.grow_on_skin(stones, ["puffball_sponges", "vase_sponge", "vase_sponge", "bat_star"], 50, 0.6, 1.0, Vector2(1.2, 2.2), Vector2(0.3, 999.0), off_route)
+		growth.grow_on_skin(stones, ["vase_sponge", "sea_fan_red", "hydrocoral", "strawberry_anemones"], 50, -0.3, 0.6, Vector2(1.0, 1.9), Vector2(0.3, 999.0), off_route)
+	if not _outcrop_spheres.is_empty():
+		# (the waterline band of mussels, green anemones and stars where the light is, the shaded
+		# faces deeper red with strawberry anemones and fans; BIOMES.md 5.6)
+		growth.grow_on(_outcrop_spheres, ["mussel_clump"], 45, -0.3, 0.7, Vector2(0.9, 1.4), Vector2(0.3, 2.5), Callable(), 0.25)
+		growth.grow_on(_outcrop_spheres, COLD_UP_SHALLOW, 30, 0.5, 1.0, Vector2(0.9, 1.4), Vector2(0.3, 12.0), Callable(), 0.25)
+		growth.grow_on(_outcrop_spheres, COLD_SIDE, 70, -0.3, 0.6, Vector2(0.9, 1.5), Vector2(6.0, 999.0), Callable(), 0.25)
+		growth.grow_on(_outcrop_spheres, COLD_UNDER, 20, -1.0, -0.3, Vector2(0.8, 1.2), Vector2(6.0, 999.0), Callable(), 0.25)
+	var grown := 0
+	for piece: String in growth.pieces:
+		grown += (growth.pieces[piece][0] as Array).size()
+	print("SCENERY growth on structures: %d pieces" % grown)
+	# (drawn by a field of their own, full models only within GROWTH_NEAR: on a hull the eye is often
+	# within 8 m of dozens of them, and their full models are dear: tools/PERF.md)
+	var field := LodField.new()
+	field.name = "Growth"
+	field.near = GROWTH_NEAR
+	field.far = PIECES_SEEN
+	for piece: String in growth.pieces:
+		field.add(piece, _props.call(&"mesh_of", piece, false), _props.call(&"mesh_of", piece, true), _props.call(&"material_of", piece),
+				growth.pieces[piece][0], growth.pieces[piece][1], (_props.call(&"size_of", piece) as Vector3).length() * 0.5)
+	add_child(field)
+
+
 # The liner, Atlantis and the pirate ship (other agents' nodes), where Sea says, if they are there.
 func _add_landmarks() -> void:
 	for each: Array in [[WRECK, Sea.WRECK_AT, Sea.WRECK_HEADING], [RUINS, Sea.RUINS_AT, Sea.RUINS_HEADING], [PIRATE, Sea.PIRATE_AT, Sea.PIRATE_HEADING]]:
@@ -773,9 +887,10 @@ func _add_landmarks() -> void:
 		made.position = each[1]
 		made.rotation.y = each[2]
 		add_child(made)
+		_landmarks[each[0]] = made
 
 
-# ------------------------------------------------------------------------------ the deep's set pieces
+# -+ the deep's set pieces
 
 # The old one asleep on the canyon's deep floor, its face towards Atlantis, and the reef back
 # walking its slow loop on the deep floor past the shelf's edge (GameCommon's old-one and
