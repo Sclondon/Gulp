@@ -469,3 +469,15 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   thirteenth taken at the ending, eight side stories, a catalogue of things to find, the three markets, staging briefs
   for capturing each photograph in the game in sepia, the new models it needs, and twelve questions for the user.
   ALL of it is a proposal (names included) until the user has read it: nothing in it is the user's decision yet.
+- `tools/BIOMES.md` (2026-11-18): the level designer's research and a level design for every place (phase one, no game
+  files changed). Its findings: the floor is one pale sand everywhere; kelp stands on sand in even clumps; the liner's
+  reef is scattered confetti; zones are circles that spill where things cannot live; dock piles are bare. Its five
+  changes: a floor-type map on the 2 m grid; one rule-based placer (`scripts/biomes.gd`) in place of scenery.gd's
+  loops; kelp as rock reefs with sand channels, canopy, understory and an urchin barren; growth placed on structures;
+  kinds limited to their depth and floor. Building it is phase two, after the performance pass. It asks the user:
+  liner depth against the suits; what Carmel's market is modelled on; garden eels, mangroves and sargassum against
+  realism; a warmer tint for the coral pocket.
+- Modelling sheets now in tools/art_src: `concept_captain_tpose.jpg` (base body), `_tpose_clothed`, `_outfits`;
+  `concept_brother_tpose.jpg` and `concept_brother_outfits.jpg` (four fishing rigs, four diving suits: these replace
+  `concept_diving_suits.jpg`, which drew them on the younger boy); `concept_boy_tpose.jpg`; a trial with faces is
+  `concept_faces_trial.jpg` when made.
