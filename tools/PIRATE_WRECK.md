@@ -157,11 +157,42 @@ deck's ceiling came out of the Booleans facing in (normals recalculated after th
 inward in Blender's ray test, but Godot's read-back finds 99.8% of the hull's triangles wound with their normals:
 see Checks).
 
-**Pass 3** (final, `final_light` and `final_game`): no new faults found; the comparison with the concept is above.
+**Pass 3** (`final_light` and `final_game`): no new faults found.
+
+**Pass 4** (asked for by the main session after seeing her beside the concept: "she reads as a plain plank box"; in
+its order, judged in a neutral grey light as well as the game's fog, `--fog=neutral`):
+1. *The stern*: a gallery bay standing 0.7 m out from the transom across its width, on five carved brackets, under a
+   cornice and roof: carved posts, four glazed windows with glazing bars (4 x 5 panes), the middle three broken out
+   (stubs of their bars) for the swim route; above it a carved cartouche round the scallop, an S-scroll each side
+   with leaves at its foot, a rope moulding, a taller arched taffrail with a finial; bigger quarter galleries with
+   three windows each, a dome and a drop. The gilt is brighter. (The two small side windows cut through the transom
+   are now behind the bay's glass, so small fish no longer get in that way.)
+2. *The hull side*: the picture's big ragged hole amidships on the seen (starboard) side, from the hold down by the
+   sand up through the gun deck (two cutters with broken outlines), one rib across it whole and one broken off at
+   both ends, planks staved in round it, the wales broken there; the treasure spilling out under it onto the sand (a
+   spill of gold, an open chest tipped out, a goblet, coins, shot). Three wales now (a thick dark one low, a gilt one
+   at the gun deck's head, a thin gilt line under the rail). Stronger weathering: broader weed and bleached patches,
+   darker plank seams, more tone between planks. The port-side hold breach and its route are unchanged.
+3. *The guns*: muzzles stand 0.6 m out of the ports; every lid over a gun is swung up; four of the port side's ports
+   have their guns' lids up too. No gun where the hole is.
+4. *The rig*: ratlines across the standing masts' shrouds (nine rungs a side); bigger tattered sails (three wide
+   rags on the fore yard, two on the mizzen, ragged in nine points along the foot), paler.
+5. *Round her*: three more barrels and shot on the seen side; weed (GameCommon's seaweed, feather boa kelp and sea
+   palms, in 18 clumps along her sides and stern: the game's scenery already compiles that shader); 36 reef spots
+   for coral (was 24); an `OctopusDen` marker at the hole's foot (`PirateWreck.octopus_den()`).
+Checks after it: routes 0 of 985 blocked (Blender, `routes_blocked` and `Sea.clear_of_rocks`); winding read-back
+hull 99.83%, rig and treasure 100%; smoke passed. Inside-out in Blender: two new carvings came out inside out (a
+closed ring whose ends met, a spiral crossing itself) and were reshaped; the hull has 3 flagged faces of 3,586 (the
+two at the gun deck's forward corners and one small sliver at the new hole).
+
+Beside the concept now: the stern gallery, the gilt carving, the hole with the gold under it, the muzzles and
+lids, the ratlines and rags, the weed: matched in kind. Still different: shorter masts (the water's depth), the
+fallen mast across the sand rather than over the forecastle, the sea's colour and the game's sand, no octopus or
+moray in the model (the game's creatures), a plainer bow.
 
 ## Numbers
 
-- **Triangles: 14,782** (PirateHull 11,870, PirateRig 1,704, PirateTreasure 1,208). The hull itself is 3,354; the
+- **Triangles: 17,482** after pass 4 (PirateHull 13,470, PirateRig 2,456, PirateTreasure 1,556); 14,782 before it. The hull itself is 3,354; the
   guns about 1,300 with their carriages; the sea life drawn on her adds 24 pieces of the sea floor kit (low models
   for the heavy ones).
 - **Texel density** (2048 atlas, 40% of it covered by islands): about 20 texels a metre on plain hull and decks
@@ -170,7 +201,7 @@ see Checks).
 - **Size**: 36 m on deck, 39 m with the beakhead, 10.6 m of beam; with what lies round her she spans x -10.7..22.7
   and z -25.4..24.1 (Godot), and stands **14.3 m** above the sand at most (the foremast's stump): she wants at least
   15.5 m of water over the sand.
-- **Collision**: **705 spheres** (`models/pirate_wreck.json`); at most 302 in one of the sea's 8 m squares near her;
+- **Collision**: **713 spheres** (705 before pass 4) (`models/pirate_wreck.json`); at most 302 in one of the sea's 8 m squares near her;
   `Sea.clear_of_rocks` there takes 15 to 33 us a call on this desktop (the rest of the sea's squares hold tens).
   Spheres reach at most 0.6 m into a space inside her, 1.2 m out into open sea, and never into a swim route's tube.
   Small trim (rails, lids, deadeyes, carving, lanterns, chests, coins, rope) does not stop a swimmer.

@@ -63,9 +63,17 @@ func _setup() -> void:
 	if _check_only or _out == "":
 		_finish()
 		return
+	var env: Environment = (_sea.find_children("*", "WorldEnvironment", true, false)[0] as WorldEnvironment).environment
 	if _fog == "light":
-		var env: Environment = (_sea.find_children("*", "WorldEnvironment", true, false)[0] as WorldEnvironment).environment
 		env.fog_density = 0.012
+	elif _fog == "neutral":
+		# (grey water and white light, to judge her colours apart from the sea's blue)
+		env.fog_density = 0.008
+		env.fog_light_color = Color(0.5, 0.52, 0.53)
+		env.background_color = Color(0.5, 0.52, 0.53)
+		env.ambient_light_color = Color(0.8, 0.8, 0.8)
+		for sun: DirectionalLight3D in _sea.find_children("*", "DirectionalLight3D", true, false):
+			sun.light_color = Color(1.0, 0.98, 0.94)
 	DirAccess.make_dir_recursive_absolute(_out)
 	var data: Dictionary = (load("res://models/pirate_wreck.json") as JSON).data
 	_shots = [
@@ -143,8 +151,8 @@ func _check() -> void:
 	var each := float(Time.get_ticks_usec() - start) / probe.size()
 	print("PIRATE rocks: %d in all; at most %d in one of the sea's %d m squares near her; Sea.clear_of_rocks takes %.1f us there"
 			% [Sea.rocks.size(), most, int(Sea.CELL), each])
-	print("PIRATE spots: %d fish spots, %d lanterns, treasure at %s" % [(_wreck.call(&"fish_spots") as PackedVector3Array).size(),
-			(_wreck.call(&"lanterns") as PackedVector3Array).size(), _wreck.call(&"treasure")])
+	print("PIRATE spots: %d fish spots, %d lanterns, treasure at %s, octopus den at %s" % [(_wreck.call(&"fish_spots") as PackedVector3Array).size(),
+			(_wreck.call(&"lanterns") as PackedVector3Array).size(), _wreck.call(&"treasure"), _wreck.call(&"octopus_den")])
 	var tris := 0
 	for drawn: MeshInstance3D in _wreck.find_children("*", "MeshInstance3D", true, false):
 		for s in drawn.mesh.get_surface_count():

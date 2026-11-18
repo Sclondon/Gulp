@@ -24,6 +24,7 @@ const ATLAS := "res://textures/pirate_atlas.png"
 const DATA := "res://models/pirate_wreck.json"
 const SHADER := preload("res://shaders/pirate_wreck.gdshader")
 const PROPS := "res://scenery/sea_floor_props/sea_floor_props.gd"
+const SEAWEED := "res://plants/seaweed/seaweed_bed.gd"
 ## Beyond this from the camera it is not drawn (the sea's sight, 60 m, plus her own reach from her middle).
 const SEEN := 60.0
 const REACH := 24.0
@@ -44,6 +45,8 @@ var _gold: ShaderMaterial
 var _fish := PackedVector3Array()
 var _lanterns := PackedVector3Array()
 var _treasure := Vector3.ZERO
+var _den := Vector3.ZERO
+var _weed := PackedVector3Array()
 var _reef: Array[Transform3D] = []
 var _rocks: Array[Vector4] = []
 var _checks: Array = []
@@ -75,10 +78,15 @@ func _ready() -> void:
 			_lanterns.append(at.origin)
 		elif named == "TreasureSpot":
 			_treasure = at.origin
+		elif named == "OctopusDen":
+			_den = at.origin
+		elif named.begins_with("WeedSpot"):
+			_weed.append(at.origin)
 	_add_rocks()
 	var bad := routes_blocked()
 	assert(bad == 0, "PirateWreck: %d points of its swim routes are blocked" % bad)
 	_grow_life()
+	_grow_weed()
 
 
 ## Places a fish might hang about in and round her (world): the great cabin, the gun deck aft and forward, the hold,
@@ -95,6 +103,11 @@ func lanterns() -> PackedVector3Array:
 ## The middle of the treasure's hoard in her hold (world).
 func treasure() -> Vector3:
 	return _treasure
+
+
+## The octopus's den (world): on the sand at the foot of the big hole in her starboard side, as on the concept art.
+func octopus_den() -> Vector3:
+	return _den
 
 
 ## How many of her swim routes' check points one of her own rocks blocks (0 when all is well). Each check is a point
@@ -164,3 +177,30 @@ func _grow_life() -> void:
 		drawn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		drawn.visibility_range_end = SEEN + REACH
 		add_child(drawn)
+
+
+# Weed in the sand along her sides and round her stern (as on the concept art): tall strands of feather boa kelp
+# with sea palms among them, from GameCommon's seaweed (the game's scenery already draws it, so it costs no new
+# shader). The bed lies in world space, unturned, as the seaweed component asks.
+func _grow_weed() -> void:
+	if _weed.is_empty() or not ResourceLoader.exists(SEAWEED):
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1718
+	var places := PackedVector3Array()
+	var sizes := PackedFloat32Array()
+	var kinds := PackedInt32Array()
+	for at in _weed:
+		for k in rng.randi_range(2, 4):
+			places.append(at + Vector3(rng.randf_range(-0.6, 0.6), -0.02, rng.randf_range(-0.6, 0.6)))
+			var palm := rng.randf() < 0.3
+			kinds.append(4 if palm else 3)
+			sizes.append(rng.randf_range(0.5, 0.9) if palm else rng.randf_range(1.4, 3.2))
+	var bed: Node3D = (load(SEAWEED) as GDScript).new()
+	bed.name = "Weed"
+	bed.top_level = true
+	bed.set(&"far", SEEN + REACH)
+	bed.set(&"current", Vector2(0.3, 0.1))
+	add_child(bed)
+	bed.global_transform = Transform3D.IDENTITY
+	bed.call(&"plant", places, sizes, kinds, Sea.SURFACE)

@@ -113,7 +113,7 @@ def paint(name, colour, patch_a=None, patch_b=None, size=1.6, rough=0.8, seams=N
         line.interpolation_type = "SMOOTHSTEP"
         line.inputs["From Min"].default_value = 0.0
         line.inputs["From Max"].default_value = 0.09
-        line.inputs["To Min"].default_value = 0.45
+        line.inputs["To Min"].default_value = 0.3
         line.inputs["To Max"].default_value = 1.0
         tree.links.new(frac.outputs[0], line.inputs["Value"])
         # each plank a little lighter or darker than the next
@@ -124,8 +124,8 @@ def paint(name, colour, patch_a=None, patch_b=None, size=1.6, rough=0.8, seams=N
         noise.noise_dimensions = "1D"
         tree.links.new(whole.outputs[0], noise.inputs["W"])
         tone = tree.nodes.new("ShaderNodeMapRange")
-        tone.inputs["To Min"].default_value = 0.8
-        tone.inputs["To Max"].default_value = 1.12
+        tone.inputs["To Min"].default_value = 0.72
+        tone.inputs["To Max"].default_value = 1.18
         tree.links.new(noise.outputs["Value"], tone.inputs["Value"])
         both = tree.nodes.new("ShaderNodeMath")
         both.operation = "MULTIPLY"
@@ -149,17 +149,17 @@ def paint(name, colour, patch_a=None, patch_b=None, size=1.6, rough=0.8, seams=N
 
 # (the concept art, tools/art_src/concept_pirate_wreck.jpg: warm honey-brown timber, weathered paler in patches and
 # greened with weed, darker brown below the lower wale, gilt trim, white sand)
-TIMBER = paint("timber", (0.36, 0.19, 0.06), (0.2, 0.16, 0.05), (0.48, 0.31, 0.13), 2.2, seams=("Z", 0.34))
+TIMBER = paint("timber", (0.36, 0.19, 0.06), (0.14, 0.15, 0.05), (0.55, 0.38, 0.17), 1.4, seams=("Z", 0.34))
 TAR = paint("tar", (0.11, 0.06, 0.03), (0.07, 0.08, 0.04), (0.18, 0.12, 0.07), 2.5, seams=("Z", 0.34))
 DECK = paint("deck", (0.3, 0.19, 0.09), (0.42, 0.36, 0.25), (0.15, 0.14, 0.06), 2.0, seams=("X", 0.28))
 INNER = paint("inner", (0.12, 0.07, 0.035), (0.08, 0.08, 0.04), (0.18, 0.11, 0.05), 1.5, seams=("Z", 0.34))
-CARVE = paint("carve", (0.45, 0.3, 0.09), (0.3, 0.18, 0.06), (0.16, 0.17, 0.07), 0.7, 0.5)
+CARVE = paint("carve", (0.6, 0.4, 0.09), (0.32, 0.19, 0.05), (0.18, 0.2, 0.08), 0.7, 0.5)
 FIGURE = paint("figure", (0.36, 0.38, 0.32), (0.22, 0.27, 0.2), (0.46, 0.45, 0.4), 0.6)
 LIDRED = paint("lidred", (0.28, 0.05, 0.025), (0.17, 0.05, 0.03), (0.32, 0.14, 0.06), 0.6)
 RUST = paint("rust", (0.1, 0.05, 0.03), (0.05, 0.04, 0.035), (0.2, 0.09, 0.04), 0.6)
 BRONZE = paint("bronze", (0.07, 0.16, 0.12), (0.1, 0.07, 0.035), (0.17, 0.28, 0.21), 0.5, 0.5)
 ROPE = paint("rope", (0.13, 0.11, 0.075), (0.07, 0.08, 0.05), None, 1.0)
-SAIL = paint("sail", (0.24, 0.2, 0.14), (0.13, 0.12, 0.07), (0.32, 0.28, 0.2), 1.0)
+SAIL = paint("sail", (0.34, 0.3, 0.22), (0.18, 0.17, 0.11), (0.44, 0.4, 0.31), 1.0)
 FLAG = paint("flag", (0.012, 0.012, 0.012), (0.03, 0.03, 0.025), None, 0.5)
 BONE = paint("bone", (0.55, 0.52, 0.42))
 SAND = paint("sand", (0.25, 0.27, 0.27), (0.22, 0.24, 0.24), (0.29, 0.31, 0.31), 3.0)
@@ -506,6 +506,21 @@ def jagged_cut(name, x0, x1, y0, y1, z0, z1, seed, rough=0.45):
     return slab(name, INNER, [(x, y, z0) for x, y in pts], (0.0, 0.0, 1.0), z1 - z0)
 
 
+def side_cut(name, x0, y0, y1, z0, z1, seed, rough):
+    """A hole with broken edges through her starboard side: a ragged outline (in y and z) pushed out from x0."""
+    rng = random.Random(seed)
+    pts = []
+    for k in range(6):
+        pts.append((lerp(y0, y1, k / 6.0), z0 + rng.uniform(0.0, rough)))
+    for k in range(5):
+        pts.append((y1 - rng.uniform(0.0, rough), lerp(z0, z1, k / 5.0)))
+    for k in range(6):
+        pts.append((lerp(y1, y0, k / 6.0), z1 - rng.uniform(0.0, rough)))
+    for k in range(5):
+        pts.append((y0 + rng.uniform(0.0, rough), lerp(z1, z0, k / 5.0)))
+    return slab(name, INNER, [(x0, y, z) for y, z in pts], (1.0, 0.0, 0.0), 8.0 - x0)
+
+
 def make_cutters():
     out = [
         space("Hold", HOLD[0], HOLD[1], 1.5, 12.5),
@@ -526,6 +541,10 @@ def make_cutters():
         # planking gone: the hold's port side (out of which the route leaves), and the gun deck's port side aft
         box_cut("HoldBreach", -8.0, -2.0, 4.0, 11.0, 0.95, 3.2),
         box_cut("RibsAft", -8.0, -4.0, -11.2, -6.6, 4.5, 6.0),
+        # the big ragged hole amidships on her starboard side (the side the concept art shows), from the hold
+        # down by the sand up through the gun deck, the treasure spilling out under it
+        side_cut("StarboardHole", 2.2, 2.7, 6.3, 1.0, 3.45, 11, 0.35),
+        side_cut("StarboardHoleHigh", 3.9, 2.3, 6.7, 3.2, 5.7, 12, 0.4),
     ]
     for side in (-1.0, 1.0):
         for y in PORTS_Y:
@@ -549,10 +568,15 @@ def build_timbers():
     keep_part(bar("Sternpost", TAR, [(0.0, -16.75, 0.1), (0.0, -16.95, 5.3)], 0.34, 0.45, up=(0.0, 1.0, 0.0)))
     keep_part(slab("Rudder", TAR, [(-0.17, -16.95, 0.2), (-0.17, -18.2, 0.2), (-0.17, -18.0, 2.5), (-0.17, -17.6, 5.4), (-0.17, -17.0, 5.4)], (1, 0, 0), 0.34))
     # the wales: thick bands of plank along her sides
-    for z, mat in ((3.5, TAR), (6.2, CARVE)):
+    for z, mat, tall, y0 in ((3.5, TAR, 0.4, None), (6.2, CARVE, 0.32, None), (7.72, CARVE, 0.14, -13.8)):
         for side in (-1.0, 1.0):
-            ys = [lerp(y_aft(z) + 0.15, y_bow(z) - 0.35, s) for s in stations(10)]
-            keep_part(bar("Wale", mat, [hull_skin(y, z, side, 0.06) for y in ys], 0.2, 0.32))
+            ys = [lerp(y_aft(z) + 0.15 if y0 is None else y0, y_bow(z) - 0.35, s) for s in stations(10)]
+            if side > 0.0 and z < 4.0:
+                # (broken where the starboard hole is)
+                for part in ([y for y in ys if y < 2.3] + [2.3], [6.7] + [y for y in ys if y > 6.7]):
+                    keep_part(bar("Wale", mat, [hull_skin(y, z, side, 0.08) for y in part], 0.26, tall))
+                continue
+            keep_part(bar("Wale", mat, [hull_skin(y, z, side, 0.08) for y in ys], 0.26, tall))
     # rail caps along the waist and the quarterdeck, channels for the shrouds
     for side in (-1.0, 1.0):
         ys = [lerp(-7.3, 10.4, k / 7.0) for k in range(8)]
@@ -569,6 +593,15 @@ def build_timbers():
     for y in (-10.9, -10.0, -9.1, -8.2, -7.3):
         pts = [Vector((-(hb(y, z) - WALL * 0.5), y, z)) for z in (4.45, 5.2, 6.05)]
         keep_part(bar("Rib", INNER, pts, 0.25, 0.52, up=(1.0, 0.0, 0.0)), look="rib")
+    # ribs across the starboard hole: one whole, one broken off at both ends
+    pts = [Vector(((hb(3.55, z) - WALL * 0.5), 3.55, z)) for z in (1.0, 2.0, 3.0, 4.0, 5.0, 5.8)]
+    keep_part(bar("Rib", INNER, pts, 0.3, 0.52, up=(1.0, 0.0, 0.0)), look="rib")
+    for zs in ((1.0, 1.7, 2.3), (4.7, 5.3, 5.8)):
+        pts = [Vector(((hb(5.3, z) - WALL * 0.5), 5.3, z)) for z in zs]
+        keep_part(bar("Rib", INNER, pts, 0.28, 0.5, up=(1.0, 0.0, 0.0)), look="rib")
+    # planks staved in round it: broken ends bent in, a few hanging out
+    for y, z, a, out in ((2.6, 1.6, 0.5, -0.2), (2.5, 4.4, -0.6, -0.15), (6.6, 2.4, -0.4, 0.05), (6.7, 4.9, 0.7, -0.2), (4.4, 5.75, 0.3, 0.1), (4.2, 1.15, -0.3, 0.15)):
+        keep_part(block("PlankEnd", TIMBER, (hb(y, z) + out, y, z), (0.08, 1.2, 0.3), turned("X", a)), look="rib")
     # broken plank ends at the breaches
     rng = random.Random(9)
     for k in range(5):
@@ -607,12 +640,12 @@ def gun(name, at, out, carriage=True, length=2.3, mat=BRONZE):
 
 def build_guns():
     zc = (PORT_Z[0] + PORT_Z[1]) * 0.5 - 0.05
-    star = (-13.5, -10.5, -7.5, -4.5, -1.5, 4.5, 7.5)
+    star = (-13.5, -10.5, -7.5, -4.5, -1.5, 7.5, 10.5)
     port = (-13.5, 4.5, 7.5, 10.5)
     k = 0
     for side, ys in ((1.0, star), (-1.0, port)):
         for y in ys:
-            muzzle = hb(y, zc) + 0.22
+            muzzle = hb(y, zc) + 0.6
             gun("Gun%02d" % k, (side * (muzzle - 2.3), y, zc), (side, 0.0, 0.0))
             k += 1
     # two port guns slid down to starboard, the gun fallen into the hold, one in the cabin's stern port
@@ -633,82 +666,106 @@ def lid(y, side, angle, z_hinge=PORT_Z[1] + 0.06):
 
 def build_lids():
     for y in PORTS_Y:
-        lid(y, 1.0, math.radians(100.0) if y != 1.5 else math.radians(10.0))
-    for y in (-13.5, 1.5, 7.5, 10.5):
-        lid(y, -1.0, math.radians(25.0 + 25.0 * (y > 0)))
+        if y in (4.5,):
+            continue
+        lid(y, 1.0, math.radians(108.0) if y != 1.5 else math.radians(10.0))
+    for y in (-13.5, -4.5, 1.5, 4.5, 7.5, 10.5):
+        lid(y, -1.0, math.radians(108.0 if y in (-13.5, 4.5, 7.5, 10.5) else 30.0))
 
 
 def stern_y(z):
     return y_aft(z) - 0.02
 
 
+BAY_OUT = 0.7      # how far the stern gallery stands out from the transom
+
+
 def build_stern():
-    """The carved stern (after the concept art: a gallery of many-paned windows, carved scrolls above, a lantern on
-    each top corner, a quarter gallery on each side): window frames, the balcony ledge and its balusters, pilasters,
-    the scallop and scrolls, the arched crest, quarter galleries, the lanterns."""
+    """The carved stern, after the concept art: a gallery standing out from the transom (a bay of glazed,
+    many-paned windows between carved posts, on carved brackets, under a cornice; its middle three windows broken out
+    into the hole the swim route goes in by), the counter above it carved with a scallop in a cartouche between big
+    scrolls, a tall arched taffrail, quarter galleries with their own windows on both corners, and the lanterns."""
     def on(x, z, out=0.0, zref=None):
         return Vector((x, stern_y(z if zref is None else zref) - out, z))
+    W_ = 1.8   # texel weight of the stern's parts
+    top, low = 9.3, 6.95
 
-    def frame(x0, x1, z0, z1, broken_top=False):
-        t = 0.15
-        keep_part(block("Frame", CARVE, on((x0 + x1) * 0.5, z0 - t * 0.5, 0.06), (x1 - x0 + 2 * t, 0.14, t)), weight=1.6, look="stern")
-        if broken_top:
-            for a, b in ((x0 - t, x0 + 0.5), (x1 - 0.35, x1 + t)):
-                keep_part(block("Frame", CARVE, on((a + b) * 0.5, z1 + t * 0.5, 0.06), (b - a, 0.14, t)), weight=1.6, look="stern")
-        else:
-            keep_part(block("Frame", CARVE, on((x0 + x1) * 0.5, z1 + t * 0.5, 0.06), (x1 - x0 + 2 * t, 0.14, t)), weight=1.6, look="stern")
-        for x in (x0 - t * 0.5, x1 + t * 0.5):
-            keep_part(block("Frame", CARVE, on(x, (z0 + z1) * 0.5, 0.06), (t, 0.14, z1 - z0)), weight=1.6, look="stern")
-    frame(-1.4, 1.4, 7.0, 9.2, True)
+    def piece(name, mat, x, z, size, out, zref=None):
+        keep_part(block(name, mat, on(x, z, out, zref), size), weight=W_, look="stern")
+    # the bay: sill and cornice across it, its cheeks, carved brackets under the sill
+    piece("BaySill", CARVE, 0.0, low - 0.15, (6.9, BAY_OUT + 0.15, 0.3), BAY_OUT * 0.5, 8.0)
+    piece("BayCornice", CARVE, 0.0, top + 0.17, (7.0, BAY_OUT + 0.3, 0.34), BAY_OUT * 0.5 + 0.05, 8.0)
+    piece("BayRoof", TIMBER, 0.0, top + 0.42, (6.7, BAY_OUT + 0.1, 0.16), BAY_OUT * 0.5, 8.0)
     for s in (-1.0, 1.0):
-        frame(-2.85 if s < 0 else 2.25, -2.25 if s < 0 else 2.85, 7.4, 8.8)
-        # its glazing bars: two up, two across
-        for dx in (-0.1, 0.1):
-            keep_part(block("Mullion", CARVE, on(s * 2.55 + dx, 8.1, 0.05), (0.05, 0.1, 1.4)), weight=1.6, look="stern")
-        for dz in (-0.25, 0.25):
-            keep_part(block("Mullion", CARVE, on(s * 2.55, 8.1 + dz, 0.05), (0.6, 0.1, 0.05)), weight=1.6, look="stern")
-    # the balcony: a ledge under the windows, balusters and a rail but where it has broken away
-    keep_part(block("Ledge", CARVE, on(0.0, 6.78, 0.25), (6.8, 0.6, 0.16)), weight=1.6, look="stern")
+        piece("BayCheek", CARVE, s * 3.32, (low + top) * 0.5, (0.14, BAY_OUT, top - low), BAY_OUT * 0.5, 8.0)
+    for x in (-3.0, -1.55, 0.0, 1.55, 3.0):
+        bracket = [(x - 0.12, low - 0.3), (x + 0.12, low - 0.3), (x + 0.07, low - 1.1), (x - 0.07, low - 1.1)]
+        keep_part(slab("BayBracket", CARVE, [on(px, pz, 0.05, 8.0) for px, pz in bracket], (0.0, -1.0, 0.0), BAY_OUT * 0.8), weight=W_, look="stern")
+    # carved posts on the bay's face; between them glazed windows with their glazing bars, but in the middle the
+    # three windows broken out (stubs of their bars at the sill and the head)
+    for x in (-3.2, -2.35, -1.5, 1.5, 2.35, 3.2):
+        piece("BayPost", CARVE, x, (low + top) * 0.5, (0.16, 0.18, top - low), BAY_OUT + 0.02, 8.0)
     for s in (-1.0, 1.0):
-        for x in (1.65, 2.05, 2.45, 2.85, 3.2):
-            keep_part(tube("Baluster", CARVE, [on(s * x, 6.86, 0.42), on(s * x, 7.2, 0.42), on(s * x, 7.5, 0.42)], [0.06, 0.08, 0.05], 4), weight=1.6, look="stern")
-        keep_part(block("BalconyRail", CARVE, on(s * 2.42, 7.55, 0.42), (1.7, 0.12, 0.1)), weight=1.6, look="stern")
-        keep_part(block("Pilaster", CARVE, on(s * 1.82, 9.1, 0.08), (0.22, 0.16, 4.3)), weight=1.6, look="stern")
-    # a moulding over the windows, the scallop fan and scrolls above it
-    keep_part(block("Moulding", CARVE, on(0.0, 9.5, 0.1), (5.8, 0.2, 0.18)), weight=1.6, look="stern")
-    fan_c = (0.0, 9.62)
+        for x0, x1 in ((1.58, 2.27), (2.43, 3.12)):
+            cx = s * (x0 + x1) * 0.5
+            wide = x1 - x0
+            piece("BayGlass", GLASS, cx, (low + top) * 0.5, (wide, 0.05, top - low), BAY_OUT - 0.08, 8.0)
+            for dx in (-wide / 6.0, wide / 6.0):
+                piece("BayBar", CARVE, cx + dx, (low + top) * 0.5, (0.045, 0.06, top - low), BAY_OUT - 0.03, 8.0)
+            for dz in (-0.75, -0.25, 0.25, 0.75):
+                piece("BayBar", CARVE, cx, (low + top) * 0.5 + dz, (wide, 0.06, 0.045), BAY_OUT - 0.03, 8.0)
+    for x in (-0.5, 0.5):
+        piece("BayStub", CARVE, x, top - 0.08, (0.05, 0.06, 0.16), BAY_OUT - 0.03, 8.0)
+        piece("BayStub", CARVE, x, low + 0.06, (0.05, 0.06, 0.12), BAY_OUT - 0.03, 8.0)
+    # the counter above: a carved cartouche round the scallop, two great scrolls, a rope moulding, the taffrail
+    fan_c = (0.0, 10.05)
     for k in range(7):
         a0 = math.radians(12.0 + 156.0 * k / 7.0)
         a1 = math.radians(12.0 + 156.0 * (k + 0.82) / 7.0)
-        r0, r1 = 0.22, 1.0 + 0.08 * (k % 2)
+        r0, r1 = 0.22, 0.95 + 0.08 * (k % 2)
         ring = [(fan_c[0] + math.cos(a0) * r0, fan_c[1] + math.sin(a0) * r0), (fan_c[0] + math.cos(a0) * r1, fan_c[1] + math.sin(a0) * r1),
                 (fan_c[0] + math.cos((a0 + a1) * 0.5) * (r1 + 0.1), fan_c[1] + math.sin((a0 + a1) * 0.5) * (r1 + 0.1)),
                 (fan_c[0] + math.cos(a1) * r1, fan_c[1] + math.sin(a1) * r1), (fan_c[0] + math.cos(a1) * r0, fan_c[1] + math.sin(a1) * r0)]
-        keep_part(slab("Shell", CARVE, [on(x, z, 0.08, 10.1) for x, z in ring], (0.0, -1.0, 0.0), 0.16 + 0.04 * (k % 2)), weight=2.0, look="stern")
+        keep_part(slab("Shell", CARVE, [on(x, z, 0.08, 10.4) for x, z in ring], (0.0, -1.0, 0.0), 0.16 + 0.05 * (k % 2)), weight=2.2, look="stern")
+    # (open at its foot: a closed ring's two ends would lie in each other)
+    cart = [on(math.cos(a) * 1.3, 10.25 + math.sin(a) * 0.95, 0.1, 10.4) for a in [math.radians(-75.0 + 330.0 * k / 13.0) for k in range(14)]]
+    keep_part(bar("Cartouche", CARVE, cart, 0.14, 0.16, up=(0.0, -1.0, 0.0)), weight=2.2, look="stern")
     for s in (-1.0, 1.0):
-        # a scroll: a curling band
-        pts = []
-        for k in range(9):
-            a = math.radians(-90.0 + 300.0 * k / 8.0)
-            r = 0.45 - 0.035 * k
-            pts.append(on(s * (1.55 + math.cos(a) * r * s), 10.2 + math.sin(a) * r, 0.12))
-        keep_part(bar("Scroll", CARVE, pts, 0.14, 0.16, up=(0.0, -1.0, 0.0)), weight=2.0, look="stern")
-    # the arched crest on top
-    crest = [(-2.4, 11.35), (-1.8, 11.75), (-0.9, 12.05), (0.0, 12.15), (0.9, 12.05), (1.8, 11.75), (2.4, 11.35)]
-    keep_part(slab("Crest", CARVE, [on(x, z, -0.25, 11.6) for x, z in crest + [(2.4, 11.0), (-2.4, 11.0)]], (0.0, -1.0, 0.0), 0.32), weight=1.6, look="stern")
-    # quarter galleries: a bay on each corner with a domed top, a drop under it and its windows
+        # a great S-scroll each side: a curl turning in at the bottom, one turning out at the top, joined (each
+        # curl less than a turn and opening as it goes, so it never crosses itself)
+        for cz, r0, way, start in ((9.95, 0.42, 1.0, -90.0), (10.95, 0.34, -1.0, 90.0)):
+            pts = []
+            for k in range(9):
+                a = math.radians(start + way * 280.0 * k / 8.0)
+                r = r0 - 0.03 * k
+                pts.append(on(s * (2.0 + math.cos(a) * r), cz + math.sin(a) * r, 0.12))
+            keep_part(bar("Scroll", CARVE, pts, 0.13, 0.16, up=(0.0, -1.0, 0.0)), weight=2.2, look="stern")
+        keep_part(bar("Scroll", CARVE, [on(s * 2.0, 9.53, 0.12), on(s * 2.35, 10.25, 0.12), on(s * 2.0, 10.61, 0.12)], 0.12, 0.15, up=(0.0, -1.0, 0.0)), weight=2.2, look="stern")
+        # leaves at the scroll's foot
+        for k in range(3):
+            leaf = [(s * (2.6 + 0.2 * k), 9.7), (s * (2.85 + 0.2 * k), 10.05 + 0.1 * k), (s * (2.7 + 0.2 * k), 10.35 + 0.1 * k)]
+            keep_part(slab("Leaf", CARVE, [on(px, pz, 0.08, 10.0) for px, pz in leaf], (0.0, -1.0, 0.0), 0.1), weight=2.2, look="stern")
+    rope = [on(-2.6 + 5.2 * k / 16.0, 11.25 + 0.07 * ((k % 2) * 2 - 1), 0.1, 11.25) for k in range(17)]
+    keep_part(bar("RopeMoulding", CARVE, rope, 0.12, 0.12, up=(0.0, -1.0, 0.0)), weight=2.0, look="stern")
+    crest = [(-2.5, 11.35), (-2.2, 11.9), (-1.5, 12.35), (-0.7, 12.6), (0.0, 12.7), (0.7, 12.6), (1.5, 12.35), (2.2, 11.9), (2.5, 11.35)]
+    keep_part(slab("Crest", CARVE, [on(x, z, -0.25, 11.8) for x, z in crest + [(2.5, 11.0), (-2.5, 11.0)]], (0.0, -1.0, 0.0), 0.34), weight=W_, look="stern")
+    keep_part(lathe("CrestFinial", [(0.02, 0.0), (0.16, 0.12), (0.12, 0.35), (0.02, 0.55)], on(0.0, 12.66, 0.07, 11.8), 6, CARVE), weight=W_, look="stern")
+    # quarter galleries: a bay on each corner with three windows, a domed top and a drop under it
     for s in (-1.0, 1.0):
-        y = -16.0
-        x = s * (hb(y, 8.3) + 0.3)
-        keep_part(block("Gallery", CARVE, (x, y, 8.3), (0.65, 1.9, 2.4)), weight=1.4, look="stern")
-        keep_part(block("GalleryWin", GLASS, (x + s * 0.3, y, 8.45), (0.06, 1.3, 0.9)), weight=1.4, look="stern")
-        for dy in (-0.33, 0.0, 0.33):
-            keep_part(block("GalleryBar", CARVE, (x + s * 0.34, y + dy, 8.45), (0.05, 0.06, 0.95)), weight=1.4, look="stern")
-        keep_part(block("GalleryBar", CARVE, (x + s * 0.34, y, 8.45), (0.05, 1.35, 0.06)), weight=1.4, look="stern")
-        keep_part(lathe("GalleryTop", [(0.95, 0.0), (0.6, 0.35), (0.12, 0.7), (0.02, 0.8)], (x - s * 0.1, y, 9.5), 6, CARVE), weight=1.4, look="stern")
-        keep_part(lathe("GalleryDrop", [(0.02, -0.9), (0.25, -0.5), (0.75, 0.0)], (x - s * 0.1, y, 7.1), 6, CARVE), weight=1.4, look="stern")
+        y = -15.9
+        x = s * (hb(y, 8.3) + 0.4)
+        keep_part(block("Gallery", CARVE, (x, y, 8.3), (0.85, 3.0, 2.6)), weight=1.6, look="stern")
+        keep_part(block("GalleryWin", GLASS, (x + s * 0.42, y, 8.4), (0.05, 2.5, 1.4)), weight=1.6, look="stern")
+        for dy in (-0.83, 0.83):
+            keep_part(block("GalleryPost", CARVE, (x + s * 0.46, y + dy, 8.4), (0.08, 0.14, 1.5)), weight=1.6, look="stern")
+        for dy in (-1.1, -0.55, 0.0, 0.55, 1.1):
+            keep_part(block("GalleryBar", CARVE, (x + s * 0.45, y + dy, 8.4), (0.04, 0.045, 1.4)), weight=1.6, look="stern")
+        for dz in (-0.35, 0.35):
+            keep_part(block("GalleryBar", CARVE, (x + s * 0.45, y, 8.4 + dz), (0.04, 2.5, 0.045)), weight=1.6, look="stern")
+        keep_part(lathe("GalleryTop", [(1.15, 0.0), (0.75, 0.4), (0.15, 0.85), (0.02, 1.0)], (x - s * 0.05, y, 9.6), 6, CARVE), weight=1.6, look="stern")
+        keep_part(lathe("GalleryDrop", [(0.02, -1.1), (0.3, -0.6), (0.9, 0.0)], (x - s * 0.05, y, 7.0), 6, CARVE), weight=1.6, look="stern")
         # a lantern on each top corner of the stern, on an iron post
-        foot = on(s * 2.25, 11.3, 0.05)
+        foot = on(s * 2.3, 11.3, 0.05)
         keep_part(bar("LanternPost", RUST, [foot, foot + Vector((0.0, -0.15, 0.8))], 0.09, 0.09, up=(0, 1, 0)))
         lantern("SternLantern", foot + Vector((0.0, -0.15, 0.72)), 1.4)
 
@@ -886,17 +943,28 @@ def build_mast(name, y, foot_z, height, top, lean_deg, yard_len, sails, flag, ch
     rng = random.Random(len(name) * 7 + int(y))
     for x0, x1, drop in sails:
         ragged = [(x0, 0.0), (x1, 0.0)]
-        for j in range(5):
-            ragged.append((lerp(x0, x1, 1.0 - j / 4.0), -drop * rng.uniform(0.45, 1.0)))
+        for j in range(9):
+            ragged.append((lerp(x0, x1, 1.0 - j / 8.0), -drop * (rng.uniform(0.75, 1.0) if j % 2 else rng.uniform(0.4, 0.7))))
         pts = [foot + lean @ (tilt @ Vector((x, -0.75, z)) + Vector((0, 0, yard_z - 0.15))) for x, z in ragged]
         keep_part(slab("Sail", SAIL, pts, axes[1], 0.03), group="rig", weight=0.9, look="sail")
     head = m(0.0, 0.0, top - 0.3)
     for s in (-1.0, 1.0):
+        lines = []
         for dy in (-0.8, 0.0, 0.8):
             low = Vector((s * (hb(y + dy, channel_z) + 0.42), y + dy, channel_z + 0.4))
             sag = 0.5 if s > 0 else 0.05
             mid = head.lerp(low, 0.5) + Vector((s * sag * 0.4, 0.0, -sag))
-            keep_part(tube("Shroud", ROPE, [head, head.lerp(mid, 0.5), mid, mid.lerp(low, 0.5), low], 0.05, 4), group="rig", weight=0.6, solid=False, look="rope")
+            line = [head, head.lerp(mid, 0.5), mid, mid.lerp(low, 0.5), low]
+            lines.append(line)
+            keep_part(tube("Shroud", ROPE, line, 0.05, 4), group="rig", weight=0.6, solid=False, look="rope")
+        # the ratlines: rungs across the shrouds, the way up
+        def along(line, u):
+            f = u * (len(line) - 1)
+            k = min(int(f), len(line) - 2)
+            return line[k].lerp(line[k + 1], f - k)
+        for r in range(9):
+            u = 0.2 + 0.7 * r / 8.0
+            keep_part(tube("Ratline", ROPE, [along(lines[0], u), along(lines[1], u), along(lines[2], u)], 0.025, 4), group="rig", weight=0.5, solid=False, look="rope")
     if stay_to is not None:
         a = m(0, 0.4, top + 0.2)
         keep_part(tube("Stay", ROPE, [a, a.lerp(stay_to, 0.5) + Vector((0, 0, -0.6)), stay_to], 0.06, 4), group="rig", weight=0.6, solid=False, look="rope")
@@ -904,9 +972,9 @@ def build_mast(name, y, foot_z, height, top, lean_deg, yard_len, sails, flag, ch
 
 
 def build_masts():
-    fore = build_mast("Foremast", FOREMAST_Y, UPPER, 6.4, 5.9, 8.0, 4.6, ((-4.3, -2.6, 3.4), (-2.5, -0.4, 4.4), (0.4, 2.0, 2.6), (2.1, 4.2, 3.8)),
+    fore = build_mast("Foremast", FOREMAST_Y, UPPER, 6.4, 5.9, 8.0, 4.6, ((-4.4, -1.7, 4.3), (-1.5, 1.1, 4.7), (1.3, 4.4, 4.0)),
                       False, 7.5, Vector((0.0, 20.5, 11.65)))
-    build_mast("Mizzen", MIZZEN_Y, QD, 4.6, 4.1, 4.0, 3.4, ((-3.2, -1.4, 2.6), (-1.3, 0.9, 2.9), (1.0, 3.2, 2.2)), True, 10.1)
+    build_mast("Mizzen", MIZZEN_Y, QD, 4.6, 4.1, 4.0, 3.4, ((-3.3, -0.9, 2.9), (-0.6, 3.3, 2.7)), True, 10.1)
     return fore
 
 
@@ -1124,6 +1192,28 @@ def build_sand(fore_head):
         coin(Vector((-7.8 + rng.uniform(-1.2, 1.4), 9.6 + rng.uniform(-1.6, 0.6), 0.0)), rng.uniform(0.0, 0.3), rng.uniform(0, 3))
     for p in PARTS[n:]:
         p["frame"] = "world"
+    # under the starboard hole (the concept art's picture): an open chest tipped out of it onto the sand, a spill
+    # of gold, a goblet, coins; shot and a barrel beside it
+    foot = W((hb(4.5, 1.1) + 0.2, 4.5, 1.1))
+    out = (W((10.0, 4.5, 1.1)) - foot)
+    out.z = 0.0
+    out.normalize()
+    along = Vector((-out.y, out.x, 0.0))
+    spill = Vector((foot.x, foot.y, 0.0)) + out * 1.2
+    n = len(PARTS)
+    keep_part(lathe("Spill", [(1.3, 0.0), (0.9, 0.12), (0.45, 0.24), (0.05, 0.3)], spill + Vector((0, 0, -0.05)), 9, GOLD,
+                    axis=[out, along * 0.7, Vector((0, 0, 1))]), group="treasure", weight=3.0, solid=False, look="gold")
+    chest("HoleChest", spill + out * 1.0 + along * 0.9, math.atan2(out.y, out.x) + 0.4, math.radians(115.0))
+    goblet(spill - along * 1.1 + out * 0.4, math.radians(85.0), 0.7)
+    rng = random.Random(41)
+    for k in range(6):
+        coin(spill + out * rng.uniform(0.6, 2.0) + along * rng.uniform(-1.8, 1.8), rng.uniform(0.0, 0.3), rng.uniform(0, 3))
+    for p in PARTS[n:]:
+        p["frame"] = "world"
+    for k, p in enumerate((spill - along * 2.2 + out * 0.2, spill - along * 2.55 + out * 0.4, spill - along * 2.4 + out * 0.6, spill + along * 2.4 + out * 1.5)):
+        bpy.ops.mesh.primitive_uv_sphere_add(segments=5, ring_count=3, radius=0.16, location=(p.x, p.y, 0.12))
+        bpy.context.object.data.materials.append(RUST)
+        keep_part(bpy.context.object, frame="world", look="iron")
     # what spilled out of her: barrels, a chest, shot, a gun, a broken spar, planks
     def barrel(at, lying=0.0, turn=0.0, buried=0.0):
         ax = [Matrix.Rotation(turn, 3, "Z") @ a for a in turned("X", lying)]
@@ -1135,6 +1225,9 @@ def build_sand(fore_head):
     barrel((-3.2, -22.6, 0.36), math.radians(88), -0.4)
     barrel((13.0, -9.0, 0.37), math.radians(90), 1.2)
     barrel((-8.2, 1.4, 0.36), math.radians(92), 2.0)
+    barrel((6.4, -9.0, 0.0), 0.0, 0.0, 0.05)
+    barrel((7.8, 10.5, 0.37), math.radians(90), 0.4)
+    barrel((7.0, 12.0, 0.0), 0.0, 0.0, 0.1)
     chest("SandChest", Vector((-6.3, -17.0, -0.12)), 0.5, math.radians(25.0), full=False)
     for p in PARTS[-4:]:
         if p["obj"].name.startswith("SandChest"):
@@ -1748,11 +1841,35 @@ for i in range(-10, 23):
             continue
         cands.append((p, hit[1]))
 picked = [max(cands, key=lambda c: c[0].z)]
-while len(picked) < 24 and len(picked) < len(cands):
+while len(picked) < 36 and len(picked) < len(cands):
     best = max(cands, key=lambda c: min((c[0] - q[0]).length for q in picked))
     picked.append(best)
 for k, (p, n) in enumerate(picked):
     empty("ReefSpot%02d" % k, p, n)
+# where weed grows (on the sand along her sides and round her stern, and in the drift): upright strands
+weeds = []
+rng = random.Random(8)
+for k in range(400):
+    y = rng.uniform(-20.0, 18.0)
+    side = rng.choice((-1.0, 1.0))
+    x = side * rng.uniform(5.5, 9.0) if side > 0 else -rng.uniform(4.0, 8.0)
+    if any(segment_distance(Vector((x, y, 1.0)), a, b) < ROUTE_R + 1.4 for route in routes for a, b in zip(route["points"], route["points"][1:])):
+        continue
+    hit = look_tree.ray_cast(Vector((x, y, 40.0)), Vector((0, 0, -1)))
+    z = 0.0
+    if hit[0] is not None:
+        if hit[1].z < 0.6 or hit[0].z > 2.5:
+            continue
+        z = hit[0].z
+    if min([(Vector((x, y, z)) - q).length for q in weeds] + [99.0]) < 2.0:
+        continue
+    weeds.append(Vector((x, y, z)))
+    if len(weeds) >= 18:
+        break
+for k, p in enumerate(weeds):
+    empty("WeedSpot%02d" % k, p)
+den = W((hb(4.5, 1.4) + 0.5, 4.5, 1.4))
+empty("OctopusDen", Vector((den.x, den.y, 0.4)))
 fish_at = [W((0, -12.5, CAB_Z)), W((0, -12.0, GUN_Z)), W((0.0, 12.0, GUN_Z)), W((-1.5, 4.0, HOLD_Z)),
            Vector((0.0, bow_route_y, 1.2)), Vector((9.6, -3.0, 2.1)), W((0.0, -3.5, UPPER + 1.6)), W((-6.5, -15.0, 3.0))]
 for k, p in enumerate(fish_at):
@@ -1772,6 +1889,7 @@ views = {
     "stern_close": [W((0.0, -27.0, 9.0)), W((0.0, -17.5, 9.0))],
     "figurehead": [W((-5.0, 25.0, 9.5)), W((0.0, 21.0, 8.3))],
     "breach": [W((-11.0, 7.4, HOLD_Z + 1.0)), W((-3.0, 7.4, HOLD_Z))],
+    "starboard_hole": [Vector((12.5, 0.5, 3.4)), Vector((4.5, 4.6, 1.6))],
 }
 data = {
     "spheres": [to_godot(c) + [round(r, 3)] for c, r in spheres],
