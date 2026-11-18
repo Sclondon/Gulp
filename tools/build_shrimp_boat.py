@@ -77,6 +77,7 @@ MATERIALS = [
     ("lamp_glass", (0.95, 0.90, 0.70)),
     ("mast_white", (0.80, 0.78, 0.72)),
     ("spar_wood", (0.44, 0.39, 0.33)),
+    ("copper", (0.58, 0.30, 0.16)),
 ]
 MAT_NAMES = [m[0] for m in MATERIALS]
 
@@ -577,7 +578,7 @@ for name, rgb in MATERIALS:
     nt = mat.node_tree
     bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
     bsdf.inputs["Roughness"].default_value = 0.35 if name in ("glass", "lamp_glass", "brass") else 0.85
-    if name == "brass":
+    if name in ("brass", "copper"):
         bsdf.inputs["Metallic"].default_value = 0.6
     if name == "glass":
         # see-through, so that the wheel shows inside (exported as alphaMode BLEND)
@@ -1230,6 +1231,78 @@ for s in (1, -1):
 # a lashing over the shank to the deck
 torus(boat, on_deck(AX, 5.05, 0.02), (0, 1, 0), 0.05, 0.012, 10, 4, "rope", label="anchor lashing")
 
+# --- the mind machine's sending aerial. The user (2026-11-18): "their boat needs an antenna sticking off the bottom
+# from the vr machine". A heavy rubber cable runs from a junction box on the cabin's forward wall (beside the console's
+# forward end: the main session's own cable from the console can come to it) across the deck to a brass gland, down
+# through the boat, and out of a through-hull fitting under the bottom a little to port of the keel. From that hangs
+# the aerial, in the panel's brass, copper and iron: a mast braced by three struts, insulator discs, a copper coil, a
+# loop and a tip ball, a little crooked. The marker "Aerial" is at the ball.
+AER_X, AER_Y = -0.35, 1.45
+uA = u_of(AER_Y)
+lo_z, hi_z = keel(uA), 0.0
+for _ in range(40):                           # where the hull's bottom is at x = AER_X
+    mid = (lo_z + hi_z) / 2
+    if outer_half(uA, mid, sheer(AER_Y)) > abs(AER_X):
+        hi_z = mid
+    else:
+        lo_z = mid
+AER_Z = (lo_z + hi_z) / 2                     # (about -0.8)
+top = Vector((AER_X, AER_Y, AER_Z))
+cyl(boat, top + Vector((0, 0, 0.06)), top + Vector((0, 0, -0.04)), 0.17, 0.17, 12, "brass", label="aerial flange")
+cyl(boat, top + Vector((0, 0, -0.03)), top + Vector((0, 0, -0.2)), 0.1, 0.085, 10, "metal_dark", label="aerial housing")
+# the mast, a little crooked
+M = [top + Vector((0, 0, -0.18)), top + Vector((0.01, 0.0, -0.75)), top + Vector((-0.03, 0.02, -1.35)),
+     top + Vector((-0.08, -0.03, -1.85))]
+tube(boat, M, [0.04, 0.035, 0.032, 0.028], 6, "metal_dark", label="aerial mast")
+
+
+def on_mast(t):
+    """A point down the mast's polyline, t from 0 (top) to 1 (bottom)."""
+    seg = min(int(t * 3), 2)
+    f = t * 3 - seg
+    return M[seg].lerp(M[seg + 1], f)
+
+
+# three brass struts from the flange's rim to a collar on the mast
+collar = on_mast(0.24)
+cyl(boat, collar + Vector((0, 0, 0.03)), collar - Vector((0, 0, 0.03)), 0.055, 0.055, 8, "brass", label="aerial collar")
+for k in range(3):
+    a = 2 * math.pi / 3 * k + 0.5
+    foot = top + Vector((0.14 * math.cos(a), 0.14 * math.sin(a), -0.03))
+    cyl(boat, foot, collar + Vector((0.04 * math.cos(a), 0.04 * math.sin(a), 0)), 0.013, 0.013, 4, "brass",
+        label="aerial strut")
+# insulator discs
+for t in (0.36, 0.44, 0.52):
+    p = on_mast(t)
+    cyl(boat, p + Vector((0, 0, 0.015)), p - Vector((0, 0, 0.015)), 0.075, 0.075, 8, "lamp_glass", label="aerial insulator")
+# the copper coil, three turns round the mast
+c0 = on_mast(0.6)
+c1 = on_mast(0.78)
+coil = []
+for i in range(19):
+    f = i / 18
+    a = 2 * math.pi * 3 * f
+    p = c0.lerp(c1, f)
+    coil.append(p + Vector((0.075 * math.cos(a), 0.075 * math.sin(a), 0)))
+tube(boat, coil, 0.012, 3, "copper", label="aerial coil")
+for p, c in ((coil[0], c0), (coil[-1], c1)):  # the coil's ends soldered to the mast
+    cyl(boat, p, c, 0.01, 0.01, 4, "copper", label="aerial coil lead")
+# the loop, square across the boat, threaded on the mast near its foot, then the tip ball
+lp = on_mast(0.88)
+torus(boat, lp, (1, 0, 0.15), 0.14, 0.014, 12, 4, "brass", label="aerial loop")
+TIP = M[-1] + (M[-1] - M[-2]).normalized() * 0.06
+sphere(boat, TIP, 0.07, 8, 5, "brass", label="aerial tip ball")
+# on deck: the junction box on the cabin's forward wall, the cable, the gland
+dkt = deck_top(AER_Y)
+box(boat, -1.2, -1.0, CB_Y1 - 0.1, CB_Y1, dkt + 0.28, dkt + 0.48, "metal_dark", label="aerial junction box")
+box(boat, -1.18, -1.02, CB_Y1 - 0.11, CB_Y1 - 0.09, dkt + 0.3, dkt + 0.46, "brass", label="aerial junction plate")
+GLAND = Vector((-0.9, 1.46, dkt))
+cyl(boat, GLAND + Vector((0, 0, -0.04)), GLAND + Vector((0, 0, 0.07)), 0.065, 0.055, 10, "brass", label="deck gland")
+cyl(boat, GLAND + Vector((0, 0, -0.01)), GLAND + Vector((0, 0, 0.015)), 0.1, 0.1, 10, "brass", label="deck gland flange")
+cable = catmull([(-1.1, CB_Y1 - 0.06, dkt + 0.3), (-1.1, CB_Y1 - 0.1, dkt + 0.12), (-1.03, 1.5, dkt + 0.035),
+                 (-0.95, 1.47, dkt + 0.07), (GLAND.x, GLAND.y, GLAND.z + 0.065)], 2)
+tube(boat, cable, 0.028, 5, "hose_rubber", label="line aerial cable")
+
 # --- wear and repair on the hull: scuppers with rust weeping from them, rust under the cleats and the
 # hawse, a patch of red primer, a patch of fresher white, blank name boards, tyre fenders to starboard
 
@@ -1563,6 +1636,12 @@ SET_INTO = [   # (label pattern, label pattern, why it is meant)
     ("horn post", "horn", "on its post"), ("*wall*", "pipe clip", "screwed to the wall"), ("*wall*", "*pipe", "against the wall"),
     ("*wall*", "wall board", "the lining on the wall"), ("wall board", "wall board", "boards side by side"),
     ("wall board", "pipe clip", "screwed through the lining"), ("*wall*", "*foot", "the wall's foot board"),
+    ("hull", "aerial flange", "the through-hull fitting is let into the bottom planking"),
+    ("hull", "aerial bolt", "bolted through the bottom"), ("hull", "aerial housing", "the housing comes out of the hull"),
+    ("aerial*", "aerial*", "the aerial's own pieces, bolted, soldered and threaded on its mast"),
+    ("hull", "deck gland*", "the gland goes down through the deck"), ("deck gland*", "deck gland*", "one fitting"),
+    ("deck gland", "line aerial cable", "the cable enters the gland"),
+    ("*wall*", "aerial junction box", "screwed to the wall"), ("aerial junction box", "line aerial cable", "the cable leaves the box"),
     ("plank", "*", "things standing on the deck are set into the planks' tops by their own weight (less than CLIP_MM)"),
 ]
 
@@ -1753,6 +1832,7 @@ marker("DiverSpot", tuple(DIVER), 180)         # at the pump, facing aft
 stem_wl = station(1.0)[0][17]                  # the stem's point on the waterline
 marker("BowWave", (0.0, stem_wl[1], 0.0), 180)
 marker("Wake", (0.0, -HALF, 0.0), 180)
+marker("Aerial", tuple(TIP), 0)                # the sending aerial's tip ball, under the hull
 marker("Waterline", (0.0, 0.0, 0.0), 0)
 print("HOSE END (not a marker): blender (%.3f, %.3f, %.3f)" % tuple(HOSE_END))
 

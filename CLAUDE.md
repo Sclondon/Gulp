@@ -415,3 +415,8 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   captain's outfit sheet is `tools/art_src/concept_captain_outfits.jpg`.
 - In the sea: `leviathan` (a harmless giant, open ocean and canyon) and `sea_serpent` (a stalker, open ocean); both
   wear one shared shader, `creatures/sea_monster/sea_monster.gdshader` (a copy ships with each component: keep them alike).
+- The captain (the user, 2026-11-18): "make concept art of the captain tposing for the model to be based on"; "he
+  looks a little to tall and lanky so far"; "he should have hear shaped boxers pose so you can add clothes on top"
+  (a base body in heart-print boxers, outfits modelled over it); "his eyes should just be wrinkly slits" (not the
+  blank mask: creased squints, no eyeballs). "their boat needs an antenna sticking off the bottom from the vr
+  machine": done in `tools/build_shrimp_boat.py` (marker `Aerial` at its tip).

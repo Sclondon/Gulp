@@ -123,24 +123,46 @@ Every line starts and ends on a fitting. The build checks this (LINE ENDS below)
 -1.85). Neither `title.gd` nor `fishers.gd` refers to these two nodes. The Wheel, PumpWheel, all markers and the axes
 are unchanged.
 
+## The mind machine's aerial (2026-11-18)
+
+The user: "their boat needs an antenna sticking off the bottom from the vr machine". The panel concept
+(`tools/art_src/panel_concept_1.png`) sets the style: brass, copper and iron.
+
+- **On deck:** a junction box on the cabin's forward wall, beside the console's forward end, at Godot about
+  (-1.1, 1.2..1.4, -1.55). The main session's cable from the console can run to it. A heavy rubber cable runs from the
+  box across the deck to a brass deck gland at Godot (-0.9, 0.92, -1.46), clear of the console's 2.3 m and of the pipe.
+- **Under the hull:** a brass through-hull flange and an iron housing, 0.35 m to port of the keel under the cabin's
+  forward end (Godot (-0.35, -0.8, -1.45)). From them hangs an iron mast, a little crooked, carrying:
+  - three brass struts to a collar;
+  - three pale insulator discs;
+  - a copper coil of three turns;
+  - a brass loop;
+  - a brass tip ball.
+- **Marker:** `Aerial` (Node3D) sits at the tip ball, at Godot (-0.436, -2.731, -1.414). It reaches about 1.9 m below
+  the hull's bottom.
+- **Clearance:** it is far from the propeller and rudder (5.5 m forward of them) and 0.35 m to port of the keel.
+- **Cost:** about 750 triangles in all, about 560 of them the aerial itself.
+- **Checks:** clipping check zeros; inside-out 0.
+- Its deliberate set-ins are listed in `SET_INTO`.
+
 ## Axes, size and nodes
 
 The origin is on the centre line amidships at the waterline. In Godot the bow points to **-Z** and starboard is +X.
-Overall, in Godot: x -3.52..3.52, y -0.99 (keel) to 9.69 (masthead light), z -6.62 (stem head) to 6.55. The hull is
+Overall, in Godot: x -3.52..3.52, y -2.80 (the aerial's tip; the keel is at -0.99) to 9.69 (masthead light), z -6.62 (stem head) to 6.55. The hull is
 13 m by 4.2 m and modelled down to the keel.
 
 | Node | Kind | Triangles | What it is |
 | --- | --- | --- | --- |
-| `Boat` | MeshInstance3D | 15,671 | everything fixed |
+| `Boat` | MeshInstance3D | 16,419 | everything fixed |
 | `Wheel` | MeshInstance3D | 824 | the ship's wheel (rim radius 0.3 m), hub at Godot (0, 2.016, -3.2): 1.05 m above the deck under CaptainSpot and 0.45 m ahead of it; turns about its local Z |
 | `PumpWheel` | MeshInstance3D | 520 | the air pump's crank wheel (radius 0.35 m), hub at Godot (-0.2, 1.879, 3.5): 1.0 m above the deck under DiverSpot and 0.5 m aft of it; turns about its local X; handle at radius 0.22 m at the top when unturned |
 | `OutriggerPort` | MeshInstance3D | 1,938 | pivot at (-0.42, 3.65, 1.62): pole, fittings, its lines, two doors and the lashed net |
 | `OutriggerStarboard` | MeshInstance3D | 1,938 | the same at (0.42, 3.65, 1.62) |
 
-The total is **20,891 triangles**. The outriggers turn about their local Z; their lines are right only at the built
+The total is **21,639 triangles**. The outriggers turn about their local Z; their lines are right only at the built
 angle.
 
-**Markers** (Node3D; each marker's -Z is the way it faces). All are unchanged.
+**Markers** (Node3D; each marker's -Z is the way it faces). All are unchanged except the new `Aerial`.
 
 | Marker | Godot position | Faces |
 | --- | --- | --- |
@@ -152,6 +174,7 @@ angle.
 | `DiverSpot` | (-0.2, 0.879, 3.0) | aft |
 | `BowWave` | (0, 0, -5.115) | aft |
 | `Wake` | (0, 0, 6.5) | aft |
+| `Aerial` | (-0.436, -2.731, -1.414) | the bow (no meaning; the aerial's tip ball, for a spark or pulse) |
 | `Waterline` | (0, 0, 0) | the bow |
 
 **The cabin inside** is 2.85 m fore and aft and 2.74 m from the port wall to the open starboard edge, with 2.13 to
@@ -164,7 +187,7 @@ Plain named colours with no image textures:
 
 `basket`, `bottom_red`, `brass`, `cabin_wood`, `crate_wood`, `deck_wood`, `door_wood`, `float_orange`, `glass`,
 `hose_rubber`, `hull_stripe`, `hull_white`, `lamp_glass`, `lamp_green`, `life_red`, `mast_white`, `metal_dark`,
-`metal_rust`, `name_board`, `net_green`, `primer_red`, `roof`, `rope`, `rust`, `spar_wood`, `trim`, `wire`.
+`metal_rust`, `copper`, `name_board`, `net_green`, `primer_red`, `roof`, `rope`, `rust`, `spar_wood`, `trim`, `wire`.
 
 - `glass` is pale and only lightly tinted, with alpha 0.22, exported as BLEND.
 - Every part is a closed solid.
@@ -270,7 +293,7 @@ wheelhouse door, the outrigger pivot, the masthead, an outrigger's end with its 
 
 ## Checked
 
-- Inside-out faces in Blender, part by part: 0 of 20,891 face inwards across 651 parts.
+- Inside-out faces in Blender, part by part: 0 of 21,639 face inwards across 671 parts.
 - The clipping check above is all zeros.
 - In Godot after `--import`, read back from the .glb:
   - winding agrees with the normals on 100% of triangles in all 5 meshes, and each mesh encloses a positive volume;
