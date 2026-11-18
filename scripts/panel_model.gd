@@ -11,8 +11,9 @@ extends SubViewport
 ## shown as a texture by a Control. It is the usual way in Godot to put 3D things in a 2D
 ## interface (the alternatives: a second camera on its own render layer, which the game's
 ## half-size dithered picture would also shrink and dither; or parenting the model to the game's
-## camera, which the water's fog and light would tint). The model is painted by an unshaded shader
-## (shaders/panel.gdshader), so the little world needs no lights.
+## camera, which the water's fog and light would tint). The model is low-poly with one baked picture for
+## its paint (tools/build_panel.py bakes it), drawn by an unshaded shader (shaders/panel.gdshader),
+## so the little world needs no lights.
 ##
 ## The camera looks straight at the housings' faces from far off with a narrow lens: the faces sit
 ## where a flat panel would, to the pixel, and only what stands out of them (the stick, the lever,
@@ -42,22 +43,24 @@ const GAUGE_SUNK := 1.08
 ## How much smaller the side housings are on an upright phone, so the instruments fit between.
 const SIDE_UPRIGHT := 0.8
 
+## How each material of the model is drawn over the baked picture: its shine, and a tint.
 const PAINTS := {
-	"iron": {"base": Color(0.5, 0.25, 0.1), "patch_a": Color(0.3, 0.14, 0.07), "patch_b": Color(0.33, 0.42, 0.3), "patches": 0.9, "patch_size": 1.3, "dents": 1.0},
-	"brass": {"base": Color(0.78, 0.52, 0.17), "patch_a": Color(0.6, 0.37, 0.12), "patch_b": Color(0.5, 0.45, 0.22), "patches": 0.35, "patch_size": 1.1, "shine": 0.8, "dents": 0.5},
-	"copper": {"base": Color(0.8, 0.4, 0.2), "shine": 0.8},
-	"wood": {"base": Color(0.42, 0.28, 0.16), "patch_a": Color(0.3, 0.19, 0.1), "patch_b": Color(0.48, 0.36, 0.22), "patches": 0.6, "patch_size": 0.5},
-	"rubber": {"base": Color(0.1, 0.1, 0.11), "shine": 0.15},
-	"dark": {"base": Color(0.04, 0.03, 0.03)},
-	"paper": {"base": Color(0.9, 0.8, 0.58), "patch_a": Color(0.8, 0.68, 0.45), "patch_b": Color(0.8, 0.68, 0.45), "patches": 0.4, "patch_size": 0.8},
-	"ink": {"base": Color(0.14, 0.08, 0.05)},
-	"red": {"base": Color(0.72, 0.13, 0.09), "patch_a": Color(0.5, 0.16, 0.1), "patch_b": Color(0.5, 0.16, 0.1), "patches": 0.4, "patch_size": 0.7, "shine": 0.2},
-	"orange": {"base": Color(0.9, 0.5, 0.12)},
-	"green": {"base": Color(0.42, 0.55, 0.2)},
-	"steel": {"base": Color(0.5, 0.48, 0.43), "patch_a": Color(0.45, 0.3, 0.18), "patch_b": Color(0.4, 0.4, 0.36), "patches": 0.5, "patch_size": 0.9, "shine": 0.4},
-	"screen": {"base": Color(0.04, 0.22, 0.07), "shine": 0.5},
-	"lamp": {"base": Color(0.42, 0.26, 0.16), "shine": 0.5},
+	"iron": {},
+	"brass": {"shine": 0.75},
+	"copper": {"shine": 0.7},
+	"rubber": {"shine": 0.15},
+	"dark": {},
+	"paper": {},
+	"ink": {},
+	"red": {"shine": 0.2},
+	"orange": {},
+	"green": {},
+	"steel": {"shine": 0.4},
+	"screen": {"shine": 0.35},
+	"lamp": {"shine": 0.4},
+	"wood": {},
 }
+const ATLAS := "res://textures/panel/panel_atlas.png"
 
 var helm: Node3D
 var engine: Node3D
@@ -80,18 +83,10 @@ static var _paints := {}
 ## The panel's paints by material name (made once; shared by everything painted with them).
 static func paints() -> Dictionary:
 	if _paints.is_empty():
-		var noise := NoiseTexture2D.new()
-		noise.width = 256
-		noise.height = 256
-		noise.seamless = true
-		noise.noise = FastNoiseLite.new()
-		noise.noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-		noise.noise.frequency = 0.012
-		noise.noise.fractal_octaves = 3
 		for named: String in PAINTS:
 			var paint := ShaderMaterial.new()
 			paint.shader = load("res://shaders/panel.gdshader")
-			paint.set_shader_parameter(&"noise", noise)
+			paint.set_shader_parameter(&"atlas", load(ATLAS))
 			for key: String in PAINTS[named]:
 				paint.set_shader_parameter(key, PAINTS[named][key])
 			_paints[named] = paint
@@ -109,8 +104,8 @@ static func paint(model: Node3D, lit := false) -> void:
 			if named == "lamp" and lit:
 				if lamp == null:
 					lamp = (all[named] as ShaderMaterial).duplicate()
-					lamp.set_shader_parameter(&"base", Color(1.0, 0.5, 0.1))
-					lamp.set_shader_parameter(&"glow", Color(0.35, 0.12, 0.0))
+					lamp.set_shader_parameter(&"tint", Color(3.2, 1.6, 0.6))
+					lamp.set_shader_parameter(&"glow", Color(0.3, 0.1, 0.0))
 				mesh.set_surface_override_material(surface, lamp)
 			elif all.has(named):
 				mesh.set_surface_override_material(surface, all[named])
@@ -222,8 +217,8 @@ func show_state(stick: Vector2, held: bool, speed: float, needles: Array[float],
 	_stick.rotation.x = lerpf(_stick.rotation.x, -stick.y * STICK_LEAN, ease)
 	_stick.rotation.y = lerpf(_stick.rotation.y, stick.x * STICK_LEAN, ease)
 	_plunger.position.z = lerpf(_plunger.position.z, -PLUNGER_SINK if held else 0.0, ease)
-	_lamp.set_shader_parameter(&"base", Color(1.0, 0.5, 0.1) if held else Color(0.42, 0.26, 0.16))
-	_lamp.set_shader_parameter(&"glow", Color(0.35, 0.12, 0.0) if held else Color.BLACK)
+	_lamp.set_shader_parameter(&"tint", Color(3.2, 1.6, 0.6) if held else Color.WHITE)
+	_lamp.set_shader_parameter(&"glow", Color(0.3, 0.1, 0.0) if held else Color.BLACK)
 	_lever.rotation.z = lerpf(_lever.rotation.z, _lever_turn(speed), ease)
 	for k in _needles.size():
 		_needles[k].rotation.z = lerpf(_needles[k].rotation.z, lerpf(SWING, -SWING, clampf(needles[k], 0.0, 1.0)), ease)
