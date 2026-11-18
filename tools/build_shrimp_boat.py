@@ -57,7 +57,7 @@ MATERIALS = [
     ("cabin_wood", (0.55, 0.38, 0.22)),
     ("trim", (0.34, 0.22, 0.13)),
     ("roof", (0.62, 0.62, 0.59)),
-    ("glass", (0.10, 0.15, 0.19)),
+    ("glass", (0.55, 0.62, 0.66)),    # thin panes, lightly tinted: the captain shows through them
     ("net_green", (0.13, 0.20, 0.15)),
     ("rust", (0.46, 0.22, 0.10)),
     ("name_board", (0.88, 0.86, 0.78)),
@@ -185,9 +185,10 @@ class Build:
         self.tris = []
         self.mats = []
         self.parts = []   # (label, first tri, end tri)
+        self.ends = {}    # part index -> (first point, last point) of a line (an open tube)
         self.smooth_deg = 38   # edges sharper than this stay hard; the outriggers (nets) are smoothed more
 
-    def part(self, label, verts, polys, mats, cols=None, convex=False):
+    def part(self, label, verts, polys, mats, cols=None, convex=False, ends=None):
         V = [Vector(v) for v in verts]
         if cols is None:
             cols = [WHITE] * len(V)
@@ -230,6 +231,8 @@ class Build:
         self.tris.extend((a + base, b + base, c + base) for a, b, c in tris)
         self.mats.extend(tmats)
         self.parts.append((label, first, len(self.tris)))
+        if ends is not None:
+            self.ends[len(self.parts) - 1] = (Vector(ends[0]), Vector(ends[1]))
 
     def inside_out(self):
         """(faces facing inwards, faces looked at), part by part."""
@@ -364,7 +367,7 @@ def hull_patch(b, s, ys, zlo, zhi, mat, label="patch", nz=3, width=None, out=0.0
             sh = sheer(yy)
             x = outer_half(u, min(z, sh - 0.005), sh) + lap_extra(yy, z)
             cf.append((s * (x + out), yy, z))
-            cb.append((s * (x - 0.012), yy, z))
+            cb.append((s * (x - 0.012 - out), yy, z))   # (each slab its own back plane: no coincident faces)
         grid_f.append(cf)
         grid_b.append(cb)
     ni = len(rows)
@@ -469,7 +472,7 @@ def tube(b, path, radii, sides, mat, closed=False, cols=None, jitter=None, label
         pm.append(mat(m - 1, 0) if callable(mat) else mat)
     if cols is not None and callable(cols):
         cols = [cols(k, j) for k in range(m) for j in range(sides)]
-    b.part(label, verts, polys, pm, cols)
+    b.part(label, verts, polys, pm, cols, ends=None if closed else (P[0], P[-1]))
 
 
 def cyl(b, p0, p1, r0, r1, sides, mat, col=None, label="cyl"):
@@ -578,7 +581,7 @@ for name, rgb in MATERIALS:
         bsdf.inputs["Metallic"].default_value = 0.6
     if name == "glass":
         # see-through, so that the wheel shows inside (exported as alphaMode BLEND)
-        bsdf.inputs["Alpha"].default_value = 0.4
+        bsdf.inputs["Alpha"].default_value = 0.22
         mat.surface_render_method = "BLENDED"
     vc = nt.nodes.new("ShaderNodeVertexColor")
     vc.layer_name = "Col"
@@ -732,13 +735,14 @@ prism(boat, [(-5.25, -0.2), (-5.25, -0.95), (-2.4, -0.95), (-1.2, -0.7), (-3.5, 
 prism(boat, [(-6.35, -0.12), (-6.35, -0.85), (-5.85, -0.85), (-5.85, -0.12)],
       (0, 0, 0), (0, 1, 0), (0, 0, 1), 0.04, "bottom_red", label="rudder")
 box(boat, -0.05, 0.05, -6.35, -5.2, -0.99, -0.93, "metal_rust", label="shoe")
-cyl(boat, (0, -5.72, -0.55), (0, -5.24, -0.55), 0.08, 0.08, 8, "brass", label="prop hub")
+PROP = Vector((0, -5.55, -0.7))
+cyl(boat, (0, -5.7, PROP.z), (0, -5.22, PROP.z), 0.07, 0.07, 8, "brass", label="prop hub")
 for i in range(4):
-    a = math.pi / 2 * i + 0.4
+    a = math.pi / 2 * i + math.pi / 4     # no blade straight up: they clear the hull's bottom
     radial = Vector((math.cos(a), 0, math.sin(a)))
     tang = Vector((0, 1, 0)).cross(radial)
     tw = Matrix.Rotation(math.radians(35), 3, radial)
-    obox(boat, Vector((0, -5.5, -0.55)) + radial * 0.22, radial * 0.15, tw @ (tang * 0.08), tw @ Vector((0, 0.012, 0)),
+    obox(boat, PROP + radial * 0.15, radial * 0.095, tw @ (tang * 0.07), tw @ Vector((0, 0.012, 0)),
          "brass", label="prop blade")
 
 # --- deck planks (gaps between them show the dark deck below)
@@ -822,34 +826,83 @@ WH_Z0 = deck(WH_Y0) - 0.08
 WH_TOP = 3.27      # the wheelhouse stands a step higher than the cabin behind it
 WH_ROOF = 3.25     # underside of its roof
 RT = WH_ROOF + 0.1  # top of its roof
-win_front = [(-1.05, -0.45, 2.15, 2.85), (-0.32, 0.32, 2.15, 2.85), (0.45, 1.05, 2.15, 2.85)]
-win_port = [(2.0, 2.6, 2.15, 2.8), (2.95, 3.55, 2.15, 2.8)]
-# to starboard (the title camera's side) one wide opening, door high, from knee height to the lintel: the captain
-# shows at the wheel through it from the knees up (the concept art's open side). No door.
-win_star = [(1.76, 3.72, deck(2.75) + 0.48, 2.98)]
-door = None
-wall(boat, "y", WH_Y1 - WT, WH_Y1, -WH_X, WH_X, WH_Z0, WH_TOP, win_front, "hull_white", "wheelhouse front")
-wall(boat, "y", WH_Y0, WH_Y0 + WT, -WH_X, WH_X, WH_Z0, WH_TOP, [], "hull_white", "wheelhouse back")
-wall(boat, "x", -WH_X, -WH_X + WT, WH_Y0 + WT, WH_Y1 - WT, WH_Z0, WH_TOP, win_port, "hull_white", "wheelhouse port")
-wall(boat, "x", WH_X - WT, WH_X, WH_Y0 + WT, WH_Y1 - WT, WH_Z0, WH_TOP, win_star, "hull_white",
-     "wheelhouse starboard")
-# a grimy foot round the house where the deck water runs
+# Windows right round at standing height: framed and glazed (thin, lightly tinted panes) with sills, lintels and
+# jambs outside, the wall between panes for mullions. To starboard (the title camera's side) a door in the aft half
+# stands open, folded forward flat against the house side and hooked there; the wall behind it has a window under
+# the door's own window, so the camera abeam sees the captain through the doorway and through both panes.
+WZ0, WZ1 = deck(2.75) + 1.02, deck(2.75) + 1.85     # sill and head of the side windows
+win_front = [(-1.05, -0.45, WZ0 + 0.1, WZ1), (-0.32, 0.32, WZ0 + 0.1, WZ1), (0.45, 1.05, WZ0 + 0.1, WZ1)]
+win_port = [(1.8, 2.35, WZ0, WZ1), (2.45, 3.05, WZ0, WZ1), (3.15, 3.72, WZ0, WZ1)]
+DOOR = (1.78, 2.48)                 # the doorway, along y
+DOOR_TOP = 2.92
+DOOR_W = DOOR[1] - DOOR[0]
+SILL_TOP = deck(2.1) + 0.15         # the raised sill you step over
+DOOR_WIN = (0.12, DOOR_W - 0.12, WZ0 + 0.05, WZ1 - 0.05)   # the door's window, across its width from the hinge
+win_star = [(DOOR[1] + DOOR_WIN[0] - 0.02, DOOR[1] + DOOR_WIN[1] + 0.02, WZ0, WZ1),
+            (3.24, 3.48, WZ0, WZ1), (3.55, 3.76, WZ0, WZ1)]
+wall(boat, "y", WH_Y1 - WT, WH_Y1, -WH_X, WH_X, WH_Z0, WH_TOP, win_front, "hull_white", "wall wheelhouse front")
+wall(boat, "y", WH_Y0, WH_Y0 + WT, -WH_X, WH_X, WH_Z0, WH_TOP, [], "hull_white", "wall wheelhouse back")
+wall(boat, "x", -WH_X, -WH_X + WT, WH_Y0 + WT, WH_Y1 - WT, WH_Z0, WH_TOP, win_port, "hull_white", "wall wheelhouse port")
+wall(boat, "x", WH_X - WT, WH_X, WH_Y0 + WT, WH_Y1 - WT, WH_Z0, WH_TOP,
+     win_star + [(DOOR[0], DOOR[1], WH_Z0, DOOR_TOP)], "hull_white", "wall wheelhouse starboard")
+# a grimy foot round the house where the deck water runs (not across the doorway)
 for s in (1, -1):
     xa, xb = sorted((s * (WH_X + 0.005), s * (WH_X - 0.02)))
-    box(boat, xa, xb, WH_Y0, WH_Y1, WH_Z0, deck(WH_Y1) + 0.22, "hull_white", (0.9, 0.88, 0.82), label="house foot",
-        grime=True)
+    spans = [(WH_Y0, DOOR[0]), (DOOR[1], WH_Y1)] if s > 0 else [(WH_Y0, WH_Y1)]
+    for ya, yb in spans:
+        box(boat, xa, xb, ya, yb, WH_Z0, deck(WH_Y1) + 0.22, "hull_white", (0.9, 0.88, 0.82), label="house foot",
+            grime=True)
+PANE = 0.003    # half the glass's thickness
+
+
+def window_frame(side_x, out, a0, a1, z0, z1, along_y=True, lintel=True):
+    """Sill, lintel and jambs round one opening, on the outside face of a wall (side_x: the face's coordinate,
+    out: +1 or -1, the way out of the wall). along_y: the wall runs along y (a side wall), else along x."""
+    def bx(u0, u1, v0, v1, w0, w1, label):
+        if along_y:
+            xa, xb = sorted((side_x + out * u0, side_x + out * u1))
+            box(boat, xa, xb, v0, v1, w0, w1, "trim", label=label)
+        else:
+            ya, yb = sorted((side_x + out * u0, side_x + out * u1))
+            box(boat, v0, v1, ya, yb, w0, w1, "trim", label=label)
+    bx(-0.02, 0.05, a0 - 0.05, a1 + 0.05, z0 - 0.05, z0, "sill")
+    if lintel:
+        bx(0.0, 0.035, a0 - 0.05, a1 + 0.05, z1, z1 + 0.045, "lintel")
+    bx(0.0, 0.03, a0 - 0.04, a0, z0, z1, "jamb")
+    bx(0.0, 0.03, a1, a1 + 0.04, z0, z1, "jamb")
+
+
 for a0, a1, z0, z1 in win_front:
-    box(boat, a0 - 0.01, a1 + 0.01, WH_Y1 - WT / 2 - 0.01, WH_Y1 - WT / 2 + 0.01, z0 - 0.01, z1 + 0.01, "glass", label="glass")
-    box(boat, a0 - 0.04, a1 + 0.04, WH_Y1 - 0.02, WH_Y1 + 0.05, z0 - 0.06, z0, "trim", label="sill")
+    box(boat, a0 - 0.01, a1 + 0.01, WH_Y1 - WT / 2 - PANE, WH_Y1 - WT / 2 + PANE, z0 - 0.01, z1 + 0.01, "glass", label="glass")
+    window_frame(WH_Y1, 1, a0, a1, z0, z1, along_y=False, lintel=False)
 for a0, a1, z0, z1 in win_port:
-    box(boat, -WH_X + WT / 2 - 0.01, -WH_X + WT / 2 + 0.01, a0 - 0.01, a1 + 0.01, z0 - 0.01, z1 + 0.01, "glass", label="glass")
-    box(boat, -WH_X - 0.05, -WH_X + 0.02, a0 - 0.04, a1 + 0.04, z0 - 0.06, z0, "trim", label="sill")
-for a0, a1, z0, z1 in win_star:
-    # left open (no glass): the title camera, abeam to starboard, looks through it at the captain at the wheel
-    box(boat, WH_X - 0.1, WH_X + 0.06, a0 - 0.04, a1 + 0.04, z0 - 0.06, z0, "trim", label="sill")
-    box(boat, WH_X - 0.02, WH_X + 0.04, a0 - 0.04, a1 + 0.04, z1, z1 + 0.05, "trim", label="lintel")
-    for a in (a0 - 0.04, a1):
-        box(boat, WH_X - 0.02, WH_X + 0.03, a, a + 0.04, z0, z1, "trim", label="jamb")
+    box(boat, -WH_X + WT / 2 - PANE, -WH_X + WT / 2 + PANE, a0 - 0.01, a1 + 0.01, z0 - 0.01, z1 + 0.01, "glass", label="glass")
+    window_frame(-WH_X, -1, a0, a1, z0, z1)
+for i, (a0, a1, z0, z1) in enumerate(win_star):
+    box(boat, WH_X - WT / 2 - PANE, WH_X - WT / 2 + PANE, a0 - 0.01, a1 + 0.01, z0 - 0.01, z1 + 0.01, "glass", label="glass")
+    if i > 0:      # the first is under the folded door, which is its frame
+        window_frame(WH_X, 1, a0, a1, z0, z1)
+# the doorway: a raised sill to step over, jambs and a lintel
+box(boat, WH_X - WT - 0.03, WH_X + 0.05, DOOR[0], DOOR[1], WH_Z0, SILL_TOP, "trim", label="door sill")
+box(boat, WH_X, WH_X + 0.03, DOOR[0] - 0.04, DOOR[0], SILL_TOP, DOOR_TOP, "trim", label="door jamb")
+box(boat, WH_X, WH_X + 0.03, DOOR[1], DOOR[1] + 0.03, SILL_TOP, DOOR_TOP, "trim", label="door jamb")
+box(boat, WH_X, WH_X + 0.035, DOOR[0] - 0.04, DOOR[1] + 0.03, DOOR_TOP, DOOR_TOP + 0.05, "trim", label="door lintel")
+# the door, open: folded forward through 180 degrees about its hinges on the forward jamb, lying flat against the
+# house side (x from DX0 to DX1), hooked to an eye on the wall at its free edge
+DX0, DX1 = WH_X + 0.035, WH_X + 0.075
+DY0, DY1 = DOOR[1] + 0.005, DOOR[1] + DOOR_W - 0.005
+DZ0, DZ1 = SILL_TOP + 0.01, DOOR_TOP - 0.015
+dwin = (DY0 + DOOR_WIN[0], DY0 + DOOR_WIN[1], DOOR_WIN[2], DOOR_WIN[3])
+wall(boat, "x", DX0, DX1, DY0, DY1, DZ0, DZ1, [dwin], "cabin_wood", "door")
+box(boat, (DX0 + DX1) / 2 - PANE, (DX0 + DX1) / 2 + PANE, dwin[0] - 0.01, dwin[1] + 0.01, dwin[2] - 0.01, dwin[3] + 0.01,
+    "glass", label="door glass")
+for z in (DZ0 + 0.25, DZ1 - 0.25):
+    box(boat, WH_X + 0.03, DX1 + 0.006, DOOR[1] - 0.005, DOOR[1] + 0.07, z, z + 0.1, "metal_dark", label="door hinge")
+# the handle on the door's face (outward now), and the hook to an eye on the wall forward of it
+box(boat, DX1, DX1 + 0.03, DY1 - 0.1, DY1 - 0.07, 1.9, 1.98, "brass", label="handle boss")
+box(boat, DX1 + 0.03, DX1 + 0.05, DY1 - 0.2, DY1 - 0.07, 1.92, 1.96, "brass", label="handle")
+box(boat, WH_X, WH_X + 0.04, DY1 + 0.04, DY1 + 0.08, 1.3, 1.34, "metal_dark", label="hook eye")
+cyl(boat, (DX1 - 0.01, DY1 - 0.02, 1.32), (WH_X + 0.03, DY1 + 0.06, 1.32), 0.008, 0.008, 4, "metal_dark", label="door hook")
 for x in (-WH_X, WH_X):
     for y in (WH_Y0, WH_Y1):
         box(boat, x - 0.05, x + 0.05, y - 0.05, y + 0.05, WH_Z0, WH_TOP, "trim", label="corner post")
@@ -900,8 +953,7 @@ def wall_weep(y, ztop, length, wide):
     boat.part("house rust", v, pp, "hull_white", cs, convex=True)
 
 
-for y, zt, ln, wd in ((win_star[0][0] - 0.1, win_star[0][2] - 0.06, 0.32, 0.08),
-                      (win_star[0][1] + 0.0, win_star[0][2] - 0.06, 0.26, 0.06),
+for y, zt, ln, wd in ((win_star[1][0] + 0.06, WZ0 - 0.05, 0.3, 0.06), (win_star[2][1] - 0.05, WZ0 - 0.05, 0.24, 0.05),
                       (2.3, WH_TOP - 0.03, 0.2, 0.1), (3.4, WH_TOP - 0.03, 0.16, 0.07)):
     wall_weep(y, zt, ln, wd)
 # a whip aerial on the roof's starboard aft corner
@@ -927,13 +979,13 @@ for i in range(nb):
         label="wall board")
 # pipes running up the wall to the roof, clear of the console's length (y -0.98..1.33 from the main session's size)
 PIPE_X = -CB_X + WT + 0.07
-for py, pr in ((-1.12, 0.045), (1.46, 0.04)):
+for py, pr in ((-1.04, 0.04), (1.46, 0.04)):
     tube(boat, [(PIPE_X, py, deck(py) + 0.03), (PIPE_X, py, CB_ROOF - 0.14), (PIPE_X, py + (0.1 if py < 0 else -0.1),
          CB_ROOF - 0.07), (PIPE_X, py + (0.35 if py < 0 else -0.35), CB_ROOF - 0.06)], pr, 8, "metal_rust",
          label="wall pipe")
     for z in (deck(py) + 0.6, CB_ROOF - 0.5):
         box(boat, -CB_X + WT, PIPE_X + 0.01, py - 0.03, py + 0.03, z, z + 0.04, "metal_dark", label="pipe clip")
-tube(boat, [(PIPE_X, -0.77, CB_ROOF - 0.06), (PIPE_X, 1.11, CB_ROOF - 0.06)], 0.03, 8, "metal_rust", label="roof pipe")
+tube(boat, [(PIPE_X, -0.69, CB_ROOF - 0.06), (PIPE_X, 1.11, CB_ROOF - 0.06)], 0.03, 8, "metal_rust", label="roof pipe")
 box(boat, -CB_X - 0.03, -CB_X + WT + 0.01, CB_Y0, CB_Y1, CB_Z0, deck(CB_Y0) + 0.1, "trim", label="port wall foot")
 for y in (CB_Y0,):   # forward, the wheelhouse corner post holds the roof
     box(boat, CB_X - 0.11, CB_X + 0.01, y, y + 0.12, CB_Z0, CB_ROOF + 0.02, "trim", label="cabin starboard post")
@@ -951,81 +1003,147 @@ for s in (1, -1):
                 (x, CB_Y1 - 0.15, CB_ROOF + 0.08)], 0.022, 5, "metal_dark", label="roof rail")
 # the life ring, hung outside the starboard bulwark forward of the house
 LR_Y = 3.35
-LR_Z = sheer(LR_Y) - 0.3
-LR_X = outer_half(u_of(LR_Y), LR_Z - 0.2, sheer(LR_Y)) + 0.075
+LR_Z = sheer(LR_Y) - 0.64      # hung below the rub rail
+LR_X = outer_half(u_of(LR_Y), LR_Z + 0.3, sheer(LR_Y)) + LAP + 0.1
+LR_AX = Vector((1, 0, 0.25)).normalized()
+LR_TOP = Vector((LR_X, LR_Y, LR_Z)) + (Vector((0, 0, 1)) - LR_AX * LR_AX.z).normalized() * (0.25 + 0.05)
 torus(boat, (LR_X, LR_Y, LR_Z), (1, 0, 0.25), 0.25, 0.055, 16, 7,
       lambda k, j: "life_red" if (k // 2) % 2 == 0 else "hull_white", label="life ring")
-tube(boat, [(LR_X - 0.05, LR_Y, LR_Z + 0.3), (sheer_half(u_of(LR_Y)) - 0.02, LR_Y, sheer(LR_Y) + 0.04)], 0.012, 5, "rope",
+tube(boat, [LR_TOP, (sheer_half(u_of(LR_Y)) + 0.13, LR_Y, sheer(LR_Y) - 0.2),
+            (sheer_half(u_of(LR_Y)) - 0.03, LR_Y, sheer(LR_Y) + 0.03)], 0.012, 5, "rope",
      label="ring lanyard")
 
-# --- mast, crosstree, boom and standing rigging
-MAST_Y = 1.85
+# --- the rig: one mast, stepped on deck just abaft the house (the open cabin), as on a Gulf double-rigger. It is
+# stayed by a forestay to the stem head, shrouds over a crosstree to the rails (with turnbuckles) and two
+# backstays to the quarters. It carries: the two outriggers, pivoting on pins in a collar above the cabin roof and
+# held up by topping lifts from a crane at the masthead; the heel blocks the trawl cables lead through from the
+# winch; and the cargo boom, swung aft over the working deck, for lifting the cod end. Every line ends on a fitting.
+MAST_Y = -1.62
 MAST_TOP = 9.5
-cyl(boat, (0, MAST_Y, deck(MAST_Y) - 0.05), (0, MAST_Y, MAST_TOP), 0.12, 0.075, 10, "spar_wood", label="mast")
-sphere(boat, (0, MAST_Y, MAST_TOP + 0.06), 0.08, 8, 5, "lamp_glass", label="masthead light")
-box(boat, -0.7, 0.7, MAST_Y - 0.05, MAST_Y + 0.05, 7.55, 7.65, "spar_wood", label="crosstree")
-HINGE_Z = 3.65   # the outriggers' hinges, on a collar on the mast just above the wheelhouse roof
-box(boat, -0.48, 0.48, MAST_Y - 0.1, MAST_Y + 0.1, HINGE_Z - 0.14, HINGE_Z + 0.12, "metal_rust", label="outrigger collar")
-# the mizzen: a second bare mast just aft of the cabin (as in the concept art), carrying the boom swung aft over
-# the working deck with its block and hook; aft of the cabin as the title camera sees it, forward of the diver
-MIZ_Y = -1.72
-MIZ_TOP = 7.4
-cyl(boat, (0, MIZ_Y, deck(MIZ_Y) - 0.05), (0, MIZ_Y, MIZ_TOP), 0.1, 0.065, 10, "spar_wood", label="mizzen")
-box(boat, -0.13, 0.13, MIZ_Y - 0.13, MIZ_Y + 0.13, deck(MIZ_Y) - 0.02, deck(MIZ_Y) + 0.12, "metal_rust", label="mizzen step")
-BOOM0 = Vector((0, MIZ_Y - 0.1, 3.7))
-BOOM1 = Vector((0, -5.35, 4.75))
-cyl(boat, BOOM0, BOOM1, 0.07, 0.05, 8, "spar_wood", label="boom")
-box(boat, -0.12, 0.12, MIZ_Y - 0.16, MIZ_Y + 0.0, 3.55, 3.85, "metal_rust", label="gooseneck")
+MAST_R0, MAST_R1 = 0.13, 0.075
 LINE = 0.014
-tube(boat, [(0, MIZ_Y, MIZ_TOP - 0.1), BOOM1 + Vector((0, 0, 0.05))], LINE, 5, "rope", label="topping lift")
-block = BOOM1 + Vector((0, 0, -0.25))
-box(boat, -0.05, 0.05, block.y - 0.06, block.y + 0.06, block.z - 0.12, block.z + 0.12, "metal_rust", label="boom block")
-tube(boat, [BOOM1, block + Vector((0, 0, 0.1))], LINE, 5, "rope", label="block strop")
-tube(boat, [block + Vector((0, 0, -0.1)), block + Vector((0, 0, -1.0))], LINE, 5, "rope", label="whip")
-cyl(boat, block + Vector((0, 0, -1.0)), block + Vector((0, 0, -1.15)), 0.04, 0.02, 6, "metal_dark", label="hook")
-tube(boat, [(0, MAST_Y - 0.05, MAST_TOP - 0.6), (0, MIZ_Y + 0.05, MIZ_TOP - 0.05)], LINE, 5, "rope", label="triatic stay")
-for s in (1, -1):
-    y = MIZ_Y - 0.25
-    tube(boat, [(s * 0.05, MIZ_Y, MIZ_TOP - 0.3), (s * (sheer_half(u_of(y)) - 0.05), y, sheer(y) + 0.02)], LINE, 5,
-         "rope", label="mizzen shroud")
-# a net swagged from the boom's end down to the starboard quarter, floats along its head rope
-sw0 = BOOM1 + Vector((0.05, 0, -0.1))
-sw1 = Vector((sheer_half(u_of(-6.1)) - 0.1, -6.1, sheer(-6.1) + 0.05))
-swag = []
-for i in range(17):
-    f = i / 16
-    p = sw0.lerp(sw1, f)
-    p = p + Vector((0.25 * math.sin(math.pi * f), -0.1 * math.sin(math.pi * f), -0.9 * math.sin(math.pi * f)))
-    swag.append(p)
-sw_r = [0.05 + 0.17 * math.sin(math.pi * (i / 16)) ** 0.7 for i in range(17)]
-tube(boat, swag, sw_r, 10, "net_green", cols=lambda k, j: (0.55, 0.6, 0.55) if (k + j) % 2 else WHITE,
-     jitter=lambda k, j: 1.0 + 0.12 * math.sin(k * 2.1 + j * 1.7), label="net swag")
-for i in range(2, 16, 2):
-    p = swag[i]
-    sphere(boat, p + Vector((0, 0, sw_r[i] + 0.04)), 0.07, 8, 5, "float_orange", label="swag float", squash=(1, 1, 0.8))
-stem_head = Vector((0, HALF - 0.1, sheer(HALF - 0.1) + 0.03))
-tube(boat, [(0, MAST_Y + 0.05, MAST_TOP - 0.2), stem_head], LINE, 5, "wire", label="forestay")
-for s in (1, -1):
-    y = -6.1
-    tube(boat, [(s * 0.05, MAST_Y - 0.05, MAST_TOP - 0.25), (s * (sheer_half(u_of(y)) - 0.05), y, sheer(y) + 0.02)],
-         LINE, 5, "wire", label="backstay")
-    y = 3.2
-    tube(boat, [(s * 0.68, MAST_Y, 7.6), (s * (sheer_half(u_of(y)) - 0.05), y, sheer(y) + 0.02)],
-         LINE, 5, "wire", label="shroud")
 
-# --- winch on the middle line just aft of the cabin, clear of the view into it from abeam
-WX, WY = -0.95, -2.28    # the winch's place relative to how it was first drawn (x 0.45..1.45, y -1.5..-1.05)
-d = deck(-2.0)
-box(boat, 0.45 + WX, 1.45 + WX, -1.5 + WY + 1.3, -1.05 + WY + 1.3, d - 0.02, d + 0.08, "metal_rust", label="winch base")
-wy = -1.27 + WY + 1.3
-for x in (0.47, 1.39):
-    box(boat, x + WX, x + 0.04 + WX, wy - 0.18, wy + 0.17, d + 0.06, d + 0.48, "metal_rust", label="winch cheek")
-cyl(boat, (0.45 + WX, wy, d + 0.32), (1.45 + WX, wy, d + 0.32), 0.03, 0.03, 8, "metal_dark", label="winch shaft")
-for xa, xb in ((0.55, 0.85), (1.05, 1.35)):
-    cyl(boat, (xa + WX, wy, d + 0.32), (xb + WX, wy, d + 0.32), 0.15, 0.15, 12, "wire", label="winch drum")
-    for x in (xa, xb - 0.03):
-        cyl(boat, (x + WX, wy, d + 0.32), (x + 0.03 + WX, wy, d + 0.32), 0.22, 0.22, 12, "metal_rust", label="drum flange")
-box(boat, 0.88 + WX, 1.02 + WX, wy - 0.15, wy + 0.15, d + 0.08, d + 0.45, "metal_rust", label="gearbox")
+
+def mast_r(z):
+    return MAST_R0 + (MAST_R1 - MAST_R0) * (z - deck(MAST_Y)) / (MAST_TOP - deck(MAST_Y))
+
+
+def rail_padeye(s, y, label="padeye"):
+    """A padeye on the rail cap; returns the point a line made fast to it ends at."""
+    x = s * (sheer_half(u_of(y)) - T / 2)
+    sh = sheer(y)
+    box(boat, x - 0.03, x + 0.03, y - 0.05, y + 0.05, sh - 0.005, sh + 0.035, "metal_dark", label=label)
+    torus(boat, (x, y, sh + 0.06), (0, 1, 0), 0.03, 0.009, 8, 4, "metal_dark", label=label + " eye")
+    return Vector((x, y, sh + 0.075))
+
+
+cyl(boat, (0, MAST_Y, deck(MAST_Y) - 0.05), (0, MAST_Y, MAST_TOP), MAST_R0, MAST_R1, 10, "spar_wood", label="mast")
+box(boat, -0.18, 0.18, MAST_Y - 0.18, MAST_Y + 0.18, deck(MAST_Y) - 0.02, deck_top(MAST_Y) + 0.1, "metal_rust",
+    label="mast step")
+cyl(boat, (0, MAST_Y, MAST_TOP - 0.02), (0, MAST_Y, MAST_TOP + 0.06), 0.09, 0.09, 10, "metal_dark", label="mast cap")
+sphere(boat, (0, MAST_Y, MAST_TOP + 0.12), 0.07, 8, 5, "lamp_glass", label="masthead light")
+# the masthead crane: a bar across with an eye at each end for the outriggers' topping lifts, one aft for the boom's
+CRANE_Z = MAST_TOP - 0.22
+box(boat, -0.3, 0.3, MAST_Y - 0.04, MAST_Y + 0.04, CRANE_Z - 0.04, CRANE_Z + 0.04, "metal_dark", label="masthead crane")
+CRANE_EYE = {}
+for s in (1, -1):
+    torus(boat, (s * 0.27, MAST_Y, CRANE_Z - 0.07), (0, 1, 0), 0.035, 0.01, 8, 4, "metal_dark", label="crane eye")
+    CRANE_EYE[s] = Vector((s * 0.27, MAST_Y, CRANE_Z - 0.1))
+box(boat, -0.03, 0.03, MAST_Y - 0.2, MAST_Y - 0.06, CRANE_Z - 0.04, CRANE_Z + 0.02, "metal_dark", label="crane aft arm")
+BOOM_LIFT_EYE = Vector((0, MAST_Y - 0.17, CRANE_Z - 0.05))
+box(boat, -0.02, 0.02, MAST_Y + 0.04, MAST_Y + 0.13, MAST_TOP - 0.18, MAST_TOP - 0.12, "metal_dark", label="forestay tang")
+FORESTAY_TOP = Vector((0, MAST_Y + 0.13, MAST_TOP - 0.15))
+# crosstree with the shrouds over its ends
+CT_Z = 7.6
+box(boat, -0.72, 0.72, MAST_Y - 0.05, MAST_Y + 0.05, CT_Z - 0.05, CT_Z + 0.05, "spar_wood", label="crosstree")
+# the outrigger pivot: a steel collar with a pin each side (the outriggers' jaws close round these)
+HINGE_Z = 3.65
+box(boat, -0.3, 0.3, MAST_Y - 0.14, MAST_Y + 0.14, HINGE_Z - 0.16, HINGE_Z + 0.14, "metal_rust", label="pivot collar")
+for s in (1, -1):
+    cyl(boat, (s * 0.25, MAST_Y, HINGE_Z), (s * 0.5, MAST_Y, HINGE_Z), 0.035, 0.035, 8, "metal_dark", label="pivot pin")
+    cyl(boat, (s * 0.42, MAST_Y - 0.1, HINGE_Z), (s * 0.42, MAST_Y + 0.1, HINGE_Z), 0.04, 0.04, 8, "metal_dark",
+        label="pivot pin")
+# heel blocks for the trawl cables, hung on straps aft of the collar
+HEEL_BLOCK = {}
+for s in (1, -1):
+    hb = Vector((s * 0.3, MAST_Y - 0.26, HINGE_Z - 0.32))
+    HEEL_BLOCK[s] = hb
+    beam(boat, (s * 0.2, MAST_Y - 0.13, HINGE_Z - 0.12), hb + Vector((0, 0.02, 0.05)), 0.04, 0.015, "metal_dark",
+         label="heel strap")
+    cyl(boat, hb + Vector((0, -0.04, 0)), hb + Vector((0, 0.04, 0)), 0.075, 0.075, 10, "metal_rust", label="heel block")
+# a cleat on the mast for the lazy lines and one for the boom's whip
+for s in (1, -1):
+    box(boat, s * 0.06 - 0.025, s * 0.06 + 0.025, MAST_Y + 0.07, MAST_Y + 0.14, 4.45, 4.75, "metal_dark",
+        label="mast cleat")
+MAST_CLEAT = {s: Vector((s * 0.06, MAST_Y + 0.14, 4.6)) for s in (1, -1)}
+# standing rigging
+stem_last, _ = station(1.0)
+STEM_HEAD = Vector((0.0, stem_last[3][1] + 0.07, stem_last[3][2] + 0.36))
+tube(boat, [FORESTAY_TOP, STEM_HEAD], LINE, 5, "wire", label="line forestay")
+for s in (1, -1):
+    top = Vector((s * 0.06, MAST_Y - 0.06, MAST_TOP - 0.3))
+    end = rail_padeye(s, -6.27, "backstay padeye")
+    tube(boat, [top, end], LINE, 5, "wire", label="line backstay")
+    # shroud: crosstree end to a padeye on the rail just aft of the mast, set up with a turnbuckle
+    end = rail_padeye(s, -2.05, "shroud padeye")
+    start = Vector((s * 0.7, MAST_Y, CT_Z + 0.05))
+    d = (end - start).normalized()
+    tb0 = end - d * 0.32
+    tb1 = end - d * 0.06
+    tube(boat, [start, tb0], LINE, 5, "wire", label="line shroud")
+    cyl(boat, tb0 - d * 0.01, tb1, 0.025, 0.025, 6, "metal_dark", label="turnbuckle")
+    tube(boat, [tb1 - d * 0.01, end], LINE * 1.3, 5, "metal_dark", label="line turnbuckle eye")
+# the cargo boom, swung aft over the working deck: gooseneck on the mast, topping lift to the masthead crane, a
+# block at its end with the whip and hook, the whip's hauling part led along the boom to a cleat at its heel
+GOOSE_Z = 4.1
+box(boat, -0.08, 0.08, MAST_Y - mast_r(GOOSE_Z) - 0.12, MAST_Y - mast_r(GOOSE_Z) + 0.02, GOOSE_Z - 0.15, GOOSE_Z + 0.15,
+    "metal_rust", label="gooseneck")
+BOOM0 = Vector((0, MAST_Y - mast_r(GOOSE_Z) - 0.1, GOOSE_Z))
+BOOM1 = Vector((0, -5.3, 4.85))
+cyl(boat, BOOM0, BOOM1, 0.07, 0.05, 8, "spar_wood", label="boom")
+bd = (BOOM1 - BOOM0).normalized()
+cyl(boat, BOOM1 - bd * 0.12, BOOM1 + bd * 0.02, 0.065, 0.065, 8, "metal_dark", label="boom end band")
+torus(boat, BOOM1 - bd * 0.05 + Vector((0, 0, 0.07)), (0, 1, 0), 0.03, 0.009, 8, 4, "metal_dark", label="boom lift eye")
+tube(boat, [BOOM_LIFT_EYE, BOOM1 - bd * 0.05 + Vector((0, 0, 0.1))], LINE, 5, "rope", label="line boom topping lift")
+blk = BOOM1 - bd * 0.05 + Vector((0, 0, -0.3))
+tube(boat, [BOOM1 - bd * 0.05 + Vector((0, 0, -0.05)), blk + Vector((0, 0, 0.09))], 0.012, 5, "metal_dark",
+     label="line block strop")
+box(boat, -0.05, 0.05, blk.y - 0.08, blk.y + 0.08, blk.z - 0.09, blk.z + 0.09, "metal_rust", label="boom block")
+HOOK = blk + Vector((0, 0, -1.1))
+tube(boat, [blk + Vector((0, 0, -0.09)), HOOK + Vector((0, 0, 0.02))], LINE, 5, "rope", label="line whip")
+cyl(boat, HOOK + Vector((0, 0, 0.04)), HOOK + Vector((0, 0, -0.12)), 0.035, 0.02, 6, "metal_dark", label="hook")
+boom_cleat = BOOM0 + bd * 0.6
+box(boat, 0.04, 0.11, boom_cleat.y - 0.08, boom_cleat.y + 0.08, boom_cleat.z - 0.03, boom_cleat.z + 0.03, "metal_dark",
+    label="boom cleat")
+tube(boat, [blk + Vector((0.05, 0.0, 0.0)), BOOM1 - bd * 0.35 + Vector((0.1, 0, 0)),
+            boom_cleat + Vector((0.1, -0.08, 0.0))], 0.011, 5, "rope", label="line whip hauling part")
+# --- the trawl winch on the middle line just abaft the mast: a drum each side for the trawl cables, a narrow middle
+# drum (the try net's), the gearbox, and a warping head on each end of the shaft
+WIN_Y = -2.25
+d = deck(WIN_Y)
+WIN_Z = d + 0.34                     # the shaft's height
+DRUM_R = 0.15
+box(boat, -0.66, 0.66, WIN_Y - 0.22, WIN_Y + 0.22, d - 0.02, d + 0.08, "metal_rust", label="winch base")
+for x in (-0.6, -0.06, 0.06, 0.6):
+    xa, xb = (x - 0.02, x + 0.02)
+    box(boat, xa, xb, WIN_Y - 0.17, WIN_Y + 0.17, d + 0.06, WIN_Z + 0.12, "metal_rust", label="winch cheek")
+cyl(boat, (-0.86, WIN_Y, WIN_Z), (0.86, WIN_Y, WIN_Z), 0.03, 0.03, 8, "metal_dark", label="winch shaft")
+DRUM_X = {}
+for s in (1, -1):
+    xa, xb = sorted((s * 0.1, s * 0.56))
+    cyl(boat, (xa, WIN_Y, WIN_Z), (xb, WIN_Y, WIN_Z), DRUM_R, DRUM_R, 12, "wire", label="winch drum")
+    for x in (xa - 0.015, xb - 0.015):
+        cyl(boat, (x, WIN_Y, WIN_Z), (x + 0.03, WIN_Y, WIN_Z), 0.22, 0.22, 12, "metal_rust", label="drum flange")
+    DRUM_X[s] = s * 0.35
+    # the warping head (gypsy) outside the cheek
+    cyl(boat, (s * 0.63, WIN_Y, WIN_Z), (s * 0.82, WIN_Y, WIN_Z), 0.11, 0.08, 10, "metal_dark", label="warping head")
+cyl(boat, (-0.04, WIN_Y, WIN_Z), (0.04, WIN_Y, WIN_Z), 0.12, 0.12, 10, "wire", label="try net drum")
+box(boat, -0.12, 0.12, WIN_Y + 0.12, WIN_Y + 0.4, d + 0.06, d + 0.42, "metal_rust", label="winch gearbox")
+# the trawl cables, each from the top of its drum up and forward to its heel block on the mast
+for s in (1, -1):
+    hb = HEEL_BLOCK[s]
+    start = Vector((DRUM_X[s], WIN_Y + 0.02, WIN_Z + DRUM_R - 0.004))
+    tube(boat, [start, hb + Vector((0, -0.02, -0.07))], 0.016, 5, "wire", label="line trawl cable lead")
 # a fish hold hatch in the middle of the aft deck, aft of the diver's pump
 d = deck_top(-4.55)
 box(boat, -0.95, 0.25, -5.0, -4.1, d - 0.02, d + 0.26, "trim", label="hatch coaming", grime=True)
@@ -1041,7 +1159,7 @@ PUMP_HUB = Vector((DIVER.x, DIVER.y - 0.5, DIVER.z + 1.0))
 CH_X0, CH_X1 = DIVER.x - 0.72, DIVER.x - 0.1      # the chest, to port of the wheel
 CH_Y0, CH_Y1 = PUMP_HUB.y - 0.36, PUMP_HUB.y + 0.36
 d = DIVER.z
-CH_TOP = d + 0.82
+CH_TOP = d + 1.12     # the chest stands above the crank wheel's hub, which turns on a shaft out of its side
 box(boat, CH_X0, CH_X1, CH_Y0, CH_Y1, d - 0.01, CH_TOP, "cabin_wood", label="pump chest", grime=True)
 box(boat, CH_X0 - 0.02, CH_X1 + 0.02, CH_Y0 - 0.02, CH_Y1 + 0.02, CH_TOP, CH_TOP + 0.05, "trim", label="pump lid")
 box(boat, CH_X0 - 0.02, CH_X1 + 0.02, CH_Y0 - 0.02, CH_Y1 + 0.02, d - 0.01, d + 0.07, "trim", label="pump plinth")
@@ -1050,10 +1168,10 @@ for z in (d + 0.3, d + 0.62):
 # the two brass cylinders standing on the lid, a crosshead over them, an outlet and a gauge
 cx = (CH_X0 + CH_X1) / 2
 for y in (PUMP_HUB.y - 0.17, PUMP_HUB.y + 0.17):
-    cyl(boat, (cx, y, CH_TOP + 0.04), (cx, y, CH_TOP + 0.4), 0.075, 0.075, 12, "brass", label="pump cylinder")
-    cyl(boat, (cx, y, CH_TOP + 0.4), (cx, y, CH_TOP + 0.44), 0.09, 0.09, 12, "brass", label="cylinder cap")
-    cyl(boat, (cx, y, CH_TOP + 0.44), (cx, y, CH_TOP + 0.56), 0.02, 0.02, 6, "metal_dark", label="piston rod")
-box(boat, cx - 0.04, cx + 0.04, PUMP_HUB.y - 0.24, PUMP_HUB.y + 0.24, CH_TOP + 0.56, CH_TOP + 0.61, "metal_dark",
+    cyl(boat, (cx, y, CH_TOP + 0.04), (cx, y, CH_TOP + 0.3), 0.075, 0.075, 12, "brass", label="pump cylinder")
+    cyl(boat, (cx, y, CH_TOP + 0.3), (cx, y, CH_TOP + 0.34), 0.09, 0.09, 12, "brass", label="cylinder cap")
+    cyl(boat, (cx, y, CH_TOP + 0.34), (cx, y, CH_TOP + 0.46), 0.02, 0.02, 6, "metal_dark", label="piston rod")
+box(boat, cx - 0.04, cx + 0.04, PUMP_HUB.y - 0.24, PUMP_HUB.y + 0.24, CH_TOP + 0.46, CH_TOP + 0.51, "metal_dark",
     label="crosshead")
 cyl(boat, (cx, PUMP_HUB.y, CH_TOP + 0.04), (cx, PUMP_HUB.y, CH_TOP + 0.16), 0.03, 0.025, 8, "brass", label="outlet")
 cyl(boat, (cx, CH_Y0 + 0.001, d + 0.5), (cx, CH_Y0 - 0.03, d + 0.5), 0.08, 0.08, 12, "brass", label="gauge")
@@ -1089,8 +1207,8 @@ for cx, cy, n in ((1.15, -5.9, 3), (-0.35, -6.0, 1)):
         cyl(boat, (cx, cy, z0), (cx, cy, z0 + 0.38), 0.21, 0.26, 12, "basket", label="basket")
         torus(boat, (cx, cy, z0 + 0.38), (0, 0, 1), 0.26, 0.02, 12, 4, "basket", label="basket rim")
 d = deck_top(-2.0)
-for i, R in enumerate((0.3, 0.26, 0.22)):
-    torus(boat, (-1.35 + 0.01 * i, -2.0, d + 0.035 + 0.06 * i), (0, 0, 1), R, 0.035, 16, 6, "rope", label="rope coil")
+for i, R in enumerate((0.3, 0.265, 0.23)):
+    torus(boat, (-1.35 + 0.01 * i, -2.0, d + 0.035 + 0.05 * i), (0, 0, 1), R, 0.035, 16, 6, "rope", label="rope coil")
 
 # --- the anchor stowed for sea: lying on the foredeck to starboard, its stock folded along its shank
 AX = 0.55
@@ -1127,10 +1245,10 @@ def under_rail(dz):
 def streak(s, y, top, length, wide):
     """A few thin runs of rust from one point, each its own length."""
     runs = ((-wide * 0.35, 0.55 + 0.3 * RNG.random(), 0.004), (0.0, 1.0, 0.007), (wide * 0.4, 0.4 + 0.4 * RNG.random(), 0.01))
-    for dy, f, out in runs:
+    for k_, (dy, f, out) in enumerate(runs):
         ln = length * f
         w = wide * (0.5 if dy else 0.8)
-        hull_patch(boat, s, [y + dy - w / 2, y + dy, y + dy + w / 2], lambda yy, a=top, b=ln: a(yy) - b, top,
+        hull_patch(boat, s, [y + dy - w / 2, y + dy, y + dy + w / 2], lambda yy, a=top, b=ln: a(yy) - b, lambda yy, a=top, k=k_: a(yy) - 0.004 * k,
                    "hull_white", label="rust run", nz=3, width=lambda t, w=w: w * (1 - 0.8 * t), out=out, cols=weep)
 
 
@@ -1164,9 +1282,12 @@ box(boat, -0.95, 0.95, -HALF - 0.045, -HALF + 0.02, 0.73, 0.97, "name_board", la
 # tyre fenders hung on ropes from the starboard rail
 for y in (-3.2, 0.5):
     zt = sheer(y) - 0.62
-    xt = outer_half(u_of(y), zt + 0.25, sheer(y)) + LAP + 0.11
+    xt = outer_half(u_of(y), zt + 0.3, sheer(y)) + LAP + 0.14
     torus(boat, (xt, y, zt), (1, 0, 0.3), 0.24, 0.095, 18, 6, "hose_rubber", label="tyre")
-    tube(boat, [(xt - 0.02, y, zt + 0.27), (sheer_half(u_of(y)) + 0.01, y, sheer(y) + 0.05)], 0.016, 5, "rope",
+    t_ax = Vector((1, 0, 0.3)).normalized()
+    t_top = Vector((xt, y, zt)) + (Vector((0, 0, 1)) - t_ax * t_ax.z).normalized() * (0.24 + 0.08)
+    bs_ = sheer_half(u_of(y))
+    tube(boat, [t_top, (bs_ + 0.1, y, sheer(y) - 0.12), (bs_ - 0.05, y, sheer(y) + 0.012)], 0.016, 5, "rope",
          label="tyre rope")
 
 # ---------------------------------------------------------------------------------------------- the wheel
@@ -1200,98 +1321,124 @@ cyl(pump_wheel, grip, grip + Vector((0.2, 0, 0)), 0.018, 0.018, 6, "metal_dark",
 cyl(pump_wheel, grip + Vector((0.05, 0, 0)), grip + Vector((0.19, 0, 0)), 0.03, 0.03, 8, "cabin_wood", label="crank grip")
 
 # ---------------------------------------------------------------------------------------------- outriggers
+# Each outrigger pivots on its pin in the mast's collar and stands raised 65 degrees, held by its topping lift to
+# the masthead crane and steadied by a fore guy and an aft guy to padeyes on the rail. At its end hangs the towing
+# block; the trawl cable comes from the winch through the heel block, runs up along the outrigger to the towing
+# block and down to a ring from which that side's pair of trawl doors hang in the travelling ("doors up") position.
+# The net is bundled and lashed along the forward side of the outrigger, floats along its headrope, its cod end at
+# the heel with chafing gear, made fast to a cleat on the mast by its lazy line. Everything here turns with the
+# outrigger, so these lines are right only at the built angle.
 OUT_LEN = 6.5
 OUT_ANGLE = math.radians(65)
+# the guys' and topping lifts' deck ends are fixed fittings in Boat
+GUY_FWD = {s: rail_padeye(s, 4.6, "guy padeye") for s in (1, -1)}
+GUY_AFT = {s: rail_padeye(s, -5.6, "guy padeye") for s in (1, -1)}
 outriggers = []
 for s, name in ((-1, "OutriggerPort"), (1, "OutriggerStarboard")):
     hinge = Vector((s * 0.42, MAST_Y, HINGE_Z))
     o = Build(name, hinge)
     o.smooth_deg = 65
-    direction = Vector((s * math.cos(OUT_ANGLE), 0, math.sin(OUT_ANGLE)))
-    tip = hinge + direction * OUT_LEN
-    cyl(o, hinge, tip, 0.085, 0.05, 8, "spar_wood", label="pole")
-    box(o, hinge.x - 0.08, hinge.x + 0.08, hinge.y - 0.13, hinge.y + 0.13, hinge.z - 0.1, hinge.z + 0.1, "metal_rust",
-        label="hinge")
-    cyl(o, tip + Vector((0, -0.1, -0.1)), tip + Vector((0, 0.1, -0.1)), 0.09, 0.09, 10, "metal_rust", label="tip block")
-    # lines: topping lift to the mast, guys forward and aft to the rail
-    tube(o, [tip + Vector((-s * 0.03, 0, 0.02)), (s * 0.05, MAST_Y, MAST_TOP - 0.35)], LINE, 5, "wire", label="lift")
-    # The starboard side faces the title camera (abeam): its aft guy lands well aft of the cabin, its door hangs
-    # high from the pole (above the cabin roof as seen from abeam) and its net is hauled up short, so that
-    # nothing of it hangs between the camera and the cabin or the captain. The port side hangs low.
-    star = s > 0
-    for y in (4.4, -2.2 if star else -1.6):
-        tube(o, [tip + Vector((0, 0, -0.05)), (s * (sheer_half(u_of(y)) - 0.05), y, sheer(y) + 0.02)], LINE, 5, "wire",
-             label="guy")
-    # otter door, from a point along the pole: against the hull (port), or hauled up under the pole (starboard)
-    hang = hinge + direction * 4.6
-    if star:
-        DX = hang.x
-        DY0 = 0.95
-        dz0, dz1 = 5.45, 6.35
-        ring_at = Vector((DX, DY0 + 1.0, dz1 + 0.35))
-    else:
-        DX = s * 2.42
-        DY0 = 0.0
-        dz0, dz1 = 1.0, 1.9
-        ring_at = Vector((DX, 1.0, 2.75))
-    tube(o, [hang, ring_at], LINE * 1.3, 5, "wire", label="door line")
-    torus(o, ring_at, (1, 0, 0), 0.05, 0.012, 8, 4, "metal_dark", label="door ring")
-    dpts = [(0.0, dz0), (1.85, dz0), (2.0, dz0 + 0.15), (2.0, dz1 - 0.12), (1.88, dz1), (0.12, dz1), (0.0, dz1 - 0.12)]
-    prism(o, dpts, (DX, DY0, 0.0), (0, 1, 0), (0, 0, 1), 0.04, "door_wood", label="otter door")
-    box(o, DX - 0.05, DX + 0.05, DY0, DY0 + 1.95, dz0 - 0.02, dz0 + 0.07, "metal_rust", label="door shoe")
-    for yb in (0.45, 1.5):
-        beam(o, (DX + s * 0.045, DY0 + yb, dz0 + 0.07), (DX + s * 0.045, DY0 + yb + (0.25 if yb < 1 else -0.25), dz1 - 0.05),
-             0.08, 0.03, "metal_rust", up=(s, 0, 0), label="door brace")
-        tube(o, [ring_at, (DX + s * 0.06, DY0 + yb + (0.1 if yb < 1 else -0.1), dz1 - 0.05)], 0.012, 5, "metal_dark",
-             label="bridle")
-    # rust run down the door from its shoe bolts (vertex colours would need more points: a thin plate instead)
-    box(o, DX + s * 0.04 - 0.004, DX + s * 0.04 + 0.004, DY0 + 0.9, DY0 + 1.0, dz0 + 0.07, dz1 - 0.2, "rust",
-        label="door rust")
-    # the net, hanging from the tip to drip dry: a lumpy bag with a mesh pattern in its colours
-    tx, ty, tz = tip
-    drop = 0.62 if star else 1.0       # the starboard net is hauled up short
-    ys = 1.0 if star else -1.0         # and drifts forward, the port one aft
-    fat = 1.2 if star else 1.0
-    offs = [(0.0, 0.0, 0.1), (0.07, 0.03, 0.5), (0.15, 0.09, 1.3), (0.21, 0.15, 2.2), (0.23, 0.21, 3.2), (0.21, 0.23, 4.2),
-            (0.17, 0.19, 5.1), (0.13, 0.11, 5.9), (0.09, 0.01, 6.5), (0.07, -0.07, 6.95), (0.06, -0.11, 7.2)]
-    ctrl = [(tx + s * ox, ty + ys * oy, tz - (0.1 + (oz - 0.1) * drop)) for ox, oy, oz in offs]
-    path = catmull(ctrl, 3)
-    m = len(path)
-    lumps_k = [0.85 + 0.3 * RNG.random() for _ in range(m)]
-    lumps_j = [0.9 + 0.2 * RNG.random() for _ in range(10)]
-    radii = []
-    for k in range(m):
-        t = k / (m - 1)
-        r = fat * (0.06 + 0.36 * t ** 0.7) * (1 - 0.85 * smoothstep(0.88, 1.0, t))
-        radii.append(r * (1.0 if k == 0 else lumps_k[k]))
+    dvec = Vector((s * math.cos(OUT_ANGLE), 0, math.sin(OUT_ANGLE)))      # along the outrigger
+    up = Vector((-s * math.sin(OUT_ANGLE), 0, math.cos(OUT_ANGLE)))       # square to it, upward and inboard
+    fwd = Vector((0, 1, 0))
+    tip = hinge + dvec * OUT_LEN
 
-    def jit(k, j):
-        return 1.0 if k in (0, m - 1) else lumps_j[j] * (1 + 0.08 * math.sin(k * 1.7 + j * 2.3))
+    def at(L, u=0.0, f=0.0):
+        return hinge + dvec * L + up * u + fwd * f
 
-    def mesh_col(k, j):
-        return (0.55, 0.6, 0.55) if (k + j) % 2 else WHITE
+    def pole_r(L):
+        return 0.085 + (0.05 - 0.085) * L / OUT_LEN
 
-    tube(o, path, radii, 10, "net_green", cols=mesh_col, jitter=jit, label="net")
-    # head rope with floats, and a dark lead line, winding round the bag
-    P, F = frames(path)
-
-    def on_bag(t, turn, phase, out):
-        k = min(int(t * (m - 1)), m - 2)
-        f = t * (m - 1) - k
-        p = P[k].lerp(P[k + 1], f)
-        n, b2, _ = F[k]
-        r = radii[k] + (radii[k + 1] - radii[k]) * f
-        a = 2 * math.pi * turn * t + phase
-        return p + (n * math.cos(a) + b2 * math.sin(a)) * (r * 1.02 + out)
-
-    for phase, matn, rad in ((0.0, "rope", 0.02), (math.pi, "metal_dark", 0.022)):
-        pts = [on_bag(0.06 + 0.86 * i / 40, 1.4, phase, rad) for i in range(41)]
-        tube(o, pts, rad, 5, matn, label="net rope")
-    for t in (0.25, 0.38, 0.5, 0.62, 0.74, 0.86):
-        sphere(o, on_bag(t, 1.4, 0.0, 0.08), 0.075, 8, 5, "float_orange", label="float", squash=(1, 1, 0.8))
-    tk = int(0.93 * (m - 1))
-    n, b2, tt = F[tk]
-    torus(o, P[tk], tt, radii[tk] * 0.9, 0.025, 12, 4, "rope", label="cod end tie")
+    cyl(o, at(0.12), tip, pole_r(0.12), 0.05, 8, "spar_wood", label="pole")
+    # the heel's steel jaw round the pivot pin
+    box(o, hinge.x - 0.05, hinge.x + 0.05, MAST_Y - 0.09, MAST_Y + 0.09, HINGE_Z - 0.07, HINGE_Z + 0.07, "metal_rust",
+        label="heel jaw")
+    cyl(o, hinge, at(0.45), pole_r(0.0) + 0.02, pole_r(0.45) + 0.02, 10, "metal_rust", label="heel ferrule")
+    # the end fitting: a band, an eye on top for the topping lift and guys, and the towing block under it
+    cyl(o, at(OUT_LEN - 0.18), tip + dvec * 0.02, 0.06, 0.06, 8, "metal_dark", label="end band")
+    eye = at(OUT_LEN - 0.08, 0.09)
+    torus(o, eye, (0, 1, 0), 0.035, 0.01, 8, 4, "metal_dark", label="end eye")
+    tb = at(OUT_LEN - 0.02, -0.2) + dvec * 0.0
+    beam(o, at(OUT_LEN - 0.08, -0.04), tb + up * 0.08, 0.05, 0.02, "metal_dark", up=(0, 1, 0), label="block strap")
+    cyl(o, tb + Vector((0, -0.045, 0)), tb + Vector((0, 0.045, 0)), 0.1, 0.1, 12, "metal_rust", label="towing block")
+    # topping lift to the masthead crane, guys to the rail
+    tube(o, [eye + up * 0.03, CRANE_EYE[s]], LINE, 5, "rope", label="line topping lift")
+    tube(o, [eye + Vector((0, 0.03, 0.02)), GUY_FWD[s]], LINE, 5, "rope", label="line fore guy")
+    tube(o, [eye + Vector((0, -0.03, 0.02)), GUY_AFT[s]], LINE, 5, "rope", label="line aft guy")
+    # the trawl cable: from the heel block up along the outrigger's upper side to the towing block, and down
+    # from the block to the doors' ring
+    hb = HEEL_BLOCK[s]
+    # along the outrigger's underside: the heel block and the towing block both hang under it
+    c_top = tb - dvec * 0.1
+    tube(o, [hb + Vector((0, 0.02, 0.07)), at(1.0, -0.2), c_top], 0.016, 5, "wire", label="line trawl cable")
+    RING = tb + Vector((s * 0.09, 0, -0.75))
+    tube(o, [tb + Vector((s * 0.09, 0, -0.04)), RING + Vector((0, 0, 0.05))], 0.016, 5, "wire", label="line trawl cable down")
+    torus(o, RING, (0, 1, 0), 0.05, 0.014, 8, 4, "metal_dark", label="door ring")
+    # the pair of trawl doors (otter boards) hanging from the ring on short chain bridles, one aft, one forward
+    DX = RING.x + s * 0.02
+    dz1 = RING.z - 0.3
+    dz0 = dz1 - 0.72
+    for k, dy0 in enumerate((MAST_Y - 1.0, MAST_Y + 0.08)):
+        dl = 0.92
+        dpts = [(0.0, dz0), (dl - 0.1, dz0), (dl, dz0 + 0.1), (dl, dz1 - 0.08), (dl - 0.08, dz1), (0.08, dz1),
+                (0.0, dz1 - 0.08)]
+        prism(o, dpts, (DX, dy0, 0.0), (0, 1, 0), (0, 0, 1), 0.035, "door_wood", label="otter door")
+        box(o, DX - 0.045, DX + 0.045, dy0, dy0 + dl, dz0 - 0.03, dz0 + 0.05, "metal_rust", label="door shoe")
+        for yb, dyb in ((0.22, 0.18), (dl - 0.22, -0.18)):
+            beam(o, (DX + s * 0.04, dy0 + yb, dz0 + 0.05), (DX + s * 0.04, dy0 + yb + dyb, dz1 - 0.04),
+                 0.06, 0.025, "metal_rust", up=(s, 0, 0), label="door brace")
+            tube(o, [RING + Vector((0, (yb - dl / 2) * 0.05, -0.04)), (DX + s * 0.06, dy0 + yb + dyb, dz1 - 0.04)],
+                 0.011, 4, "metal_dark", label="line door bridle")
+        if k == 0:
+            box(o, DX + s * 0.035 - 0.004, DX + s * 0.035 + 0.004, dy0 + 0.42, dy0 + 0.5, dz0 + 0.05, dz1 - 0.15, "rust",
+                label="door rust")
+    # the net, bundled along the outrigger's forward side and lashed to it at four points, sagging between them
+    LASH = [1.15, 2.25, 3.35, 4.4]
+    L0, L1 = 0.8, 4.65
+    n_pts = 26
+    path, radii = [], []
+    for i in range(n_pts):
+        L = L0 + (L1 - L0) * i / (n_pts - 1)
+        r = 0.15 + 0.03 * math.sin(i * 1.3) + (0.06 if L < 1.05 else 0.0)
+        gap = min(abs(L - a) for a in LASH)
+        sag = 0.0 if gap < 0.06 else 0.1 * math.sin(math.pi * min(1.0, gap / 0.55))
+        path.append(at(L, -sag, pole_r(L) + r + 0.005))
+        radii.append(r)
+    # the bundle's ends close in over three rings (a flat end read as a cup)
+    for k, f in enumerate((0.25, 0.65, 0.9)):
+        radii[k] *= f
+        radii[-1 - k] *= f
+    tube(o, path, radii, 10, "net_green", cols=lambda k, j: (0.55, 0.6, 0.55) if (k + j) % 2 else WHITE,
+         jitter=lambda k, j: 1.0 + 0.08 * math.sin(k * 2.3 + j * 1.9), label="net bundle")
+    # the lashings: a loop of rope round outrigger and bundle at each lashing point
+    for a in LASH:
+        p = at(a)
+        i = min(range(n_pts), key=lambda i: abs(L0 + (L1 - L0) * i / (n_pts - 1) - a))
+        q = path[i]
+        rq = radii[i] + 0.02
+        rp = pole_r(a) + 0.015
+        loop = []
+        e2 = up                         # the loop lies square to the outrigger: in the plane of up and fwd
+        for j in range(8):              # round the far side of the pole (aft)
+            t = math.pi / 2 + math.pi * j / 7
+            loop.append(p + e2 * (rp * math.sin(t)) + fwd * (rp * math.cos(t)))
+        for j in range(8):              # round the far side of the bundle (forward)
+            t = -math.pi / 2 + math.pi * j / 7
+            loop.append(q + e2 * (rq * math.sin(t)) + fwd * (rq * math.cos(t)))
+        tube(o, loop, 0.014, 4, "rope", closed=True, label="net lashing")
+    # floats along the headrope, on the bundle's outboard side
+    for i in range(4, n_pts - 2, 3):
+        Li = L0 + (L1 - L0) * i / (n_pts - 1)
+        if min(abs(Li - a) for a in LASH) < 0.25:
+            continue
+        q = path[i]
+        sphere(o, q + Vector((s * 0.0, 0, 0)) - up * (radii[i] + 0.035), 0.065, 6, 4, "float_orange", label="float",
+               squash=(1, 1, 0.8))
+    # chafing gear on the cod end (at the heel), and the lazy line from it to the cleat on the mast
+    for i in (1, 3):
+        q = path[i]
+        torus(o, q, dvec, radii[i] * 1.02, 0.03, 12, 4, "metal_rust", label="chafing gear")
+    tube(o, [path[0] - dvec * 0.03, MAST_CLEAT[s]], 0.013, 5, "rope", label="line lazy line")
     outriggers.append(o)
 
 # ---------------------------------------------------------------------------------------------- check and write
@@ -1307,6 +1454,275 @@ for b in [boat, wheel, pump_wheel] + outriggers:
     total += len(b.tris)
 print("TRIANGLES total: %d" % total)
 print("INSIDE-OUT %s" % ("PASSED" if wrong_all == 0 else "FAILED (%d)" % wrong_all))
+
+# ---------------------------------------------------------------------------------------------- clipping check
+# Every part against every other, in place: bounding boxes first, then BVH triangle overlap; for pairs whose
+# triangles cross, how deep each one's corners sit inside the other (a ray-parity inside test against the other's
+# closed skin, then the distance to its surface). A pair deeper than CLIP_MM that is not listed in SET_INTO (parts
+# meant to be set one into the other) is printed as CLIP. Also printed: coincident faces (z-fighting), parts that
+# touch nothing (floating), parts not joined to the hull through what they touch, and line ends made fast to nothing.
+import fnmatch
+
+CLIP_MM = 4.0
+SET_INTO = [   # (label pattern, label pattern, why it is meant)
+    ("hull", "plank", "planks are laid 1 cm into the deck surface"),
+    ("hull", "frame", "bulwark frames are let into the bulwark"),
+    ("hull", "*rail*", "rub rails and the rail cap's fittings are fastened into the planking"),
+    ("hull", "*strake*", "the rubbing strake is fastened into the planking"),
+    ("hull", "stem bar", "the stem post is the hull's own"),
+    ("hull", "transom*", "transom boards are part of the stern"),
+    ("hull", "skeg", "the skeg is the hull's"), ("hull", "rudder", "the rudder's head is in the hull"),
+    ("skeg", "prop*", "the shaft and hub come out of the skeg"), ("skeg", "shoe", "the shoe is bolted to the skeg"),
+    ("rudder", "shoe", "the rudder's heel sits in the shoe"), ("prop hub", "prop blade", "blades are cast on the hub"),
+    ("hull", "*wall*", "house walls go down through the deck"), ("plank", "*wall*", "house walls go down through the deck"),
+    ("hull", "*post*", "posts are stepped in the deck"), ("plank", "*post*", "posts are stepped in the deck"),
+    ("hull", "house foot", "the house's foot board goes down to the deck"), ("plank", "house foot", "as above"),
+    ("hull", "door sill", "the sill is let into the deck"), ("plank", "door sill", "as above"),
+    ("hull", "pedestal", "on the deck"), ("plank", "pedestal", "on the deck"),
+    ("hull", "shelf front", "on the deck"), ("plank", "shelf front", "on the deck"),
+    ("hull", "mast*", "the mast is stepped through the deck"), ("plank", "mast*", "the mast is stepped through the deck"),
+    ("mast", "mast step", "the step is round the mast"), ("mast", "mast cap", "the cap is on the mast"),
+    ("mast", "masthead*", "the light and crane are on the mast"), ("mast", "crane*", "on the mast"),
+    ("mast", "forestay tang", "on the mast"), ("mast", "crosstree", "through the mast"),
+    ("mast", "pivot*", "the collar is round the mast"), ("mast", "gooseneck", "on the mast"),
+    ("mast", "mast cleat", "on the mast"), ("mast", "heel strap", "strapped to the collar on the mast"),
+    ("pivot*", "pivot*", "collar and pins are one fitting"), ("pivot*", "heel strap", "strapped to the collar"),
+    ("heel strap", "heel block", "the block hangs in its strap"),
+    ("pivot pin", "heel jaw", "the jaw closes round the pin"), ("heel jaw", "heel ferrule", "one fitting"),
+    ("heel ferrule", "pole", "the ferrule is on the pole's heel"), ("heel jaw", "pole", "the jaw is on the pole's heel"),
+    ("pole", "end band", "the band is round the pole's end"), ("end band", "block strap", "one fitting"),
+    ("end band", "end eye", "welded on"), ("block strap", "towing block", "the block hangs in its strap"),
+    ("pole", "block strap", "strapped to the pole's end"), ("pole", "end eye", "welded to the band"),
+    ("crane*", "crane*", "one fitting"),
+    ("boom", "gooseneck", "the boom's heel is in the gooseneck"), ("boom", "boom end band", "on the boom"),
+    ("boom*", "boom lift eye", "on the band"), ("boom", "boom cleat", "on the boom"),
+    ("boom block", "line block strop", "the strop holds the block"),
+    ("hull", "*padeye*", "padeyes are bolted through the rail cap"), ("*padeye", "*padeye eye", "one fitting"),
+    ("turnbuckle", "line*", "the wire's eye is in the turnbuckle"),
+    ("*roof*", "*post*", "posts hold the roofs"), ("*roof*", "*wall*", "walls hold the roofs"),
+    ("*roof*", "*fascia*", "the fascia is the roof's edge"), ("*fascia*", "*fascia*", "boards meet at the corners"),
+    ("*roof*", "stack*", "the stack goes up through the roof"), ("stack*", "stack*", "one stack"),
+    ("*roof*", "light post", "on the roof"), ("*roof*", "horn post", "on the roof"), ("*roof*", "aerial base", "on the roof"),
+    ("*roof*", "roof rail", "the rail's feet are on the roof"),
+    ("*wall*", "*wall*", "walls meet at the corners"), ("*wall*", "*post*", "corner posts"),
+    ("*wall*", "glass", "panes sit in the walls"), ("*wall*", "sill", "sills are let into the walls"),
+    ("*wall*", "lintel", "on the wall"), ("*wall*", "jamb", "on the wall"), ("*wall*", "door*", "the doorway's frame"),
+    ("*wall*", "house foot", "on the wall"), ("*wall*", "light board", "on the wall"),
+    ("*wall*", "chart shelf", "the shelf is built into the house"), ("*wall*", "shelf front", "as above"),
+    ("chart shelf", "shelf front", "one piece"), ("*wall*", "brow*", "the brow is on the front wall"),
+    ("brow*", "brow*", "one piece"), ("*wall*", "running light", "on the board"), ("light board", "running light", "on the board"),
+    ("sill", "jamb", "frame corners"), ("lintel", "jamb", "frame corners"), ("glass", "jamb", "the pane's edge is in the frame"),
+    ("glass", "sill", "as above"), ("glass", "lintel", "as above"),
+    ("door", "door*", "the door's own pieces"), ("door jamb", "door lintel", "frame corner"),
+    ("door sill", "door jamb", "frame corner"), ("door hinge", "*jamb*", "hinged on the jamb"),
+    ("door*", "house foot", "the folded door lies on the foot board's edge"),
+    ("corner post", "*", "corner posts are the house's corners"),
+    ("pedestal", "axle", "the wheel's axle is in the pedestal"), ("rim", "spoke", "the wheel's own"),
+    ("hub*", "spoke", "the wheel's own"), ("hub", "hub cap", "the wheel's own"), ("axle", "hub", "the wheel is on its axle"),
+    ("hub", "crank*", "the crank is on the hub"), ("crank*", "crank*", "one crank"),
+    ("pump*", "pump*", "the pump's own pieces"), ("pump*", "chest band", "bands round the chest"),
+    ("pump*", "bearing", "the shaft's bearing"), ("pump shaft", "hub", "the wheel is on the shaft"),
+    ("pump lid", "*cylinder*", "the cylinders stand on the lid"), ("*cylinder*", "*cap*", "one cylinder"),
+    ("*cap*", "piston rod", "the rod comes out of the cylinder"), ("piston rod", "crosshead", "the rod holds the crosshead"),
+    ("pump lid", "outlet", "on the lid"), ("pump chest", "gauge*", "on the chest"), ("gauge", "gauge face", "one gauge"),
+    ("hose*", "*", "a rubber hose lies over and round things"),
+    ("winch*", "winch*", "the winch's own pieces"), ("winch*", "drum*", "the winch's own"), ("drum*", "drum*", "one drum"),
+    ("winch*", "*drum", "the winch's own"), ("winch*", "warping head", "on the shaft"),
+    ("*drum*", "line trawl cable lead", "the cable leaves its drum"), ("heel block", "line trawl cable*", "led through the block"),
+    ("towing block", "line trawl cable*", "led over the block"), ("door ring", "line*", "made fast to the ring"),
+    ("otter door", "door*", "the door's own fittings"), ("door*", "line door bridle", "the bridle's shackle"),
+    ("door shoe", "door brace", "one fitting"), ("door brace", "door brace", "one fitting"),
+    ("net bundle", "net lashing", "the lashing is drawn tight round the bundle"),
+    ("pole", "net lashing", "the lashing is drawn tight round the outrigger"),
+    ("net bundle", "float", "floats are on the headrope"), ("net bundle", "chafing gear", "round the cod end"),
+    ("net bundle", "line lazy line", "made fast to the cod end"), ("mast cleat", "line*", "made fast"),
+    ("end eye", "line*", "made fast to the eye"), ("crane eye", "line*", "made fast to the eye"),
+    ("*padeye*", "line*", "made fast to the padeye"), ("boom lift eye", "line*", "made fast"),
+    ("boom block", "line*", "led through the block"), ("boom cleat", "line*", "made fast"), ("hook", "line whip", "on the hook"),
+    ("forestay tang", "line forestay", "made fast"), ("stem bar", "line forestay", "made fast to the stem head"),
+    ("mast", "line backstay", "made fast at the masthead"), ("crosstree", "line shroud", "over the crosstree's end"),
+    ("line*", "line*", "lines made fast to the same fitting meet there"),
+    ("crate", "crate", "stacked"), ("basket*", "basket*", "stacked and nested"),
+    ("rope coil", "rope coil", "a coil"), ("hose coil", "hose coil", "a coil"),
+    ("hatch*", "hatch*", "the hatch's own pieces"), ("plank", "hatch*", "the coaming is on the deck"),
+    ("hull", "hatch*", "the coaming is on the deck"),
+    ("*", "scupper", "a slot cut in the bulwark"), ("*", "rust run", "paint on the planking"),
+    ("*", "rail rust", "paint"), ("*", "primer plank", "paint"), ("*", "name board*", "fastened on the bulwark"),
+    ("*", "house rust", "paint"), ("*", "door rust", "paint"),
+    ("cleat post", "cleat horn", "one cleat"), ("hull", "cleat*", "on the rail cap"),
+    ("anchor*", "anchor*", "one anchor"), ("anchor*", "stock ball", "one anchor"), ("anchor*", "fluke", "one anchor"),
+    ("plank", "anchor*", "lying on the deck"), ("hull", "anchor*", "lying on the deck"),
+    ("tyre", "tyre rope", "the rope through the tyre"), ("hull", "tyre rope", "made fast round the rail"),
+    ("life ring", "ring lanyard", "the lanyard round the ring"), ("hull", "ring lanyard", "made fast round the rail"),
+    ("hull", "winch*", "the winch's bed is bolted down through the deck"), ("light post", "searchlight", "on its post"),
+    ("transom*", "transom*", "boards on the transom"), ("aerial*", "aerial*", "the aerial in its base"),
+    ("door hook", "hook eye", "hooked in the eye"), ("boom end band", "line*", "made fast to the band"),
+    ("masthead crane", "crane*", "one fitting"), ("crank*", "spoke", "the crank is on a spoke"),
+    ("pipe clip", "*pipe", "the clip holds the pipe"), ("mast cap", "masthead light", "on the cap"),
+    ("pivot pin", "heel ferrule", "the pin goes through the outrigger's heel"), ("heel strap", "line*", "at the block"),
+    ("horn post", "horn", "on its post"), ("*wall*", "pipe clip", "screwed to the wall"), ("*wall*", "*pipe", "against the wall"),
+    ("*wall*", "wall board", "the lining on the wall"), ("wall board", "wall board", "boards side by side"),
+    ("wall board", "pipe clip", "screwed through the lining"), ("*wall*", "*foot", "the wall's foot board"),
+    ("plank", "*", "things standing on the deck are set into the planks' tops by their own weight (less than CLIP_MM)"),
+]
+
+
+def _allowed(la, lb):
+    for pa, pb, _why in SET_INTO:
+        if (fnmatch.fnmatch(la, pa) and fnmatch.fnmatch(lb, pb)) or (fnmatch.fnmatch(lb, pa) and fnmatch.fnmatch(la, pb)):
+            return True
+    return False
+
+
+class _Rec:
+    pass
+
+
+_recs = []
+for b in [boat, wheel, pump_wheel] + outriggers:
+    for pi, (label, f0, f1) in enumerate(b.parts):
+        tris = b.tris[f0:f1]
+        if not tris:
+            continue
+        used = sorted({i for tri in tris for i in tri})
+        rm = {v: k for k, v in enumerate(used)}
+        r = _Rec()
+        r.name = "%s/%s#%d" % (b.name, label, pi)
+        r.label = label
+        r.pts = [b.verts[i] for i in used]
+        r.polys = [(rm[a], rm[c2], rm[c3]) for a, c2, c3 in tris]
+        r.lo = Vector((min(p.x for p in r.pts), min(p.y for p in r.pts), min(p.z for p in r.pts)))
+        r.hi = Vector((max(p.x for p in r.pts), max(p.y for p in r.pts), max(p.z for p in r.pts)))
+        r.tree = BVHTree.FromPolygons(r.pts, r.polys, epsilon=0.0)
+        r.ends = b.ends.get(pi)
+        r.touch = set()
+        _recs.append(r)
+_RAY = Vector((0.3117, 0.5371, 0.7838)).normalized()
+
+
+def _inside(r, p):
+    hits = 0
+    at = p.copy()
+    while hits < 80:
+        h = r.tree.ray_cast(at, _RAY)
+        if h[0] is None:
+            break
+        hits += 1
+        at = h[0] + _RAY * 1e-5
+    return hits % 2 == 1
+
+
+def _in_box(r, p, pad):
+    return all(r.lo[k] - pad <= p[k] <= r.hi[k] + pad for k in range(3))
+
+
+def _depth(ra, rb):
+    deep = 0.0
+    for p in ra.pts:
+        if _in_box(rb, p, 0.0) and _inside(rb, p):
+            hit = rb.tree.find_nearest(p)
+            if hit[0] is not None:
+                deep = max(deep, hit[3])
+    return deep
+
+
+def _near(ra, rb, dist):
+    for p in ra.pts:
+        if _in_box(rb, p, dist):
+            hit = rb.tree.find_nearest(p, dist)
+            if hit[0] is not None:
+                return True
+    return False
+
+
+order = sorted(range(len(_recs)), key=lambda i: _recs[i].lo.x)
+clips = {}
+zfights = []
+n_cand = n_cross = n_set = 0
+PAD = 0.006
+for oi, i in enumerate(order):
+    ri = _recs[i]
+    for j in order[oi + 1:]:
+        rj = _recs[j]
+        if rj.lo.x > ri.hi.x + PAD:
+            break
+        if (rj.lo.y > ri.hi.y + PAD or ri.lo.y > rj.hi.y + PAD or rj.lo.z > ri.hi.z + PAD or ri.lo.z > rj.hi.z + PAD):
+            continue
+        n_cand += 1
+        ov = ri.tree.overlap(rj.tree)
+        if ov:
+            n_cross += 1
+            ri.touch.add(j)
+            rj.touch.add(i)
+            deep = max(_depth(ri, rj), _depth(rj, ri))
+            # coincident faces: triangles that cross while lying in one plane
+            for a, c in ov[:400]:
+                pa = [ri.pts[k] for k in ri.polys[a]]
+                pc = [rj.pts[k] for k in rj.polys[c]]
+                na = (pa[1] - pa[0]).cross(pa[2] - pa[0])
+                nc = (pc[1] - pc[0]).cross(pc[2] - pc[0])
+                if na.length < 1e-9 or nc.length < 1e-9:
+                    continue
+                na.normalize()
+                nc.normalize()
+                # only faces turned the same way fight; opposite faces pressed together are hidden
+                if na.dot(nc) > 0.9999 and all(abs((q - pa[0]).dot(na)) < 2e-4 for q in pc):
+                    zfights.append((ri.name, rj.name))
+                    break
+            if deep * 1000 > CLIP_MM:
+                if _allowed(ri.label, rj.label):
+                    n_set += 1
+                else:
+                    key = tuple(sorted((ri.label, rj.label)))
+                    worst = clips.get(key, (0, 0.0, ""))
+                    clips[key] = (worst[0] + 1, max(worst[1], deep), worst[2] or "%s x %s" % (ri.name, rj.name))
+        elif _near(ri, rj, PAD) or _near(rj, ri, PAD):
+            ri.touch.add(j)
+            rj.touch.add(i)
+print("CLIP CHECK: %d parts, %d pairs with touching boxes, %d pairs whose faces cross, %d of them set in on purpose "
+      "deeper than %.0f mm" % (len(_recs), n_cand, n_cross, n_set, CLIP_MM))
+for key, (n, deep, eg) in sorted(clips.items(), key=lambda kv: -kv[1][1]):
+    print("   CLIP %s x %s: %d pair(s), up to %.1f mm deep (e.g. %s)" % (key[0], key[1], n, deep * 1000, eg))
+print("CLIP pairs not meant: %d" % sum(v[0] for v in clips.values()))
+print("ZFIGHT coincident faces: %d" % len(zfights))
+for a, c in zfights[:20]:
+    print("   ZFIGHT %s x %s" % (a, c))
+floating = [r.name for r in _recs if not r.touch]
+print("FLOATING (touching nothing): %d" % len(floating))
+for nme in floating[:30]:
+    print("   FLOAT %s" % nme)
+# joined to the hull through what touches what
+hull_i = [i for i, r in enumerate(_recs) if r.label == "hull"]
+seen = set(hull_i)
+stack_ = list(hull_i)
+while stack_:
+    i = stack_.pop()
+    for j in _recs[i].touch:
+        if j not in seen:
+            seen.add(j)
+            stack_.append(j)
+loose = [r.name for i, r in enumerate(_recs) if i not in seen and r.touch]
+print("NOT JOINED TO THE HULL: %d" % len(loose))
+for nme in loose[:30]:
+    print("   LOOSE %s" % nme)
+dangling = []
+for i, r in enumerate(_recs):
+    if not r.ends or not (r.label.startswith("line") or r.label in ("ring lanyard", "tyre rope", "door hook")):
+        continue
+    for e in r.ends:
+        ok = False
+        for j, q in enumerate(_recs):
+            if j == i or not _in_box(q, e, 0.03):
+                continue
+            hit = q.tree.find_nearest(e, 0.03)
+            if hit[0] is not None:
+                ok = True
+                break
+        if not ok:
+            dangling.append("%s end at (%.2f, %.2f, %.2f)" % (r.name, e.x, e.y, e.z))
+print("LINE ENDS made fast to nothing: %d" % len(dangling))
+for dd in dangling[:30]:
+    print("   DANGLE %s" % dd)
 
 objects = [b.make() for b in [boat, wheel, pump_wheel] + outriggers]
 

@@ -56,6 +56,8 @@ const SPOTS := {
 
 var boat: Node3D
 var boy: Node3D
+## The game's name, spelt in fish, held in front of the eye (scripts/title_logo.gd).
+var logo: TitleLogo
 var _spots := {}
 var _figures: GDScript
 var _captain: Node3D
@@ -164,6 +166,8 @@ func _ready() -> void:
 				_cables.append(one)
 			cable.free()
 	parts.free()
+	logo = TitleLogo.new()
+	add_child(logo)
 	_foam("BowWave", 40, 0.4, 1.6, 1.4)
 	_foam("Wake", 50, 0.55, 2.4, 0.7)
 
@@ -263,7 +267,10 @@ func eye(upright: bool) -> Transform3D:
 	var console: Vector3 = (_spots["ConsoleSpot"] as Transform3D).origin
 	var from := global_transform * Vector3(19.0 if upright else 10.5, 4.6 if upright else 3.0, console.z + (0.0 if upright else 0.6))
 	var at := global_transform * Vector3(0.0, 2.6 if upright else 1.9, console.z + (0.0 if upright else 0.3))
-	return Transform3D(Basis.IDENTITY, from).looking_at(at, Vector3.UP)
+	var seen := Transform3D(Basis.IDENTITY, from).looking_at(at, Vector3.UP)
+	if logo and logo.visible:
+		logo.hold(seen, upright)
+	return seen
 
 
 ## The card over the title: the game's name, and the button that starts it (or Enter, Space, a
@@ -305,10 +312,8 @@ class Card:
 		# The name and the button are pictures (textures/title: made with an image generator after the
 		# user asked, "the logo and start button needa concept art pass"; the originals are in
 		# tools/art_src/concept_logo.jpg).
-		var logo := _logo
-		var wide := minf(size.x * 0.86, 620.0 * u)
-		var high := wide * logo.get_height() / logo.get_width()
-		draw_texture_rect(logo, Rect2(Vector2((size.x - wide) * 0.5, 18.0 * u), Vector2(wide, high)), false)
+		# (the name itself is spelt in fish in the world: scripts/title_logo.gd; the picture logo,
+		# textures/title/logo.png, is retired)
 		# the start button: its lens is 0.355 of the picture's width from its left, half way down;
 		# breathing; dim, with a ring filling round it, until the game is ready to start
 		var start := _start
