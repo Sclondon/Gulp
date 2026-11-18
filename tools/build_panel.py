@@ -551,10 +551,11 @@ def outline(inner, dial_at):
     valve(inner * (half + 0.16), 1.22, 0.15, -0.04)
     # a thin copper loop over it
     run(COPPER, [(inner * half, 0.12, 2.5), (inner * (half + 0.1), 0.12, 2.42), (inner * (half + 0.12), 0.12, 2.15), (inner * half, 0.12, 2.04)], 0.05, (side, side))
-    # wires from terminals on the head's crown, drooping down into the housing's two sides
-    for way, into in ((1.0, "X"), (-1.0, "-X")):
-        run(RUBBER, [(dial_at[0] + way * 0.3, -0.02, dial_at[1] + 0.66), (dial_at[0] + way * 0.7, -0.1, dial_at[1] + 0.86), (way * (half + 0.05), 0.0, SHOULDER + 0.5),
-                     (way * (half + 0.05), 0.12, SHOULDER - 0.05), (way * half, 0.12, SHOULDER - 0.3)], 0.04, ("Y", into), 4)
+    # wires from terminals by the head's crown, lying on its face just inside the rim, down to
+    # terminals on the shoulders (the user: "Too much gap space": nothing loops out past the outline)
+    for way in (1.0, -1.0):
+        lie = [(p[0], -0.03 if k in (0, 5) else -0.09, p[2]) for k, p in enumerate(ring_points(dial_at, 0.735, 90.0 - way * 22.0, 90.0 - way * 112.0, 0.0, 6))]
+        run(RUBBER, lie, 0.035, ("Y", "Y"), 4)
 
 
 # --- The paint: every part unwrapped into one atlas, and colour, light and contact shadow baked
@@ -623,7 +624,7 @@ for major, out in ((0.6, -0.12), (0.45, -0.2), (0.3, -0.27)):
     torus(RUBBER, major, 0.11, (0.0, out, WELL_Z), "Y", 16)
 dial(HELM_DIAL[0], HELM_DIAL[1], BIG_DIAL_R, 9, False, None)
 plaque("GROWTH", HELM_DIAL[0], HELM_DIAL[1] - 0.68, 0.78)
-POSTS = 1.02
+POSTS = 0.92
 for side in (-1.0, 1.0):
     # an electrode: a post on a bolted foot, an insulator, a ball
     flange((side * POSTS, -0.02, SHOULDER - 0.2), 0.11, "Y")
@@ -655,7 +656,12 @@ band(BRASS, (ENGINE_WELL_X, WELL_Z), SLOT_R, 0.15, SLOT_FROM, SLOT_TO, -0.05, 0.
 band(DARK, (ENGINE_WELL_X, WELL_Z), SLOT_R, 0.085, SLOT_FROM, SLOT_TO, -0.052, 0.0, 12, True)
 dial(ENGINE_DIAL[0], ENGINE_DIAL[1], BIG_DIAL_R, 9, True, "speed")
 plaque("SPEED", ENGINE_DIAL[0], ENGINE_DIAL[1] - 0.68, 0.7)
-valve(-0.95, SHOULDER + 0.28, 0.15, -0.2)
+box(IRON, (0.98, 0.3, 0.62), (-0.81, 0.15, SHOULDER + 0.31))
+box(IRON, (0.98, 0.07, 0.09), (-0.81, -0.02, SHOULDER + 0.575))
+for x in (-1.18, -0.44):
+    rivet(x, SHOULDER + 0.47, 0.05)
+valve(-0.98, SHOULDER + 0.26, 0.15, -0.2)
+mini_gauge(-0.58, SHOULDER + 0.26, 0.16)
 patch(1.06, 0.26, 0.36, 0.3, -0.1)
 outline(-1.0, ENGINE_DIAL)
 engine = join("Engine")
