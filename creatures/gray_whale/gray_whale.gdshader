@@ -1,0 +1,392 @@
+shader_type spatial;
+// The gray whale (gray_whale.gd): it swims by beating its flukes up and down, its flippers scull, its
+// lower jaw drops (its throat swelling a little), and every marking is drawn here: no texture files. What each
+// point is comes from the model (tools/build_gray_whale.py): COLOR.r the part, as a tenth (0 body, 1
+// lower jaw, 2 eye, 3 baleen, 4 the mouth's wall, 5 dorsal, 6 flukes, 7 flipper, 8 a knob on the upper
+// skin, 9 a knob on the lower jaw). On the body and jaw UV.x is how far along (0 the snout's tip to 1
+// the flukes' notch), UV.y how high (0 the belly or keel line, 1 the back line or the middle of the
+// floor of the mouth), UV2.x how far round the skin from the top line (metres, + its left side, -
+// its right), UV2.y the whole way round from top line to bottom line (metres); COLOR.g how much of
+// the throat (it balloons), COLOR.b how much inside the mouth. On a fin UV.x is root (0) to tip (1)
+// (on the flukes, middle to tip), UV.y leading (0) to trailing (1) edge; UV2 and COLOR.b the way
+// its flat side faces. On the mouth's wall COLOR.g is how far it unfolds. On an eye or a knob UV is
+// where a point is on its round face (its middle at 0.5, 0.5).
+//
+// Everything that moves runs on `phase` (0..1 through one beat, set by GrayWhale): the flukes beat
+// `tail_beats` times and the flippers scull `sculls` times a beat (whole numbers), so a picture of
+// it comes round again exactly. Nothing here needs more than GL Compatibility has.
+render_mode cull_back, depth_draw_opaque;
+
+// As the model is built: snout to the flukes' notch (metres), where the lower jaw hinges (how far
+// along, how high, in body lengths), how far back the pleated throat runs, how far open the mouth's
+// wall was built (radians), where the flukes are hinged (how far along).
+const float LENGTH = 13.0;
+const float HINGE_S = 0.19;
+const float HINGE_Y = -0.032;
+const float NAVEL_S = 0.32;
+const float FAN_OPEN = 0.03;
+const float JOINT = 0.93;
+// How far the lower jaw drops at `gape` 1 (radians), and how far the throat balloons down then
+// (body lengths).
+const float GAPE_MAX = 0.6;
+const float BALLOON = 0.015;
+// The throat's pleats: how many each side, how far up the side they reach (0 the belly line, 1
+// the back line), from and to where along (body lengths), how deep (metres).
+const float PLEATS = 2.0;
+const float PLEAT_TOP = 0.2;
+const float PLEAT_FROM = 0.035;
+const float PLEAT_TO = 0.17;
+const float PLEAT_DEPTH = 0.04;
+// The two blowholes: how far along (body lengths), how far apart at the back (metres from the
+// middle line), how long (metres).
+const float BLOW_S = 0.172;
+const float BLOW_APART = 0.07;
+const float BLOW_LONG = 0.38;
+
+// How far through a beat it is (0..1), and how many times in a beat its flukes beat and its
+// flippers scull (whole numbers).
+uniform float phase = 0.0;
+uniform float tail_beats = 1.0;
+uniform float sculls = 1.0;
+// How hard it swims: 1 cruising (the flukes' notch rises and falls about 0.85 m either way), 0 still.
+uniform float sway = 1.0;
+// How far its flippers scull (1 as it cruises).
+uniform float scull = 1.0;
+// How long the wave down its body is, in body lengths.
+uniform float wave = 1.3;
+// How far its mouth is open: 0 shut, 1 its lower jaw dropped wide (as it gulps a swarm of krill).
+uniform float gape = 0.0;
+// Turning: how far the body is bent round to one side behind the head, in radians from the head to
+// the flukes (0 straight; more than 0 the flukes come round to +X, its left, as it turns left).
+uniform float curl = 0.0;
+// The same up and down: how far the whole body is bent about its middle, in radians from snout to
+// flukes (0 straight; more than 0 its head and its flukes both come up, as it rounds out of a
+// dive; less than 0 both go down, as it arches its back to dive).
+uniform float arch = 0.0;
+
+// The skin: its mottled slate grey, the pale grey-white spots and rings scarred where barnacles
+// fell off, the barnacles crusting it in patches, and the orange whale lice about them.
+uniform vec3 slate : source_color = vec3(0.42, 0.43, 0.44);
+uniform vec3 slate_dark : source_color = vec3(0.24, 0.25, 0.27);
+uniform vec3 scar : source_color = vec3(0.72, 0.73, 0.72);
+uniform vec3 barnacle : source_color = vec3(0.82, 0.79, 0.68);
+uniform vec3 lice : source_color = vec3(0.86, 0.5, 0.24);
+// How many barnacles and scars (0 none: a calf), and how many lice.
+uniform float barnacles_show = 1.0;
+uniform float lice_show = 1.0;
+// Inside the mouth: the roof, the floor and tongue, the walls; the baleen plates and their fringe.
+uniform vec3 mouth_roof : source_color = vec3(0.42, 0.34, 0.3);
+uniform vec3 tongue : source_color = vec3(0.55, 0.36, 0.34);
+uniform vec3 mouth_wall : source_color = vec3(0.4, 0.22, 0.2);
+uniform vec3 baleen : source_color = vec3(0.78, 0.72, 0.55);
+uniform vec3 fringe : source_color = vec3(0.9, 0.88, 0.78);
+// The eye.
+uniform vec3 eye_dark : source_color = vec3(0.02, 0.018, 0.016);
+uniform vec3 eye_iris : source_color = vec3(0.16, 0.1, 0.06);
+
+varying vec3 rest;
+varying vec3 rest_normal;
+varying float part;
+varying vec2 extra;
+
+float hash3(vec3 p) {
+	p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+	p += dot(p, p.yzx + 33.33);
+	return fract((p.x + p.y) * p.z);
+}
+
+float hash2(vec2 p) {
+	vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+	q += dot(q, q.yzx + 33.33);
+	return fract((q.x + q.y) * q.z);
+}
+
+// Soft value noise, 0..1, a lump to each 1 of `p`.
+float noise3(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	float a = mix(mix(hash3(i), hash3(i + vec3(1.0, 0.0, 0.0)), f.x), mix(hash3(i + vec3(0.0, 1.0, 0.0)), hash3(i + vec3(1.0, 1.0, 0.0)), f.x), f.y);
+	float b = mix(mix(hash3(i + vec3(0.0, 0.0, 1.0)), hash3(i + vec3(1.0, 0.0, 1.0)), f.x), mix(hash3(i + vec3(0.0, 1.0, 1.0)), hash3(i + vec3(1.0, 1.0, 1.0)), f.x), f.y);
+	return mix(a, b, f.z);
+}
+
+float fbm3(vec3 p) {
+	return 0.55 * noise3(p) + 0.3 * noise3(p * 2.03 + 11.0) + 0.15 * noise3(p * 4.1 + 23.0);
+}
+
+// The nearest of a scatter of points, one to each square of `p`: (how far, a number for which).
+vec2 cells(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	float best = 9.0;
+	float which = 0.0;
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 o = vec2(float(x), float(y));
+			float h = hash2(i + o);
+			vec2 at = o + vec2(h, hash2(i + o + 17.0)) * 0.8 + 0.1;
+			float d = length(at - f);
+			if (d < best) {
+				best = d;
+				which = h;
+			}
+		}
+	}
+	return vec2(best, which);
+}
+
+// Barnacles: a crust of small pale cones, each with a dark hole in its middle, `size` metres apart,
+// on the skin place `at` (metres) where `px` metres show in one pixel (finer, they fade out).
+// Returns how much of a barnacle is here (0..1); `hole` how much of its dark middle; `bump` the
+// height it gives the skin (metres).
+float barnacles(vec2 at, float size, float px, out float hole, out float bump) {
+	vec2 b = cells(at / size + 13.0);
+	float shown = 1.0 - smoothstep(0.2, 0.5, px / size);
+	float disc = (1.0 - smoothstep(0.3, 0.42, b.x)) * step(b.y, 0.85);
+	hole = (1.0 - smoothstep(0.07, 0.13, b.x)) * disc * shown;
+	bump = size * shown * (0.35 * disc * (1.0 - smoothstep(0.1, 0.42, b.x)) - 0.25 * hole);
+	return disc * shown;
+}
+
+// How far up the middle line of the body is, `s` body lengths behind the snout: a
+// wave that runs back along it, all but nothing at the head, growing down the tail stock.
+float lift_at(float s) {
+	float grow = 0.035 + 0.965 * pow(clamp((s - 0.22) / 0.78, 0.0, 1.0), 2.1);
+	return sway * LENGTH * 0.065 * grow * sin(TAU * (phase * tail_beats - s / wave));
+}
+
+// The body behind the head laid round an arc to one side (see `curl`).
+void curl_bend(inout vec3 v, inout vec3 n) {
+	float from = -0.22 * LENGTH;
+	float d = v.z - from;
+	if (abs(curl) < 0.001 || d <= 0.0) {
+		return;
+	}
+	float k = curl / (0.72 * LENGTH);
+	float a = d * k;
+	float r = 1.0 / k;
+	float c = cos(a);
+	float sn = sin(a);
+	n = vec3(n.x * c + n.z * sn, n.y, -n.x * sn + n.z * c);
+	v = vec3(r + (v.x - r) * c, v.y, from + (r - v.x) * sn);
+}
+
+// The whole body laid round an arc that goes up and down, about its middle (see `arch`).
+void arch_bend(inout vec3 v, inout vec3 n) {
+	if (abs(arch) < 0.001) {
+		return;
+	}
+	float k = arch / LENGTH;
+	float a = v.z * k;
+	float r = 1.0 / k;
+	float c = cos(a);
+	float sn = sin(a);
+	n = vec3(n.x, n.y * c + n.z * sn, n.z * c - n.y * sn);
+	v = vec3(v.x, r - (r - v.y) * c, (r - v.y) * sn);
+}
+
+// Turns a point (and its normal) about the jaw's hinge: more than 0 swings what is ahead of it down.
+void about_hinge(inout vec3 v, inout vec3 n, float a) {
+	vec2 hinge = vec2(HINGE_Y, HINGE_S - 0.5) * LENGTH;
+	vec2 d = v.yz - hinge;
+	float c = cos(a);
+	float sn = sin(a);
+	v.yz = hinge + vec2(d.x * c + d.y * sn, d.y * c - d.x * sn);
+	n.yz = vec2(n.y * c + n.z * sn, n.z * c - n.y * sn);
+}
+
+void vertex() {
+	rest = VERTEX;
+	rest_normal = NORMAL;
+	part = floor(COLOR.r * 10.0 + 0.5);
+	extra = COLOR.gb;
+	vec3 v = VERTEX;
+	vec3 n = NORMAL;
+	float s = v.z / LENGTH + 0.5;
+	float side_is = v.x >= 0.0 ? 1.0 : -1.0;
+	float open = clamp(gape, 0.0, 1.0) * GAPE_MAX;
+	if (part == 1.0 || part == 9.0) {
+		// The lower jaw swings down about its hinge under the eye; the throat behind it stays.
+		about_hinge(v, n, open * smoothstep(HINGE_S + 0.03, HINGE_S - 0.012, s));
+	} else if (part == 4.0) {
+		// The mouth's wall unfolds from the roof of the mouth down to the lower jaw.
+		about_hinge(v, n, COLOR.g * (open - FAN_OPEN));
+	} else if (part == 0.0) {
+		// The throat balloons down and out as the mouth opens.
+		float b = clamp(gape, 0.0, 1.0) * COLOR.g;
+		v.y -= b * BALLOON * LENGTH;
+		v.x *= 1.0 + b * BALLOON * 3.0;
+	} else if (part == 7.0) {
+		// The flippers scull slowly, the stroke growing out to the tip, one a little after the other.
+		vec3 flat_way = normalize(vec3(UV2.x, UV2.y, COLOR.b * 2.0 - 1.0));
+		float a = phase * TAU * sculls + (side_is > 0.0 ? 0.0 : 0.5);
+		v += flat_way * LENGTH * 0.01 * scull * UV.x * UV.x * sin(a - UV.x * 0.6);
+	}
+	// The beat: the middle line rises and falls in a wave down the body, each cross-section turned
+	// to stay square to it; behind their hinge the flukes are one stiff plate, pitched a little
+	// further than the stock's own line.
+	float zc = min(s, JOINT);
+	float h = lift_at(zc);
+	float slope = (lift_at(zc + 0.002) - lift_at(zc - 0.002)) / (0.004 * LENGTH);
+	float turn = atan(slope) * (1.0 + 0.55 * smoothstep(JOINT - 0.06, JOINT, zc));
+	float c = cos(turn);
+	float sn = sin(turn);
+	vec3 o = vec3(v.x, v.y, (s - zc) * LENGTH);
+	v = vec3(o.x, h + o.y * c + o.z * sn, (zc - 0.5) * LENGTH - o.y * sn + o.z * c);
+	n = vec3(n.x, n.y * c + n.z * sn, n.z * c - n.y * sn);
+	curl_bend(v, n);
+	arch_bend(v, n);
+	VERTEX = v;
+	NORMAL = n;
+}
+
+// A height (metres) the surface seems to have, turned into a tilt of its normal (bump mapping
+// without a texture or tangents: Mikkelsen's surface gradient, from screen-space derivatives).
+vec3 bumped(vec3 n, vec3 pos, float height) {
+	vec3 dpdx = dFdx(pos);
+	vec3 dpdy = dFdy(pos);
+	vec3 r1 = cross(dpdy, n);
+	vec3 r2 = cross(n, dpdx);
+	float det = dot(dpdx, r1);
+	vec3 grad = sign(det) * (dFdx(height) * r1 + dFdy(height) * r2);
+	return normalize(abs(det) * n - grad);
+}
+
+void fragment() {
+	int p = int(part + 0.5);
+	float s = rest.z / LENGTH + 0.5;
+	// how high on the body (0 the belly line, 1 the back line); on a fin, root (0) to tip (1)
+	float hh = UV.y;
+	float girth = max(UV2.y, 0.001);
+	float arc = UV2.x;
+	// how far from the belly line round towards the back line (0..1)
+	float fb = clamp((girth - abs(arc)) / girth, 0.0, 1.0);
+	// +1 its left side, -1 its right
+	float side_is = rest.x >= 0.0 ? 1.0 : -1.0;
+	vec3 m = rest;
+	float inside = (p <= 1) ? extra.y : 0.0;
+	float glance = 1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0);
+	// A flat place on the skin for patterns (metres): along the body and round it from the top
+	// line; on a fin, across its faces. `px`: how many metres of it one pixel covers (patterns
+	// finer than that fade out).
+	vec2 q = (p <= 1) ? vec2(s * LENGTH, arc) : vec2(m.z + 0.7 * m.y, m.x + 0.4 * m.y);
+	float px = length(fwidth(q));
+	// (the pleats' grooves: how many grooves up from the belly line, and how many one pixel covers)
+	float pleat_k = fb * PLEATS / PLEAT_TOP;
+	float pleat_fw = fwidth(pleat_k);
+	float plate_k = m.z / 0.02;
+	float plate_fw = fwidth(plate_k);
+	vec3 c = vec3(0.5);
+	float height = 0.0;
+	float rough = 0.5;
+	float spec = 0.4;
+	if (p == 2) {
+		// An eye: a dark round middle in a dark brown iris, in folds of skin.
+		float r = length(UV - 0.5) * 2.0;
+		c = mix(eye_dark, eye_iris, smoothstep(0.25, 0.45, r) * 0.7);
+		c = mix(c, eye_dark * 2.0, smoothstep(0.62, 0.8, r));
+		c *= 0.85 + 0.3 * noise3(m * 40.0);
+		rough = 0.12;
+		spec = 0.7;
+	} else if (p == 3) {
+		// The baleen: close-set plates hanging in a row, their inner edges frayed into a fringe of
+		// bristles towards the bottom.
+		float plate = 1.0 - smoothstep(0.15, 0.45 + plate_fw, abs(fract(plate_k) - 0.5)) * (1.0 - smoothstep(0.6, 1.2, plate_fw));
+		float down = 1.0 - UV.y;
+		vec3 bc = baleen;
+		c = mix(bc * 0.6, bc, plate * 0.6 + 0.4);
+		float hair = noise3(vec3(m.z * 60.0, m.y * 6.0, m.x * 60.0));
+		c = mix(c, fringe * (0.8 + 0.3 * hair), smoothstep(0.55, 0.95, down) * (0.6 + 0.4 * hair));
+		height = 0.004 * plate;
+		rough = 0.6;
+		spec = 0.25;
+	} else if (p == 4) {
+		// The mouth's wall: dark flesh, in soft folds, darker deep inside.
+		float fold = noise3(m * vec3(1.2, 3.0, 1.2));
+		c = mouth_wall * (0.7 + 0.5 * fold) * mix(0.5, 1.0, smoothstep(0.0, 0.6, extra.x));
+		height = 0.03 * fold;
+		rough = 0.45;
+	} else {
+		// The skin: mottled slate grey, dappled all over with pale spots and rings (old barnacle
+		// scars), crusted with barnacles in patches (most on the head and back, fewest beneath),
+		// with orange whale lice crowding round the patches; close up, each barnacle a pale cone
+		// with a dark hole, and the skin's wrinkles.
+		float big = fbm3(m * 0.4);
+		vec2 warp = vec2(noise3(m * 1.2), noise3(m * 1.2 + 7.0)) - 0.5;
+		c = mix(slate_dark, slate, smoothstep(0.25, 0.75, big));
+		// pale scars: spots and rings, a few each square metre
+		vec2 sc = cells(q / 0.4 + warp * 1.8);
+		float shown = 1.0 - smoothstep(0.25, 0.6, px / 0.4);
+		float r_spot = 0.08 + 0.2 * fract(sc.y * 7.3);
+		float spot = (1.0 - smoothstep(r_spot * 0.6, r_spot, sc.x)) * step(sc.y, 0.3);
+		float ring = (1.0 - smoothstep(0.02, 0.05, abs(sc.x - r_spot))) * step(0.3, sc.y) * step(sc.y, 0.38);
+		vec2 sc2 = cells(q / 0.13 + 50.0 + warp);
+		float speck = (1.0 - smoothstep(0.12, 0.25, sc2.x)) * step(sc2.y, 0.22) * (1.0 - smoothstep(0.25, 0.6, px / 0.13));
+		c = mix(c, scar * (0.85 + 0.2 * big), clamp(spot * (0.55 + 0.45 * fract(sc.y * 13.0)) + 0.7 * ring + 0.5 * speck, 0.0, 1.0) * shown * barnacles_show * 0.8);
+		// (far off, the scars as a paler wash)
+		c = mix(c, scar, 0.18 * (1.0 - shown) * barnacles_show);
+		// where the barnacles grow: the top of the head and the back most, the flanks some, beneath
+		// few; the flukes' and flippers' edges
+		float where = 0.0;
+		if (p == 0 || p == 1) {
+			where = mix(0.25, 1.0, smoothstep(0.35, 0.8, fb)) * (1.0 + 0.6 * smoothstep(0.2, 0.05, s));
+			where *= 1.0 - 0.6 * smoothstep(0.7, 0.9, s);
+		} else if (p == 7) {
+			where = 0.6 * smoothstep(0.3, 0.05, UV.y) + 0.3;
+		} else if (p == 6) {
+			where = 0.5 * smoothstep(0.6, 0.95, UV.x) + 0.2;
+		}
+		float cluster = smoothstep(0.52, 0.62, fbm3(m * 1.1 + 21.0) + 0.12 * (where - 0.5)) * clamp(where, 0.0, 1.0) * barnacles_show;
+		float hole = 0.0;
+		float lump = 0.0;
+		float barn = barnacles(q + warp * 0.05, 0.05, px, hole, lump);
+		c = mix(c, barnacle * (0.8 + 0.3 * big), barn * cluster);
+		c = mix(c, vec3(0.1, 0.09, 0.08), hole * cluster);
+		c = mix(c, barnacle * 0.85, cluster * 0.7 * smoothstep(0.012, 0.03, px));
+		height += lump * cluster;
+		// the lice: small orange specks crowded at the edges of the patches
+		float rim = smoothstep(0.42, 0.52, fbm3(m * 1.1 + 21.0) + 0.12 * (where - 0.5)) * (1.0 - cluster) * clamp(where, 0.0, 1.0);
+		vec2 li = cells(q / 0.018 + 5.0);
+		float louse = (1.0 - smoothstep(0.25, 0.4, li.x)) * step(li.y, 0.5) * (1.0 - smoothstep(0.004, 0.01, px));
+		c = mix(c, lice * (0.85 + 0.3 * li.y), louse * rim * lice_show);
+		c = mix(c, mix(c, lice, 0.35), rim * lice_show * 0.5 * smoothstep(0.004, 0.012, px));
+		height += 0.004 * louse * rim * lice_show;
+		// (close up: the skin's soft wrinkles, running round the body, and a fine grain)
+		float wrinkle = noise3(m * vec3(1.5, 1.5, 9.0)) * (1.0 - smoothstep(0.006, 0.02, px));
+		height += 0.003 * (wrinkle - 0.5) + 0.0015 * (noise3(m * 30.0) - 0.5) * (1.0 - smoothstep(0.002, 0.006, px));
+		rough = 0.55 + 0.15 * cluster;
+		spec = 0.3;
+		if (p <= 1 && PLEATS > 0.0) {
+			// The pleats of the throat: grooves running along it from the chin back to the navel,
+			// stretched open as it balloons.
+			float zone = smoothstep(PLEAT_FROM, PLEAT_FROM + 0.025, s) * (1.0 - smoothstep(PLEAT_TO - 0.06, PLEAT_TO, s));
+			zone *= (1.0 - smoothstep(PLEAT_TOP * 0.8, PLEAT_TOP, fb)) * (1.0 - inside);
+			float d = abs(fract(pleat_k) - 0.5);
+			float groove = smoothstep(0.32 - pleat_fw, 0.5, d);
+			float show = zone * (1.0 - smoothstep(0.2, 0.45, pleat_fw));
+			float stretched = clamp(gape, 0.0, 1.0) * (p == 1 ? 0.6 : extra.x);
+			height -= groove * show * PLEAT_DEPTH * (1.0 - 0.7 * stretched);
+			c = mix(c, mix(c * 0.55, vec3(0.5, 0.48, 0.47), stretched), groove * show);
+		}
+		if (p == 0) {
+			// The two blowholes, side by side behind the splash guard, closing towards the front.
+			float along = (s - BLOW_S) * LENGTH;
+			float apart = abs(m.x) - BLOW_APART * (0.6 + 0.4 * clamp(along / BLOW_LONG + 0.5, 0.0, 1.0));
+			float slit = 1.0 - smoothstep(0.75, 1.0, length(vec2(along / (0.5 * BLOW_LONG), apart / (0.09 * BLOW_LONG))));
+			float lip_of = 1.0 - smoothstep(0.9, 1.6, length(vec2(along / (0.5 * BLOW_LONG), apart / (0.2 * BLOW_LONG))));
+			c = mix(c, c * 0.8, lip_of * 0.5);
+			c = mix(c, vec3(0.02), slit);
+			height += (0.012 * lip_of - 0.05 * slit) * BLOW_LONG;
+		}
+		if (p <= 1) {
+			// Inside the mouth: the roof (dark) and the floor and tongue.
+			c = mix(c, (p == 0 ? mouth_roof : tongue) * (0.85 + 0.3 * noise3(m * 3.0)), inside);
+			rough = mix(rough, 0.35, inside);
+		}
+	}
+	NORMAL = bumped(NORMAL, VERTEX, height);
+	ALBEDO = c;
+	ROUGHNESS = rough;
+	SPECULAR = spec;
+}
