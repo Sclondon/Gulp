@@ -118,6 +118,8 @@ var giant := false
 var slow := 1.0
 ## It has its model (see `become`).
 var dressed := true
+## Far from the player it sleeps where it is (Life wakes it): not stepped, not drawn, no model.
+var asleep := false
 var hunts := true
 ## Species' `habit` ("" none), and whether it goes up for air, leaps, visits cleaners, comes up at night.
 var habit := ""
@@ -231,6 +233,19 @@ func dress(of_kind := "") -> void:
 				_has |= 1 << k
 	if on_floor and _look and not _belows.has(kind):
 		_belows[kind] = _reach_below()
+
+
+## Gives its model back (it has gone to sleep far off): `dress` gives it again when it is next seen.
+func undress() -> void:
+	if not dressed:
+		return
+	dressed = false
+	_has = 0
+	if _look:
+		_body.remove_child(_look)
+		_look.queue_free()
+		_look = null
+	_material = null
 
 
 ## What keeps to the floor stands on it: how far its drawn body reaches below its middle, as a share

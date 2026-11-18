@@ -67,12 +67,24 @@ const KRILL_SEEN := 18.0
 const JELLY_SEEN := 32.0
 ## Beyond this a jelly is not drawn (m).
 const JELLY_DRAWN := 48.0
-const FISH_SEEN := 55.0
+## (the fog leaves a quarter of a thing's colour at 40 m and a fifth at 45: 55 m drew a third more
+## animals than this at the reef, each one stepped every frame or two)
+const FISH_SEEN := 45.0
 ## Nearer than this (m, and two of its own lengths more) a fish is stepped every frame; further,
-## every other frame.
+## every other frame; beyond STEP_MID every third.
 const STEP_NEAR := 20.0
+const STEP_MID := 32.0
 ## How many steps apart kinds new to the run are given their models.
 const NEW_EVERY := 3
+## Only the animals near the player live (CLAUDE.md, "Decision: only nearby animals are awake"):
+## within WAKE metres (less two of its lengths) an animal, or the group it keeps with, wakes; beyond
+## SLEEP it sleeps where it is: hidden, not stepped, its model given back. Each animal (or group)
+## is looked at once every WAKE_EVERY frames.
+const WAKE := 55.0
+const SLEEP := 65.0
+const WAKE_EVERY := 10
+## The most animals given their models in one frame (each makes a creature's nodes: a hitch on a phone).
+const DRESS_EACH := 2
 ## The swarms (tools/SCHOOLING.md): each a Flock of a few dozen guides that are not drawn, with
 ## riders round each one, all drawn by one MultiMesh and placed by its shader, so the CPU pays for
 ## the guides only. Each: [guides, riders round each, how far round its guide a rider keeps (m)].
@@ -104,6 +116,10 @@ var flock_ms := 0.0
 var steps := 0
 
 var creatures: Array[Creature] = []
+## Those of `creatures` that are awake (near the player): the only ones stepped, drawn or looked at.
+var awake: Array[Creature] = []
+# What wakes and sleeps together: each a Creature.Group or a Creature that keeps to itself.
+var _units: Array = []
 var jellies: Array[MoonJelly] = []
 var nettles: Array[SeaNettle] = []
 var plankton: Array[Node3D] = []
@@ -138,6 +154,7 @@ var _jelly_away: Array[float] = []
 var _jelly_time: Array[float] = []
 var _nettle_away: Array[float] = []
 var _nettle_goal: Array[Vector3] = []
+var _checked_at := Vector3.INF
 
 
 ## Whether something `eater` metres long can eat something `prey` metres long.
@@ -234,6 +251,11 @@ func _ready() -> void:
 	for key: String in pools:
 		_make_groups(pools[key])
 	_make_stations()
+	for each in creatures:
+		each.asleep = true
+		if each.group == null:
+			_units.append(each)
+	_units.append_array(groups)
 	for i in JELLIES:
 		var jelly := MoonJelly.new()
 		# (its bell's radius: the smallest are food for the youngest fish)
@@ -319,7 +341,7 @@ func nearest_food(only_schools := false) -> Vector3:
 				best = flock.boid_position(i)
 	if only_schools:
 		return best
-	for each in creatures:
+	for each in awake:
 		if each.away <= 0.0 and not each.giant and not each.guarded() and is_food(player.length, each.length):
 			# (a fish that will run is worth less than one the same distance off that will not)
 			var far := each.global_position.distance_to(at) * 1.5
@@ -338,7 +360,7 @@ func nearest_food(only_schools := false) -> Vector3:
 ## Everything that could end the player's run just now: each [where, how long it is]. For the bot.
 func threats() -> Array:
 	var found := []
-	for each in creatures:
+	for each in awake:
 		if each.away <= 0.0 and each.hunts and each.visible and can_eat(each.length, player.length) and player.length >= each.length * TOO_SMALL \
 				and (each.mode == Creature.Mode.HUNT or each.mode == Creature.Mode.STALK or each.global_position.distance_to(player.global_position) < 2.0 + each.length):
 			found.append([each.global_position, each.length])
@@ -474,14 +496,22 @@ func catch_schools(at: Vector3, reach: float, most := 2) -> int:
 func _step_creatures(delta: float) -> void:
 	hunters = 0
 	var mouth := player.mouth()
+	# Who wakes and who sleeps: a tenth of them a frame, or all of them when the player has jumped
+	# (a new run, a test putting it somewhere).
+	var jumped := steps == 0 or player.global_position.distance_to(_checked_at) > 10.0
+	_checked_at = player.global_position
+	for k in range(0 if jumped else steps % WAKE_EVERY, _units.size(), 1 if jumped else WAKE_EVERY):
+		_wake_or_sleep(_units[k])
 	for group: Creature.Group in groups:
-		group.update(delta)
+		if not group.members[0].asleep:
+			group.update(delta)
 	_step_stations()
 	# (a fifteenth of them each frame look about for a swarm to hunt or a cleaner to visit)
 	var slice := steps % 15
-	for k in range(slice, creatures.size(), 15):
-		_look_about(creatures[k])
-	for each in creatures:
+	for k in range(slice, awake.size(), 15):
+		_look_about(awake[k])
+	var dress_left := DRESS_EACH
+	for each in awake:
 		if each.away > 0.0:
 			each.away -= delta
 			if each.away <= 0.0:
@@ -497,12 +527,14 @@ func _step_creatures(delta: float) -> void:
 		# (it gets its model when it is first seen: kinds new to this run a few frames apart, since
 		# each one's shader is compiled then, which is slow in a browser)
 		if seen and not each.dressed:
-			if _dressed.has(each.kind):
+			if dress_left > 0 and _dressed.has(each.kind):
 				each.dress()
-			elif steps >= _next_new:
+				dress_left -= 1
+			elif dress_left > 0 and steps >= _next_new:
 				_dressed[each.kind] = true
 				_next_new = steps + NEW_EVERY
 				each.dress()
+				dress_left -= 1
 			else:
 				seen = false
 		if each.visible != seen:
@@ -514,10 +546,14 @@ func _step_creatures(delta: float) -> void:
 			continue
 		# (beyond STEP_NEAR, half of them a frame, each with two frames' time: a fish that far off
 		# moves less than a pixel of the half-size picture in a frame. tools/PERF.md)
+		# (and beyond STEP_MID, a third of them a frame)
 		if apart < STEP_NEAR + each.length * 2.0:
 			each.step(delta, player, hunting)
-		elif (steps + each.get_index()) % 2 == 0:
-			each.step(delta * 2.0, player, hunting)
+		elif apart < STEP_MID + each.length * 2.0:
+			if (steps + each.get_index()) % 2 == 0:
+				each.step(delta * 2.0, player, hunting)
+		elif (steps + each.get_index()) % 3 == 0:
+			each.step(delta * 3.0, player, hunting)
 		each.detail(apart < 5.0 + each.length * 4.0)
 		# A pack hunter or a filter feeder at a swarm or a cloud: the swarm balls up and flees it,
 		# and what its open mouth passes is taken.
@@ -554,6 +590,48 @@ func _step_creatures(delta: float) -> void:
 		if each.stings() and hunting and not player.in_air and not can_eat(player.length, each.length) \
 				and apart < each.length * 0.45 + player.length * 0.35:
 			_sting(each)
+
+
+## Wakes an animal now, and the group it keeps with (for whatever puts one beside the player: the
+## tests). It sleeps again by the usual rule if it is far off.
+func wake(each: Creature) -> void:
+	if not each.asleep:
+		return
+	for m: Creature in (each.group.members if each.group else [each]):
+		m.asleep = false
+		awake.append(m)
+
+
+## Wakes a group (or a lone animal) near the player, or puts one far off to sleep.
+func _wake_or_sleep(unit: Variant) -> void:
+	var members: Array = (unit as Creature.Group).members if unit is Creature.Group else [unit]
+	var first: Creature = members[0]
+	# (by its nearest member: a group wakes when any of it comes near, and sleeps when all are far)
+	var far := INF
+	for m: Creature in members:
+		far = minf(far, m.global_position.distance_to(player.global_position) - m.length * 2.0)
+	if first.asleep and far < WAKE:
+		for m: Creature in members:
+			m.asleep = false
+			awake.append(m)
+	elif not first.asleep and far > SLEEP:
+		for m: Creature in members:
+			_sleep(m)
+
+
+# It sleeps where it is (one that was eaten is back already, with its group).
+func _sleep(each: Creature) -> void:
+	each.asleep = true
+	awake.erase(each)
+	if each.away > 0.0:
+		each.place(_back_place(each))
+	if each.visit_at != Vector3.INF:
+		each.visit_at = Vector3.INF
+	each.prey = null
+	each.prey_r = 0.0
+	each.feeding = false
+	each.visible = false
+	each.undress()
 
 
 ## Pushes the player out of a body: a rounded rod from `middle` `half` metres either way along

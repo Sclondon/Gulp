@@ -66,6 +66,7 @@ func _run() -> void:
 	var small: Creature = life.creatures[0]
 	small.length = 0.3
 	small.place(player.global_position + player.global_basis.x * 2.0)
+	life.wake(small)
 	var apart := small.global_position.distance_to(player.global_position)
 	await _frames(20)
 	var fled := small.away <= 0.0 and small.mode == Creature.Mode.FLEE
@@ -83,6 +84,7 @@ func _run() -> void:
 	# (a small one: a bigger salmon takes no notice of so small a fish)
 	big.length = 0.9
 	big.place(player.global_position - player.heading * 1.6)
+	life.wake(big)
 	big.heading = player.heading
 	big._tired = 0.0
 	var hunted := false
@@ -261,6 +263,7 @@ func _schooling() -> void:
 	for each in life.creatures:
 		if each.kind == "barracuda" and pack.size() < 3:
 			pack.append(each)
+			life.wake(each)
 	var swarm: Dictionary = life.schools[Life.KRILL_CLOUDS + 1]
 	var prey: Flock = swarm.flock
 	var gone_before := prey.riders_gone()
@@ -323,6 +326,7 @@ func _one_of(kinds: Array) -> Creature:
 	for kind: String in kinds:
 		for each: Creature in main.life.creatures:
 			if each.kind == kind and each.away <= 0.0:
+				main.life.wake(each)
 				if not each.dressed:
 					each.dress()
 				each.visible = true

@@ -805,7 +805,7 @@ func _sound_out() -> void:
 			var off: Vector3 = threat[0] - player.global_position
 			if off.length() < TouchPad.SONAR_RANGE:
 				seen.append(Vector3(off.dot(right), off.dot(ahead), 1.0 + Sonar.high(off.y)))
-		for each in life.creatures:
+		for each in life.awake:
 			if seen.size() > 40:
 				break
 			if each.visible and each.away <= 0.0 and not each.giant:

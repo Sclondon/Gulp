@@ -349,6 +349,31 @@ choices below are Claude's.
   only what changed; the sonar's picture is drawn in five layers, each redrawn only when it changes; jellies, nettles
   and the garden eels are not drawn beyond sight; behind the title every other material of the sea is shown once too
   (`Main._materials_to_warm`), so that the wrecks and plants do not freeze a browser when first seen.
+- **Decision: only nearby animals are awake** (2026-11-18, after the user: "Gulp's performance on phone is still very
+  choppy and it crashed- are spawning and simming all the fish on the whole map? Probably only need nearby ones"). What:
+  all 495 animals are still made at the start (as bare records, no model), but each sleeps where it is beyond
+  `Life.SLEEP` (65 m, less two of its lengths) and wakes within `Life.WAKE` (55 m); a group wakes when any member is
+  near and sleeps when all are far. A sleeper is hidden, never stepped, and gives its model back (`Creature.undress`);
+  `Life.awake` is the only list stepped or searched each frame (Life, the sonar, the fishers, the bot). A tenth of them
+  are looked at a frame, all of them when the player jumps more than 10 m (a new run, a test). At most `DRESS_EACH` (2)
+  models are made a frame. Drawn within `FISH_SEEN` 45 m (was 55: the fog leaves a fifth of a thing's colour there);
+  stepped every frame within 20 m, every other to 32 m, every third beyond. Before, every animal on the map was stepped
+  (beyond sight every 8th frame) and kept its model once seen. Why: Life's own time at the start 1.75 -> 0.65 ms, kelp
+  2.11 -> 1.24, the liner's reef 2.73 -> 1.87 (desktop; 60 of 495 awake at the start, 131 at the reef). The practice: a
+  simulation bubble round the player (entities beyond it frozen and unloaded, woken with a margin past sight, as
+  open-world games stream their creatures by cells). Alternatives: spawning fresh animals in a ring round the player by
+  zone density (keeps the count steady anywhere but loses where each one was; more rework of groups and stations), or
+  only stepping far ones less often (what it was). Tests that put an animal beside the player call `Life.wake(each)`.
+  Not verified on a phone; the crash's cause is not known (memory is the likeliest: every kind's shader is compiled
+  behind the title and the pack is 40 MB).
+- **The sky** (2026-11-18, the user: "Whys the sky just gray"): it was one flat background colour, greyed further by
+  the fog and the filmic tone map. Now `shaders/sky.gdshader` (Claude's pick of look, no concept art yet): a gradient,
+  pale at the horizon and deeper overhead, the sun or moon with a glow, sparse soft clouds drifting; colours from the
+  hour in `Sea._look`, shown only with the eye above water (under it the background is the water colour as before). It
+  lights nothing (ambient stays a colour, reflections off) and is redrawn into its small radiance only when `_look`
+  changes it (the drift is a uniform, not TIME).
+- `tests/overhead.gd` draws the whole bay from straight above as a labelled chart (no water, fog or culling; tiles
+  stitched): `godot --path . --audio-driver Dummy --resolution 400x400 -s res://tests/overhead.gd -- --out=<folder>`.
 - **The web pack** (62.5 MB -> 33 MB): `tools/web_excludes.sh` also turns off automatic LODs and shadow meshes in every
   creature model's import (they were half of each model's weight; nothing here casts shadows and the creatures never
   used their LODs, but schools and clouds keep theirs), and leaves out the concept art, the retired rocks and the retired

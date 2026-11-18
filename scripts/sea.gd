@@ -17,6 +17,7 @@ extends Node3D
 const WATER := preload("res://shaders/water.gdshader")
 const FOAM := preload("res://textures/foam_noise.png")
 const ROCK := preload("res://shaders/sea_floor.gdshader")
+const SKY := preload("res://shaders/sky.gdshader")
 
 ## How high the water's surface is, and how far the sea runs: west (the open Pacific) to east
 ## (Moss Landing) along x, north (Santa Cruz) to south (Point Lobos) along z. The shape of the
@@ -92,6 +93,7 @@ var clock := 0.0
 var above := false
 
 var _env: Environment
+var _sky: ShaderMaterial
 
 var _snow: CPUParticles3D
 ## Shafts of light hanging from the surface round the eye (scripts/light_shafts.gd).
@@ -351,6 +353,19 @@ func _look() -> void:
 		_env.background_color = sky
 		_env.fog_light_color = sky.lerp(Color(0.62, 0.74, 0.9) * lerpf(0.3, 1.0, day), 0.5)
 		_env.fog_density = 0.004
+		# (a sky, not a flat colour: deeper overhead, pale at the horizon, sun and clouds. The fog
+		# leaves it alone but for a haze at the horizon, which the sky draws itself. Claude's pick,
+		# 2026-11-18: the user, "Whys the sky just gray")
+		_env.background_mode = Environment.BG_SKY
+		_env.fog_sky_affect = 0.0
+		var overhead := Color(0.03, 0.05, 0.13).lerp(Color(0.12, 0.34, 0.86), day).lerp(Color(0.3, 0.32, 0.62), glow * 0.45)
+		_sky.set_shader_parameter(&"zenith", overhead)
+		_sky.set_shader_parameter(&"horizon", sky.lerp(Color(0.85, 0.92, 1.0), 0.35 * day))
+		_sky.set_shader_parameter(&"sun_colour", lit.lerp(Color(1.0, 0.96, 0.88), 0.6 * day) * lerpf(0.35, 1.0, maxf(day, glow)))
+		var cloud := Color(1.0, 1.0, 1.0).lerp(Color(1.0, 0.72, 0.55), glow * 0.7) * lerpf(0.18, 1.0, day)
+		_sky.set_shader_parameter(&"cloud_lit", cloud)
+		_sky.set_shader_parameter(&"cloud_shade", cloud * Color(0.68, 0.74, 0.86))
+		_sky.set_shader_parameter(&"drift", Vector2(0.006, 0.002) * clock)
 		_env.ambient_light_color = Color(0.8, 0.85, 0.9).lerp(sky, 0.35) * lerpf(0.6, 1.0, day)
 	else:
 		# (the liner's coral pocket is warmer and clearer water: a little more green-teal, less fog,
@@ -360,6 +375,8 @@ func _look() -> void:
 		if eye:
 			warm = 1.0 - smoothstep(30.0, 50.0, Vector2(eye.global_position.x - WRECK_AT.x, eye.global_position.z - WRECK_AT.z).length())
 		water = water.lerp(Color(0.03, 0.17, 0.19) * lerpf(0.5, 1.0, day), 0.35 * warm)
+		_env.background_mode = Environment.BG_COLOR
+		_env.fog_sky_affect = 1.0
 		_env.background_color = water
 		_env.fog_light_color = water
 		_env.fog_density = lerpf(0.03, 0.04, down_far) * lerpf(1.0, 0.8, warm)
@@ -450,6 +467,15 @@ func _light() -> void:
 	env.glow_bloom = 0.1
 	env.glow_hdr_threshold = 0.8
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
+	# (the sky, shown only from above the water: see _look. It lights nothing)
+	_sky = ShaderMaterial.new()
+	_sky.shader = SKY
+	var sky := Sky.new()
+	sky.sky_material = _sky
+	sky.radiance_size = Sky.RADIANCE_SIZE_32
+	sky.process_mode = Sky.PROCESS_MODE_AUTOMATIC
+	env.sky = sky
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 	_env = env
 	var world := WorldEnvironment.new()
 	world.environment = env

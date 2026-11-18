@@ -601,7 +601,7 @@ func _haul(rig: Rig, delta: float) -> void:
 ## Now and then a fish of the sea that is near a bait goes for it, and may be hooked.
 func _tempt(rig: Rig) -> void:
 	var bait := rig.bait_at()
-	for each in life.creatures:
+	for each in life.awake:
 		if each.away > 0.0 or each.giant or not each.visible or _held.has(each.get_instance_id()):
 			continue
 		if each.length > rig.snap or not Life.is_food(each.length, rig.bait_long):
@@ -792,7 +792,7 @@ func _net_scan(net: Net) -> void:
 			_count("school fish netted")
 	if net.catch.size() >= NET_CATCH:
 		return
-	for each in life.creatures:
+	for each in life.awake:
 		if each.away > 0.0 or each.giant or not each.visible or _held.has(each.get_instance_id()):
 			continue
 		if each.length < net.lo or each.length > net.hi:
@@ -1033,7 +1033,7 @@ func _trawl_catch(trawler: Trawler, delta: float, scanning: bool) -> void:
 	# the rest of it scatters)
 	if life.catch_schools(mouth, 2.0, 3) > 0:
 		_count("school fish trawled")
-	for each in life.creatures:
+	for each in life.awake:
 		if each.away > 0.0 or each.giant or not each.visible or each.length > TRAWL_BIG or _held.has(each.get_instance_id()):
 			continue
 		if each.global_position.distance_to(mouth) > 6.0:

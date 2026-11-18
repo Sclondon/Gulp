@@ -78,6 +78,20 @@ sand at desktop fineness.
    chance while its mouth is in the swarm), so 10 s often saw one dash and no fish. The check now starts each hunter with
    its dash due and waits up to 20 s, stopping when both are seen. The game is unchanged.
 
+## Only nearby animals awake (2026-11-18, later)
+
+After the user found the phone build choppy and saw it crash. CLAUDE.md, "Decision: only nearby animals are awake".
+`--perf` now also prints `PERF <place> animals: N awake of 495, M drawn`. 390x844, desktop:
+
+| place | life ms before | after | awake | drawn |
+| --- | --- | --- | --- | --- |
+| start | 1.75 | 0.65 | 60 | 29 |
+| kelp | 2.11 | 1.24 | 56 | 50 |
+| reef (liner) | 2.73 | 1.87 | 131 | 120 |
+| ruins | | 1.16 | 147 | 61 |
+
+The reef is still the densest: its own stock is that many fish within 45 m.
+
 ## The web pack
 
 | | before | after |

@@ -199,6 +199,11 @@ func _measure(place: String) -> void:
 	_rows.append(row)
 	print("PERF %s: frame %.2f ms (95th %.2f), scripts %.2f ms (life %.2f: schools %.2f fish %.2f jellies %.2f; flocks %.2f), sea picture %d draws %d tris %d objects, render cpu %.2f gpu %.2f ms, ui gpu %.2f, all draws %d" % [
 			place, row.frame, row.p95, row.scripts, row.life, row.schools, row.fish, row.jellies, row.flocks, row.draws, row.tris, row.objects, row.cpu_draw, row.gpu, row.ui_gpu, row.all_draws])
+	var shown := 0
+	for each: Creature in main.life.awake:
+		if each.visible:
+			shown += 1
+	print("PERF %s animals: %d awake of %d, %d drawn" % [place, main.life.awake.size(), main.life.creatures.size(), shown])
 	await _heaviest(place)
 
 
