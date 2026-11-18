@@ -4,11 +4,21 @@ Run from the game's root:
     blender --background --python creatures/bigeye_tuna/tools/build_bigeye_tuna.py
     blender --background --python creatures/bigeye_tuna/tools/build_bigeye_tuna.py -- <preview folder>   # with pictures
 
-Writes creatures/bigeye_tuna/models/bigeye_tuna.glb (the full model) and bigeye_tuna_lo.glb (far off,
-phones), and the editable creatures/bigeye_tuna/tools/bigeye_tuna.blend (this folder has a .gdignore). Each
-model is one still mesh with one surface: the shader (bigeye_tuna.gdshader) draws every marking, swims it and
-works its jaw. It prints a WINDING line (the check that nothing is inside out) and a SHAPE line (the numbers
-the shader shares).
+Writes creatures/bigeye_tuna/models/bigeye_tuna.glb (the full model), bigeye_tuna_game.glb (the game
+model) and bigeye_tuna_lo.glb (far off, phones), and the editable creatures/bigeye_tuna/tools/bigeye_tuna.blend
+(this folder has a .gdignore; it holds all three). Each model is one still mesh with one surface: the shader
+(bigeye_tuna.gdshader) draws every marking, swims it and works its jaw. It prints a WINDING line for each
+(the check that nothing is inside out), a SHAPE line and an EYE line (the numbers the shader shares).
+
+THE GAME MODEL (added 2026-11-18; the user, after looking at Twilight Princess's Link beside these: "We should
+have a twilight princess model to compare to so we can make low poly versions while maintaining high quality
+looks and silhouettes"). Built here from the same curves as the full model, not thinned from it, with its
+triangles spent where they show: its rings are as few as follow the skin to within GAME_TOL (so they crowd at
+the snout, the head and the tail wrist and spread out along the flanks), a ring at the jaw's hinge and enough
+ahead of it for the mouth to open cleanly; fewer points round the body; each fin with few rows across (its
+thickness hardly shows) but enough along its edges for their curves and tips; the first dorsal's scallops a
+point at each spine's tip and one between; a round eye of 28 spokes; fewer, simpler teeth. Every UV and UV2
+means what it does on the full model.
 
 This script began as GameCommon's yellowfin tuna's (godot/yellowfin-tuna) and is shared, but for the SPEC
 block below, by the bluefin tuna, the bigeye tuna and the Pacific bonito: a fix to the code under SPEC in one
@@ -120,6 +130,14 @@ TAIL_TIP = 0.235
 PECTORAL_FIN = {"x": 0.41, "long": 0.47, "wide": 0.075, "sweep": 30.0, "droop": -0.2}
 PELVIC_FIN = {"x": 0.47, "long": 0.11, "wide": 0.042}
 COLOUR = (0.25, 0.35, 0.55, 1.0)
+# The game model (added 2026-11-18): points round its body, how closely its rings must follow the skin
+# (units), the longest step from one ring to the next (units), how closely they must follow the step of the
+# gill cover, and a share of the fins' divisions.
+GAME_AROUND = 28
+GAME_TOL = 0.0012
+GAME_STEP = 0.1
+GAME_GILL_TOL = 0.004
+GAME_FINS = 1.0
 # ---------------------------------------------------------------------------------------------------------
 
 U = LENGTH / 1.5
@@ -196,9 +214,9 @@ def bottom(xm):
     return -outline(xm)[1]
 
 
-def body_point(xm, angle):
+def body_point(xm, angle, gill=True):
     """A point of the skin: `angle` round the body from the ridge of the back (0) by its left side (a
-    quarter turn) to the keel of the belly (half a turn)."""
+    quarter turn) to the keel of the belly (half a turn); without the step of the gill cover if not `gill`."""
     up, down, wide = outline(xm)
     c = math.cos(angle)
     s = math.sin(angle)
@@ -209,7 +227,7 @@ def body_point(xm, angle):
     side += math.copysign(keel * math.exp(-(c / 0.3) ** 2), s)
     # the gill cover: it stands a little proud of the body behind its edge
     behind = xm - gill_x(y)
-    if behind > 0.0 and wide > 0.01:
+    if gill and behind > 0.0 and wide > 0.01:
         mask = smooth(-0.95, -0.8, c) * (1.0 - smooth(0.4, 0.6, c))
         step = 0.0045 * smooth(0.0, 0.004, behind) * math.exp(-behind / 0.035) * mask
         side *= 1.0 - step / wide
@@ -286,7 +304,55 @@ class Mesh:
         self.count[name] = self.count.get(name, 0) + 1
 
 
+# Which model is being built: "full", "low" or "game" (set by `make`).
+LEVEL = "full"
+
+
 def rings(low):
+    if LEVEL == "game":
+        return game_rings()
+    return even_rings(low)
+
+
+def game_rings():
+    """The game model's rings: from the full model's, as few as keep every point of the skin (sampled round
+    it) within GAME_TOL of the straight line between the rings either side of it, never more than
+    GAME_STEP apart (so the swimming bends smoothly), and at least six from the snout to the hinge."""
+    fine = even_rings(False)
+    angles = [k / 32 * TAU for k in range(17)]
+    # (the step of the gill cover, a small edge, is held to a looser test: it is drawn by the shader too)
+    smooth_skin = [[body_point(x, a, False) for a in angles] for x in fine]
+    skin = [[body_point(x, a) for a in angles] for x in fine]
+
+    def straight(i, k):
+        for m in range(i + 1, k):
+            t = (fine[m] - fine[i]) / (fine[k] - fine[i])
+            for a in range(len(angles)):
+                if (smooth_skin[m][a] - smooth_skin[i][a].lerp(smooth_skin[k][a], t)).length > GAME_TOL:
+                    return False
+                if (skin[m][a] - skin[i][a].lerp(skin[k][a], t)).length > GAME_GILL_TOL:
+                    return False
+        return True
+
+    keep = [0]
+    i = 0
+    while i < len(fine) - 1:
+        j = i + 1
+        while j + 1 < len(fine):
+            k = j + 1
+            longest = HINGE / 6.0 if fine[i] < HINGE - 1e-6 else GAME_STEP
+            if fine[k] - fine[i] > longest + 1e-9 or not straight(i, k):
+                break
+            j = k
+        keep.append(j)
+        i = j
+    xs = [fine[k] for k in keep]
+    if not any(abs(x - HINGE) < 1e-9 for x in xs):
+        xs.append(HINGE)
+    return sorted(xs)
+
+
+def even_rings(low):
     xs = []
     x = BODY_FROM
     for until, step in ((0.20, 0.0035), (0.46, 0.0045), (1.18, 0.011), (BODY_TO, 0.0045)):
@@ -303,7 +369,7 @@ def rings(low):
 
 
 def body(m, low):
-    around = LOW_AROUND if low else AROUND
+    around = GAME_AROUND if LEVEL == "game" else LOW_AROUND if low else AROUND
     half = around // 2
     lip = round(half * LIP_COLUMN)
     xs = rings(low)
@@ -365,7 +431,7 @@ def body(m, low):
 def mouth(m, xs, low):
     """The inside of the mouth: its roof (under the upper head), its floor (on the lower jaw), the wall at the
     back, a web of skin across each corner, and teeth."""
-    across = 4 if low else 12
+    across = 6 if LEVEL == "game" else 4 if low else 12
     sheets = []
     for roof in (True, False):
         what = ROOF if roof else FLOOR
@@ -406,11 +472,14 @@ def mouth(m, xs, low):
     if low or TEETH == 0:
         return
     # the teeth: thin cones rooted in the roof and the floor just inside the lips; shut, each jaw's are hidden
-    # inside the other
+    # inside the other (the game model: half as many, each of four sides)
+    game = LEVEL == "game"
+    count = max(1, TEETH // 2) if game else TEETH
+    sides = 4 if game else 5
     for sx in (1.0, -1.0):
         for upper in (True, False):
-            for i in range(TEETH):
-                share = (i + (0.0 if upper else 0.5)) / TEETH
+            for i in range(count):
+                share = (i + (0.0 if upper else 0.5)) / count
                 xm = HINGE * (0.05 + 0.75 * share)
                 edge = lip_point(xm, sx, not upper)
                 x = edge.x - sx * (0.005 if upper else 0.0036)
@@ -420,32 +489,45 @@ def mouth(m, xs, low):
                 point = Vector((x, edge.y + way * long, edge.z + 0.25 * long))
                 ring = []
                 thick = TOOTH * 0.24
-                for q in range(5):
-                    a = q / 5 * TAU
+                for q in range(sides):
+                    a = q / sides * TAU
                     spot = root + Vector((math.cos(a) * thick, -way * thick * 0.6, math.sin(a) * thick))
                     ring.append(m.add(spot, (xm / 1.5, 0.5), BODY, TOOTH_UP if upper else TOOTH_DOWN))
                 end = m.add(point, (xm / 1.5, 0.5), BODY, TOOTH_UP if upper else TOOTH_DOWN)
-                for q in range(5):
-                    a = (q + 0.5) / 5 * TAU
-                    m.face((end, ring[q], ring[(q + 1) % 5]), Vector((math.cos(a), 0.0, math.sin(a))), "teeth")
+                for q in range(sides):
+                    a = (q + 0.5) / sides * TAU
+                    m.face((end, ring[q], ring[(q + 1) % sides]), Vector((math.cos(a), 0.0, math.sin(a))), "teeth")
 
 
-def eye(m, sx, low):
-    """A low dome lying on the skin of the head."""
-    spokes = 12 if low else 40
-    steps = 3 if low else 12
-    xe, ye = EYE_AT
-
+def eye_skin(sx):
+    """A point of the skin `xm` behind the snout and `y` up, on the side `sx`."""
     def on_skin(xm, y):
         up, down, _ = outline(xm)
         c = max(-1.0, min(1.0, y / (up if y >= 0.0 else down)))
         return body_point(xm, sx * math.acos(c))
+    return on_skin
 
+
+def eye_frame(sx):
+    """Where the middle of the eye lies on the skin, and the way the skin faces there (as the shader has it:
+    the EYE line)."""
+    on_skin = eye_skin(sx)
+    xe, ye = EYE_AT
     here = on_skin(xe, ye)
     out = (on_skin(xe + 0.004, ye) - on_skin(xe - 0.004, ye)).cross(on_skin(xe, ye + 0.004) - on_skin(xe, ye - 0.004))
     out.normalize()
     if out.x * sx < 0.0:
         out = -out
+    return here, out
+
+
+def eye(m, sx, low):
+    """A low dome lying on the skin of the head."""
+    spokes = 28 if LEVEL == "game" else 12 if low else 40
+    steps = 3 if low or LEVEL == "game" else 12
+    xe, ye = EYE_AT
+    on_skin = eye_skin(sx)
+    here, out = eye_frame(sx)
     bulge = EYE_RADIUS / 0.03
     middle = m.add(here + out * 0.0066 * bulge, (0.0, 0.0), EYE)
     last = None
@@ -470,7 +552,7 @@ def blade(m, part, name, point, place, facing, thick, nt, nu, high=None):
     its tip, u 0 at its leading edge to 1 at its trailing edge), `place` puts that in the model, `facing`
     is the way one of its two skins faces. It is `thick` at its root, a foil across (nothing at either
     edge), thinning to nothing at its tip."""
-    nt = max(nt, 2)
+    nt = max(nt, 1 if LEVEL == "game" else 2)
     nu = max(nu, 2)
     for side in (1.0, -1.0):
         grid = []
@@ -511,6 +593,14 @@ def upright(p):
 SIDE = Vector((1.0, 0.0, 0.0))
 
 
+def cut(full, d, game, exact=False):
+    """How many rows a fin is cut into: the full model's `full`, the low one's `full // d`, the game model's
+    `game` (scaled by GAME_FINS unless `exact`)."""
+    if LEVEL == "game":
+        return game if exact else max(1, round(game * GAME_FINS))
+    return full // d
+
+
 def fins(m, low):
     d = LOW_FINS if low else 1
     # The first dorsal: its spines lean back, the first the tallest, the edge falling away behind and
@@ -528,7 +618,7 @@ def fins(m, low):
         high = dorsal_high(u) * t
         return (xm + math.sin(lean) * high, top(xm) - 0.012 + math.cos(lean) * high + 0.012 * t)
 
-    blade(m, DORSAL_PART, "first dorsal", dorsal_point, upright, SIDE, 0.007, 12 // d, (spines * 6) // d,
+    blade(m, DORSAL_PART, "first dorsal", dorsal_point, upright, SIDE, 0.007, cut(12, d, 1, exact=True), cut(spines * 6, d, spines * 2, exact=True),
           high=lambda t, u: (dorsal_high(u) * math.cos(lean) + 0.012) * t * U)
     # The second dorsal and the anal fin.
     for fin, edge, way, name in ((SECOND, top, 1.0, "second dorsal"), (ANAL, bottom, -1.0, "anal")):
@@ -537,7 +627,7 @@ def fins(m, low):
         blade(m, SICKLE, name,
               swept(((fin["x0"], edge(fin["x0"]) - way * 0.014), (fin["lead"][0], base + way * fin["lead"][1]), tip),
                     ((fin["x1"], edge(fin["x1"]) - way * 0.014), (fin["trail"][0], base + way * fin["trail"][1]), tip)),
-              upright, SIDE, 0.011, 36 // d, 12 // d)
+              upright, SIDE, 0.011, cut(36, d, 10), cut(12, d, 2))
     # The finlets, smaller towards the tail.
     for way, (first, count) in zip((1.0, -1.0), FINLETS):
         for k in range(count):
@@ -550,13 +640,13 @@ def fins(m, low):
             tip = (x0 + chord * 1.55, y1 + high)
             blade(m, FINLET, "finlets", swept(((x0, y0), (x0 + chord * 0.6, y0 + high * 0.7), tip),
                                                ((x0 + chord, y1), (x0 + chord * 1.3, y1 + high * 0.25), tip), 0.97),
-                  upright, SIDE, 0.0022, 8 // min(d, 2), 5 // min(d, 2))
+                  upright, SIDE, 0.0022, cut(8, min(d, 2), 2, exact=True), cut(5, min(d, 2), 2, exact=True))
     # The tail: a tall stiff crescent, two lobes that meet along the middle line.
     for way in (1.0, -1.0):
         tip = (1.5, TAIL_TIP * way)
         blade(m, TAIL, "tail", swept(((1.28, 0.0), (1.36, TAIL_TIP * 0.54 * way), tip),
                                       ((1.395, 0.0), (1.458, TAIL_TIP * 0.353 * way), tip)),
-              upright, SIDE, 0.017, 40 // d, 14 // d)
+              upright, SIDE, 0.017, cut(40, d, 12), cut(14, d, 3, exact=True))
     for sx in (1.0, -1.0):
         # The pectoral fins: held out like wings, swept back and a little down.
         fin = PECTORAL_FIN
@@ -577,7 +667,7 @@ def fins(m, low):
 
         blade(m, PECTORAL, "pectorals", pectoral_point,
               lambda p, root=root, span=span, chord=chord: root + span * p[0] + chord * p[1],
-              facing, 0.012, 40 // d, 12 // d)
+              facing, 0.012, cut(40, d, 10), cut(12, d, 2, exact=True))
         # The pelvic fins: small, under the pectorals, pointing back and down.
         fin = PELVIC_FIN
         root = Vector((sx * 0.032, bottom(fin["x"]) + 0.014, fin["x"] - HALF))
@@ -593,10 +683,12 @@ def fins(m, low):
 
         blade(m, PELVIC, "pelvics", pelvic_point,
               lambda p, root=root, span=span, chord=chord: root + span * p[0] + chord * p[1],
-              facing, 0.007, 14 // d, 8 // d)
+              facing, 0.007, cut(14, d, 4), cut(8, d, 2, exact=True))
 
 
-def make(name, low):
+def make(name, low, level=None):
+    global LEVEL
+    LEVEL = level or ("low" if low else "full")
     m = Mesh()
     body(m, low)
     for sx in (1.0, -1.0):
@@ -700,9 +792,16 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, NAME + ".glb"))
     export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
+    # (the game model, built after the others are written out, so that they come out as they always did)
+    game = make(NAME + "_game", False, "game")
+    export_one(game, os.path.join(OUT, NAME + "_game.glb"))
+    here, out = eye_frame(1.0)
+    print("EYE %s: EYE_MID=vec3(%.5f, %.5f, %.5f) EYE_OUT=vec3(%.5f, %.5f, %.5f) EYE_RADIUS=%.4f" % ((NAME,) + tuple(here) + tuple(out) + (EYE_RADIUS,)))
     low.location.x = LENGTH
+    game.location.x = -LENGTH
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
         render(PREVIEW, [full, low])

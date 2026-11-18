@@ -60,6 +60,33 @@ const WIDTH := 0.28
 	set(value):
 		low = value
 		_show()
+## The game model (added 2026-11-18): about 2,900 triangles against the full model's 73,000, spent
+## where they show (the outline, the head, the eye, the fins' edges), for a game; it looks and works
+## as the full one does, and is lighter than the low model (6,400, an even coarse grid).
+## `low` still shows the low model. Each model is loaded only when it is first shown, so a game
+## that sets this before the node enters the tree never loads the full one.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye (added 2026-11-18): 0 the eye as it always was, 1 a bigger cartoon eye with a
+## white, a gold iris, a teardrop pupil and a level, intent lid (the yellowfin as the keen, sporty
+## one). Any model.
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send(&"cartoon_eyes", cartoon_eyes)
+## Where the cartoon eye looks: x towards the snout (+) or the tail (-), y up (+) or down (-), each
+## -1 to 1.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		_send(&"eye_look", value)
+## The cartoon eye's lid: 0 open, 1 shut (a blink is a quick 0, 1, 0).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send(&"blink", blink)
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set
 ## it yourself.
 var phase := 0.0:
@@ -67,9 +94,26 @@ var phase := 0.0:
 		phase = fposmod(value, 1.0)
 		_send_phase()
 
+static var _game_mesh: Mesh
+
 var _material: ShaderMaterial
-var _full: MeshInstance3D
-var _low: MeshInstance3D
+# (the models shown so far, by suffix: "", "_lo", "_game")
+var _shown := {}
+
+
+## The game model's mesh (one surface, to wear a copy of `material()`), for a game that draws them
+## itself, without the importer's automatic LODs (they would bend in straight pieces far off, the
+## swimming being drawn by the shader).
+static func game_mesh() -> Mesh:
+	if _game_mesh == null:
+		var made := (load(MODEL % "_game") as PackedScene).instantiate()
+		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+		var bare := ArrayMesh.new()
+		for surface in found.mesh.get_surface_count():
+			bare.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, found.mesh.surface_get_arrays(surface))
+		_game_mesh = bare
+		made.free()
+	return _game_mesh
 
 
 func _init() -> void:
@@ -78,13 +122,14 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _mesh_of("")
-	_low = _mesh_of("_lo")
 	_show()
 	_send_phase()
 	_send(&"sway", sway)
 	_send(&"first_dorsal", first_dorsal)
 	_send(&"gape", gape)
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 
 
 ## Each frame, for one that is not having its `phase` set for it: moves it on through its beat.
@@ -101,7 +146,7 @@ func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)
 
 
-## Its one material (both models wear it).
+## Its one material (every model wears it).
 func material() -> ShaderMaterial:
 	return _material
 
@@ -116,22 +161,29 @@ func _send_phase() -> void:
 	_send(&"phase", fposmod(phase * tail_beats, 1.0))
 
 
+# (shows the model asked for, loading it the first time it is shown)
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if not is_node_ready():
+		return
+	var wanted := "_lo" if low else "_game" if game else ""
+	if not _shown.has(wanted):
+		_shown[wanted] = _mesh_of(wanted)
+	for suffix: String in _shown:
+		(_shown[suffix] as MeshInstance3D).visible = suffix == wanted
 
 
 func _mesh_of(suffix: String) -> MeshInstance3D:
-	var scene := load(MODEL % suffix) as PackedScene
-	var made := scene.instantiate()
-	var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = found.mesh
+	if suffix == "_game":
+		mesh.mesh = game_mesh()
+	else:
+		var made := (load(MODEL % suffix) as PackedScene).instantiate()
+		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+		mesh.mesh = found.mesh
+		made.free()
 	mesh.material_override = _material
 	# (its tail swings out past where the still model ends)
 	mesh.extra_cull_margin = 0.3
 	mesh.name = "Tuna" + suffix
-	made.free()
 	add_child(mesh)
 	return mesh
