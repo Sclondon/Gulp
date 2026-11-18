@@ -845,3 +845,13 @@ Claude's.
   words only, never uploaded or kept in the repo): "He shouldn't be too ripped- needs a stocky build". Thick and padded:
   barrel chest, heavy round shoulders and arms without sharp definition, no abs, a solid soft middle, very hairy chest
   and belly. Sheet: `tools/art_src/concept_brother_tpose6.jpg` (replaces tpose5 for the body; tpose5's face stands).
+- Heads and hands from a base mesh (2026-11-18, afternoon): the user asked to "find any free models online to use as
+  reference and look up ways to best generate models" and approved the downloads ("you can download those things").
+  `tools/FIGURE_HEADS.md` is the decision record and method: heads, ears and hands are fitted from Blender Studio's CC0
+  Human Base Meshes (kept outside the repo in `C:\Projects\reference\human-base-meshes`), not lofted; bodies stay ours.
+  Lessons that led there, in the user's words: "why is his jaw just straight flat across? Are you misunderstanding where
+  there jaw is ?" (a head lofted from level rings has no jawline: the outline can match while the forms are missing, so
+  judge in grey beside each sheet view and by landmarks); "See how the head connection is totally messed up and doesn't
+  match reference" (the head was 21% too small with an invented neck: size and place the head from the BODY sheet).
+  The user follows on a phone: send a short line between steps, and do not go quiet during long browser or build work
+  ("I only stopped you because you weren't responding to my messages on my phone").
