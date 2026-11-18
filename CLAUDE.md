@@ -547,3 +547,6 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   athletic build with heavy forearms and old-style forearm tattoos. Hair colour, the user: "it should be dark hair but
   amberish red in the right light" (dark brown curls with amber-red lights where the sun catches them). His sheets
   made earlier (`concept_brother_tpose.jpg`, `_outfits.jpg`) predate this and are to be redone after 8:15 AM.
+- "Dont try to model the beard it should be made with a hair shader" (the user, 2026-11-18): beards, moustaches and
+  head hair on the figures are locks drawn with the shared hair shader (`shaders/ink/hair_ink.gdshader`), never a
+  sculpted mass and never painted onto the face texture. Applies to the captain now and both brothers after.
