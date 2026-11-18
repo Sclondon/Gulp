@@ -40,27 +40,33 @@ const SHAPE := {
 	&"kind": 1,
 	&"body_length": 25.0,
 	&"joint": 23.4,
-	&"corner": 1.45,
-	&"hinge_y": -0.19,
-	&"hinge_spread": 0.22,
+	&"corner": 1.74,
+	&"hinge_y": -0.247,
+	&"hinge_spread": 0.26,
 	&"gape_max": 0.7,
 	&"lift_max": 0.14,
-	&"jaw_from": 0.06,
-	&"mouth_a": -0.11,
-	&"mouth_b": -0.055,
+	&"jaw_from": 0.07,
+	&"mouth_a": -0.143,
+	&"mouth_b": -0.0596,
 	&"reach": 0.02,
 	&"reach_poly": Vector4(0.25, 0.0, 0.5, 0.6),
 	&"wave": 0.5,
 	&"hump_height": 0.85,
-	&"hump_from": 4.0,
-	&"hump_rise": 4.5,
+	&"hump_from": 9.0,
+	&"hump_rise": 4.0,
 	&"hump_wave": 0.45,
-	&"rear_at": 6.6,
-	&"rear_span": 3.6,
-	&"rear_max": 1.3,
-	&"head_at": 2.75,
+	&"rear_at": 10.2,
+	&"rear_span": 3.0,
+	&"rear_max": 1.75,
+	&"neck_at": 6.2,
+	&"neck_span": 2.2,
+	&"neck_keep": 0.55,
+	&"head_at": 3.3,
 	&"head_span": 1.0,
-	&"head_keep": 0.85,
+	&"head_keep": 0.42,
+	&"coil_at": 19.5,
+	&"coil_span": 4.8,
+	&"coil_max": 3.4,
 	&"flap": 0.3,
 	&"trail": 0.07,
 	&"rope_sway": 0.0,
@@ -68,14 +74,14 @@ const SHAPE := {
 	&"plate_from": 100.0,
 	&"plate_to": 100.0,
 	# (EYE_FRAME, as tools/build_sea_serpent.py prints it)
-	&"eye_centre": Vector3(0.30385, 0.3, -10.64),
-	&"eye_out": Vector3(0.9345, 0.3501, -0.0644),
-	&"eye_fwd": Vector3(-0.0604, -0.0226, -0.9979),
-	&"eye_up": Vector3(-0.3508, 0.9364, 0.0),
-	&"eye_sag": 0.4752,
-	&"eye_radius": 0.07,
+	&"eye_centre": Vector3(0.40189, 0.39, -10.27),
+	&"eye_out": Vector3(0.9686, 0.2483, -0.0097),
+	&"eye_fwd": Vector3(-0.0094, -0.0024, -1.0),
+	&"eye_up": Vector3(-0.2483, 0.9687, 0.0),
+	&"eye_sag": 0.3022,
+	&"eye_radius": 0.09,
 	&"eye_grow": 2.3,
-	&"eye_at_side": Vector2(1.86, 0.3),
+	&"eye_at_side": Vector2(2.23, 0.39),
 }
 ## Its colours and its eye's look (sent to the shader; `set_shader_parameter` changes them).
 const LOOK := {
@@ -120,8 +126,8 @@ const LOOK := {
 	set(value):
 		humps = value
 		_send(&"humps", value)
-## Its neck held up: 0 in line with its body (swimming ahead), 1 reared up about 75 degrees, the
-## head bent back down to look ahead.
+## Its neck held up in an S: 0 in line with its body (swimming ahead), 1 reared up (its base rising
+## past upright, its top bending forward again, its head looking ahead), as in the concept picture.
 @export_range(0.0, 1.0) var rear := 0.0:
 	set(value):
 		rear = clampf(value, 0.0, 1.0)
@@ -137,6 +143,12 @@ const LOOK := {
 	set(value):
 		curl = value
 		_send(&"curl", value)
+## Its tail hooked up and round, as in the concept picture: 0 straight, 1 hooked right over (from
+## 19.5 m behind its muzzle).
+@export_range(0.0, 1.0) var coil := 0.0:
+	set(value):
+		coil = clampf(value, 0.0, 1.0)
+		_send(&"coil", coil)
 ## The low model (about an eighth of the full one's triangles), for far off.
 @export var low := false:
 	set(value):
@@ -236,6 +248,7 @@ func _ready() -> void:
 	_send(&"rear", rear)
 	_send(&"gape", gape)
 	_send(&"curl", curl)
+	_send(&"coil", coil)
 
 
 ## Each frame, for one that is not having its `phase` set for it: moves it on through its beat.

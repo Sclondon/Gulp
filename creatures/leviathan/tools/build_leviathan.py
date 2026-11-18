@@ -16,24 +16,32 @@ An original sea monster, 40 m from the tip of its snout to the tip of its tail f
 serpent-whale, built to the concept picture Gulp's session made for it (tools/art_src/concept_monsters.jpg, top
 left), nothing traced:
 
-- THE HEAD: a third of its length, deep and long, a blunt overhanging snout; a huge lower jaw; a small pale eye
-  high over the corner of the mouth; armoured plates and gill ridges drawn by the shader.
-- THE BODY: deepest just behind the head, then a long tapering tail ending in a tall ragged tail fin; a row of
-  serrated fringe along the top and the bottom of the tail; a tattered sail of a dorsal fin.
+- THE SHAPE: massive and hunched: a huge deep head a quarter of its length with a heavy brow ridge over a small pale
+  eye sunk in its socket (both moulded into the skin by `sculpt`), a thick neck rising to the hump of the shoulders
+  (12 m deep, 0.3 of its length), a deep barrel body that tapers only in its last third, a long tail ending in a
+  tall ragged tail fin (the shader can curl it up and round: `coil`).
 - THE MOUTH: the upper head is closed underneath by the roof of the mouth; the LOWER JAW is its own closed part,
   which the shader swings down about the corner of the mouth, very wide (60 degrees: it swallows things), the skull
-  lifting too. Big conical teeth: the upper ones overlap outside the lower jaw (they show with the mouth shut), the
-  lower ones stand inside the upper jaw, between them (they interlock).
-- THE FINS: tattered (ragged trailing edges): two great pectorals, two small pelvics, the dorsal, the tail fin.
-- WHAT IT CARRIES: clusters of barnacles on its back and head, three old harpoons stuck in its back (one with its
-  barbed iron showing) with ropes trailing from them.
+  lifting too. Long uneven conical teeth, each its own size and lean: the upper ones hang outside the lower jaw, the
+  lower ones stand up outside the upper lip between them (they interlock, both rows showing with the mouth shut).
+- THE ARMOUR (modelled, part 11): three overlapping rows of big rounded scutes down each side (biggest along the
+  back, smaller down the flanks and the tail), each lifted at its back edge like a shingle, its outline a little
+  uneven; keeled plates along the spine; four heavy ribbed plates at the gill, one over the jaw's hinge, a few on the
+  crown and cheek. The belly's long grooved scutes are painted by the shader.
+- THE FINS, tattered (trailing edges torn into split rays, holes torn through): long pectorals hanging down and
+  back, pelvics, a great dorsal sail on the hump, the tail fin, saw-toothed fringes along the top and bottom of the
+  tail.
+- WHAT IT CARRIES: a crusted barnacle colony on the shoulders (barnacles of many sizes, crowded, on top of the
+  scutes) and smaller clusters on the crown and flank; five old harpoons at all angles (two with their barbed iron
+  outward), two with ropes wrapped up over the back and down the far side with loose ends trailing, two with ropes
+  trailing; an old ship's anchor hooked into its left flank by one arm, a rope hanging from its ring.
 
 Everything here is in Godot space (metres, Y up, its nose at -Z) until it is written out; the origin is on its
 middle line, half way along (20 m behind the tip of its snout). `xm` below is metres behind that tip.
 
 What a point is, for the shader (the parts are the same for every creature that wears sea_monster.gdshader): UV2.y
 the part (0 body, 1 lower jaw, 2 an upper tooth, 3 a lower tooth, 4 a fin, 5 weed, 6 a pectoral fin, 7 an eye, 8 a
-barnacle, 9 a harpoon, 10 a rope). UV2.x: on the body and the jaw, how much the point is inside the mouth (0 skin, 1
+barnacle, 9 a harpoon or the anchor, 10 a rope, 11 an armour scute). UV2.x: on the body and the jaw, how much the point is inside the mouth (0 skin, 1
 the roof or the floor of the mouth); on a harpoon, 1 on its iron. UV, on the body and jaw: x how far along (0 the tip
 to 1 the tail), y how high on its side (1 the ridge of the back, 0 the keel of the belly); on a fin: x root (0) to tip
 (1), y leading (0) to trailing edge (1); on an eye: x middle (0) to rim (1); on a rope or weed: x from where it is tied
@@ -58,63 +66,70 @@ PREVIEW = ARGS[0] if ARGS else ""
 NAME = "leviathan"
 LENGTH = 40.0
 HALF = 20.0
-BODY, JAW, TOOTH_UP, TOOTH_LOW, FIN, WEED, PECTORAL, EYE, BARNACLE, HARPOON, ROPE = range(11)
+BODY, JAW, TOOTH_UP, TOOTH_LOW, FIN, WEED, PECTORAL, EYE, BARNACLE, HARPOON, ROPE, SCUTE = range(12)
 TAU = math.tau
 PI = math.pi
 
 # The whole outline, lower jaw and all: metres behind the tip, the height of the ridge of its back, the height
-# of the keel of its belly, half its width.
+# of the keel of its belly, half its width. Massive and hunched, as the concept: a huge deep head a quarter of its
+# length, a thick neck rising to the hump of the shoulders (12 m deep there, 0.3 of its length), a deep barrel body
+# that only tapers in its last third, then the tail.
 PROFILE = [
-    (0.0, -0.25, -0.85, 0.35),
-    (0.3, 0.15, -1.50, 0.85),
-    (1.0, 0.55, -2.20, 1.35),
-    (2.2, 1.00, -2.85, 1.85),
-    (3.8, 1.50, -3.40, 2.30),
-    (5.8, 2.05, -3.85, 2.70),
-    (7.8, 2.62, -4.15, 3.00),
-    (9.6, 3.20, -4.30, 3.15),
-    (11.4, 4.05, -4.60, 3.35),
-    (14.0, 5.10, -5.10, 3.55),
-    (17.0, 5.30, -5.00, 3.45),
-    (20.5, 4.80, -4.30, 3.05),
-    (24.5, 3.80, -3.20, 2.40),
-    (28.5, 2.80, -2.35, 1.85),
-    (32.0, 2.00, -1.65, 1.30),
-    (35.0, 1.40, -1.10, 0.85),
-    (37.0, 0.90, -0.70, 0.48),
-    (38.3, 0.50, -0.38, 0.20),
-    (38.8, 0.25, -0.18, 0.06),
+    (0.0, -0.30, -1.20, 0.40),
+    (0.3, 0.30, -2.00, 1.00),
+    (1.0, 0.90, -2.80, 1.60),
+    (2.2, 1.60, -3.50, 2.15),
+    (3.8, 2.40, -4.10, 2.60),
+    (5.8, 3.20, -4.60, 2.95),
+    (7.8, 3.90, -4.95, 3.20),
+    (9.6, 4.60, -5.20, 3.45),
+    (11.4, 5.35, -5.50, 3.75),
+    (14.0, 6.10, -5.85, 4.10),
+    (17.0, 6.20, -5.90, 4.20),
+    (20.5, 5.90, -5.70, 4.10),
+    (24.0, 5.30, -5.10, 3.70),
+    (27.0, 4.30, -4.10, 3.00),
+    (30.0, 3.20, -3.00, 2.20),
+    (33.0, 2.20, -2.00, 1.45),
+    (35.5, 1.40, -1.20, 0.85),
+    (37.3, 0.80, -0.65, 0.42),
+    (38.4, 0.40, -0.30, 0.16),
+    (38.8, 0.20, -0.15, 0.05),
 ]
 BODY_FROM = 0.0
 BODY_TO = 38.8
-# (the snout overhangs the lower jaw: the lower jaw starts here)
-JAW_FROM = 0.55
+# (the snout overhangs the lower jaw a little: the lower jaw starts here)
+JAW_FROM = 0.35
 
 # As the shader has it: the corner of the mouth (where the lower jaw hinges), how far behind it the jaw's bend is
 # spread, the eye (metres behind the tip, metres up) and its radius; where the tail fin is hinged.
-CORNER = 10.2
-WALL = 1.3
-EYE_AT = (7.0, 1.2)
-EYE_RADIUS = 0.36
-JOINT = 37.2
+CORNER = 9.0
+WALL = 1.4
+EYE_AT = (6.55, 1.75)
+EYE_RADIUS = 0.3
+JOINT = 37.4
 # The lips' gap, how far the roof of the mouth is arched (of half its width), how far behind the corner of the
 # mouth the jaw runs on inside the body.
 GAP = 0.02
 VAULT = 0.3
 JAW_TAIL = 1.2
-# The teeth along the lips: how many each side of each jaw, from where to where, how thick, how long; the upper
-# ones stand this far out from the lip (over the outside of the lower jaw), the lower ones this far in.
-TEETH = 10
-TEETH_FROM = 0.75
-TEETH_TO = 9.2
-TOOTH_RADIUS = 0.3
-TOOTH_LONG = 1.05
-TOOTH_IN = 0.3
+# The teeth along the lips: how many each side of each jaw, from where to where, how thick, how long; the lower
+# ones stand this far in from the lip. Each tooth's size and lean are a little different (uneven, as the concept).
+TEETH = 9
+TEETH_FROM = 0.55
+TEETH_TO = 8.2
+TOOTH_RADIUS = 0.38
+TOOTH_LONG = 1.3
+TOOTH_IN = 0.32
+# The brow: a heavy ridge over the eye (its middle, metres behind the tip and up, how far along and how high it
+# spreads, how far it stands out), and the socket the eye sits sunk in.
+BROW = (7.0, 2.3, 1.7, 0.5, 1.05)
+SOCKET = (6.55, 1.75, 0.6, 0.5, 0.3)
 
 
 def mouth_y(xm):
     """The line of the mouth, as the shader has it: falling back along the head, below its middle."""
-    return -0.42 - 0.105 * xm
+    return -0.8 - 0.1 * xm
 
 
 def to_b(p):
@@ -182,11 +197,11 @@ def outline(xm):
 
 # As the shader has it: where the armour bands begin, how long the first is, how much shorter they grow towards
 # the tail (see plate_phase), how far a band swells (of the body's size), and where they end.
-PLATE_FROM = 11.6
-PLATE_LONG = 2.6
-PLATE_GROW = 0.3
-PLATE_SWELL = 0.04
-PLATE_TO = 36.0
+PLATE_FROM = 100.0
+PLATE_LONG = 1.0
+PLATE_GROW = 0.001
+PLATE_SWELL = 0.0
+PLATE_TO = 100.0
 
 
 def plate_phase(xm):
@@ -215,7 +230,7 @@ def bottom(xm):
 def _shape(xm):
     """The exponents of the section: (sides, top and bottom): under 1 fuller, boxier (the armoured trunk), over
     1 to an edge (the tail stock)."""
-    px = 0.78 + 0.7 * smooth(28.0, 37.0, xm)
+    px = 0.8 + 0.6 * smooth(30.0, 37.5, xm)
     py = 0.9 - 0.1 * (1.0 - smooth(0.5, 4.0, xm))
     return px, py
 
@@ -249,6 +264,13 @@ def angle_at(xm, level):
 
 
 def sculpt(xm, x, y):
+    """The skin moved out by the brow ridge and in by the eye's socket (on the head's sides only)."""
+    bx, by, bl, bh, bo = BROW
+    sx_, sy_, sl, sh, so = SOCKET
+    push = bo * math.exp(-((xm - bx) / bl) ** 2 - ((y - by) / bh) ** 2)
+    push -= so * math.exp(-((xm - sx_) / sl) ** 2 - ((y - sy_) / sh) ** 2)
+    if abs(x) > 1e-6:
+        x += math.copysign(push * min(1.0, abs(x) / 0.6), x)
     return Vector((x, y, xm - HALF))
 
 
@@ -335,10 +357,10 @@ GAME_R = 2
 
 def game_longest(xm):
     if xm < CORNER + 1.0:
-        return 1.3
-    if xm < 24.0:
-        return 2.6
-    return 1.6
+        return 1.0
+    if xm < 26.0:
+        return 2.0
+    return 1.1
 
 
 def game_angle(j, k, lip):
@@ -376,11 +398,11 @@ def band_marks(shares):
 def rings(lod):
     if lod == "game":
         return pick(rings("full"), lambda xm: (*outline(xm), clip_y(xm)), GAME_TOL, game_longest,
-                    keep=(CORNER, CORNER + WALL, *band_marks((0.0, 0.14))))
+                    keep=(CORNER, CORNER + WALL, 5.0, 6.0, 6.9, 7.8, 8.5))
     xs = []
     x = BODY_FROM
     trunk = (PLATE_FROM + 0.8, PLATE_TO - 0.5)
-    for until, step in ((1.2, 0.12), (CORNER + WALL + 0.4, 0.46), (30.0, 0.36), (BODY_TO, 0.36)):
+    for until, step in ((1.2, 0.12), (CORNER + WALL + 0.4, 0.42), (27.0, 0.7), (BODY_TO, 0.4)):
         if lod == "low":
             step *= 3.2
         n = max(1, round((until - x) / step))
@@ -434,7 +456,7 @@ def cap(m, part, row, tip, extra, way, name):
 def body(m, lod):
     """The body's skin, with the roof of the mouth: columns 0 (the ridge of the back) to K (the lip) down each
     side, then R more across the roof to its middle."""
-    k, r = {"full": (18, 4), "low": (8, 2), "game": (GAME_K, GAME_R)}[lod]
+    k, r = {"full": (14, 4), "low": (8, 2), "game": (GAME_K, GAME_R)}[lod]
     rows = []
     xs = rings(lod)
     for xm in xs:
@@ -467,7 +489,7 @@ def body(m, lod):
 def jaw(m, lod):
     """The lower jaw: columns 0 (the middle of the floor of the mouth) to R (the lip), then K more down the outside
     to the keel of the chin."""
-    k, r, count = {"full": (14, 4, 44), "low": (5, 2, 12), "game": (8, 2, 20)}[lod]
+    k, r, count = {"full": (12, 3, 34), "low": (5, 2, 12), "game": (8, 2, 20)}[lod]
     rows = []
     to = CORNER + JAW_TAIL
     for i in range(count + 1):
@@ -536,7 +558,7 @@ def cone(m, part, base, axis, radius, long, sides, levels, name, extra=0.0, hook
 
 
 def teeth(m, lod):
-    count = {"full": TEETH, "low": 7, "game": 9}[lod]
+    count = {"full": TEETH, "low": 6, "game": 8}[lod]
     sides = 6 if lod == "full" else 4
     levels = [(0.0, 1.0), (0.45, 0.72)] if lod == "full" else [(0.0, 1.0)]
     pitch = (TEETH_TO - TEETH_FROM) / count
@@ -545,24 +567,27 @@ def teeth(m, lod):
         # (a great fang third from the front, big along the middle of the jaw, smaller at the back)
         size = 0.75 + 0.35 * math.exp(-((f - 0.18) / 0.1) ** 2) + 0.25 * smooth(0.0, 0.4, f) - 0.45 * smooth(0.65, 1.0, f)
         for sx in (1.0, -1.0):
-            # the upper jaw's: rooted in the lip, hanging down and a little out, over the outside of the
-            # lower jaw (they show with the mouth shut)
+            # (uneven: each tooth its own size and lean)
+            k = i * 17 + (5 if sx > 0 else 11)
+            up_size = size * (0.72 + 0.56 * hash1(k))
+            lo_size = size * (0.72 + 0.56 * hash1(k + 3))
+            # the upper jaw's: rooted in the lip, hanging down and out, over the outside of the lower jaw
             xm = TEETH_FROM + pitch * (i + 0.25)
             lx, ly = section(xm, angle_at(xm, mouth_y(xm)))
-            base = Vector((sx * (lx - TOOTH_RADIUS * size * 0.6), ly + TOOTH_LONG * 0.25 * size, xm - HALF))
-            cone(m, TOOTH_UP, base, Vector((sx * 0.22, -1.0, 0.08)).normalized(), TOOTH_RADIUS * size,
-                 TOOTH_LONG * size * 1.35, sides, levels, "upper teeth", hook=0.12 * size)
-            # the lower jaw's: standing on the floor of the mouth just in from the lip, between the upper ones
-            # (inside the upper jaw with the mouth shut)
+            base = Vector((sx * (lx - TOOTH_RADIUS * up_size * 0.6), ly + TOOTH_LONG * 0.25 * up_size, xm - HALF))
+            lean = Vector((sx * (0.22 + 0.12 * hash1(k + 1)), -1.0, 0.25 * (hash1(k + 2) - 0.5)))
+            cone(m, TOOTH_UP, base, lean.normalized(), TOOTH_RADIUS * up_size,
+                 TOOTH_LONG * up_size * 1.35, sides, levels, "upper teeth", hook=0.12 * up_size)
+            # the lower jaw's: rooted in the outer edge of the lower lip between the upper ones, standing up and
+            # out past the upper lip (they interlock with the upper ones, showing with the mouth shut)
             xm = TEETH_FROM + pitch * (i + 0.75)
-            if xm < JAW_FROM + 0.3:
+            if xm < JAW_FROM + 0.4 or xm > CORNER - 0.3:
                 continue
             lx, ly = section(xm, angle_at(xm, mouth_y(xm) - GAP))
-            x = lx * 0.97 - TOOTH_IN * size
-            if x > TOOTH_RADIUS:
-                base = Vector((sx * x, ly - TOOTH_LONG * 0.2, xm - HALF))
-                cone(m, TOOTH_LOW, base, Vector((sx * 0.08, 1.0, -0.05)).normalized(), TOOTH_RADIUS * size * 0.95,
-                     min(TOOTH_LONG * size * 1.55, 0.55 * (top(xm) - ly)), sides, levels, "lower teeth", hook=-0.1 * size)
+            base = Vector((sx * (lx * 0.97 - TOOTH_RADIUS * lo_size * 0.2), ly - TOOTH_LONG * 0.25 * lo_size, xm - HALF))
+            lean = Vector((sx * (0.26 + 0.12 * hash1(k + 4)), 1.0, 0.25 * (hash1(k + 5) - 0.5)))
+            cone(m, TOOTH_LOW, base, lean.normalized(), TOOTH_RADIUS * lo_size * 0.95,
+                 TOOTH_LONG * lo_size * 1.25, sides, levels, "lower teeth", hook=-0.1 * lo_size)
 
 
 def on_skin(xm, y, sx):
@@ -657,11 +682,12 @@ def ragged(depth, seed, keep_tip=True):
     return f
 
 
-def blade(m, part, name, point, place, facing, thick, nt, nu, tip_gather=1.0, extra=0.0, rag=None):
+def blade(m, part, name, point, place, facing, thick, nt, nu, tip_gather=1.0, extra=0.0, rag=None, holes=None):
     """A fin: a thin closed blade. `point(t, u)` is a place in the fin's own flat (t 0 at its root to 1 at its tip,
     u 0 at its leading edge to 1 at its trailing edge), `place` puts that in the model, `facing` is the way one of
     its two skins faces. It is `thick` at its root, a foil across, thinning to nothing at its tip. `rag(t, ti, nt)`
-    tears its trailing edge back."""
+    tears its trailing edge back; where `holes(ti, ui, nt, nu)` is true, a quad is left out of both skins (a hole
+    torn through it)."""
     for side in (1.0, -1.0):
         grid = []
         for ti in range(nt + 1):
@@ -677,6 +703,8 @@ def blade(m, part, name, point, place, facing, thick, nt, nu, tip_gather=1.0, ex
             grid.append(row)
         for ti in range(nt):
             for ui in range(nu):
+                if holes and holes(ti, ui, nt, nu):
+                    continue
                 m.face((grid[ti][ui], grid[ti][ui + 1], grid[ti + 1][ui + 1], grid[ti + 1][ui]), facing * side, name)
 
 
@@ -703,7 +731,7 @@ SIDE = Vector((1.0, 0.0, 0.0))
 UP = Vector((0.0, 1.0, 0.0))
 
 
-def flipper(m, part, name, sx, at, level, length, chord, sweep, out_down, thick, nt, nu, g, rag):
+def flipper(m, part, name, sx, at, level, length, chord, sweep, out_down, thick, nt, nu, g, rag, holes=None):
     """A side fin: broad, swept back, held out and down. Its root is at `at` metres behind the tip, `level` up, a
     little inside the skin."""
     x, y = section(at, angle_at(at, level))
@@ -720,7 +748,8 @@ def flipper(m, part, name, sx, at, level, length, chord, sweep, out_down, thick,
         wide = chord * (1.0 - t ** 1.6) ** 0.55 * (1.0 + 0.35 * t) + 0.02
         return (length * t, lead + wide * u - 0.3 * chord * (1.0 - t))
 
-    blade(m, part, name, point, lambda p: root + span * p[0] + chord_way * p[1], facing, thick, nt, nu, g, rag=rag)
+    blade(m, part, name, point, lambda p: root + span * p[0] + chord_way * p[1], facing, thick, nt, nu, g, rag=rag,
+          holes=holes)
 
 
 def ridge(m, name, x0, x1, base, height, inset, lean, nu, nt, spikes, way):
@@ -757,6 +786,16 @@ def ridge(m, name, x0, x1, base, height, inset, lean, nu, nt, spikes, way):
                 m.face((grid[ti][ui], grid[ti][ui + 1], grid[ti + 1][ui + 1], grid[ti + 1][ui]), SIDE * side, name)
 
 
+def holes_at(spots):
+    """Holes torn through a fin: each spot is (t from, t to, u from, u to), shares of the fin's span and chord; a
+    quad whose middle falls in one is left out."""
+    def f(ti, ui, nt, nu):
+        t = (ti + 0.5) / nt
+        u = (ui + 0.5) / nu
+        return any(t0 <= t <= t1 and u0 <= u <= u1 for t0, t1, u0, u1 in spots)
+    return f
+
+
 def fins(m, lod):
     full = lod == "full"
     low = lod == "low"
@@ -764,61 +803,155 @@ def fins(m, lod):
     def n(full_n, game_n, low_n):
         return full_n if full else (low_n if low else game_n)
 
-    g = 1.3 if lod == "game" else 1.0
-    # The tail fin: a tall ragged upper lobe and a smaller lower one, upright.
-    up_tip = (40.0, 4.6)
-    blade(m, FIN, "tail fin", swept(((35.6, top(35.6) - 0.15), (37.6, 2.6), up_tip),
-                                    ((38.2, top(38.2) - 0.1), (38.9, 1.2), up_tip)),
-          upright, SIDE, 0.4, n(18, 9, 5), n(8, 4, 2), g, rag=ragged(0.5, 3) if not low else None)
-    lo_tip = (39.5, -2.9)
-    blade(m, FIN, "tail fin", swept(((36.2, bottom(36.2) + 0.15), (37.8, -1.9), lo_tip),
-                                    ((38.4, bottom(38.4) + 0.08), (38.9, -1.0), lo_tip)),
-          upright, SIDE, 0.35, n(12, 7, 4), n(6, 3, 2), g, rag=ragged(0.45, 11) if not low else None)
-    # The dorsal: a tattered sail on the hump of the back, raked back.
-    blade(m, FIN, "dorsal fin", swept(((13.2, top(13.2) - 0.3), (15.2, 7.0), (18.8, 9.3)),
-                                      ((20.6, top(20.6) - 0.3), (20.4, 6.6), (18.8, 9.3))),
-          upright, SIDE, 0.35, n(16, 8, 4), n(10, 5, 2), g, rag=ragged(0.4, 21) if not low else None)
-    # The fringes along the top and the bottom of the tail.
-    ridge(m, "tail ridge", 23.0, 36.0, top, lambda u: 1.3 - 0.5 * u, 0.25, 0.35,
-          n(26, 16, 6), 1, n(13, 8, 3), 1.0)
-    ridge(m, "keel ridge", 27.0, 36.4, bottom, lambda u: 0.9 - 0.3 * u, 0.25, 0.3,
-          n(18, 12, 4), 1, n(9, 6, 2), -1.0)
-    # (the shoulders' row of armoured spines, ahead of the dorsal)
-    ridge(m, "back spines", 9.6, 13.4, top, lambda u: 0.55, 0.15, 0.2, n(10, 6, 2), 1, n(5, 3, 1), 1.0)
+    def torn(spots):
+        return None if low else holes_at(spots)
+
+    def rag(depth, seed):
+        return None if low else ragged(depth, seed)
+
+    g = 1.25 if lod == "game" else 1.0
+    # The tail fin: a tall ragged upper lobe and a smaller lower one, upright, torn through.
+    up_tip = (40.0, 5.4)
+    blade(m, FIN, "tail fin", swept(((34.8, top(34.8) - 0.15), (37.3, 3.2), up_tip),
+                                    ((38.2, top(38.2) - 0.1), (38.9, 1.5), up_tip)),
+          upright, SIDE, 0.3, n(20, 11, 5), n(9, 5, 2), g, rag=rag(0.65, 3), holes=torn([(0.45, 0.6, 0.3, 0.62)]))
+    lo_tip = (39.6, -3.8)
+    blade(m, FIN, "tail fin", swept(((35.6, bottom(35.6) + 0.15), (37.6, -2.5), lo_tip),
+                                    ((38.4, bottom(38.4) + 0.08), (38.9, -1.2), lo_tip)),
+          upright, SIDE, 0.25, n(14, 8, 4), n(7, 4, 2), g, rag=rag(0.6, 11))
+    # The dorsal: a great tattered sail on the hump, raked back, holed.
+    blade(m, FIN, "dorsal fin", swept(((14.6, top(14.6) - 0.4), (16.4, 10.8), (19.8, 12.8)),
+                                      ((24.8, top(24.8) - 0.4), (24.2, 9.9), (19.8, 12.8))),
+          upright, SIDE, 0.3, n(18, 11, 4), n(12, 6, 2), g, rag=rag(0.55, 21),
+          holes=torn([(0.5, 0.64, 0.35, 0.55), (0.28, 0.4, 0.62, 0.8), (0.76, 0.86, 0.15, 0.4)]))
+    # The fringes along the top and the bottom of the tail, long and saw-toothed.
+    ridge(m, "tail ridge", 25.4, 36.4, top, lambda u: 2.3 - 1.3 * u, 0.3, 0.45,
+          n(28, 18, 6), 1, n(14, 9, 3), 1.0)
+    ridge(m, "keel ridge", 27.5, 36.8, bottom, lambda u: 1.5 - 0.8 * u, 0.3, 0.4,
+          n(20, 12, 4), 1, n(10, 6, 2), -1.0)
     for sx in (1.0, -1.0):
-        # The pectorals: great tattered fins swept back and down behind the jaw; the pelvics, small, under the trunk.
-        flipper(m, PECTORAL, "pectoral fins", sx, 13.0, -2.3, 7.4, 3.6, 3.4, 0.75, 0.35, n(16, 9, 4), n(8, 4, 2), g,
-                ragged(0.55, 31 if sx > 0 else 47) if not low else None)
-        flipper(m, FIN, "pelvic fins", sx, 23.5, -1.8, 3.4, 1.7, 1.4, 1.1, 0.25, n(10, 5, 3), n(5, 3, 2), g,
-                ragged(0.4, 53 if sx > 0 else 59) if not low else None)
+        s = 31 if sx > 0 else 47
+        # The pectorals: long tattered fins hanging down and back behind the jaw, torn into split rays and holed.
+        flipper(m, PECTORAL, "pectoral fins", sx, 13.6, -3.9, 11.5, 5.2, 5.4, 1.0, 0.3, n(18, 12, 4), n(9, 6, 2), g,
+                rag(0.7, s), torn([(0.42, 0.56, 0.35, 0.6), (0.68, 0.8, 0.18, 0.42), (0.28, 0.36, 0.62, 0.8)]))
+        flipper(m, FIN, "pelvic fins", sx, 26.0, -3.1, 5.2, 2.6, 2.3, 1.1, 0.22, n(12, 7, 3), n(6, 3, 2), g,
+                rag(0.55, s + 22), torn([(0.5, 0.68, 0.3, 0.62)]))
 
 
-# Barnacles: (metres behind the tip, the angle round the body from the ridge, which side, radius).
-BARNACLES = [
-    (15.2, 0.12, 1, 0.6), (15.9, 0.26, 1, 0.5), (16.5, 0.08, -1, 0.58), (15.0, 0.3, -1, 0.42),
-    (16.9, 0.36, 1, 0.42), (17.4, 0.18, -1, 0.5), (14.4, 0.2, 1, 0.4), (17.9, 0.05, 1, 0.38),
-    (16.2, 0.45, 1, 0.34), (14.8, 0.46, -1, 0.36),
-    (5.4, 0.2, 1, 0.34), (5.9, 0.32, 1, 0.26), (6.2, 0.15, -1, 0.3),
-    (21.5, 0.6, 1, 0.38), (22.2, 0.7, 1, 0.3), (24.0, 0.55, -1, 0.36), (11.8, 0.9, -1, 0.3),
-]
+def skin_point(xm, theta, lift):
+    """A point `lift` metres out from the skin, `theta` round from the ridge of the back: 0 to half a turn down
+    its right side to the keel, on round its left side to a whole turn (so a rope can go right round it)."""
+    x, y = section(xm, theta)
+    here = sculpt(xm, x, y)
+    _, out = skin_frame(xm, theta, 1.0)
+    return here + out * lift
 
 
-def barnacle(m, xm, angle, sx, radius, sides, lod):
-    """An acorn barnacle: a short cone of plates standing out of the skin, a crater in its top."""
+def scute(m, xm, angle, sx, along, across, lift, dome, sides, lod, seed, name="scutes"):
+    """An armour scute: a rounded plate lying on the skin, its outline a little uneven, domed (or keeled, when
+    `dome` is tall beside its size), its back edge lifted by `lift` (so a row overlaps like shingles), a skirt
+    sinking its edge into the skin. UV.x 0 at its crown to 1 at its rim; UV2.x a number of its own (for its tint)."""
     here, out = skin_frame(xm, angle, sx)
+    up, down, wide = outline(xm)
+    r = max(0.6, 0.5 * (wide + 0.5 * (up - down)))
+    da = across * 0.5 / r
+    jit = hash1(seed)
+    rim = []
+    mid = []
+    skirt = []
+    full = lod == "full"
+    for k in range(sides):
+        th = k / sides * TAU + 0.5 * jit
+        a = math.cos(th)
+        b = math.sin(th)
+        wob = 1.0 + 0.14 * math.sin(th * 3.0 + seed * 1.7)
+        x2 = xm + a * along * 0.5 * wob
+        ang = angle + b * da * wob
+        p, o = skin_frame(x2, ang, sx)
+        h = 0.06 + lift * (a + 1.0) * 0.5
+        rim.append(m.add(p + o * h, (1.0, high_of(x2, p.y)), SCUTE, jit))
+        skirt.append(m.add(p - o * 0.15, (1.0, high_of(x2, p.y)), SCUTE, jit))
+        if full:
+            x3 = xm + a * along * 0.3 * wob
+            p3, o3 = skin_frame(x3, angle + b * da * 0.6 * wob, sx)
+            mid.append(m.add(p3 + o3 * (h * 0.6 + dome * 0.72), (0.6, high_of(x3, p3.y)), SCUTE, jit))
+    crown = m.add(here + out * (dome + lift * 0.5), (0.0, high_of(xm, here.y)), SCUTE, jit)
+    ring = mid if full else rim
+    for k in range(sides):
+        nx = (k + 1) % sides
+        m.face((crown, ring[k], ring[nx]), out, name)
+        if full:
+            m.face((mid[k], rim[k], rim[nx], mid[nx]), out, name)
+        side_mid = (m.verts[rim[k]] + m.verts[rim[nx]]) * 0.5
+        m.face((rim[k], skirt[k], skirt[nx], rim[nx]), side_mid - here, name)
+
+
+def size_at(xm):
+    """How big the armour is here beside the shoulders (its scutes shrink down the tail and on the snout)."""
+    up, down, wide = outline(xm)
+    return max(0.32, min(1.0, (up - down) / 12.0))
+
+
+def armour(m, lod):
+    sides = {"full": 7, "game": 6, "low": 5}[lod]
+    seed = 0
+    # Rows of big rounded scutes down each side (biggest along the back, smaller down the flanks), each row half a
+    # scute on from the last, overlapping along the row.
+    rows = [
+        (0.4, 3.4, 3.2, 0.4, 0.5, 9.6, 35.5, 0.0),
+        (0.9, 2.9, 2.8, 0.34, 0.42, 10.4, 34.5, 0.5),
+        (1.38, 2.3, 2.3, 0.28, 0.34, 11.2, 33.0, 0.0),
+    ]
+    if lod == "low":
+        rows = rows[:2]
+    for angle, along, across, lift, dome, x0, x1, off in rows:
+        for sx in (1.0, -1.0):
+            xm = x0 + off * along * 0.8 * size_at(x0)
+            while xm < x1:
+                sc = size_at(xm)
+                if not (lod == "game" and xm > 32.0):
+                    seed += 1
+                    scute(m, xm, angle, sx, along * sc, across * sc, lift * sc, dome * sc, sides, lod, seed)
+                xm += along * sc * 0.8
+    # The keeled plates along the spine: from the crown of the head to the dorsal, and on down the tail to its fringe.
+    for x0, x1 in ((3.0, 14.2), (25.0, 26.4)):
+        xm = x0
+        while xm < x1:
+            sc = size_at(xm)
+            seed += 1
+            scute(m, xm, 0.0, 1.0, 2.4 * sc, 1.5 * sc, 0.3 * sc, 1.15 * sc, sides, lod, seed, "spine plates")
+            xm += 2.0 * sc
+    # Heavy ribbed plates at the gill: four tall overlapping plates behind the corner of the mouth, each lifting
+    # at its back edge; and a round plate over the hinge of the jaw.
+    for sx in (1.0, -1.0):
+        for i in range(4):
+            xm = CORNER + 1.0 + i * 0.85
+            seed += 1
+            scute(m, xm, 1.42, sx, 1.2, 5.0 - 0.4 * i, 0.4, 0.3, sides, lod, seed, "gill plates")
+        seed += 1
+        scute(m, CORNER - 0.6, angle_at(CORNER - 0.6, mouth_y(CORNER) + 1.1), sx, 2.2, 2.0, 0.2, 0.35, sides, lod,
+              seed, "hinge plates")
+        # (a few plates on the crown and the cheek)
+        for xm, lev, size in ((3.4, 1.4, 1.6), (4.9, 2.2, 1.7), (8.3, 3.2, 1.9)):
+            seed += 1
+            scute(m, xm, angle_at(xm, lev), sx, size, size * 0.9, 0.18, 0.28, sides, lod, seed, "head plates")
+
+
+def barnacle(m, here, out, radius, sides, seed):
+    """An acorn barnacle: a short cone of plates standing on `here`, facing `out`, a crater in its top."""
     side = out.cross(Vector((0.0, 0.0, 1.0)))
     if side.length < 1e-6:
         side = Vector((1.0, 0.0, 0.0))
     side.normalize()
     other = out.cross(side).normalized()
-    tall = radius * 1.0
-    levels = [(-0.25 * radius, radius * 1.05), (tall, radius * 0.62), (tall * 0.72, radius * 0.36)]
+    tall = radius * (0.8 + 0.5 * hash1(seed))
+    levels = [(-0.3 * radius, radius * 1.05), (tall, radius * 0.6), (tall * 0.7, radius * 0.34)]
     rows = []
     for k, (h, r) in enumerate(levels):
         row = []
         for s in range(sides):
-            a = s / sides * TAU + 0.3 * k
-            wob = 1.0 + 0.12 * math.sin(a * 3.0 + xm)
+            a = s / sides * TAU + 0.3 * k + seed
+            wob = 1.0 + 0.15 * math.sin(a * 3.0 + seed)
             p = here + out * h + (side * math.cos(a) + other * math.sin(a)) * r * wob
             row.append(m.add(p, (k / 2.0, 0.0), BARNACLE))
         rows.append(row)
@@ -830,25 +963,56 @@ def barnacle(m, xm, angle, sx, radius, sides, lod):
         m.face((a[s], a[nx], b[nx], b[s]), mid - (here + out * (mid - here).dot(out)), "barnacles")
         c = rows[2]
         m.face((b[s], b[nx], c[nx], c[s]), out, "barnacles")
-    centre = m.add(here + out * (tall * 0.45), (1.0, 0.0), BARNACLE, 1.0)
+    centre = m.add(here + out * (tall * 0.4), (1.0, 0.0), BARNACLE, 1.0)
     for s in range(sides):
         nx = (s + 1) % sides
         m.face((rows[2][s], rows[2][nx], centre), out, "barnacles")
 
 
+def barnacles(m, lod):
+    """A crusted colony on the shoulders (many sizes, crowded, on top of the scutes), and a few smaller clusters on
+    the crown of the head and down the flanks."""
+    count = {"full": 50, "game": 24, "low": 12}[lod]
+    colonies = [(15.0, 0.0, 2.6, 0.55, 1.0), (5.4, 0.25, 1.0, 0.25, 0.12), (22.5, 0.75, 1.4, 0.25, 0.14)]
+    i = 0
+    for cx, ca, spread_x, spread_a, share in colonies:
+        for k in range(max(3, int(count * share)) if share < 1.0 else count):
+            i += 1
+            u = hash1(i * 3 + 1) * 2.0 - 1.0
+            v = hash1(i * 3 + 2) * 2.0 - 1.0
+            xm = cx + u * spread_x * (0.4 + 0.6 * abs(v))
+            theta = ca + v * spread_a
+            sx = 1.0
+            if share < 1.0 and i % 2:
+                theta = -theta
+            # (most small, a few big)
+            radius = 0.14 + 0.62 * hash1(i * 3 + 3) ** 2.2
+            if lod == "game" and radius < 0.2 and i % 3:
+                radius = 0.2
+            here, out = skin_frame(xm, theta, sx)
+            sides = (7 if radius > 0.3 else 5) if lod == "full" else (5 if radius > 0.35 else 4)
+            barnacle(m, here + out * 0.32, out, radius, sides, i)
+
+
 def tube(m, part, points, radius, sides, name, extra=0.0, cap_end=True, along=None):
-    """A thin tube through `points` (a rope, a shaft); UV.x from 0 at the first point to 1 at the last."""
+    """A thin tube through `points` (a rope, a shaft); UV.x from 0 at the first point to 1 at the last (or `along`)."""
     rows = []
     n = len(points)
+    side = None
     for i, p in enumerate(points):
         a = points[max(0, i - 1)]
         b = points[min(n - 1, i + 1)]
         way = (b - a).normalized()
-        ref = Vector((0.0, 1.0, 0.0)) if abs(way.y) < 0.9 else Vector((1.0, 0.0, 0.0))
-        side = way.cross(ref).normalized()
+        # (its cross-section carried along without twisting: each ring's side is the last one's, squared to
+        # the new way)
+        if side is None:
+            ref = Vector((0.0, 1.0, 0.0)) if abs(way.y) < 0.9 else Vector((1.0, 0.0, 0.0))
+            side = way.cross(ref).normalized()
+        else:
+            side = (side - way * side.dot(way)).normalized()
         other = way.cross(side).normalized()
         u = i / (n - 1) if along is None else along[i]
-        r = radius(u) if callable(radius) else radius
+        r = radius(i / (n - 1)) if callable(radius) else radius
         row = []
         for s in range(sides):
             ang = s / sides * TAU
@@ -865,73 +1029,141 @@ def tube(m, part, points, radius, sides, name, extra=0.0, cap_end=True, along=No
             m.face((a[s], a[nx], b[nx], b[s]), mid - centre, name)
     first, p0 = rows[0]
     way0 = (points[1] - points[0]).normalized()
-    c0 = m.add(p0 - way0 * 0.001, (0.0, 0.0), part, extra)
+    c0 = m.add(p0 - way0 * 0.001, (0.0 if along is None else along[0], 0.0), part, extra)
     for s in range(sides):
         m.face((first[s], first[(s + 1) % sides], c0), -way0, name)
     if cap_end:
         last, p1 = rows[-1]
         way1 = (points[-1] - points[-2]).normalized()
-        c1 = m.add(p1 + way1 * 0.001, (1.0, 0.0), part, extra)
+        c1 = m.add(p1 + way1 * 0.001, (1.0 if along is None else along[-1], 0.0), part, extra)
         for s in range(sides):
             m.face((last[s], last[(s + 1) % sides], c1), way1, name)
 
 
-# Harpoons: (metres behind the tip, angle round from the ridge, side, how far it leans back, length out of the
-# skin, iron showing, rope length).
+# Harpoons: (metres behind the tip, the angle round from the ridge, side, how far it leans back (less than 0:
+# forward), how far it tilts out to its side, length out of the skin, its iron showing, what its rope does:
+# ("wrap", where round the body it ends, how far along it drifts, how long its loose end is) or ("trail", length)).
 HARPOONS = [
-    (16.6, 0.22, 1, 0.12, 5.0, True, 0.0),
-    (21.0, 0.45, 1, 0.75, 3.6, False, 9.0),
-    (25.6, 0.18, -1, 0.6, 3.4, False, 7.0),
-    (12.2, 0.55, -1, 0.5, 3.0, False, 6.0),
+    (16.2, 0.12, 1, -0.3, 0.1, 5.8, True, None),
+    (12.8, 0.62, 1, 0.6, 0.2, 4.0, False, ("wrap", 2.1, 1.4, 6.0)),
+    (27.6, 0.25, -1, 0.9, -0.2, 3.6, False, ("wrap", 2.0, 1.2, 5.0)),
+    (11.6, 0.75, -1, 0.25, 0.5, 3.2, True, ("trail", 7.0)),
+    (24.2, 1.15, 1, -0.45, 0.3, 3.0, False, ("trail", 6.0)),
 ]
 
 
-def harpoon(m, xm, angle, sx, lean, long, iron, rope_long, lod):
+def harpoon(m, xm, angle, sx, lean, tilt, long, iron, rope_how, lod):
     here, out = skin_frame(xm, angle, sx)
-    way = (out + Vector((0.0, 0.0, lean))).normalized()
+    side_way = Vector((sx, 0.0, 0.0))
+    way = (out + Vector((0.0, 0.0, lean)) + side_way * tilt).normalized()
     sides = 6 if lod == "full" else 4
     start = here - way * 0.8
     end = here + way * long
-    r_shaft = 0.12
-    tube(m, HARPOON, [start, here, end], r_shaft, sides, "harpoons")
+    tube(m, HARPOON, [start, here, end], 0.13, sides, "harpoons")
     if iron:
-        # The barbed iron out at the end (as if it had gone in by its butt: sailors' harpoons from the concept):
-        # a socket, two barbs and a point.
+        # The barbed iron out at the end (as the concept draws them): a socket, two barbs and a point.
         side = way.cross(Vector((0.0, 0.0, 1.0)))
         if side.length < 1e-6:
             side = Vector((1.0, 0.0, 0.0))
         side.normalize()
         other = way.cross(side).normalized()
-        socket = end
-        tip = end + way * 1.5
-        barb_at = end + way * 0.55
+        tip = end + way * 1.6
+        barb_at = end + way * 0.6
         ring = []
         for s in range(4):
             a = s / 4 * TAU + TAU / 8
-            wide = 0.55 if s % 2 == 0 else 0.12
-            ring.append(m.add(barb_at + (side * math.cos(a) * wide + other * math.sin(a) * 0.12) - way * (0.35 if s % 2 == 0 else 0.0), (0.5, 0.0), HARPOON, 1.0))
+            wide = 0.6 if s % 2 == 0 else 0.13
+            ring.append(m.add(barb_at + (side * math.cos(a) * wide + other * math.sin(a) * 0.13) - way * (0.4 if s % 2 == 0 else 0.0), (0.5, 0.0), HARPOON, 1.0))
         base_ring = []
         for s in range(4):
             a = s / 4 * TAU + TAU / 8
-            base_ring.append(m.add(socket + (side * math.cos(a) + other * math.sin(a)) * 0.15, (0.0, 0.0), HARPOON, 1.0))
+            base_ring.append(m.add(end + (side * math.cos(a) + other * math.sin(a)) * 0.16, (0.0, 0.0), HARPOON, 1.0))
         t = m.add(tip, (1.0, 0.0), HARPOON, 1.0)
         for s in range(4):
             nx = (s + 1) % 4
             mid = (m.verts[ring[s]] + m.verts[ring[nx]]) * 0.5
-            axis_pt = socket + way * (mid - socket).dot(way)
+            axis_pt = end + way * (mid - end).dot(way)
             m.face((base_ring[s], base_ring[nx], ring[nx], ring[s]), mid - axis_pt, "harpoons")
             m.face((ring[s], ring[nx], t), mid - axis_pt, "harpoons")
-    if rope_long > 0.0:
-        # A rope tied near the butt, trailing back along the body, sagging and drifting out to the side.
-        segs = 12 if lod == "full" else (8 if lod == "game" else 4)
+    if rope_how is None:
+        return
+    tie = end - way * 0.35
+    rope_sides = 5 if lod == "full" else 4
+    if rope_how[0] == "trail":
+        long_ = rope_how[1]
+        segs = 12 if lod == "full" else (7 if lod == "game" else 4)
+        pts = [tie + Vector((sx * (0.3 + 1.8 * u) * u, -long_ * 0.75 * u ** 1.2, long_ * 0.55 * u))
+               for u in (i / segs for i in range(segs + 1))]
+        tube(m, ROPE, pts, lambda u: 0.12 * (1.0 - 0.3 * u), rope_sides, "ropes")
+        return
+    # Wrapped: from the harpoon onto the skin, up over the back and down the far side, drifting back, then a loose
+    # end trailing on down. The wrapped part is tied to the body (UV.x 0: it does not sway); the loose end sways.
+    _, end_theta, drift, loose = rope_how
+    start_theta = angle if sx > 0 else TAU - angle
+    finish = start_theta - (angle + end_theta) if sx > 0 else start_theta + (angle + end_theta)
+    wraps = 16 if lod == "full" else (9 if lod == "game" else 5)
+    pts = [tie]
+    along = [0.0]
+    for i in range(wraps + 1):
+        f = i / wraps
+        theta = start_theta + (finish - start_theta) * f
+        pts.append(skin_point(xm + 0.5 + drift * f, theta, 0.5 + 0.75 * max(0.0, math.cos(theta)) ** 2 + 0.6 * smooth(0.8, 1.0, f)))
+        along.append(0.0)
+    last = pts[-1]
+    going = (pts[-1] - pts[-2]).normalized()
+    _, out_last = skin_frame(xm + 0.5 + drift, finish, 1.0)
+    segs = 8 if lod == "full" else (5 if lod == "game" else 3)
+    for i in range(1, segs + 1):
+        u = (i / segs) ** 1.3
+        pts.append(last + going * (1.2 * u) + out_last * (0.4 * u) + Vector((0.0, -loose * 0.7 * u ** 1.6, loose * 0.55 * u ** 1.4)))
+        along.append(u)
+    tube(m, ROPE, pts, 0.13, rope_sides, "ropes", along=along)
+
+
+def anchor(m, xm, angle, sx, lod):
+    """An old ship's anchor hooked into its flank: one arm buried in the skin, the shank hanging out and down, the
+    other arm and its fluke out in the water, a ring at the shank's end, and a length of rope from the ring."""
+    here, out = skin_frame(xm, angle, sx)
+    down = Vector((0.0, -1.0, 0.0))
+    s = (out * 0.55 + down * 0.8 + Vector((0.0, 0.0, 0.25))).normalized()
+    e = (out - s * out.dot(s)).normalized()
+    crown = here + out * 0.25
+    sides = 6 if lod == "full" else 4
+    long_ = 6.5
+    ring_at = crown + s * long_
+    tube(m, HARPOON, [crown - s * 0.2, crown + s * long_ * 0.5, ring_at], 0.27, sides, "anchor", extra=1.0)
+    # (its arms: from the crown curving back up towards the ring, one into the skin, one out)
+    arc_n = 6 if lod == "full" else 4
+    for way in (-1.0, 1.0):
         pts = []
-        tie = end - way * 0.3
-        for i in range(segs + 1):
-            u = i / segs
-            p = tie + Vector((sx * (0.3 + 2.4 * u) * u, -rope_long * 0.75 * u ** 1.2, rope_long * 0.55 * u))
-            pts.append(p)
-        tube(m, ROPE, pts, lambda u: 0.11 * (1.0 - 0.3 * u), 4 if lod != "full" else 5, "ropes")
-        # (and a loose loop of it round the shaft)
+        for i in range(arc_n + 1):
+            ph = 1.25 * i / arc_n
+            pts.append(crown + e * (way * 2.4 * math.sin(ph)) + s * (2.4 * (1.0 - math.cos(ph))))
+        tube(m, HARPOON, pts, 0.24, sides, "anchor", extra=1.0)
+        if way > 0:
+            # the fluke: a flat spade at the free arm's tip
+            tip = pts[-1]
+            ahead = (pts[-1] - pts[-2]).normalized()
+            flat = ahead.cross(e).normalized()
+            spade = [tip - ahead * 1.3 + flat * 0.8, tip + ahead * 0.7, tip - ahead * 1.3 - flat * 0.8]
+            faces = e * 0.06
+            front = [m.add(p + faces, (0.5, 0.0), HARPOON, 1.0) for p in spade]
+            back = [m.add(p - faces, (0.5, 0.0), HARPOON, 1.0) for p in spade]
+            m.face(tuple(front), e, "anchor")
+            m.face(tuple(back), -e, "anchor")
+            for k in range(3):
+                nx = (k + 1) % 3
+                mid = (spade[k] + spade[nx]) * 0.5 - sum(spade, Vector()) / 3.0
+                m.face((front[k], back[k], back[nx], front[nx]), mid, "anchor")
+    # (the ring)
+    ring_n = 10 if lod == "full" else 6
+    loop = [ring_at + s * 0.5 + (e * math.sin(i / ring_n * TAU) - s * math.cos(i / ring_n * TAU)) * 0.5
+            for i in range(ring_n + 1)]
+    tube(m, HARPOON, loop, 0.09, 4, "anchor", extra=1.0, cap_end=True)
+    # (a rope from the ring, hanging and trailing)
+    segs = 10 if lod == "full" else (6 if lod == "game" else 3)
+    pts = [ring_at + s * 0.9 + Vector((sx * 0.3 * u, -6.0 * u ** 1.1, 3.0 * u)) for u in (i / segs for i in range(segs + 1))]
+    tube(m, ROPE, pts, lambda u: 0.12, 5 if lod == "full" else 4, "ropes")
 
 
 def make(name, lod):
@@ -942,13 +1174,11 @@ def make(name, lod):
     for sx in (1.0, -1.0):
         eye(m, sx, lod)
     fins(m, lod)
-    sides = {"full": 7, "game": 5, "low": 4}[lod]
-    for i, (xm, angle, sx, radius) in enumerate(BARNACLES):
-        if (lod == "low" and i % 2) or (lod == "game" and radius < 0.31):
-            continue
-        barnacle(m, xm, angle, sx, radius, sides, lod)
-    for xm, angle, sx, lean, long, iron, rope in HARPOONS:
-        harpoon(m, xm, angle, sx, lean, long, iron, rope, lod)
+    armour(m, lod)
+    barnacles(m, lod)
+    for xm, angle, sx, lean, tilt, long, iron, rope in HARPOONS:
+        harpoon(m, xm, angle, sx, lean, tilt, long, iron, rope, lod)
+    anchor(m, 22.6, 1.55, -1.0, lod)
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([to_b(p) for p in m.verts], [], m.faces)
     mesh.uv_layers.new(name="UVMap")

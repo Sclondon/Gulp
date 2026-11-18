@@ -7,8 +7,9 @@ shader_type spatial;
 // (creatures/sea_monster/sea_monster.gdshader): installing either puts it there, and both use the one copy.
 //
 // What each point is comes from the model: UV2.y the part (0 body, 1 lower jaw, 2 an upper tooth, 3 a lower tooth,
-// 4 a fin, 5 weed, 6 a side fin that flaps, 7 an eye, 8 a barnacle, 9 a harpoon, 10 a rope); UV2.x, on the body
-// and the jaw, how much it is inside the mouth (on a harpoon, 1 its iron; on a barnacle, 1 the hole in its top).
+// 4 a fin, 5 weed, 6 a side fin that flaps, 7 an eye, 8 a barnacle, 9 a harpoon or anchor, 10 a rope, 11 an
+// armour scute); UV2.x, on the body and the jaw, how much it is inside the mouth (on a harpoon or anchor, 1 its
+// iron; on a barnacle, 1 the hole in its top; on a scute, a number of its own for its tint).
 // UV, on the body and jaw: x how far along (0 the tip of the snout, 1 the tail), y how high on its side (1 the
 // ridge of the back, 0 the keel); on a fin: x root (0) to tip (1), y leading (0) to trailing edge (1); on an eye:
 // x middle (0) to rim (1); on a rope or weed: x from where it is tied (0) to its free end (1).
@@ -55,6 +56,16 @@ uniform float rear_max = 1.1;
 uniform float head_at = 2.6;
 uniform float head_span = 1.0;
 uniform float head_keep = 0.9;
+// An S in the neck (the serpent): between the head and the base of the neck it bends forward again about
+// `neck_at` over `neck_span`, by `neck_keep` of the rise.
+uniform float neck_at = 4.2;
+uniform float neck_span = 1.4;
+uniform float neck_keep = 0.0;
+// The tail curled up and round (`coil`): about `coil_at` (metres behind the tip) over `coil_span` behind it, by up
+// to `coil_max` radians.
+uniform float coil_at = 27.0;
+uniform float coil_span = 11.0;
+uniform float coil_max = 3.0;
 // How far a side fin's tip rises and falls in a beat, how far the trailing edges of the fins ripple, how far a rope's
 // and a weed's free end swings (metres).
 uniform float flap = 0.6;
@@ -89,6 +100,8 @@ uniform float gape = 0.0;
 uniform float curl = 0.0;
 uniform float humps = 1.0;
 uniform float rear = 0.0;
+// The tail curled up: 0 straight, 1 hooked up and round.
+uniform float coil = 0.0;
 // The cartoon eye (0 as in life, 1 the cartoon eye), where it looks (x +1 to the nose, y +1 up), its lids (0 open).
 uniform float cartoon_eyes : hint_range(0.0, 1.0) = 0.0;
 uniform vec2 eye_look = vec2(0.0);
@@ -235,6 +248,27 @@ void bend_up(inout vec3 v, inout vec3 n, float at, float span, float angle) {
 	n = vec3(n.x, n.y * ca - n.z * sa, n.y * sa + n.z * ca);
 }
 
+// The tail behind `coil_at` curled up and round over an arc (see `coil`); straight beyond the arc.
+void coil_up(inout vec3 v, inout vec3 n) {
+	float angle = coil * coil_max;
+	float at = coil_at - body_length * 0.5;
+	float d = v.z - at;
+	if (d <= 0.0 || angle < 0.0005) {
+		return;
+	}
+	float r = coil_span / angle;
+	float a = angle * min(d, coil_span) / coil_span;
+	float ca = cos(a);
+	float sa = sin(a);
+	float yc = r * (1.0 - ca);
+	float zc = at + r * sa;
+	float beyond = max(d - coil_span, 0.0);
+	yc += beyond * sa;
+	zc += beyond * ca;
+	v = vec3(v.x, yc + v.y * ca, zc - v.y * sa);
+	n = vec3(n.x, n.y * ca + n.z * sa, -n.y * sa + n.z * ca);
+}
+
 // The body behind the head laid round an arc to one side (see `curl`).
 void curl_bend(inout vec3 v, inout vec3 n) {
 	float from = -0.3 * body_length;
@@ -296,7 +330,7 @@ void vertex() {
 		// The lower jaw (and its teeth) swings down about the corner of the mouth; behind the corner, inside the
 		// body, it stays.
 		about_hinge(v, n, gape_max * open * smoothstep(corner + 0.04 * hinge_spread, corner - hinge_spread, v.z + half_len));
-	} else if ((p == 0 || p == 2 || p == 7 || p == 8 || p == 5) && open > 0.0) {
+	} else if ((p == 0 || p == 2 || p == 7 || p == 8 || p == 5 || p == 11) && open > 0.0) {
 		// The skull (the upper head, its teeth, eyes and what grows on it) lifts about the same hinge; the throat
 		// under the hinge and the neck behind it stay.
 		float w = smoothstep(corner + 2.0 * hinge_spread, corner - 0.2 * hinge_spread, v.z + half_len)
@@ -308,6 +342,7 @@ void vertex() {
 	// The neck held up and the head looking ahead (the serpent).
 	if (rear > 0.0) {
 		bend_up(v, n, head_at, head_span, -rear * rear_max * head_keep);
+		bend_up(v, n, neck_at, neck_span, -rear * rear_max * neck_keep);
 		bend_up(v, n, rear_at, rear_span, rear * rear_max);
 	}
 	// The swim: the middle line moved by the waves, each section kept square to it; behind the tail fin's hinge,
@@ -322,6 +357,7 @@ void vertex() {
 	vec3 o = vec3(v.x, v.y, v.z - (zc - half_len));
 	v = vec3(c0.x, c0.y, zc - half_len) + r * o.x + u * o.y + t * o.z;
 	n = r * n.x + u * n.y + t * n.z;
+	coil_up(v, n);
 	curl_bend(v, n);
 	VERTEX = v;
 	NORMAL = n;
@@ -336,52 +372,64 @@ float plate_phase(float xm) {
 	return d * (1.0 + plate_grow * d / 10.0);
 }
 
-// The leviathan's armoured hide at a place: `xm` behind the tip, `h` how high on its side (0..1).
-vec3 leviathan_skin(float xm, float h, float side, out float rough) {
+// The leviathan's hide at a place: `xm` behind the tip, `h` how high on its side (0..1). Its armour is modelled
+// (the scutes, part 11, painted by `scute_colour`); what shows of the skin between them is the dark of the grooves.
+vec3 hide_base(float xm, float h, float side) {
 	float cloud = noise2(vec2(xm * 0.4, h * 3.0) + side * 5.0);
-	float grain = noise2(vec2(xm * 9.0, h * 30.0 + side * 7.0));
-	vec3 c = mix(belly, flank, smoothstep(0.18, 0.36, h + (cloud - 0.5) * 0.1));
-	c = mix(c, back, smoothstep(0.6, 0.9, h + (cloud - 0.5) * 0.12));
-	rough = 0.6;
-	// Plates: on the trunk, its armour bands (the geometry's) cut into five rows down each side, in a grid; on the
-	// head, smaller plates over the crown only, each row half a plate on from the last (the cheeks and snout bare).
-	bool on_head = xm < plate_from;
-	float rows = on_head ? 4.0 : 5.0;
-	float from_h = on_head ? 0.5 : 0.22;
-	float hh = (h - from_h) / (1.0 - from_h);
-	float hr = clamp(hh, 0.0, 0.999) * rows;
-	float row = floor(hr);
-	float band = on_head ? (xm - 1.5) / 1.5 + 0.5 * mod(row, 2.0) : plate_phase(xm);
-	vec2 cell = vec2(fract(band), fract(hr));
-	vec2 id = vec2(floor(band), row);
-	// (how far from the plate's edge, in metres, roughly)
-	vec2 d = min(cell, 1.0 - cell) * (on_head ? vec2(1.5, 0.8) : vec2(2.4, 1.5));
-	float plate = smoothstep(0.02, 0.09, min(d.x, d.y));
-	float tint = hash2(id + side * 13.0);
-	// (each plate a little different, lit across its upper front as if bevelled, its lower back in shadow)
-	float bevel = 0.8 + 0.32 * smoothstep(0.0, 0.7, cell.y) * (1.0 - 0.45 * cell.x);
-	vec3 p = c * (0.9 + 0.16 * tint) * bevel;
-	float plated_here = smoothstep(-0.06, 0.02, hh) * (on_head ? smoothstep(1.5, 2.5, xm) : 1.0);
-	vec3 plated = mix(c, mix(mix(c, seam, 0.6), p, plate), plated_here);
-	// (no plates on the belly: long pale grooved scutes across it instead)
-	float on_belly = 1.0 - smoothstep(0.14, 0.22, h);
-	float scute = smoothstep(0.0, 0.08, abs(fract(xm / 1.3) - 0.5) * 2.0 - 0.06);
-	vec3 belly_c = c * mix(0.72, 1.0, scute);
-	c = mix(c, mix(plated, belly_c, on_belly * step(plate_from, xm)), clamp(pattern, 0.0, 1.0));
-	// Gill ridges behind the corner of the mouth: four curved dark grooves with pale crests.
-	float gx = xm - corner - 0.4 + 1.6 * (h - 0.5) * (h - 0.5);
-	if (gx > 0.0 && gx < 3.0 && h > 0.18 && h < 0.82) {
-		float g = fract(gx / 0.75);
-		float groove = 1.0 - smoothstep(0.0, 0.12, abs(g - 0.15));
-		float crest = 1.0 - smoothstep(0.0, 0.15, abs(g - 0.4));
-		float fade = smoothstep(0.18, 0.3, h) * (1.0 - smoothstep(0.7, 0.82, h));
-		c = mix(c, seam, groove * fade * 0.85);
-		c = mix(c, c * 1.35, crest * fade * 0.6);
+	vec3 c = mix(belly, flank, smoothstep(0.16, 0.34, h + (cloud - 0.5) * 0.1));
+	return mix(c, back, smoothstep(0.58, 0.9, h + (cloud - 0.5) * 0.12));
+}
+
+// Short pale scars: a few strokes scattered over it, each a few metres long.
+float scars(vec2 p) {
+	vec2 cell = floor(p / 2.4);
+	vec2 f = p / 2.4 - cell;
+	float k = hash2(cell + 17.0);
+	if (k < 0.72) {
+		return 0.0;
 	}
-	// Moss and stains on the back and upper flanks.
+	float a = k * 13.0;
+	vec2 dir = vec2(cos(a), sin(a));
+	vec2 q = f - 0.5;
+	float along = dot(q, dir);
+	float across = abs(dot(q, vec2(-dir.y, dir.x)));
+	return (1.0 - smoothstep(0.012, 0.03, across)) * (1.0 - smoothstep(0.25, 0.4, abs(along)));
+}
+
+vec3 leviathan_skin(float xm, float h, float side, out float rough) {
+	float grain = noise2(vec2(xm * 9.0, h * 30.0 + side * 7.0));
+	vec3 c = hide_base(xm, h, side);
+	rough = 0.65;
+	float pat = clamp(pattern, 0.0, 1.0);
+	// Between the scutes of the trunk: the dark of the grooves.
+	float under = smoothstep(0.26, 0.4, h) * smoothstep(corner + 0.5, corner + 1.5, xm);
+	c = mix(c, mix(c, seam, 0.55), under * pat);
+	// The belly: long pale scutes across it, darker grooves between.
+	float on_belly = 1.0 - smoothstep(0.16, 0.26, h);
+	float groove = 1.0 - smoothstep(0.0, 0.1, abs(fract(xm / 1.25 + 0.15 * sin(h * 9.0)) - 0.5) * 2.0 - 0.08);
+	c = mix(c, mix(c, seam, 0.5), on_belly * groove * pat * step(corner * 0.4, xm));
+	// Moss and stains on the back and upper flanks; pale old scars.
 	float m = noise2(vec2(xm * 0.7, h * 5.0) + side * 3.0) * 0.7 + noise2(vec2(xm * 2.3, h * 14.0)) * 0.3;
-	c = mix(c, moss, smoothstep(0.55, 0.75, m) * smoothstep(0.55, 0.85, h) * 0.65);
+	c = mix(c, moss, smoothstep(0.55, 0.75, m) * smoothstep(0.55, 0.85, h) * 0.6);
+	c = mix(c, belly * 1.05, scars(vec2(xm, h * 9.0 + side * 30.0)) * 0.6 * (1.0 - on_belly));
 	c *= 0.9 + 0.15 * grain;
+	return c;
+}
+
+// A scute (part 11): its colour from the hide's at its place, each a little different (`tint`), its rim worn pale
+// and chipped, dark cracks across it, moss on the high ones, the odd pale scar; `rim` 0 at its crown to 1 at its rim.
+vec3 scute_colour(float xm, float h, float side, float rim, float tint, vec3 at, out float rough) {
+	vec3 c = hide_base(xm, h, side) * (0.88 + 0.26 * tint);
+	rough = 0.7;
+	float worn = smoothstep(0.7, 1.0, rim) * (0.6 + 0.4 * noise2(at.xz * 3.0 + at.y));
+	c = mix(c, mix(c, belly, 0.55), worn * 0.7);
+	float crack = 1.0 - smoothstep(0.0, 0.05, abs(noise2(at.xz * 1.6 + at.yx * 1.3 + tint * 9.0) - 0.5));
+	c = mix(c, seam, crack * 0.55 * smoothstep(0.1, 0.5, rim));
+	float m = noise2(at.xz * 0.9 + tint * 7.0);
+	c = mix(c, moss, smoothstep(0.5, 0.75, m) * smoothstep(0.6, 0.85, h) * 0.6);
+	c = mix(c, belly * 1.08, scars(vec2(xm * 1.3, h * 11.0 + tint * 40.0)) * 0.7);
+	// (shaded darker under its lifted back edge)
+	c *= 0.85 + 0.2 * (1.0 - rim);
 	return c;
 }
 
@@ -441,6 +489,9 @@ void fragment() {
 		vec3 in_mouth = mix(mouth, mouth * 0.15, smoothstep(corner * 0.3, corner * 1.05, xm));
 		c = mix(c, in_mouth, smoothstep(0.1, 0.6, inside) * smoothstep(jaw_from, jaw_from + 0.05 * corner, xm));
 		rough = mix(rough, 0.4, inside);
+	} else if (p == 11) {
+		// An armour scute.
+		c = scute_colour(xm, UV.y, side, UV.x, inside, rest, rough);
 	} else if (p == 2 || p == 3) {
 		// A tooth: yellowed, darker at the gum, chipped tips paler.
 		c = mix(tooth * 0.5, tooth, smoothstep(0.05, 0.5, UV.x));

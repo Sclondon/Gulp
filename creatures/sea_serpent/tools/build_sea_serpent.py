@@ -19,9 +19,11 @@ nothing traced:
 
 - THE HEAD: like a horse's: a long muzzle, a deep rounded jaw and cheek, nostrils at the tip, an eye high at the back
   of the head under a brow; two spiky ear-fins on top of the skull and a spined frill fanning out behind each cheek.
-- THE BODY: a slender neck, thickening into a long body (it is drawn in long humps by the shader), tapering to a
-  frayed tail fin; a low ragged fin along the back; two front flippers; pale plates across the belly (shader).
-- THE MANE: ragged ribbons of weed hanging from the top of its neck, and a few under its throat (a beard).
+- THE BODY: a neck, thickening into a long body (drawn in long humps by the shader, its neck held up in an S by
+  `rear` and its tail hooked by `coil`), tapering to a frayed tail fin; five separate ragged sail fins along the
+  back; two front flippers at the chest; pale plates across the belly (shader).
+- THE MANE: ragged ribbons of weed standing up off the top of its head and neck and streaming back, and a few
+  under its throat (a beard).
 - THE MOUTH: a lower jaw that swings down (40 degrees), small teeth, the upper ones showing a little.
 
 Everything here is in Godot space (metres, Y up, its nose at -Z) until it is written out; the origin is on its
@@ -55,7 +57,7 @@ NAME = "sea_serpent"
 LENGTH = 25.0
 HALF = 12.5
 # (the size of the small details beside the leviathan's, whose build script this one shares its making with)
-U = 0.14
+U = 0.18
 BODY, JAW, TOOTH_UP, TOOTH_LOW, FIN, WEED, PECTORAL, EYE, BARNACLE, HARPOON, ROPE = range(11)
 TAU = math.tau
 PI = math.pi
@@ -64,17 +66,17 @@ PI = math.pi
 # of the keel of its belly, half its width. A horse's head: the muzzle, the nasal bridge rising to a rounded
 # forehead, the deep round cheek and jaw; then a slender neck thickening into the body.
 PROFILE = [
-    (0.0, -0.02, -0.2, 0.12),
-    (0.06, 0.1, -0.3, 0.19),
-    (0.22, 0.17, -0.36, 0.23),
-    (0.55, 0.2, -0.36, 0.22),
-    (1.0, 0.28, -0.38, 0.24),
-    (1.4, 0.40, -0.46, 0.29),
-    (1.8, 0.52, -0.57, 0.35),
-    (2.2, 0.56, -0.52, 0.36),
-    (2.6, 0.50, -0.36, 0.31),
-    (3.1, 0.46, -0.36, 0.31),
-    (4.5, 0.50, -0.46, 0.37),
+    (0.0, -0.026, -0.26, 0.15),
+    (0.07, 0.17, -0.4, 0.25),
+    (0.26, 0.29, -0.5, 0.3),
+    (0.66, 0.36, -0.52, 0.29),
+    (1.2, 0.47, -0.55, 0.32),
+    (1.68, 0.6, -0.6, 0.36),
+    (2.16, 0.8, -0.74, 0.44),
+    (2.64, 0.73, -0.68, 0.45),
+    (3.12, 0.62, -0.5, 0.4),
+    (3.7, 0.52, -0.44, 0.35),
+    (4.9, 0.54, -0.5, 0.39),
     (6.0, 0.62, -0.64, 0.48),
     (8.0, 0.82, -0.86, 0.66),
     (10.5, 0.94, -0.98, 0.76),
@@ -89,28 +91,28 @@ PROFILE = [
 BODY_FROM = 0.0
 BODY_TO = 24.3
 # (the muzzle's tip overhangs the lower jaw a little: the lower jaw starts here)
-JAW_FROM = 0.06
+JAW_FROM = 0.07
 
 # As the shader has it: the corner of the mouth (where the lower jaw hinges), how far behind it the jaw's bend is
 # spread, the eye (metres behind the tip, metres up) and its radius; where the tail fin is hinged.
-CORNER = 1.45
-WALL = 0.3
-EYE_AT = (1.86, 0.3)
-EYE_RADIUS = 0.07
+CORNER = 1.74
+WALL = 0.36
+EYE_AT = (2.23, 0.39)
+EYE_RADIUS = 0.09
 JOINT = 23.4
 # The lips' gap, how far the roof of the mouth is arched (of half its width), how far behind the corner of the
 # mouth the jaw runs on inside the body.
-GAP = 0.004
+GAP = 0.005
 VAULT = 0.3
-JAW_TAIL = 0.28
+JAW_TAIL = 0.34
 # The teeth along the lips: how many each side of each jaw, from where to where, how thick, how long; the lower ones
 # stand this far in from the lip.
 TEETH = 9
-TEETH_FROM = 0.12
-TEETH_TO = 1.25
-TOOTH_RADIUS = 0.024
-TOOTH_LONG = 0.075
-TOOTH_IN = 0.035
+TEETH_FROM = 0.14
+TEETH_TO = 1.5
+TOOTH_RADIUS = 0.03
+TOOTH_LONG = 0.09
+TOOTH_IN = 0.045
 # (no armour bands: they are the leviathan's)
 PLATE_FROM = 100.0
 PLATE_LONG = 1.0
@@ -121,7 +123,7 @@ PLATE_TO = 100.0
 
 def mouth_y(xm):
     """The line of the mouth, as the shader has it: falling a little back along the muzzle."""
-    return -0.11 - 0.055 * xm
+    return -0.143 - 0.0596 * xm
 
 
 
@@ -381,7 +383,7 @@ def rings(lod):
     xs = []
     x = BODY_FROM
     trunk = (PLATE_FROM + 0.8, PLATE_TO - 0.5)
-    for until, step in ((0.25, 0.02), (CORNER + WALL + 0.2, 0.05), (3.2, 0.1), (BODY_TO - 1.2, 0.2), (BODY_TO, 0.08)):
+    for until, step in ((0.25, 0.02), (CORNER + WALL + 0.2, 0.05), (3.8, 0.1), (BODY_TO - 1.2, 0.23), (BODY_TO, 0.08)):
         if lod == "low":
             step *= 3.2
         n = max(1, round((until - x) / step))
@@ -777,17 +779,24 @@ def fins(m, lod):
     blade(m, FIN, "tail fin", swept(((22.2, bottom(22.2) + 0.03), (23.6, -0.48), lo_tip),
                                     ((24.1, bottom(24.1) + 0.01), (24.6, -0.24), lo_tip)),
           upright, SIDE, 0.05, n(14, 8, 3), n(5, 3, 2), g, rag=ragged(0.7, 17) if not low else None)
-    # The low ragged fin along the back, spined.
-    ridge(m, "back fin", 5.4, 21.8, top, lambda u: 0.3 * (1.0 - 0.45 * u), 0.04, 0.45,
-          n(64, 40, 10), 1, n(32, 20, 5), 1.0)
+    # Separate sail fins along the back, each a raked, ragged sail of spined skin, smaller towards the tail.
+    for i in range(5):
+        x0 = 7.0 + i * 3.0
+        long_ = 2.3 - 0.15 * i
+        tall = 0.85 * (1.0 - 0.12 * i)
+        x1 = x0 + long_
+        tip = (x0 + long_ * 0.55, top(x0 + long_ * 0.55) + tall)
+        blade(m, FIN, "back sails", swept(((x0, top(x0) - 0.04), (x0 + long_ * 0.2, top(x0) + tall * 0.7), tip),
+                                          ((x1, top(x1) - 0.04), (x1 - long_ * 0.05, top(x1) + tall * 0.45), tip)),
+              upright, SIDE, 0.05, n(8, 5, 2), n(6, 4, 2), g, rag=ragged(0.45, 91 + i) if not low else None)
     for sx in (1.0, -1.0):
         # The ear-fins: two spiky leaves standing up and back from the top of the skull.
-        flipper(m, FIN, "ear fins", sx, 2.12, top(2.12) - 0.07, 0.46, 0.17, 0.22, -1.6, 0.03,
+        flipper(m, FIN, "ear fins", sx, 2.55, top(2.55) - 0.09, 0.6, 0.22, 0.28, -1.6, 0.04,
                 n(10, 6, 2), n(4, 2, 1), g, ragged(0.55, 61 if sx > 0 else 67) if not low else None)
         # The frill: a fan of spines out and back behind each cheek.
-        fan(m, sx, 2.36, 0.02, 0.7, n(9, 7, 3), n(18, 14, 6), n(4, 2, 1))
+        fan(m, sx, 2.86, 0.03, 0.88, n(9, 7, 3), n(18, 14, 6), n(4, 2, 1))
         # The front flippers, low on the sides behind the neck.
-        flipper(m, PECTORAL, "flippers", sx, 7.4, -0.36, 1.75, 0.8, 0.85, 0.7, 0.1,
+        flipper(m, PECTORAL, "flippers", sx, 10.4, -0.5, 1.75, 0.8, 0.85, 0.7, 0.1,
                 n(12, 7, 3), n(6, 3, 2), g, ragged(0.25, 83 if sx > 0 else 89) if not low else None)
 
 
@@ -831,28 +840,29 @@ def ribbon(m, name, root, length, width, facing, path, nt, nu):
 
 
 def mane(m, lod):
-    count, nt, nu = {"full": (30, 8, 2), "game": (18, 4, 1), "low": (8, 2, 1)}[lod]
+    count, nt, nu = {"full": (34, 6, 2), "game": (22, 4, 1), "low": (9, 2, 1)}[lod]
     for i in range(count):
         f = (i + 0.5) / count
-        xm = 2.35 + 6.4 * f ** 1.1
+        xm = 2.5 + 7.2 * f ** 1.1
         sx = 1.0 if i % 2 == 0 else -1.0
-        long = (1.5 - 0.6 * f) * (0.75 + 0.5 * hash1(i * 3 + 1))
+        long = (2.0 - 0.8 * f) * (0.75 + 0.5 * hash1(i * 3 + 1))
         root = Vector((sx * 0.05, top(xm) - 0.03, xm - HALF))
         lean = 0.1 + 0.25 * hash1(i * 5 + 2)
 
         def path(t, long=long, sx=sx, lean=lean, i=i):
             wig = 0.06 * math.sin(t * PI * 3.0 + i)
-            return Vector((sx * (lean + 0.3 * t) * long * t + wig * sx,
-                           0.1 * long * t - 0.6 * long * t * t,
-                           0.75 * long * t + wig * 0.5))
+            # (standing up off the neck, then streaming back)
+            return Vector((sx * (0.6 * lean + 0.25 * t) * long * t + wig * sx,
+                           0.8 * long * t - 0.55 * long * t * t,
+                           0.75 * long * t * t + 0.12 * long * t + wig * 0.5))
 
-        ribbon(m, "mane", root, long, 0.28 * (0.8 + 0.4 * hash1(i * 7)), Vector((sx, 0.15, 0.0)), path, nt, nu)
+        ribbon(m, "mane", root, long, 0.32 * (0.8 + 0.4 * hash1(i * 7)), Vector((sx, 0.15, 0.0)), path, nt, nu)
     # A beard of a few strands under the throat.
     beard = {"full": 4, "game": 3, "low": 2}[lod]
     for i in range(beard):
-        xm = 1.62 + 0.18 * i
+        xm = 1.95 + 0.2 * i
         sx = 1.0 if i % 2 == 0 else -1.0
-        long = 0.75 - 0.12 * i
+        long = 0.9 - 0.14 * i
         root = Vector((sx * 0.06, bottom(xm) + 0.03, xm - HALF))
 
         def path(t, long=long, sx=sx, i=i):
