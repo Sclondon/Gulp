@@ -59,6 +59,8 @@ const MEAL := 0.5
 const BOOST := 1.8
 const BOOST_LASTS := 2.2
 const BOOST_FILLS := 5.0
+## How fast dead slow is, as a share of its cruising pace (full ahead is 1.15 of it).
+const SLOWEST := 0.3
 ## A leap: how fast it must be going up through the surface (as a share of its cruising pace),
 ## how much the water lets go of it, and how it falls.
 const LEAP_PACE := 0.9
@@ -82,6 +84,8 @@ var in_air := false
 
 var stick := Vector2.ZERO
 var boost_held := false
+## How fast it is asked to swim: 0 dead slow to 1 full ahead (the speed lever).
+var throttle := 1.0
 
 var yaw := 0.0
 var pitch := 0.0
@@ -201,7 +205,7 @@ func step(delta: float) -> void:
 		stamina = maxf(stamina - delta / BOOST_LASTS, 0.0)
 	elif not boost_held:
 		stamina = minf(stamina + delta / BOOST_FILLS, 1.0)
-	var want := Fish.pace(length) * 1.15 * (BOOST if boosting else 1.0)
+	var want := Fish.pace(length) * lerpf(SLOWEST, 1.15, throttle) * (BOOST if boosting else 1.0)
 	_speed = lerpf(_speed, want, 1.0 - exp(-4.0 * delta))
 	velocity = heading * _speed
 	var next := global_position + velocity * delta
@@ -217,7 +221,7 @@ func step(delta: float) -> void:
 		if next.y > Sea.SURFACE - room and pitch > 0.0:
 			pitch = maxf(pitch - 2.0 * delta, 0.0)
 	bite = 1.0 if _snap > 0.0 or near_food else 0.0
-	pose(delta, 2.0 if boosting else 1.0, stick.x)
+	pose(delta, 2.0 if boosting else lerpf(0.3, 1.0, throttle), stick.x)
 	# (it blinks while nothing can eat it)
 	_body.visible = safe <= 0.0 or fmod(safe, 0.3) > 0.1
 

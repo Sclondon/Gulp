@@ -84,9 +84,13 @@ func _draw() -> void:
 		draw_circle(Vector2(left + 84.0 * u + k * 20.0 * u, top + 26.0 * u), 6.0 * u, Color(ink, 0.9))
 	# The bar: how far towards the next (or towards full size, at the last).
 	var bar := Rect2(left, top + 66.0 * u, wide, 12.0 * u)
-	draw_rect(bar, Color(0.0, 0.05, 0.15, 0.55))
-	draw_rect(Rect2(bar.position, Vector2(bar.size.x * clampf(player.progress, 0.0, 1.0), bar.size.y)), Color(0.55, 1.0, 0.8, 0.9))
-	draw_rect(bar, Color(ink, 0.5), false, 2.0 * u)
+	# (a brass-framed sight glass, as the controls are a submarine's fittings)
+	draw_rect(bar.grow(4.0 * u), Color(TouchPad.BRASS_DARK, 0.9))
+	draw_rect(bar.grow(4.0 * u), Color(TouchPad.BRASS, 0.95), false, 3.0 * u)
+	draw_rect(bar, Color(TouchPad.IRON, 0.85))
+	draw_rect(Rect2(bar.position, Vector2(bar.size.x * clampf(player.progress, 0.0, 1.0), bar.size.y)), Color(0.45, 0.95, 0.7, 0.95))
+	for k in [0.0, 1.0]:
+		draw_circle(Vector2(lerpf(bar.position.x - 4.0 * u, bar.end.x + 4.0 * u, k), bar.get_center().y), 5.0 * u, Color(TouchPad.BRASS_LIGHT, 0.95))
 	# How long it is, and the longest so far (under a small crown).
 	var text_size := int(30.0 * u)
 	draw_string(font, Vector2(left, bar.end.y + 38.0 * u), "%.2f m" % player.length, HORIZONTAL_ALIGNMENT_LEFT, -1.0, text_size, ink)

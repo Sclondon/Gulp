@@ -9,7 +9,8 @@ extends Control
 ##
 ## Controls: the stick (or A/D and W/S, the arrow keys, a gamepad's left stick) turns the fish,
 ## which always swims the way it points; the round button (or Space, Shift, a gamepad's A) is
-## a burst of speed. When a run is over, the round arrow (or Enter, Space, a gamepad's A)
+## a burst of speed. The lever round that button (or Q and E, a gamepad's shoulders) sets how fast
+## it swims. When a run is over, the round arrow (or Enter, Space, a gamepad's A)
 ## starts another.
 ##
 ## Arguments (after --): --bot plays by itself and starts again when eaten; --seconds=<n> quits
@@ -348,6 +349,11 @@ func _steer() -> void:
 		pushed += joy
 	var accept := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_joy_button_pressed(0, JOY_BUTTON_A)
 	player.stick = pushed.limit_length(1.0)
+	# The speed lever: Q and E (or a gamepad's shoulders) ease it down and up.
+	var ease := _key(KEY_E, KEY_E) - _key(KEY_Q, KEY_Q)
+	ease += (1.0 if Input.is_joy_button_pressed(0, JOY_BUTTON_RIGHT_SHOULDER) else 0.0) - (1.0 if Input.is_joy_button_pressed(0, JOY_BUTTON_LEFT_SHOULDER) else 0.0)
+	pad.throttle = clampf(pad.throttle + ease * get_process_delta_time() * 0.9, 0.0, 1.0)
+	player.throttle = pad.throttle
 	player.boost_held = pad.boost or accept or Input.is_physical_key_pressed(KEY_SHIFT)
 	# (when the run is over, the same keys start another: on a fresh press, a moment after)
 	accept = accept or Input.is_physical_key_pressed(KEY_ENTER)

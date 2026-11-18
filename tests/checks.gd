@@ -143,6 +143,18 @@ func _touches() -> void:
 	_touch(1, pad.boost_home(), false)
 	await _frames(5)
 	_check("letting go lets go", pad.stick == Vector2.ZERO and not pad.boost and not player.boosting)
+	# The speed lever: pulled to dead slow the fish slows, pushed to full ahead it speeds up; it stays
+	# where it is put, and a touch on it is not a burst.
+	_touch(2, pad.lever_at(0.0), true)
+	await _frames(60)
+	var slow := player.velocity.length()
+	var slow_set := pad.throttle
+	var burst_meanwhile := pad.boost
+	_drag(2, pad.lever_at(1.0))
+	_touch(2, pad.lever_at(1.0), false)
+	await _frames(60)
+	_check("the lever sets the speed", slow_set < 0.1 and pad.throttle > 0.9 and player.velocity.length() > slow * 2.0 and not burst_meanwhile,
+			"lever %.2f then %.2f, %.2f m/s then %.2f" % [slow_set, pad.throttle, slow, player.velocity.length()])
 	# The run over: the round arrow starts another.
 	player.safe = 0.0
 	player.die("test")
