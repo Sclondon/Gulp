@@ -54,6 +54,11 @@ Keep it that way.
   leaderboard yet). The server part is the branch `gulp-arena` in the worktree `C:/Projects/scareathon/wt-gulp-arena`
   (one commit, NOT pushed or merged: the live server has no /gulp/ws yet, so a web build plays alone until it is).
   `sh tests/arena.sh /c/Projects/scareathon/wt-gulp-arena/server` passes (a tuna eats a sardine, two copies).
+- Bubbles, spray and splashes (`scripts/effects.gd`, `scripts/splash.gd`, `shaders/splash.gdshader`) are Salmon Run 2's
+  (its `scripts/fx/splash.gd` and the particles in `scripts/player/salmon.gd`, at its a34aa80) with its track taken
+  out and sized to the fish; the user: "The bubble and particle and splash effects should be based on the salmon run
+  ones in game common". They were not in GameCommon (only `godot/water`, a different water, cites Salmon Run 2):
+  these copies are worth saving there as a component.
 - Not started: trench fish (GameCommon has an `anglerfish`, a monster made for Warren: look before
   using), sound, the plants and rocks in the zones, anything above the water (shore, mangrove trees, sky).
 

@@ -40,7 +40,7 @@ var best_stage := 0
 var total_meals := 0
 
 var _viewport: SubViewport
-var _bubbles: CPUParticles3D
+var effects: Effects
 var _clock := 0.0
 var _over_for := 0.0
 var _start_kind := "sardine"
@@ -147,7 +147,9 @@ func _ready() -> void:
 	camera.current = true
 	sea.eye = camera
 	sea.sand.focus = camera
-	_make_bubbles()
+	effects = Effects.new()
+	effects.player = player
+	_viewport.add_child(effects)
 	hud = Hud.new()
 	hud.player = player
 	hud.restart.connect(restart)
@@ -380,10 +382,7 @@ func _aim_camera() -> void:
 
 
 func _on_ate(at: Vector3) -> void:
-	_bubbles.global_position = at
-	_bubbles.scale_amount_min = 0.3 * player.length
-	_bubbles.scale_amount_max = 0.7 * player.length
-	_bubbles.restart()
+	effects.eat(at)
 
 
 func _on_grew(stage: int) -> void:
@@ -405,12 +404,9 @@ func _on_picked(kind: String) -> void:
 	player.choose(kind)
 
 
-## Spray where it leaves the water and where it comes back in.
+## A splash where it leaves the water and where it comes back in.
 func _on_splash(at: Vector3) -> void:
-	_bubbles.global_position = at
-	_bubbles.scale_amount_min = 0.5 * player.length
-	_bubbles.scale_amount_max = 1.2 * player.length
-	_bubbles.restart()
+	effects.splash(at)
 
 
 func _on_died(by: String) -> void:
@@ -432,27 +428,3 @@ func _on_died(by: String) -> void:
 		kept.set_value("best", "length", hud.best)
 		kept.save(SAVE)
 
-
-## A few bubbles where something is eaten (Salmon Run 2's bubble: a ring with a glint).
-func _make_bubbles() -> void:
-	var look := ShaderMaterial.new()
-	look.shader = preload("res://shaders/bubble.gdshader")
-	var quad := QuadMesh.new()
-	quad.size = Vector2(0.25, 0.25)
-	quad.material = look
-	_bubbles = CPUParticles3D.new()
-	_bubbles.name = "Bubbles"
-	_bubbles.emitting = false
-	_bubbles.one_shot = true
-	_bubbles.amount = 6
-	_bubbles.lifetime = 0.9
-	_bubbles.explosiveness = 0.9
-	_bubbles.local_coords = false
-	_bubbles.direction = Vector3.UP
-	_bubbles.spread = 70.0
-	_bubbles.initial_velocity_min = 0.2
-	_bubbles.initial_velocity_max = 0.7
-	_bubbles.gravity = Vector3(0.0, 0.9, 0.0)
-	_bubbles.mesh = quad
-	_bubbles.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_viewport.add_child(_bubbles)
