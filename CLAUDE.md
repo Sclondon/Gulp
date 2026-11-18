@@ -909,3 +909,12 @@ Claude's.
   fix the issues". Standing procedure now: `tools/critic_pack.py` renders the pack, a fresh no-context agent writes the
   critique against the concept sheets, and that critique is the builder's next brief (`tools/FIGURE_HEADS.md`, last
   section). Builders also judge lit perspective renders as the game shows the figure, not only flat sheet views.
+- Townsfolk bodies, first pass (2026-11-18, evening): `tools/build_npc.py` (`-- <name>|all [--pics <dir>]`, `-- lineup
+  --pics <dir>`) builds nine base bodies into `models/npc/` (`man_lanky`, `man_short_lean`, `man_short_sturdy`,
+  `man_tall_athletic`, `man_tall_solid`, `woman_slender`, `woman_stout`, `woman_tall`, `woman_old`), each bare, on the
+  shared 51 bones, with a base-mesh head and hands and `<name>_underwear` as its own mesh. Rough: blocky shoulders,
+  generic narrow heads, straight spread fingers, the women's tops a strapless tube, smeared paint; the two short men
+  and the two tall men are near-duplicates (their sheets are). They wait for the three leads' polish to settle (feet,
+  shorts, paint, shoulders), then get the same fixes and the independent critic. NOT in the game. Before any web
+  build: leave `models/npc`, `textures/npc`, `models/captain*`, `models/brother*`, `models/boy*` and their textures out of
+  the export (about 50 MB unused), in `tools/web_excludes.sh`.
