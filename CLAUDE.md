@@ -307,6 +307,45 @@ seen (`Creature.become(kind, bare)`, `Life.mark_dressed`), (2) behind the title 
 a half on a Windows desktop browser. Build the web export from the clean worktree `../Gulp-build` (`git checkout
 --detach main` there; `git checkout -- build` first if it refuses), after `sh tools/web_excludes.sh` here.
 
+## Performance (2026-11-18): the pass, and the decisions it made
+
+`tools/PERF.md` has the numbers, how they were measured (`-- --perf=<places>`, `tests/perf.gd`; `tests/rocks_bench.gd`)
+and what is still heavy. The user asked for the pass ("yes do a performance pass and then push everything"); the
+choices below are Claude's.
+
+- **Decision: two grids for the rocks** (`Sea.add_rock`, `Sea.clear_of_rocks`). What: besides the 8 m squares of floor
+  (now only a quick "no rock near here"), every sphere is also kept in each 2 m cube it overlaps, and a swimmer is tried
+  only against the cubes its own room reaches (at most `Sea.REACH`, 3 m). Why: beside the liner, the pirate ship and
+  Atlantis one 8 m square held up to 398 spheres, and a call cost 9 to 12 us; with 190 animals a frame that was 2 ms.
+  Now about 1.2 us there (10 times less), 0.35 ms a frame. The practice: a uniform grid (spatial hash) sized near the
+  objects' own size, the usual broad phase for many small static colliders. Alternatives: a finer 2D grid (still every
+  sphere up the wreck's 17 m height in one cell), a bounding volume tree (more code, no faster for spheres this even in
+  size), a box per set piece first (still hundreds inside it). Points deep inside overlapping spheres can come out at a
+  slightly different place than before (1 to 2% of random test points; none on the swim routes: the wreck, pirate and
+  ruins checks pass).
+- **Decision: scenery near and far** (`scripts/lod_field.gd`, `LodField`). What: the sea floor kit's pieces (the
+  liner's reef, about 1,100 pieces; the kelp's rocks, the reef zone's corals, the cliffs) are drawn two MultiMeshes a
+  piece, the full model within 8 m of the eye (`Wreck.REEF_NEAR`, `Scenery.PIECES_NEAR`, to the edge of the piece) and
+  the kit's light model (a fifth of the triangles or fewer) out to `far` (the wreck's SEEN, 60 m; 70 m for the rest),
+  none beyond; refilled by 4 m cubes only when the eye has moved half a metre. Why: the liner's reef was one MultiMesh
+  of full models a piece: 2.7 million triangles placed, 600,000 drawn at the wreck. Now about 330,000 there (the near
+  pieces are still most of it). The practice: distance LOD with instancing (Godot's own visibility ranges and HLOD
+  advice); refilling the instance lists on the CPU keeps it to two draws a piece instead of one per piece per chunk.
+  Alternatives: chunked MultiMeshes with visibility ranges (five to ten times the draw calls), Godot's automatic mesh
+  LODs (picked per MultiMesh, by its whole box: no help when the eye is inside the reef). Looks: from 8 m out the
+  pieces are their light models (fewer folds on a brain coral, simpler fans); nearer, nothing changed.
+- Smaller ones, each measured (PERF.md): far animals (beyond 20 m) are stepped every other frame; a fish sends its look
+  only what changed; the sonar's picture is drawn in five layers, each redrawn only when it changes; jellies, nettles
+  and the garden eels are not drawn beyond sight; behind the title every other material of the sea is shown once too
+  (`Main._materials_to_warm`), so that the wrecks and plants do not freeze a browser when first seen.
+- **The web pack** (62.5 MB -> 33 MB): `tools/web_excludes.sh` also turns off automatic LODs and shadow meshes in every
+  creature model's import (they were half of each model's weight; nothing here casts shadows and the creatures never
+  used their LODs, but schools and clouds keep theirs), and leaves out the concept art, the retired rocks and the retired
+  flat panel's pictures. The wreck, pirate and ruins atlases are imported lossy with mipmaps, the liner's bow atlas at
+  2048 (from 4096): the game draws at half size, where 4096 showed only within a couple of metres of the hull.
+  After running it, `godot --headless --path . --import`, and commit the changed `.import` files before exporting from
+  `../Gulp-build`.
+
 ### More asked on 2026-11-18 (late), the user's words
 
 - (with the cover of Ted Bell's novel Nick of Time) "Nick of Time by Ned Bell is part of the inspiration, and the art
@@ -501,3 +540,10 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   `concept_captain_hands_wheel.jpg`, `concept_captain_tpose2.jpg`. The generator will not draw level arms: two tries at a
   true T-pose both came out with the arms hanging low, so figures are built and overlaid in the sheet's own pose.
   Gemini's limit: about ten pictures, then a five-hour wait (used up again at 3:34 AM, resets 8:15 AM).
+- The older brother's look (the user, 2026-11-18, with nine reference photographs of real men, used for general look
+  only, described in words: never uploaded, never copied into the repo, no one man's likeness): a thick tousled mop of
+  curls, shorter at the sides, falling on the forehead; a broad open face, strong jaw, thick neck, light blue-grey
+  eyes, a big easy grin; a real moustache with stubble (a short full beard as a second look: Claude's pick); a big
+  athletic build with heavy forearms and old-style forearm tattoos. Hair colour, the user: "it should be dark hair but
+  amberish red in the right light" (dark brown curls with amber-red lights where the sun catches them). His sheets
+  made earlier (`concept_brother_tpose.jpg`, `_outfits.jpg`) predate this and are to be redone after 8:15 AM.
