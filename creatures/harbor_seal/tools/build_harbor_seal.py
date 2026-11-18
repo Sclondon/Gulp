@@ -5,7 +5,8 @@ Run from the game's root:
     blender --background --python creatures/harbor_seal/tools/build_harbor_seal.py -- <preview folder>   # with pictures
 
 Writes creatures/harbor_seal/models/harbor_seal.glb (the full model, for close pictures) and
-harbor_seal_lo.glb (far off, phones), and the editable creatures/harbor_seal/tools/harbor_seal.blend (this
+harbor_seal_lo.glb (far off, phones), harbor_seal_game.glb (the game model: about a
+tenth of the triangles, spent on its outline, face, eyes and flippers), and the editable creatures/harbor_seal/tools/harbor_seal.blend (this
 folder has a .gdignore). Each model is one still mesh with one surface: the shader (harbor_seal.gdshader) draws
 its coat and spots, swims it, fans its hind flippers and opens its jaw. It prints a WINDING line: the check
 that nothing is inside out.
@@ -100,6 +101,17 @@ TEETH_LOW = 0.012
 TONGUE_AT = (0.02, 0.075, 0.007)
 # (metres behind the nose, degrees round from the back line, its radius, how far it bulges)
 EYE_AT = (0.088, 50.0, 0.0215, 0.0085)
+# The game model (see GAME below): points round the body; how near (metres) its skin keeps to the full model's;
+# how far apart its rings may be at most, along the body and over the mouth; rings in the lower jaw; places
+# that must have a ring.
+GAME_AROUND = 28
+GAME_TOL = 0.0012
+GAME_STEP = 0.09
+GAME_MOUTH_STEP = 0.016
+GAME_JAW = 14
+GAME_KEEP = ()
+# (and how many pieces each whisker is made of)
+GAME_WHISKER = 3
 
 
 def lip(xm):
@@ -134,12 +146,12 @@ def extras(m, low):
 
         place = lambda p, root=root, span=span, chord=chord: root + span * p[0] + chord * p[1]
         m.part(SKIN, FORE_L if sx > 0.0 else FORE_R, root)
-        blade(m, "fore flippers", fore_point, place, facing, 0.034, 20 // d, 10 // d, edge=0.25, tip=0.3)
+        blade(m, "fore flippers", fore_point, place, facing, 0.034, *((6, 5) if GAME else (20 // d, 10 // d)), edge=0.25, tip=0.3)
         m.part(CLAW, FORE_L if sx > 0.0 else FORE_R, root)
         for k in range(5):
             u = 0.12 + 0.19 * k
             base = place(fore_point(0.96, u))
-            cone(m, base, base + span * 0.03 + facing * 0.004, 0.0045, "claws", 4 if low else 7, 1 if low else 3)
+            cone(m, base, base + span * 0.03 + facing * 0.004, 0.0045, "claws", 4 if low or GAME else 7, 1 if low or GAME else 3)
         # The hind flippers: they point straight back, soles together, each a fan of five toes with the
         # outer two the longest.
         root = Vector((sx * 0.022, 0.0, 1.355 - HALF))
@@ -156,7 +168,7 @@ def extras(m, low):
 
         m.part(SKIN, HIND_L if sx > 0.0 else HIND_R, root)
         blade(m, "hind flippers", hind_point, lambda p, root=root, span=span: root + span * p[0] + Y * p[1],
-              facing, 0.03, 22 // d, 30 // d, tip=0.12)
+              facing, 0.03, *((3, 20) if GAME else (22 // d, 30 // d)), tip=0.12)
         # Whiskers: on the pads of the muzzle, and a few over each eye.
         m.part(WHISKER)
         rows = ((78.0, 0.07), (92.0, 0.095), (106.0, 0.085)) if not low else ((92.0, 0.09),)
@@ -202,6 +214,13 @@ STILL, JAW, FORE_L, FORE_R, HIND_L, HIND_R = range(6)
 X = Vector((1.0, 0.0, 0.0))
 Y = Vector((0.0, 1.0, 0.0))
 Z = Vector((0.0, 0.0, 1.0))
+
+# The game model (added 2026-11-18; the user: "We should have a twilight princess model to compare to so we can
+# make low poly versions while maintaining high quality looks and silhouettes"): the same parts from the same
+# curves, its rings of points where the outline bends (the nose, the mouth, round the eye, the neck, the hips)
+# and few along the smooth flanks, a round eye, simpler teeth, thinner whiskers' curves, flippers with their
+# points on their edges and toes. GAME is True while it is being made; the GAME_* numbers are this animal's.
+GAME = False
 
 
 def to_b(p):
@@ -400,6 +419,64 @@ class Mesh:
 
 
 def rings(low):
+    if GAME:
+        return game_rings()
+    return even_rings(low)
+
+
+def game_rings():
+    """The game model's rings: of the full model's (and a few places that must have one: the chin, the corner
+    of the mouth, the hinge, across the eye, GAME_KEEP), as few as keep the skin within GAME_TOL metres of
+    the full model's, and never further apart than GAME_STEP (GAME_MOUTH_STEP as far back as the hinge)."""
+    xe, _, radius, _ = EYE_AT
+    must = [BODY_FROM, BODY_TO, JAW_TIP + JAW_ROUND, CORNER, HINGE_X] + [xe + radius * k for k in (-1.0, -0.5, 0.0, 0.5, 1.0)]
+    must = [x for x in must + list(GAME_KEEP) if BODY_FROM <= x <= BODY_TO]
+    xs = sorted(set(even_rings(False) + must))
+    hard = set(must)
+    angles = [math.pi * k / 16.0 for k in range(17)]
+
+    def sample(xm):
+        out = []
+        for a in angles:
+            side, y = full_point(xm, a)
+            if xm < HINGE_X:
+                y = max(y, roof(xm))
+            out.append((side, y))
+        return out
+
+    points = [sample(x) for x in xs]
+
+    def fits(i, k):
+        for m in range(i + 1, k):
+            t = (xs[m] - xs[i]) / (xs[k] - xs[i])
+            for a in range(len(angles)):
+                sx = points[i][a][0] + (points[k][a][0] - points[i][a][0]) * t
+                sy = points[i][a][1] + (points[k][a][1] - points[i][a][1]) * t
+                if math.hypot(sx - points[m][a][0], sy - points[m][a][1]) > GAME_TOL:
+                    return False
+        return True
+
+    kept = [0]
+    i = 0
+    while i < len(xs) - 1:
+        j = i + 1
+        while j + 1 < len(xs) and xs[j] not in hard:
+            k = j + 1
+            if xs[k] - xs[i] > (GAME_MOUTH_STEP if xs[i] < HINGE_X else GAME_STEP) or not fits(i, k):
+                break
+            j = k
+        kept.append(j)
+        i = j
+    return [xs[k] for k in kept]
+
+
+
+def cols():
+    """How wide the lip's dark edge and the change to the inside of the mouth are, in columns of points, as a
+    share of the full model's (the game model's columns are wider apart)."""
+    return GAME_AROUND / AROUND if GAME else 1.0
+
+def even_rings(low):
     xs = []
     x = BODY_FROM
     for until, step in RINGS:
@@ -417,7 +494,7 @@ def body(m, low):
     """The skin from the nose to the end of the body (or of the tail), the upper head cut away below the line
     of the lips: its underside there is the roof of the mouth."""
     m.part(SKIN)
-    half = (AROUND_LO if low else AROUND) // 2
+    half = (GAME_AROUND if GAME else (AROUND_LO if low else AROUND)) // 2
     around = half * 2
     split = round(half * 0.62)
     grid = []
@@ -439,12 +516,12 @@ def body(m, low):
             lips = 0.0
             gone = False
             if mouth and xm <= CORNER:
-                lips = max(0.0, 1.0 - abs(h - split) / 3.0) * front
+                lips = max(0.0, 1.0 - abs(h - split) / (3.0 * cols())) * front
             if mouth and y <= cut + 1e-7:
                 gone = y < cut - 1e-7 or h > split
                 y = max(y, cut)
                 if xm <= CORNER:
-                    inside = min(1.0, max(0.0, (h - split) / 4.0))
+                    inside = min(1.0, max(0.0, (h - split) / (4.0 * cols())))
                     y += palate_at(xm, abs(side) / edge)
                 else:
                     inside = 1.0 if gone else 0.0
@@ -492,10 +569,10 @@ def jaw(m, low):
     """The lower jaw and chin: a part of its own from its tip back to its hinge, where it meets the throat's
     skin; the shader swings it down. Its top is the floor of the mouth."""
     m.part(SKIN, JAW, (0.0, HINGE_Y, HINGE_X - HALF))
-    half = max(6, (AROUND_LO if low else AROUND) // 4)
+    half = max(6, (GAME_AROUND if GAME else (AROUND_LO if low else AROUND)) // 4)
     around = half * 2
     split = max(2, round(half * 0.3))
-    n = 9 if low else 44
+    n = GAME_JAW if GAME else (9 if low else 44)
     grid = []
     centre = []
     xs = [JAW_TIP + (HINGE_X - JAW_TIP) * (i / n) ** 1.35 for i in range(1, n + 1)]
@@ -506,8 +583,8 @@ def jaw(m, low):
         for c in range(around):
             h = c if c <= half else around - c
             angle = angles[h] if c <= half else -angles[h]
-            inside = min(1.0, max(0.0, (split - h) / 4.0))
-            lips = max(0.0, 1.0 - abs(h - split) / 3.0) * (1.0 - smooth(0.0, 0.4, wall(xm)))
+            inside = min(1.0, max(0.0, (split - h) / (4.0 * cols())))
+            lips = max(0.0, 1.0 - abs(h - split) / (3.0 * cols())) * (1.0 - smooth(0.0, 0.4, wall(xm)))
             if xm > CORNER:
                 inside = 1.0 if h < split else 0.0
             row.append(m.add(jaw_point(xm, angle, h <= split), inside, lips))
@@ -626,7 +703,7 @@ def blade(m, name, point, place, facing, thick, nt, nu, edge=0.0, tip=0.0):
 
 def whisker(m, root, way, length, bend, thick, low, name="whiskers"):
     """A whisker: a three-sided hair from `root` (left open: bury it) `way`, curving towards `bend`."""
-    steps = 2 if low else 6
+    steps = GAME_WHISKER if GAME else (2 if low else 6)
     last = None
     here = Vector(root)
     a = way.orthogonal().normalized()
@@ -657,8 +734,8 @@ def whisker(m, root, way, length, bend, thick, low, name="whiskers"):
 def eye(m, sx, low):
     """A dome lying on the skin of the head."""
     m.part(EYE)
-    spokes = 12 if low else 36
-    steps = 3 if low else 10
+    spokes = 28 if GAME else (12 if low else 36)
+    steps = 3 if GAME else (3 if low else 10)
     xe, degrees, radius, bulge = EYE_AT
     angle = math.radians(degrees)
     here = skin(xe, sx * angle)
@@ -668,6 +745,14 @@ def eye(m, sx, low):
         return skin(xe + dx, sx * (angle - dy / round_here))
 
     out = out_of_skin(xe, sx * angle)
+    if sx > 0.0 and not low and not GAME:
+        # (the eye's place, for the shader's cartoon eye: its middle on the skin, the way it faces, the way
+        # to the nose and up across it, and how far its rim lies below a flat across it)
+        ahead = (-Z - out * out.dot(-Z)).normalized()
+        up = out.cross(ahead) if out.cross(ahead).y > 0.0 else ahead.cross(out)
+        print("EYE middle (%.4f, %.4f, %.4f) out (%.4f, %.4f, %.4f) ahead (%.4f, %.4f, %.4f) up (%.4f, %.4f, %.4f) radius %.4f sag %.5f" % (
+            here.x, here.y, here.z, out.x, out.y, out.z, ahead.x, ahead.y, ahead.z, up.x, up.y, up.z, radius,
+            radius * radius / (2.0 * round_here)))
     middle = m.add(here + out * (bulge + 0.0006), 0.0, 0.0)
     last = None
     for k in range(1, steps + 1):
@@ -696,7 +781,7 @@ def teeth(m, low):
     while the mouth is shut. TEETH lists them: (metres behind the nose, how far out to the side as a share
     of the lip's edge there, how long, how wide at the root), each made on both sides, above and below; a
     tooth on the middle line is made once."""
-    sides = 5 if low else 9
+    sides = 4 if GAME else (5 if low else 9)
     rows = 2 if low else 4
     for upper in (True, False):
         m.part(TOOTH, STILL if upper else JAW, (0.0, HINGE_Y, HINGE_X - HALF))
@@ -722,6 +807,9 @@ def teeth(m, low):
                     at = lip(xm) - GAP - trough_at(xm, share) * grow
                     base = Vector((x, at - radius * 0.9, xm - HALF))
                     tip = Vector((x * 0.9, at + length, xm - HALF + length * 0.06))
+                if GAME:
+                    # (the game model: four-sided, and only the long ones in two rows)
+                    rows = 2 if length >= TEETH_LOW else 1
                 cone(m, base, tip, radius, "upper teeth" if upper else "lower teeth", sides, rows, blunt=0.35)
 
 
@@ -732,7 +820,7 @@ def tongue(m, low):
     wide = lip_side(middle) * JAW_WIDE * 0.6
     blob(m, Vector((0.0, lip(middle) - GAP - trough_at(middle, 0.0) * 0.75, middle - HALF)),
          X * wide, Y * thick, Vector((0.0, 0.5 * (lip(front) - lip(back)), -0.5 * (back - front))), "tongue",
-         8 if low else 18, 4 if low else 10)
+         10 if GAME else (8 if low else 18), 5 if GAME else (4 if low else 10))
 
 
 def make(name, low):
@@ -842,16 +930,24 @@ def render(folder, made):
 
 
 def main():
+    global GAME
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.preferences.filepaths.save_version = 0
     full = make(NAME, False)
     low = make(NAME + "_lo", True)
+    GAME = True
+    game = make(NAME + "_game", False)
+    GAME = False
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, NAME + ".glb"))
     export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
+    export_one(game, os.path.join(OUT, NAME + "_game.glb"))
     low.location.x = LENGTH
+    game.location.x = LENGTH * 2.0
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
+    game.hide_render = True
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
         render(PREVIEW, [full, low])

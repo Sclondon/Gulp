@@ -22,7 +22,7 @@ extends Node3D
 ## set `phase` yourself (for a picture that must loop: frame / frames in a beat). The same
 ## names and meanings as GameCommon's fish.
 ##
-## The model is creatures/orca/models/orca.glb (and _lo), built by tools/build_orca.py;
+## The model is creatures/orca/models/orca.glb (and _lo, _game), built by tools/build_orca.py;
 ## orca.gdshader draws its markings, swims it, works its jaw and shapes its dorsal fin.
 
 const MODEL := "res://creatures/orca/models/orca%s.glb"
@@ -79,6 +79,31 @@ const FIN_TOP_BULL := 2.56
 	set(value):
 		low = value
 		_show()
+## The game model (added 2026-11-18): about 4,200 triangles, Twilight Princess weight, spent on
+## its outline, eyes, lips and fin edges, shown in place of the full one (`low` still shows the
+## low one). Each model is loaded only when it is first shown, so with `game` on the full model
+## is never loaded and a game's web export can leave it out.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## Its eyes: 0 as in life (as they always were), 1 big cartoon eyes with a character of their own
+## (a white, a coloured iris, a big pupil, a highlight, lids). On all three models.
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send(&"cartoon_eyes", cartoon_eyes)
+## Where its cartoon eyes look, each in its own plane: x +1 towards its nose, -1 towards its tail;
+## y +1 up, -1 down (both eyes the same way).
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value.clamp(Vector2(-1.0, -1.0), Vector2(1.0, 1.0))
+		_send(&"eye_look", eye_look)
+## Its cartoon eyes' lids: 0 open, 1 shut.
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send(&"blink", blink)
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set
 ## it yourself.
 var phase := 0.0:
@@ -89,18 +114,37 @@ var phase := 0.0:
 static var _meshes := {}
 
 var _material: ShaderMaterial
-var _full: MeshInstance3D
-var _low: MeshInstance3D
+# (the models shown so far, by their file's ending: "", "_lo", "_game")
+var _shown := {}
+var _started := false
 
 
 ## The full model's mesh, or the low one's (each one surface, to wear `new_material()`): for
 ## drawing one without this node (many of them in a MultiMesh, say).
 static func mesh_of(low_wanted := false) -> Mesh:
-	var path := MODEL % ("_lo" if low_wanted else "")
+	return _mesh_at("_lo" if low_wanted else "")
+
+
+## The game model's mesh (one surface, to wear `new_material()`), without the thinned copies
+## Godot's importer makes for far off (they would bend in straight pieces).
+static func game_mesh() -> Mesh:
+	return _mesh_at("_game")
+
+
+## A mesh rebuilt from its surfaces alone, without the importer's automatic LODs.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return plain
+
+
+static func _mesh_at(ending: String) -> Mesh:
+	var path := MODEL % ending
 	if not _meshes.has(path):
 		var made := (load(path) as PackedScene).instantiate()
 		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
-		_meshes[path] = found.mesh
+		_meshes[path] = without_lods(found.mesh) if ending == "_game" else found.mesh
 		made.free()
 	return _meshes[path]
 
@@ -119,10 +163,12 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
+	_started = true
 	_show()
 	_send_phase()
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 	_send(&"sway", sway)
 	_send(&"gape", gape)
 	_send(&"curl", curl)
@@ -144,7 +190,7 @@ func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)
 
 
-## Its one material (both models wear it).
+## Its one material (every model wears it).
 func material() -> ShaderMaterial:
 	return _material
 
@@ -159,18 +205,23 @@ func _send_phase() -> void:
 	_send(&"phase", fposmod(phase * tail_beats, 1.0))
 
 
+# (shows the model wanted, loading it the first time)
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if not _started:
+		return
+	var wanted := "_lo" if low else ("_game" if game else "")
+	if not _shown.has(wanted):
+		_shown[wanted] = _instance_of(wanted)
+	for ending: String in _shown:
+		(_shown[ending] as MeshInstance3D).visible = ending == wanted
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of(ending: String) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
+	mesh.mesh = _mesh_at(ending)
 	mesh.material_override = _material
 	# (its flukes rise and fall past where the still model ends, and it bends)
 	mesh.extra_cull_margin = 0.25 * LENGTH
-	mesh.name = "Orca" + ("_lo" if low_wanted else "")
+	mesh.name = "Orca" + ending
 	add_child(mesh)
 	return mesh

@@ -20,7 +20,7 @@ extends Node3D
 ## beat, or set `phase` yourself. The same names and meanings as GameCommon's fish
 ## (YellowfinTuna).
 ##
-## The model is creatures/sea_otter/models/sea_otter.glb (and _lo), built by
+## The model is creatures/sea_otter/models/sea_otter.glb (and _lo, _game), built by
 ## tools/build_sea_otter.py; sea_otter.gdshader draws its fur and moves it.
 
 const MODEL := "res://creatures/sea_otter/models/sea_otter%s.glb"
@@ -72,6 +72,29 @@ const WIDTH := 0.26
 	set(value):
 		low = value
 		_show()
+## The game model (models/sea_otter_game.glb, about a tenth of the full model's triangles,
+## spent on its outline, face, eyes and flippers) in place of the full one. `low` still shows the
+## low one. Each model is loaded only when it is first shown, so with `game` on the full .glb is
+## never loaded (a game's web export can leave it out).
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye: 0 the eye as it is, 1 bigger and drawn as a cartoon (a big round black eye, its cheeks pushed up under it in a grin).
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = value
+		_send(&"cartoon_eyes", value)
+## Where both eyes look, -1..1: x towards its nose, y up (the cartoon eye's iris slides that way).
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		_send(&"eye_look", value)
+## Its lids: 0 open, 1 shut.
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = value
+		_send(&"blink", value)
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set
 ## it yourself.
 var phase := 0.0:
@@ -82,14 +105,21 @@ var phase := 0.0:
 static var _meshes := {}
 
 var _material: ShaderMaterial
-var _full: MeshInstance3D
-var _low: MeshInstance3D
+# (the models shown so far, by their ending: "" the full one, "_lo", "_game")
+var _shown := {}
+var _made := false
 
 
 ## The full model's mesh, or the low one's (each one surface, to wear `new_material()`): for
 ## drawing a sea otter without this node.
 static func mesh_of(low_wanted := false) -> Mesh:
 	return _mesh_at(MODEL % ("_lo" if low_wanted else ""))
+
+
+## The game model's mesh (one surface, to wear `new_material()`), without the thinned LOD meshes
+## Godot's importer makes (bent in the shader, they would bend in straight pieces far off).
+static func game_mesh() -> Mesh:
+	return _mesh_at(MODEL % "_game", true)
 
 
 ## A new material for `mesh_of()`'s meshes. Its shader settings are the game's to set: `phase`
@@ -106,8 +136,7 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
+	_made = true
 	_show()
 	_send_phase()
 	_send(&"sway", sway)
@@ -115,6 +144,9 @@ func _ready() -> void:
 	_send(&"gape", gape)
 	_send(&"curl", curl)
 	_send(&"arch", arch)
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 
 
 ## Each frame, for one that is not having its `phase` set for it: moves it on through its beat.
@@ -131,7 +163,7 @@ func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)
 
 
-## Its one material (both models wear it).
+## Its one material (every model wears it).
 func material() -> ShaderMaterial:
 	return _material
 
@@ -147,26 +179,38 @@ func _send_phase() -> void:
 
 
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if not _made:
+		return
+	var wanted := "_lo" if low else ("_game" if game else "")
+	if not _shown.has(wanted):
+		_shown[wanted] = _instance_of(wanted)
+	for ending: String in _shown:
+		(_shown[ending] as MeshInstance3D).visible = ending == wanted
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of(ending: String) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
+	mesh.mesh = game_mesh() if ending == "_game" else mesh_of(ending == "_lo")
 	mesh.material_override = _material
 	# (its tail and feet swing out past where the still model ends; `curl` and `arch` further)
 	mesh.extra_cull_margin = 0.5
-	mesh.name = "SeaOtterLo" if low_wanted else "SeaOtter"
+	mesh.name = "SeaOtter" + {"": "", "_lo": "Lo", "_game": "Game"}[ending]
 	add_child(mesh)
 	return mesh
 
 
-static func _mesh_at(path: String) -> Mesh:
+static func _mesh_at(path: String, plain := false) -> Mesh:
 	if not _meshes.has(path):
 		var made := (load(path) as PackedScene).instantiate()
 		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
-		_meshes[path] = found.mesh
+		_meshes[path] = without_lods(found.mesh) if plain else found.mesh
 		made.free()
 	return _meshes[path]
+
+
+## A copy of `mesh` without the LOD meshes Godot's importer made for it.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return plain
