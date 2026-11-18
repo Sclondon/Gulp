@@ -215,6 +215,7 @@ func _ready() -> void:
 	scenery.player = player
 	_viewport.add_child(scenery)
 	life = Life.new()
+	scenery.life = life
 	life.player = player
 	life.hunting = not calm
 	_viewport.add_child(life)

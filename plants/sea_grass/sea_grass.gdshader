@@ -28,6 +28,16 @@ uniform float push_bend = 1.3;
 // How much light shows through a leaf.
 uniform float translucency = 0.5;
 
+// Fields only (SeaGrassBed.field sets these; 0 for fade_end leaves a planted bed as it is): the
+// share of tufts kept falls as 1 / distance past lod_near (to keep_min) and to none by fade_end, the
+// same sum SeaGrassBed._keep uses to choose how many each square draws. A tuft whose rank (the
+// instance's custom y) is just within the share kept grows up out of the floor as the camera nears,
+// and every tuft sinks into the floor over the last 40% of fade_end, so the meadow has no edge.
+// Thinned tufts spread wider (up to 1.5 times), as GameCommon grass's blades do.
+uniform float lod_near = 12.0;
+uniform float fade_end = 0.0;
+uniform float keep_min = 0.15;
+
 uniform vec3 grass_deep : source_color = vec3(0.08, 0.27, 0.09);
 uniform vec3 grass_bright : source_color = vec3(0.22, 0.5, 0.13);
 uniform vec3 tip_pale : source_color = vec3(0.6, 0.68, 0.32);
@@ -39,8 +49,18 @@ varying float v_tuft;
 void vertex() {
 	vec3 foot = MODEL_MATRIX[3].xyz;
 	float tall = max(length(MODEL_MATRIX[1].xyz), 0.01); // the tuft's height (the tallest leaf's)
-	vec4 own = INSTANCE_CUSTOM; // x: a number of the tuft's own
+	vec4 own = INSTANCE_CUSTOM; // x: a number of the tuft's own; y: its rank in a field's square
 	vec3 rel = VERTEX - foot;
+	if (fade_end > 0.0) {
+		float seen = length(CAMERA_POSITION_WORLD - foot);
+		float keep = (seen <= lod_near ? 1.0 : max(lod_near / seen, keep_min)) * (1.0 - smoothstep(fade_end * 0.72, fade_end, seen));
+		float shown = clamp((keep * 1.15 - own.y) / max(0.6 * keep, 0.0001), 0.0, 1.0);
+		float grown = shown * (1.0 - 0.7 * smoothstep(fade_end * 0.6, fade_end, seen));
+		// (and the fewer kept, the wider each spreads, so a thinned meadow still covers its floor)
+		float wide = clamp(inversesqrt(max(keep, 0.01)), 1.0, 1.5);
+		rel *= vec3(grown * wide, grown, grown * wide);
+		tall = max(tall * grown, 0.01);
+	}
 	float h = max(rel.y, 0.0);
 	float leaf = UV2.x;
 

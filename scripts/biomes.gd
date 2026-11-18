@@ -201,8 +201,8 @@ const WHOLE := [Vector2(Bay.WEST, Bay.NORTH), Vector2(Bay.EAST, Bay.SOUTH)]
 var pieces := {}
 var kelp_places := PackedVector3Array()
 var kelp_lengths := PackedFloat32Array()
-var grass_places := PackedVector3Array()
-var grass_heights := PackedFloat32Array()
+## The eelgrass layers ([table, layer]), drawn as SeaGrassBed fields (`grass_fields`), not as points.
+var grass_layers: Array = []
 var weed_places := PackedVector3Array()
 var weed_sizes := PackedFloat32Array()
 var weed_kinds := PackedInt32Array()
@@ -255,8 +255,65 @@ func run(props: GDScript, kept_clear: Callable) -> void:
 			made["%s %d %s" % [place, k, layer.get("pieces", [layer.what])[0] if layer.what == "prop" else layer.what + str(layer.get("kind", ""))]] = n
 
 
+## The eelgrass as fields (SeaGrassBed.field, the user's "Yep", 2026-11-18, to Warren's way of spawning
+## grass): one a "grass" layer, over its place's box, each {area, mask, tall}. The mask is the layer's
+## own rules, asked at a point instead of at the placer's grid: the place's weight (thick at its core,
+## thinning to its edge, as the placer's chance of a clump there, `density` at `spacing`), the floor
+## type, depth, slope, the noise's bare blowouts, the sandy paths and set pieces kept clear and the
+## rocks' feet. `tall` gives the tufts' least and most height there (`size` in the core, `edge_size`
+## towards the edge). Call after `run` (the rocks are all placed by then).
+func grass_fields() -> Array:
+	var out := []
+	for one: Array in grass_layers:
+		var table: Dictionary = one[0]
+		var layer: Dictionary = one[1]
+		var box := Rect2()
+		if table.has("region"):
+			box = BiomeRegions.bounds(table.region)
+		elif not (table.get("area", []) as Array).is_empty():
+			box = Rect2((table.area[0] as Vector2) - Vector2.ONE * float(table.area[1]), Vector2.ONE * float(table.area[1]) * 2.0)
+		else:
+			box = Rect2(WHOLE[0], WHOLE[1] - WHOLE[0])
+		if box.size == Vector2.ZERO:
+			continue
+		var noise: FastNoiseLite = null
+		if layer.has("noise"):
+			noise = FastNoiseLite.new()
+			noise.frequency = float(layer.noise[0])
+			noise.seed = int(layer.noise[1])
+			noise.fractal_octaves = 2
+		var spacing: float = layer.get("spacing", 1.0)
+		var density: Array = layer.get("density", [1.0, 1.0])
+		var full := minf(1.0, float(density[0]) * spacing * spacing / 100.0)
+		# (the last point's edge, which `tall` asks for right after `mask` at the same point)
+		var last := {"p": Vector2.INF, "edge": 0.0}
+		var mask := func(p: Vector2) -> float:
+			var edge := _edge(table, p)
+			last.p = p
+			last.edge = edge
+			if edge < 0.0:
+				return 0.0
+			if noise and noise.get_noise_2d(p.x, p.y) < float(layer.noise[2]):
+				return 0.0
+			if not _fits(table, layer, p):
+				return 0.0
+			return minf(1.0, lerpf(float(density[1]), float(density[0]), edge) * spacing * spacing / 100.0) / full
+		var size: Array = layer.get("size", [1.0, 1.0])
+		var edge_size: Array = layer.get("edge_size", size)
+		var tall := func(p: Vector2) -> Vector2:
+			var edge: float = last.edge if last.p == p else _edge(table, p)
+			var core := smoothstep(0.35, 0.65, edge)
+			return Vector2(lerpf(float(edge_size[0]), float(size[0]), core), lerpf(float(edge_size[1]), float(size[1]), core))
+		out.append({"area": box.grow(1.0), "mask": mask, "tall": tall})
+	return out
+
+
 func _layer(table: Dictionary, layer: Dictionary) -> int:
 	if layer.what == "prop" and _props == null:
+		return 0
+	if layer.what == "grass":
+		# (eelgrass is not placed here: it is a field, filled near the eye by the same rules: `grass_fields`)
+		grass_layers.append([table, layer])
 		return 0
 	if layer.what == "prop":
 		# (a piece of the kit not built yet is left out)
@@ -386,10 +443,6 @@ func _put(layer: Dictionary, p: Vector2, edge: float) -> void:
 			var reach: Array = layer.reach if edge > 0.6 else layer.get("edge_reach", layer.reach)
 			kelp_places.append(Vector3(p.x, floor_y - 0.1, p.y))
 			kelp_lengths.append(minf(deep * _rng.randf_range(float(reach[0]), float(reach[1])), 25.0))
-		"grass":
-			var heights: Array = size if edge > 0.5 else layer.get("edge_size", size)
-			grass_places.append(Vector3(p.x, floor_y - 0.03, p.y))
-			grass_heights.append(_rng.randf_range(float(heights[0]), float(heights[1])))
 		"seaweed":
 			weed_places.append(Vector3(p.x, floor_y - 0.02, p.y))
 			weed_sizes.append(_rng.randf_range(float(size[0]), float(size[1])) * lerpf(0.75, 1.0, edge))

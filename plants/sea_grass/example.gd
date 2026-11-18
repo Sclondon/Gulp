@@ -1,11 +1,14 @@
 extends Node3D
-## Sea grass's example: a bed of 600 tufts on a sandy floor, a gentle current from the left, and a
-## ball swimming through it that lays the grass aside. Give this script to a Node3D at the root
-## of a scene and run it. (If the project declares no `water_clock` shader global, the bed adds
-## one and runs it.)
+## Sea grass's example: a meadow 60 m across on a sandy floor (a field: filled as the camera nears,
+## thinning and sinking into the floor far off), a sandy path through it, a gentle current from the
+## left, a ball swimming through it that lays the grass aside, and a camera drifting over it. Give this
+## script to a Node3D at the root of a scene and run it. (If the project declares no `water_clock`
+## shader global, the bed adds one and runs it.) A small planted bed (`plant`) stands beside it.
 
+var _field: SeaGrassBed
 var _bed: SeaGrassBed
 var _ball: MeshInstance3D
+var _camera: Camera3D
 
 
 func _ready() -> void:
@@ -26,19 +29,31 @@ func _ready() -> void:
 
 	var floor_ := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
-	plane.size = Vector2(80.0, 80.0)
+	plane.size = Vector2(120.0, 120.0)
 	floor_.mesh = plane
 	var sand := StandardMaterial3D.new()
 	sand.albedo_color = Color(0.55, 0.5, 0.38)
 	floor_.material_override = sand
 	add_child(floor_)
 
+	# The meadow: thick in the middle, thinning to its rim, a winding path of sand kept clear.
+	_field = SeaGrassBed.field(self, Rect2(-30.0, -30.0, 60.0, 60.0), 1.5, {
+		"mask": func(p: Vector2) -> float:
+			if absf(p.x - sin(p.y * 0.15) * 4.0) < 1.2:
+				return 0.0
+			return clampf((30.0 - p.length()) / 8.0, 0.0, 1.0),
+		"tall": func(p: Vector2) -> Vector2:
+			return Vector2(0.4, 0.7).lerp(Vector2(0.9, 1.2), clampf((26.0 - p.length()) / 10.0, 0.0, 1.0)),
+		"current": Vector2(0.35, 0.1),
+	})
+
+	# A planted bed beside it (a list of tufts, all at once).
 	var places := PackedVector3Array()
 	var heights := PackedFloat32Array()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
-	for i in 600:
-		places.append(Vector3(rng.randf_range(-8.0, 8.0), 0.0, rng.randf_range(-10.0, 4.0)))
+	for i in 200:
+		places.append(Vector3(rng.randf_range(36.0, 44.0), 0.0, rng.randf_range(-4.0, 4.0)))
 		heights.append(rng.randf_range(0.4, 1.2))
 	_bed = SeaGrassBed.new()
 	add_child(_bed)
@@ -49,12 +64,14 @@ func _ready() -> void:
 	_ball.mesh = SphereMesh.new()
 	_ball.scale = Vector3.ONE * 0.4
 	add_child(_ball)
+	SeaGrassBed.push(_ball, 0.8)
 
-	var camera := Camera3D.new()
-	add_child(camera)
-	camera.look_at_from_position(Vector3(0.0, 2.2, 6.0), Vector3(0.0, 0.2, -3.0))
-	camera.current = true
-	print("SEA GRASS EXAMPLE ", _bed.counts())
+	_camera = Camera3D.new()
+	add_child(_camera)
+	_camera.look_at_from_position(Vector3(0.0, 2.2, 6.0), Vector3(0.0, 0.2, -3.0))
+	_camera.current = true
+	_field.fill_near(_camera.global_position, 20.0)
+	print("SEA GRASS EXAMPLE field ", _field.counts(), " bed ", _bed.counts())
 
 
 func _process(_delta: float) -> void:
@@ -63,4 +80,4 @@ func _process(_delta: float) -> void:
 	if ProjectSettings.has_setting("shader_globals/water_clock"):
 		RenderingServer.global_shader_parameter_set(&"water_clock", seconds)
 	_ball.position = Vector3(sin(seconds * 0.4) * 5.0, 0.35, -3.0 + cos(seconds * 0.3) * 4.0)
-	_bed.pushers = PackedVector3Array([_ball.position])
+	_camera.position = Vector3(sin(seconds * 0.05) * 20.0, 2.2, 6.0 + cos(seconds * 0.04) * 10.0)

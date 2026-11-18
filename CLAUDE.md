@@ -484,6 +484,15 @@ choices below are Claude's.
   animals anywhere in their region. New kit piece: white plumose anemones (`tools/build_plumose.py`). Each biome, its
   rules, budget, decisions and what is rough: tools/BIOMES.md, "The eight biomes". In-water pictures:
   `tools/bay_shot.gd -- --biomes [--only=<name>]`; the chart: `tests/overhead.gd -- --biomes` tints every biome.
+- **The eelgrass is Warren's grass spawning now** (2026-11-18; the user asked "Is the grass using our warren grass
+  spawning system?" and answered "Yep" to bringing it into GameCommon `sea-grass`). Each "grass" layer in
+  `Biomes.TABLES` (the grass biome, the river) is a `SeaGrassBed.field` over its place's box (`Biomes.grass_fields`:
+  the layer's own rules as a mask, the floor from `Sea.ground`), filled square by square as the eye nears, thinned with
+  distance and sunk into the floor at the far edge (no hard cut at 40 m); quality follows `Sand.quality`
+  (`Scenery._plant_grass`, `GRASS_DENSITY`). The player and the three fish nearest it lay it aside (`Scenery.life`). The
+  placer no longer walks the grass grids, so every later layer's random draws shifted: the same rules, other spots.
+  `tools/bay_shot.gd` fills the grass before each picture; its grass views look at `GRASS_SPOT`. Decision record:
+  GameCommon's `godot/sea-grass/README.md`; numbers: tools/BIOMES.md, "The eight biomes".
 - **A second rocky islet** (2026-11-18, the user: "lets add another rocky outcrop island just south south west of the
   pirate ship to fill in that empty spot a bit as well"): `Scenery.OUTCROP_SOUTH` (-74, -14), built by the same
   `_build_outcrop` (now taking its middle, a name, the islet's turn and whether seals lie on it: these have none;

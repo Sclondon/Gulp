@@ -235,12 +235,29 @@ garibaldi also live in "crags"; bat rays and leopard sharks in "grass" too.
 | --- | --- | --- | --- |
 | kelp | rock ridges across the current with sand channels between (noise stretched 0.45 x 1.6, turned 0.32), breaking up towards the edge; pink crust barrens; damp dark sand between | giant kelp in clumps of 4 to 7 on rock 5 to 28 m, groves and lanes by a slow noise (0.04), 1.05 to 1.3 times the depth (to the canopy, capped 25 m), canopy mats over the core clumps; boulders, reef slabs, understory kelp, red weed, feather boa shallow, urchins on the barrens and by rocks, fans, sponges, strawberry anemones, stars | 275 kelp plants, 1,237 understory, 1,886 red weed |
 | dunes | clean sand painted the sand's PALE kind (paler, more ripples); **the floor's own shape**: `Bay.dune_height` | open and bare: sea pen meadows in patches, sand dollars, scallops, a few lone boulders; garden eels in three colonies (`Scenery.EEL_COLONIES`: the old ridge off Santa Cruz and the liner's colony moved in); two half-buried anchors with chain runs (`DUNE_ANCHORS`, the docks kit's Anchor and Chain scaled 1.6 and 2.2) | 712 sea pens, 260 eels |
-| grass | sand with silty mud patches | eelgrass at 520 tufts per 100 m² at the core (clumps of 2 to 4), bare blowouts where the noise is low, five sandy paths (`keep`), sea lettuce; olive and straw colours and a stronger lean (`Scenery._plant_grass`), drawn to 40 m (`GRASS_SEEN`) in 12 m squares | 11,632 tufts |
+| grass | sand with silty mud patches | eelgrass thick at the core, thinning to the edge (the layer's `density` 520 / 110 at `spacing` 0.55, as a chance), bare blowouts where the noise is low, five sandy paths (`keep`), sea lettuce; olive and straw colours and a stronger lean (`Scenery._plant_grass`). Since 2026-11-18 a SeaGrassBed **field** (see below), not a list of tufts | was 11,632 tufts; now filled near the eye |
 | crags | rock nearly everywhere, sand pockets, crust patches | leaning pinnacles (`lean` 0.4) and hard-leaning ones as shards (0.75), stacks and ledges, rare arches, boulder piles in clumps, reef slabs: all kept 2 m under the surface, off the islets' columns (`avoid`) and 10 m round the pirate ship's lane (`keep`); on them (`grow` -> `Biomes.grow_spheres`, grown in `Scenery._grow_on_structures`) white plumose anemones, pink strawberry anemone sheets for coralline, stars and urchins; on the floor plumose clumps, strawberry sheets, stars, urchins, hydrocoral, fans, red weed. The outcrops' own stacks and shards now wear the kit's rock, tinted dark (`CRAG_ROCK`) | 15 + 5 pinnacles, 12 stacks, 1 arch, 81 plumose clumps on the floor (more grown on the rocks) |
 | trench | the old rules: rock on steep risers in beds, mud on the deep flats | rock ledges down the risers, sponges and fans on them, and on the silted treads (concept: white anemones, sponges, sea pens on every ledge) plumose clumps by the rock, sponges, tall white sea pens and whips (now from 28 m, on sand or mud) | 242 ledges, 287 pens, 31 plumose clumps, 170 sponges |
 | beach | the old rules (rocky points, Carmel's white sand) | the rocky points as before (surfgrass, rockweed, feather boa, anemones, mussels, stars) plus tide-pool rock patches on the sandy shores with surfgrass, rockweed, anemones and stars round them (`near_rock`); the sand dollar band, now 2.5 to 6 m and on slopes to 0.5 | 22 tide-pool rocks |
-| river | mud and silt (sand in patches out at the mouth) | eelgrass on the banks and the estuary's flats, sea lettuce, red weed; the mangroves (`Scenery._plant_mangroves`) now stand from 2.5 m inside the channel's edge to 2 m up the bank, so their roots arch into the water | 1,291 tufts, 536 weed |
+| river | mud and silt (sand in patches out at the mouth) | eelgrass on the banks and the estuary's flats (a field too), sea lettuce, red weed; the mangroves (`Scenery._plant_mangroves`) now stand from 2.5 m inside the channel's edge to 2 m up the bank, so their roots arch into the water | 1,291 tufts, 536 weed |
 | reef | as before | the liner's own reef and the bommies (unchanged) and now the warm pocket's corals, fans and sponges on the canyon's rims and walls either side of it | 44 |
+
+**The eelgrass as fields** (2026-11-18, the user's "Yep" to "Is the grass using our warren grass spawning system?";
+the decision record is in GameCommon's `godot/sea-grass/README.md`). Each "grass" layer above is no longer placed as
+points: `Biomes.grass_fields()` turns it into a mask (the place's weight, as the placer's chance of a clump; floor type,
+depth, slope, the noise's blowouts, the `keep` paths, the set pieces kept clear, the rocks' feet) and a height range
+(`size` in the core, `edge_size` towards the edge), and `Scenery._plant_grass` makes a `SeaGrassBed.field` of each over
+its place's box: 12 m squares, filled only as the eye comes within 40 m, nearest first, about 1.2 ms a frame;
+`GRASS_DENSITY` 1.8 (7.2 tufts a m² at the core at MEDIUM, a phone; HIGH on a desktop is 9 and reaches 50 m). Full
+density to 14 m, then thinning (to 0.45 kept) and sinking into the floor towards 40 m, so a meadow seen from afar fades
+instead of popping off at 40 m. Measured (390x844, `--perf=grass,river,start`; the machine shared with other sessions,
+frame ms swing several ms): at the west meadow the eelgrass drew 36k triangles in 7 draws before, 34k in 9 after (sent
+151k -> 108k); at the river 0 -> 4k in 5 small far draws; the placer's run at load about 0.4 to 0.7 s shorter (desktop).
+Filling while swimming at 5 m/s along 144 m of meadow (headless, MEDIUM): 106 squares, on frames that filled 1.3 to 2.3
+ms (the 99th percentile 1.6 to 2.5 ms); single frames spiked to 15 to 40 ms, but a fixed control workload spiked as
+much on the same runs (other sessions' Godot on the machine), so they are not the filling. A jump to an unfilled meadow
+fills its 19 squares in about 0.6 s. The tufts are spread evenly on a jittered grid, not in the placer's clumps of 2 to
+4: up close the meadow is a little more regular.
 
 **New kit piece: `plumose_anemones`** (`tools/build_plumose.py` -> `models/kit/plumose_anemones.glb`, `.json`,
 `tools/blend/kit_plumose.blend`): three or four white Metridium columns with lobed, frilled crowns, 1,632 triangles, the

@@ -6,6 +6,9 @@ extends SceneTree
 ## inside each of the eight biomes (tools/BIOMES.md, "The eight biomes"), to hold against their concepts
 ## (tools/art_src/concept_biome_*.png); --only=<name part> keeps the views whose names have it.
 
+## Where the grass views look (world x, z): the meadow's thickest core, south-west of the liner's canyon.
+const GRASS_SPOT := Vector2(-35.7, 86.0)
+
 var _out := "user://"
 var _above := false
 var _biomes := false
@@ -77,6 +80,8 @@ func _initialize() -> void:
 			sea.set_above(true)
 		else:
 			sea.set_above(camera.global_position.y > Sea.SURFACE)
+		# (the eelgrass fills near the eye a little a frame: all of it now)
+		scenery.fill_grass_near(camera.global_position, 80.0)
 		for i in 8:
 			await process_frame
 		await RenderingServer.frame_post_draw
@@ -106,9 +111,10 @@ func _biome_views(scenery: Scenery) -> Array:
 				best = places[i]
 		return best
 	var kelp: Vector3 = thickest.call(scenery._biomes.kelp_places, 8.0, BiomeRegions.KELP)
-	var grass: Vector3 = thickest.call(scenery._biomes.grass_places, 4.0, BiomeRegions.GRASS)
 	var k := Vector2(kelp.x, kelp.z)
-	var g := Vector2(grass.x, grass.z)
+	# (the eelgrass is a field, filled near the eye, not a list of tufts: its views look at GRASS_SPOT,
+	# the thickest stand the old placer made, so the pictures stay comparable)
+	var g := GRASS_SPOT
 	for each: Array in [
 			["kelp_grove", k + Vector2(-14.0, -6.0), 4.0, k, 7.0],
 			["kelp_up_to_canopy", k + Vector2(-3.0, -2.0), 2.0, k + Vector2(2.0, 2.0), 20.0],
@@ -118,6 +124,7 @@ func _biome_views(scenery: Scenery) -> Array:
 			["dunes_anchor", Vector2(-22.0, -83.0), 2.5, Vector2(-28.0, -88.0), 1.5],
 			["grass_meadow", g + Vector2(-8.0, -5.0), 2.0, g + Vector2(4.0, 3.0), 0.5],
 			["grass_low", g + Vector2(-5.0, 4.0), 0.8, g + Vector2(5.0, -2.0), 0.6],
+			["grass_far", g + Vector2(-6.0, -4.0), 3.5, g + Vector2(30.0, 20.0), 0.0],
 			["crags_pinnacles", Vector2(-60.0, -28.0), 9.0, Vector2(-76.0, -40.0), 3.0],
 			["crags_west", Vector2(-100.0, -32.0), 8.0, Vector2(-86.0, -46.0), 3.0],
 			["crags_east", Vector2(-30.0, -40.0), 7.0, Vector2(-46.0, -52.0), 3.0],

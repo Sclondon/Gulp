@@ -43,9 +43,13 @@ const EEL_BACK := 25.0
 ## Beyond this the water hides plants (m), and docks and moored boats.
 const SEEN := 60.0
 const DOCKS_SEEN := 80.0
-## The eelgrass is drawn only this far (m): short tufts are lost in the water sooner, and the meadows are
-## thick (tools/BIOMES.md, "The eight biomes").
-const GRASS_SEEN := 40.0
+## The eelgrass fields' tufts per square metre, as a multiple of SeaGrassBed's quality (1.8: 7.2 a square
+## metre at MEDIUM, a little under what the placer's clumps came to in a meadow's core). How far the grass
+## is drawn (40 m at MEDIUM, thinning from 14 m and sinking into the floor towards the end) is the quality's.
+const GRASS_DENSITY := 1.8
+## How many fish nearest the player lay the grass aside besides it, and within how far of it (m).
+const GRASS_FISH := 3
+const GRASS_FISH_NEAR := 12.0
 ## The tint the outcrops' stacks and shards wear on the kit's rock.
 const CRAG_ROCK := Color(0.32, 0.3, 0.3)
 ## The kit's pieces (rocks, cliffs, the reef's life): full models within PIECES_NEAR of the eye,
@@ -90,8 +94,11 @@ const CLIFF_WALL := false
 
 ## Who lays the grass aside and frightens the eels (the player).
 var player: Player
+## The animals (the nearest few to the player lay the grass aside too).
+var life: Life
 
-var _grass: Node3D
+# The eelgrass fields (SeaGrassBed), one a grass layer of the biomes.
+var _grass: Array[Node3D] = []
 var _eels: Node3D
 var _colonies: Array[Dictionary] = []
 var _props: GDScript
@@ -152,8 +159,8 @@ func _process(delta: float) -> void:
 	_walk_giants(delta)
 	if player == null:
 		return
-	if _grass:
-		_grass.set(&"pushers", PackedVector3Array([player.global_position]))
+	if not _grass.is_empty():
+		_push_grass()
 	var eye := get_viewport().get_camera_3d()
 	for colony: Dictionary in _colonies:
 		var eels: Node3D = colony.node
@@ -371,24 +378,55 @@ func _plant_kelp() -> void:
 	forest.call(&"plant", _biomes.kelp_places, _biomes.kelp_lengths, Sea.SURFACE)
 
 
-# The sea grass, by the placer's rules (BIOMES.md 5.8 and 5.14): the meadow off the peninsula on
-# sand and mud 1.5 to 8 m, thick at its core with bare blowouts and a trail, and eelgrass along
-# the slough's shallow edges.
+# The sea grass, by the placer's rules (BIOMES.md 5.8 and 5.14): the meadows of the grass biome,
+# thick at their core with bare blowouts and sandy paths, and eelgrass on the river's banks and
+# mouth. Each grass layer is a SeaGrassBed field over its place (GameCommon sea-grass, Warren's way
+# of spawning grass): its squares are filled with tufts by the layer's rules only as the eye nears,
+# a little a frame, thinning with distance and sinking into the floor where it ends.
 func _plant_grass() -> void:
-	_grass = (load(GRASS) as GDScript).new()
-	_grass.set(&"far", GRASS_SEEN)
-	# (squares of 12 m, not 8: about half the draws over a thick meadow)
-	_grass.set(&"cell", 12.0)
-	# (leaning well over in the current, as the concept's meadow does: concept_biome_grass.png)
-	_grass.set(&"current", Vector2(0.55, 0.18))
-	_grass.set(&"push_radius", 0.7)
-	add_child(_grass)
-	# (the concept's olive and straw eelgrass, not the component's spring green)
-	_grass.call(&"set_shader_parameter", &"grass_deep", Color(0.15, 0.25, 0.08))
-	_grass.call(&"set_shader_parameter", &"grass_bright", Color(0.36, 0.5, 0.15))
-	_grass.call(&"set_shader_parameter", &"tip_pale", Color(0.78, 0.74, 0.38))
-	_grass.call(&"set_shader_parameter", &"grass_lit", Color(0.7, 0.78, 0.34))
-	_grass.call(&"plant", _biomes.grass_places, _biomes.grass_heights)
+	var bed := load(GRASS) as GDScript
+	# (the quality follows the sand's: a phone or a browser 1, a desktop 2, a slow phone 0)
+	bed.call(&"set_quality", clampi(Sand.quality, 0, 2))
+	var floor_at := func(p: Vector2) -> float: return Sea.ground(p.x, p.y)
+	for one: Dictionary in _biomes.grass_fields():
+		var made: Node3D = bed.call(&"field", self, one.area, GRASS_DENSITY, {
+			"mask": one.mask, "height": floor_at, "tall": one.tall,
+			# (squares of 12 m: about half the draws of 8 over a thick meadow)
+			"cell": 12.0,
+			# (leaning well over in the current, as the concept's meadow does: concept_biome_grass.png)
+			"current": Vector2(0.55, 0.18),
+			"seed": 1 + _grass.size()})
+		# (the concept's olive and straw eelgrass, not the component's spring green)
+		made.call(&"set_shader_parameter", &"grass_deep", Color(0.15, 0.25, 0.08))
+		made.call(&"set_shader_parameter", &"grass_bright", Color(0.36, 0.5, 0.15))
+		made.call(&"set_shader_parameter", &"tip_pale", Color(0.78, 0.74, 0.38))
+		made.call(&"set_shader_parameter", &"grass_lit", Color(0.7, 0.78, 0.34))
+		_grass.append(made)
+
+
+## Fills the eelgrass within `radius` of `point` now (before a picture is taken, or where a run begins).
+func fill_grass_near(point: Vector3, radius: float) -> void:
+	for field: Node3D in _grass:
+		field.call(&"fill_near", point, radius)
+
+
+# The player and the few fish nearest it lay the eelgrass aside (each by its size).
+func _push_grass() -> void:
+	var at := player.global_position
+	var points := PackedVector4Array([Vector4(at.x, at.y, at.z, maxf(0.7, player.length * 0.5))])
+	if life != null:
+		var near: Array = []
+		for one: Creature in life.awake:
+			var gap := one.global_position.distance_squared_to(at)
+			if gap < GRASS_FISH_NEAR * GRASS_FISH_NEAR and one.visible:
+				near.append([gap, one])
+		near.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+		for k in mini(near.size(), GRASS_FISH):
+			var fish: Creature = near[k][1]
+			var p := fish.global_position
+			points.append(Vector4(p.x, p.y, p.z, maxf(0.4, fish.length * 0.5)))
+	for field: Node3D in _grass:
+		field.call(&"set_pushers", points)
 
 
 # Seaweed: the placer's (understory, red weed, feather boa on the reefs; rockweed on the rocky
