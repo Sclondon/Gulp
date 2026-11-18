@@ -339,7 +339,30 @@ def turn_of(value):
     return math.pi * 0.5 + SWING - 2.0 * SWING * value
 
 
-def dial(x, z, r, marks, hot):
+def sign(x, z, s, what):
+    """A dial's label, as a symbol in ink on its face (the user: "the dials need labels"; symbols,
+    not words, as on the buttons): "speed" a double chevron, "fish" a small fish and a big one
+    (how far it has grown), "depth" a wave with an arrow down from it, "bolt" a lightning bolt
+    (how much burst is left). `s` is half its height."""
+    def ink(points):
+        prism(INK, [(x + px * s, z + pz * s) for px, pz in points], -0.052, 0.01)
+    if what == "speed":
+        for shift in (-0.75, 0.15):
+            ink([(shift, 0.8), (shift + 0.4, 0.8), (shift + 1.0, 0.0), (shift + 0.4, -0.8), (shift, -0.8), (shift + 0.6, 0.0)])
+    elif what == "bolt":
+        ink([(0.2, 1.0), (-0.55, -0.15), (-0.08, -0.15), (-0.3, -1.0), (0.55, 0.2), (0.06, 0.2)])
+    elif what == "depth":
+        ink([(-0.16, 0.35), (0.16, 0.35), (0.16, -0.3), (0.5, -0.3), (0.0, -1.0), (-0.5, -0.3), (-0.16, -0.3)])
+        top = [(-1.0, 0.7), (-0.5, 1.0), (0.0, 0.7), (0.5, 1.0), (1.0, 0.7)]
+        ink(top + [(px, pz - 0.24) for px, pz in reversed(top)])
+    elif what == "fish":
+        for cx, k in ((-0.85, 0.42), (0.25, 1.0)):
+            body = [(cx + math.cos(math.tau * i / 10.0) * 0.6 * k - 0.1 * k, math.sin(math.tau * i / 10.0) * 0.36 * k) for i in range(10)]
+            ink(body)
+            ink([(cx + 0.38 * k, 0.0), (cx + 0.9 * k, 0.36 * k), (cx + 0.9 * k, -0.36 * k)])
+
+
+def dial(x, z, r, marks, hot, label=None):
     """A dial's fixed parts: a brass ring, a paper face, `marks` ticks from the lower left stop over
     the top to the lower right, and (hot) orange and red stretches at its top end."""
     torus(BRASS, r + 0.07, 0.25 * r + 0.02, (x, -0.03, z), "Y", 28)
@@ -358,6 +381,8 @@ def dial(x, z, r, marks, hot):
         s = math.sin(a)
         prism(INK, [(x + c * (far - long) - s * wide, z + s * (far - long) + c * wide), (x + c * far - s * wide, z + s * far + c * wide),
                     (x + c * far + s * wide, z + s * far - c * wide), (x + c * (far - long) + s * wide, z + s * (far - long) - c * wide)], -0.052, 0.01)
+    if label:
+        sign(x, z - r * 0.56, r * 0.2, label)
     for k in range(4):
         a = math.tau * (k + 0.5) / 4.0
         rivet(x + math.cos(a) * (r + 0.07), z + math.sin(a) * (r + 0.07), 0.03 + r * 0.03, -0.03 - 0.25 * r - 0.02)
@@ -423,7 +448,7 @@ side_pipe(-SIDE_WIDE * 0.5 - 0.02, SHOULDER - 0.2, 1.0)
 well(DARK)
 for major, out in ((0.46, -0.07), (0.36, -0.13), (0.27, -0.18)):
     torus(RUBBER, major, 0.085, (0.0, out, WELL_Z), "Y", 24)
-dial(BIG_DIAL[0], BIG_DIAL[1], BIG_DIAL_R, 9, False)
+dial(BIG_DIAL[0], BIG_DIAL[1], BIG_DIAL_R, 9, False, "fish")
 POSTS = 0.84
 for side in (-1.0, 1.0):
     cyl(BRASS, 0.09, 1.3, (side * POSTS, -0.14, SHOULDER + 0.2), "Z", 16)
@@ -455,7 +480,7 @@ side_pipe(SIDE_WIDE * 0.5 + 0.02, SHOULDER - 0.2, -1.0)
 well(DARK)
 band(BRASS, (0.0, WELL_Z), SLOT_R, 0.15, SLOT_FROM, SLOT_TO, -0.03, 0.06, 28, True)
 band(DARK, (0.0, WELL_Z), SLOT_R, 0.085, SLOT_FROM, SLOT_TO, -0.045, 0.04, 28, True)
-dial(BIG_DIAL[0], BIG_DIAL[1], BIG_DIAL_R, 9, True)
+dial(BIG_DIAL[0], BIG_DIAL[1], BIG_DIAL_R, 9, True, "speed")
 valve(0.86, SHOULDER - 0.28, 0.17)
 thin([(0.86, -0.06, SHOULDER - 0.5), (0.99, -0.06, 1.75), (0.99, -0.06, 0.95), (0.99, -0.06, 0.3)])
 mini_gauge(-0.86, 2.22)
@@ -504,7 +529,7 @@ for k in range(8):
     a = math.tau * (k + 0.5) / 8.0
     rivet(SCOPE[0] + math.cos(a) * (SCOPE_R + 0.1), SCOPE[1] + math.sin(a) * (SCOPE_R + 0.1), 0.045, -0.14)
 for name, (x, z) in SMALL_DIALS.items():
-    dial(x, z, SMALL_DIAL_R, 9, name == "Burst")
+    dial(x, z, SMALL_DIAL_R, 9, name == "Burst", "bolt" if name == "Burst" else "depth")
 # the switches: a steel plate, a slot, a red handle
 for x in (-0.95, -0.25):
     box(STEEL, (0.55, 0.06, 0.8), (x, -0.02, 0.56), 0.02)

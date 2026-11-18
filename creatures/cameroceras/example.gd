@@ -1,0 +1,40 @@
+extends Node3D
+## A cameroceras jetting on the spot in blue water, seen from its side; every few seconds it pulls
+## its head into its shell and comes out again. Give this to a Node3D at the root of an empty
+## scene and play that scene.
+
+var cameroceras: Cameroceras
+var time := 0.0
+
+
+func _ready() -> void:
+	var env := WorldEnvironment.new()
+	env.environment = Environment.new()
+	env.environment.background_mode = Environment.BG_COLOR
+	env.environment.background_color = Color(0.03, 0.16, 0.34)
+	env.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.environment.ambient_light_color = Color(0.55, 0.7, 0.9)
+	env.environment.ambient_light_energy = 0.7
+	add_child(env)
+	var sun := DirectionalLight3D.new()
+	add_child(sun)
+	sun.look_at_from_position(Vector3(1.5, 4.0, 2.5), Vector3.ZERO)
+	cameroceras = Cameroceras.new()
+	cameroceras.game = true
+	cameroceras.cartoon_eyes = 1.0
+	add_child(cameroceras)
+	# (its -Z is the way it jets, shell first: turned a quarter, it goes to the left of the picture)
+	cameroceras.rotation_degrees = Vector3(0.0, 90.0, 0.0)
+	var camera := Camera3D.new()
+	camera.fov = 50.0
+	add_child(camera)
+	camera.look_at_from_position(Vector3(0.0, 1.2, 7.5), Vector3.ZERO)
+
+
+func _process(delta: float) -> void:
+	time += delta
+	cameroceras.step(Vector3.ZERO, delta)
+	# (out for six seconds, then in and out again over two; a blink now and then)
+	var t := fmod(time, 8.0)
+	cameroceras.withdraw = sin(clampf((t - 6.0) / 2.0, 0.0, 1.0) * PI)
+	cameroceras.blink = 1.0 if fmod(time, 3.7) < 0.12 else 0.0

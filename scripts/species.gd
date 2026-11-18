@@ -158,6 +158,16 @@ const ALL := {
 	"pencil_urchin": {"script": "sea_urchin/sea_urchin", "set": {"kind": 2}, "long": 0.17, "curls": false, "hunts": false, "how": "floor", "slow": 0.02, "zones": ["reef"], "band": [0.0, 0.0], "count": 5, "size": [0.14, 0.2]},
 	"feather_star": {"script": "crinoid/crinoid", "set": {"kind": 0}, "long": 0.3, "curls": false, "hunts": false, "how": "floor", "slow": 0.0, "zones": ["reef"], "band": [0.0, 0.0], "count": 5, "size": [0.25, 0.35]},
 	"sea_lily": {"script": "crinoid/crinoid", "set": {"kind": 2}, "long": 0.5, "curls": false, "hunts": false, "how": "floor", "slow": 0.0, "zones": ["trench"], "band": [0.0, 0.0], "count": 6, "size": [0.45, 0.6]},
+	"cameroceras": {"script": "cameroceras/cameroceras", "curls": false, "zones": ["open", "trench"], "band": [0.1, 0.6], "count": 1, "size": [5.0, 6.0]},
+	"anomalocaris": {"script": "anomalocaris/anomalocaris", "curls": false, "zones": ["reef", "sand"], "band": [0.1, 0.5], "count": 2, "size": [0.7, 0.9]},
+	"trilobite": {"script": "trilobite/trilobite", "set": {"kind": 0}, "long": 0.15, "curls": false, "hunts": false, "how": "floor", "slow": 0.5, "zones": ["sand", "grass"], "band": [0.0, 0.0], "count": 8, "size": [0.12, 0.18]},
+	"spiny_trilobite": {"script": "trilobite/trilobite", "set": {"kind": 1}, "long": 0.2, "curls": false, "hunts": false, "how": "floor", "slow": 0.5, "zones": ["reef"], "band": [0.0, 0.0], "count": 5, "size": [0.16, 0.24]},
+	"cheeked_trilobite": {"script": "trilobite/trilobite", "set": {"kind": 2}, "long": 0.3, "curls": false, "hunts": false, "how": "floor", "slow": 0.5, "zones": ["sand", "trench"], "band": [0.0, 0.0], "count": 5, "size": [0.25, 0.35]},
+	# The trench's glowing animals.
+	"dumbo_octopus": {"script": "dumbo_octopus/dumbo_octopus", "set": {"glow": 1.0}, "curls": false, "hunts": false, "slow": 0.4, "zones": ["trench"], "band": [0.05, 0.5], "count": 3, "size": [0.25, 0.4]},
+	"firefly_squid": {"script": "firefly_squid/firefly_squid", "set": {"glow": 1.2}, "curls": false, "hunts": false, "zones": ["trench"], "band": [0.1, 0.8], "count": 10, "size": [0.06, 0.08]},
+	"comb_jelly": {"script": "comb_jelly/comb_jelly", "set": {"glow": 1.0}, "curls": false, "hunts": false, "slow": 0.3, "zones": ["trench", "open"], "band": [0.2, 0.9], "count": 8, "size": [0.08, 0.14]},
+	"pyrosome": {"script": "pyrosome/pyrosome", "set": {"glow": 1.0}, "curls": false, "how": "giant", "zones": ["trench", "open"], "band": [0.2, 0.7], "count": 2, "size": [1.6, 2.4]},
 	# The giants: they cruise the open ocean and take no notice of a fish.
 	"whale_shark": {"script": "whale_shark/whale_shark", "how": "giant", "zones": ["open"], "band": [0.6, 0.95], "count": 1, "size": [9.0, 10.0]},
 	"humpback": {"script": "humpback_whale/humpback_whale", "how": "giant", "breathes": true, "zones": ["open"], "band": [0.5, 0.95], "count": 1, "size": [13.0, 14.0]},
