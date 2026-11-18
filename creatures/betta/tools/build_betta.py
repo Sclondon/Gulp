@@ -5,8 +5,10 @@ Run from the game's root:
     blender --background --python creatures/betta/tools/build_betta.py -- <preview folder>   # with pictures
 
 Writes creatures/betta/models/betta.glb (the full model, for one seen close) and betta_lo.glb (far off, phones),
-and the editable creatures/betta/tools/betta.blend (both; this folder has a .gdignore). Each is one still mesh
-with one surface: the shader (betta.gdshader) draws every marking (its colours are its settings), swims it,
+betta_game.glb (the game model: Twilight Princess weight, under nine hundred triangles spent on the outline,
+the eye, the mouth and the long fins' edges, built from the same curves with fewer, better placed rings and points),
+and the editable creatures/betta/tools/betta.blend (all three; this folder has a .gdignore). Each is one still mesh
+(the full one keeps its throat and gills in a second surface, so that its first is exactly as it was before): the shader (betta.gdshader) draws every marking (its colours are its settings), swims it,
 billows and ripples its fins, opens its mouth and flares it. It prints a WINDING line for each: the check that
 nothing is inside out.
 
@@ -33,7 +35,9 @@ Everything here is built in BODY LENGTHS (the tip of the jaw at 0, the end of th
 by its length (metres) only as it is written out. `xm` below is body lengths behind the tip of the jaw.
 
 What a point is, for the shader: UV2.y the part (0 body, 1 the dorsal fin, 2 the anal fin, 3 the tail, 4 a
-pectoral fin, 5 a pelvic fin, 6 an eye, 7 the lower jaw, 8 a gill cover, 9 the beard). UV2.x: 1 inside the mouth
+pectoral fin, 5 a pelvic fin, 6 an eye, 7 the lower jaw, 8 a gill cover, 9 the beard, 10 a gill arch). THE GILLS: behind
+the mouth the throat is a short tunnel back to a dark wall, four gill arches a side standing in it, seen only through
+the open mouth. UV2.x: 1 inside the mouth
 (its roof, floor and throat), 0 elsewhere. UV, on the body and the jaw: x how far along (0 jaw to 1 tail end), y
 how high on its side (1 the ridge of the back, 0.5 its middle line, 0 the keel of the belly); on a fin, a gill
 cover or the beard: x from its root (0) to its tip or free edge (1), y from its leading (or upper) edge (0) to its
@@ -57,8 +61,22 @@ ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 PREVIEW = ARGS[0] if ARGS else ""
 
 HALF = 0.5
-BODY, DORSAL, ANAL, TAIL, PECTORAL, PELVIC, EYE, JAW, COVER, BEARD = range(10)
+BODY, DORSAL, ANAL, TAIL, PECTORAL, PELVIC, EYE, JAW, COVER, BEARD, GILL = range(11)
 TAU = math.tau
+
+# Which model is being built: "full", "low" or "game" (the game model: Twilight Princess weight, built from
+# the same curves with fewer, better placed rings and points; see GAME_* below).
+LEVEL = ["full"]
+
+
+def game():
+    return LEVEL[0] == "game"
+
+
+def pick(normal, for_game):
+    """A count: `for_game` in the game model, `normal` (the full or the low model's own) otherwise."""
+    return for_game if game() else normal
+
 
 # Its length (metres, jaw to tail end); its outline (body lengths behind the jaw, half its depth above its
 # middle line, half its depth below, half its width); where its body ends inside the tail; the line of the
@@ -102,7 +120,7 @@ EYE_AT = (0.0, 0.0)
 
 def use(name):
     """Makes `name` the model being built: its outline and its numbers."""
-    global BODY_TO, MOUTH_TO, JAW_TO, EYE_AT, EYE_RADIUS, JOINT
+    global BODY_TO, MOUTH_TO, JAW_TO, EYE_AT, EYE_RADIUS, JOINT, GILL_TO, GILL_FROM, GILL_STEP, WALL_UP
     SHAPE.clear()
     SHAPE.update(SHAPES[name])
     SHAPE["name"] = name
@@ -118,6 +136,17 @@ def use(name):
     for column in (1, 2, 3):
         ys = [p[column] for p in profile]
         _CURVES.append((ys, _slopes(_XS, ys)))
+    # the gills: from a little ahead of the gill cover's edge forward; where the old wall across the back
+    # of the full model's mouth is lifted to as it opens (as the shader has them)
+    GILL_TO = gill_x(-0.01) - 0.014
+    GILL_FROM = JAW_TO + 0.4 * (GILL_TO - JAW_TO)
+    GILL_STEP = (GILL_TO - 0.017 - GILL_FROM) / 3.0
+    WALL_UP = 0.5 * top(JAW_TO)
+
+
+def GAME_SPANS():
+    """The game model's rings: (as far as, a step) from the snout back."""
+    return ((JAW_TO, 0.014), (JAW_TO + 0.18, 0.05), (BODY_TO - 0.04, 0.11), (BODY_TO, 0.02))
 
 
 def mouth_y(xm):
@@ -216,8 +245,9 @@ class Mesh:
         self.faces = []
         # per point: (uv, uv2)
         self.data = []
-        # per face: the way it should face
+        # per face: the way it should face, and which surface it is in (see SURFACE)
         self.out = []
+        self.surface = []
         self.count = {}
 
     def add(self, p, uv, part, inside=0.0):
@@ -237,13 +267,27 @@ class Mesh:
             points = tuple(reversed(points))
         self.faces.append(tuple(points))
         self.out.append((Vector(out), name))
+        self.surface.append(SURFACE[0])
         self.count[name] = self.count.get(name, 0) + 1
+
+
+# Which surface the faces being made go in. The full model keeps its first surface exactly as it was
+# before the gills were added (so that Godot's importer makes the same thinned LOD meshes of it, and it
+# looks the same at every distance); its throat and gills are a second surface. The low and the game
+# models are one surface each.
+SURFACE = [0]
+# (the full model's throat is built after everything else: the opening it starts from, kept here)
+THROAT = []
 
 
 def rings(low):
     xs = []
     x = BODY_FROM
-    for until, step in ((JAW_TO, 0.006), (JAW_TO + 0.18, 0.012), (BODY_TO - 0.04, 0.022), (BODY_TO, 0.008)):
+    spans = ((JAW_TO, 0.006), (JAW_TO + 0.18, 0.012), (BODY_TO - 0.04, 0.022), (BODY_TO, 0.008))
+    if game():
+        # (the game model: close at the snout and the tail's wrist, where the outline turns, few along the flank)
+        spans = GAME_SPANS()
+    for until, step in spans:
         if low:
             step *= 4.0
         n = max(1, round((until - x) / step))
@@ -273,6 +317,98 @@ def inside_point(xm, across, hollow):
     lip = body_point(xm, lip_angle(xm))
     y = lip.y + hollow * (1.0 - across * across) * smooth(0.16 * JAW_TO, 0.47 * JAW_TO, xm)
     return Vector((lip.x * across, y, xm - HALF))
+
+
+# As the shader has it: the gills. The throat runs back from the mouth to GILL_TO, a little ahead of the gill
+# cover's edge; the four gill arches a side stand in it from GILL_FROM back.
+# (each model's: set by use(), from where its gill cover's edge is)
+GILL_TO = GILL_FROM = GILL_STEP = WALL_UP = 0.0
+
+
+def tunnel_section(xm):
+    """The throat's section at `xm`: the top and bottom of it and its half width, well inside the skin (and
+    inside the low model's flat-sided skin too)."""
+    up, down, wide = outline(xm)
+    return 0.5 * up, -0.7 * down, 0.68 * wide
+
+
+def throat(m, top, bottom):
+    """The throat: a short tunnel from the back of the mouth (its opening is the roof's last arch, `top`, and
+    the body's points under the line of the mouth at the hinge, `bottom`, both from the left lip to the right)
+    back past the gill arches, closed by a dark wall behind them. All of it is inside the mouth (UV2.x 1), so
+    the shader colours it as the inside of the mouth; shut, the head hides it."""
+    loop = list(top) + list(reversed(bottom))
+    ps = [m.verts[q] for q in loop]
+    low_y = min(p.y for p in ps)
+    high_y = max(p.y for p in ps)
+    wide_x = max(abs(p.x) for p in ps)
+    shape = [(p.x / wide_x, (p.y - 0.5 * (low_y + high_y)) / (0.5 * (high_y - low_y))) for p in ps]
+    # (its own points: their UV's y is 0, which tells the shader they are the throat's, not the full
+    # model's old wall across the back of the mouth, whose points' is 0.5)
+    rows = [[m.add(p, (JAW_TO, 0.0), BODY, 1.0) for p in ps]]
+    middles = [Vector((0.0, 0.5 * (low_y + high_y), JAW_TO - HALF))]
+    for xm in (JAW_TO + 0.35 * (GILL_TO - JAW_TO), GILL_TO):
+        high, low_, half_w = tunnel_section(xm)
+        centre = 0.5 * (high + low_)
+        reach = 0.5 * (high - low_)
+        rows.append([m.add(Vector((half_w * s[0], centre + reach * s[1], xm - HALF)), (xm, 0.0), BODY, 1.0) for s in shape])
+        middles.append(Vector((0.0, centre, xm - HALF)))
+    n = len(loop)
+    for r in range(len(rows) - 1):
+        for k in range(n):
+            j = (k + 1) % n
+            a, b, c, d = rows[r][k], rows[r][j], rows[r + 1][j], rows[r + 1][k]
+            # (as two triangles, each turned to face the tunnel's middle line)
+            for tri in ((a, b, c), (a, c, d)):
+                middle = sum((m.verts[q] for q in tri), Vector()) / 3.0
+                axis = middles[r].lerp(middles[r + 1], 0.5)
+                m.face(tri, Vector((axis.x - middle.x, axis.y - middle.y, 0.0)), "throat")
+    # the wall behind the gills: a fan, facing the mouth
+    end = m.add(middles[-1] + Vector((0.0, 0.0, 0.002)), (GILL_TO, 0.0), BODY, 1.0)
+    for k in range(n):
+        m.face((end, rows[-1][k], rows[-1][(k + 1) % n]), Vector((0.0, 0.0, -1.0)), "throat end")
+
+
+def gills(m, low):
+    """Four gill arches a side, standing in the throat: each a curved bar from the top of the throat to its
+    floor, bent back in the middle (a "<" opening forward), as a thin closed blade: its inner, front edge the
+    pale gill rakers, then the bar, then the fringe of red filaments reaching back and out to the throat's wall.
+    UV x from its top (0) to its foot (1), y from the rakers (0) to the filaments' tips (1). Inside the head:
+    only seen through the open mouth."""
+    nt = 2 if low else pick(10, 3)
+    nu = 1 if low else pick(3, 1)
+    for sx in (1.0, -1.0):
+        for k in range(4):
+            at = GILL_FROM + GILL_STEP * k
+            high, low_, half_w = tunnel_section(at)
+            centre = 0.5 * (high + low_)
+            reach = 0.5 * (high - low_)
+
+            def place(t, u, at=at, centre=centre, reach=reach, half_w=half_w, sx=sx):
+                y = centre + reach * 0.88 * (1.0 - 2.0 * t)
+                wall = half_w * 0.95 * math.sqrt(max(0.05, 1.0 - ((y - centre) / reach) ** 2))
+                xm = at + 0.012 * (1.0 - (2.0 * t - 1.0) ** 2)
+                return Vector((sx * wall * (0.38 + 0.62 * u), y, xm - HALF + 0.026 * u - 0.004))
+
+            d_t = place(0.6, 0.5) - place(0.4, 0.5)
+            d_u = place(0.5, 0.6) - place(0.5, 0.4)
+            facing = d_t.cross(d_u).normalized()
+            for side in (1.0, -1.0):
+                grid = []
+                for ti in range(nt + 1):
+                    t = ti / nt
+                    row = []
+                    for ui in range(nu + 1):
+                        u = ui / nu
+                        # (on the full model the filaments' edge is a fringe: every other point short of it)
+                        reach_u = u * (0.8 if (not low and not game() and ui == nu and ti % 2 == 1) else 1.0)
+                        foil = 2.6 * math.sqrt(reach_u) * (1.0 - reach_u) if ui < nu else 0.0
+                        swell = 0.006 * foil * math.sin(math.pi * t) ** 0.6
+                        row.append(m.add(place(t, reach_u) + facing * (side * swell * 0.5), (t, reach_u), GILL))
+                    grid.append(row)
+                for ti in range(nt):
+                    for ui in range(nu):
+                        m.face((grid[ti][ui], grid[ti][ui + 1], grid[ti + 1][ui + 1], grid[ti + 1][ui]), facing * side, "gills")
 
 
 def body(m, low):
@@ -329,11 +465,18 @@ def body(m, low):
             quad = (roofs[r][k], roofs[r][k + 1], roofs[r + 1][k + 1], roofs[r + 1][k])
             if r < len(head) - 1:
                 m.face(quad, Vector((0.0, -1.0, 0.0)), "mouth roof")
-            else:
+            elif not low and not game():
+                # The full model keeps the wall across the back of the mouth that it always had (the
+                # shader lifts it out of the way as the mouth opens, onto the throat behind).
                 # (as two triangles, each turned to face the mouth: at the corners the quad is a twisted sliver)
                 a, b, c, d = throat_top[k], throat_top[k + 1], roofs[r + 1][k + 1], roofs[r + 1][k]
-                m.face((a, b, c), Vector((0.0, -0.3, -1.0)), "throat")
-                m.face((a, c, d), Vector((0.0, -0.3, -1.0)), "throat")
+                m.face((a, b, c), Vector((0.0, -0.3, -1.0)), "throat wall")
+                m.face((a, c, d), Vector((0.0, -0.3, -1.0)), "throat wall")
+    # behind the mouth, the throat: a short tunnel back to the gills (the full model's is made last, in
+    # its second surface)
+    THROAT[:] = [list(throat_top), list(roofs[-1])]
+    if low or game():
+        throat(m, throat_top, roofs[-1])
     # the tip of the snout: a fan over the end of both
     loop = uppers[0] + roofs[0][1:-1]
     middle = sum((m.verts[q] for q in loop), Vector()) / len(loop)
@@ -349,7 +492,7 @@ def jaw(m, low):
     # (as many columns as the body has below the line of the mouth, so that its end meets the body point for point)
     half = round(lip_angle(JAW_TO) / (TAU / around))
     under = around - 2 * half
-    across = 4 if low else 8
+    across = 4 if low else pick(8, 4)
     xs = [xm for xm in rings(low) if xm < JAW_TO + 1e-9]
     skins = []
     floors = []
@@ -387,8 +530,8 @@ def jaw(m, low):
 
 def eye(m, sx, low):
     """A low dome lying on the skin of the head."""
-    spokes = 8 if low else 20
-    steps = 1 if low else 5
+    spokes = 8 if low else pick(20, 12)
+    steps = 1 if low else pick(5, 2)
     xe, ye = EYE_AT
     e = 0.004
     here = skin(xe, ye, sx)
@@ -396,7 +539,7 @@ def eye(m, sx, low):
     out.normalize()
     if out.x * sx < 0.0:
         out = -out
-    middle = m.add(here + out * 0.24 * EYE_RADIUS, (0.0, 0.0), EYE)
+    middle = m.add(here + out * 0.24 * EYE_RADIUS, (0.0, 1.0 if game() else 0.0), EYE)
     last = None
     for k in range(1, steps + 1):
         r = k / steps
@@ -404,7 +547,7 @@ def eye(m, sx, low):
         for s in range(spokes):
             a = s / spokes * TAU
             p = skin(xe + math.cos(a) * EYE_RADIUS * r, ye + math.sin(a) * EYE_RADIUS * r, sx)
-            row.append(m.add(p + out * EYE_RADIUS * (0.22 * (1.0 - r * r) + 0.02 * (1.0 - r) + 0.025), (r, 0.0), EYE))
+            row.append(m.add(p + out * EYE_RADIUS * (0.22 * (1.0 - r * r) + 0.02 * (1.0 - r) + 0.025), (r, 1.0 if game() else 0.0), EYE))
         for s in range(spokes):
             n = (s + 1) % spokes
             if last is None:
@@ -537,7 +680,8 @@ def render(folder, made, length, prefix_name):
              ("top", (0.001, 0, 1), (0, 0, 0), 2.0 * L), ("under", (0.001, 0, -1), (0, 0, 0), 2.0 * L),
              ("head", (0.8, 0.5, 0.2), (0, 0.36 * L, 0), 0.4 * L), ("tail", (0.7, -0.6, 0.3), (0, -0.25 * L, 0), 0.8 * L)]
     everything = [o for o in bpy.data.objects if o.type == "MESH"]
-    for prefix, obj, only in (("", made[0], None), ("lo_", made[1], ("left", "head", "top", "front"))):
+    for prefix, obj, only in (("", made[0], None), ("lo_", made[1], ("left", "head", "top", "front")),
+                              ("game_", made[2], ("left", "right", "head", "top", "front", "under"))):
         for other in everything:
             other.hide_render = other is not obj
         for view, direction, target, frame in views:
@@ -580,17 +724,17 @@ def fins(m, low):
     d = 3 if low else 1
     # The tail: a halfmoon, a fan as long as the body spread nearly upright above and below, its back edge
     # rounded.
-    blade(m, TAIL, "tail", fan(TAIL_PIVOT, 0.035, 0.42, 1.2, 0.12), upright, SIDE, 0.007, 4 if low else 20, 6 if low else 24)
+    blade(m, TAIL, "tail", fan(TAIL_PIVOT, 0.035, 0.42, 1.2, 0.12), upright, SIDE, 0.007, 4 if low else pick(20, 4), 6 if low else pick(24, 7))
     # The dorsal fin: a long root behind the middle of the back, rising tall and running back over the tail.
     blade(m, DORSAL, "dorsal",
           swept(((0.27, top(0.27) - 0.005), (0.33, top(0.30) + 0.22), (0.62, top(0.45) + 0.29)),
                 ((0.50, top(0.50) - 0.005), (0.60, top(0.50) + 0.10), (0.62, top(0.45) + 0.29))),
-          upright, SIDE, 0.006, 3 if low else 14, 3 if low else 12)
+          upright, SIDE, 0.006, 3 if low else pick(14, 4), 3 if low else pick(12, 3))
     # The anal fin: long and deep, from behind the belly to the tail.
     blade(m, ANAL, "anal",
           swept(((0.22, bottom(0.22) + 0.005), (0.27, bottom(0.25) - 0.20), (0.60, bottom(0.45) - 0.28)),
                 ((0.51, bottom(0.51) + 0.005), (0.59, bottom(0.50) - 0.09), (0.60, bottom(0.45) - 0.28))),
-          upright, SIDE, 0.006, 3 if low else 14, 3 if low else 14)
+          upright, SIDE, 0.006, 3 if low else pick(14, 4), 3 if low else pick(14, 3))
     for sx in (1.0, -1.0):
         # The pelvic fins: long threads from under the throat, held down and a little back when it flares.
         root = Vector((sx * 0.014, bottom(0.2) + 0.006, 0.2 - HALF))
@@ -606,7 +750,7 @@ def fins(m, low):
 
         blade(m, PELVIC, "pelvics", pelvic_point,
               lambda p, root=root, span=span, chord=chord: root + span * p[0] + chord * p[1],
-              facing, 0.005, 10 // d, max(2, 3 // d))
+              facing, 0.005, pick(10 // d, 3), pick(max(2, 3 // d), 1))
         # The pectoral fins: small, rounded, clear.
         root = skin(0.17, -0.012, sx)
         root.x -= sx * 0.003
@@ -623,7 +767,7 @@ def fins(m, low):
 
         blade(m, PECTORAL, "pectorals", pectoral_point,
               lambda p, root=root, span=span, chord=chord: root + span * p[0] + chord * p[1],
-              facing, 0.005, max(2, 6 // d), max(2, 5 // d))
+              facing, 0.005, pick(max(2, 6 // d), 2), pick(max(2, 5 // d), 1))
         # The gill cover: a flap lying on the side of the head from its hinge (in front) to the edge of the
         # gill opening, its hinge edge sunk into the skin.
         def cover_point(t, u):
@@ -637,7 +781,7 @@ def fins(m, low):
             return skin(p[0], p[1], sx) + skin_normal(p[0], p[1], sx) * lift
 
         blade(m, COVER, "gill covers", cover_point, cover_place, skin_normal(0.13, -0.012, sx), 0.004,
-              1 if low else 6, 2 if low else 8)
+              1 if low else pick(6, 2), 2 if low else pick(8, 3))
         # The beard: a dark ruffled membrane along the gill opening, reaching out and back (the shader folds
         # it away inside the head when it is calm).
         across = beard_across(sx)
@@ -651,17 +795,26 @@ def fins(m, low):
             reach = BEARD_LONG * (0.6 + 0.4 * math.sin(math.pi * u))
             return root + way * (t * reach) + across * (BEARD_RUFFLE * t * math.sin(u * 6.0 * math.pi))
 
-        blade(m, BEARD, "beard", lambda t, u: (t, u), beard_place, across, 0.003, 1 if low else 5, 3 if low else 14)
+        blade(m, BEARD, "beard", lambda t, u: (t, u), beard_place, across, 0.003, 1 if low else pick(5, 1), 3 if low else pick(14, 7))
 
 
-def make(name, low):
-    AROUND[0] = 10 if low else 36
+def make(name, level):
+    """One of its three models: `level` "full", "low" or "game"."""
+    LEVEL[0] = level
+    low = level == "low"
+    AROUND[0] = 10 if low else pick(36, 12)
     m = Mesh()
     body(m, low)
     jaw(m, low)
     for sx in (1.0, -1.0):
         eye(m, sx, low)
     fins(m, low)
+    if level == "full":
+        # (the full model's throat and gills: its second surface, made after everything it had before)
+        SURFACE[0] = 1
+        throat(m, *THROAT)
+    gills(m, low)
+    SURFACE[0] = 0
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata([to_b(p) for p in m.verts], [], m.faces)
     # (every layer made first, then each looked up by name: making one moves the others)
@@ -675,6 +828,10 @@ def make(name, low):
             uv[poly.loop_start + corner].uv = d[0]
             uv2[poly.loop_start + corner].uv = d[1]
     mesh.materials.append(material_of("betta", (0.15, 0.25, 0.65, 1.0)))
+    if 1 in m.surface:
+        mesh.materials.append(material_of("betta_throat", (0.5, 0.1, 0.1, 1.0)))
+        for poly in mesh.polygons:
+            poly.material_index = m.surface[poly.index]
     return finish(name, mesh, m)
 
 
@@ -683,16 +840,20 @@ def main():
     bpy.context.preferences.filepaths.save_version = 0
     os.makedirs(OUT, exist_ok=True)
     use("betta")
-    full = make("betta", False)
-    low = make("betta_lo", True)
+    full = make("betta", "full")
+    low = make("betta_lo", "low")
+    game_model = make("betta_game", "game")
+    LEVEL[0] = "full"
     export_one(full, os.path.join(OUT, "betta.glb"))
     export_one(low, os.path.join(OUT, "betta_lo.glb"))
-    print("SHADER betta: jaw_to %.4f hinge_y %.5f eye_at (%.3f, %.3f) eye_radius %.3f joint %.3f body_to %.3f half width at the cover's hinge %.4f" % (
-        JAW_TO, mouth_y(JAW_TO), EYE_AT[0], EYE_AT[1], EYE_RADIUS, JOINT, BODY_TO, skin(COVER_HINGE, -0.01, 1.0).x))
+    export_one(game_model, os.path.join(OUT, "betta_game.glb"))
+    print("SHADER betta: jaw_to %.4f hinge_y %.5f eye_at (%.3f, %.3f) eye_radius %.3f joint %.3f body_to %.3f half width at the cover's hinge %.4f gill_from %.4f gill_to %.4f wall_up %.4f" % (
+        JAW_TO, mouth_y(JAW_TO), EYE_AT[0], EYE_AT[1], EYE_RADIUS, JOINT, BODY_TO, skin(COVER_HINGE, -0.01, 1.0).x, GILL_FROM, GILL_TO, WALL_UP))
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, (full, low), SHAPES["betta"]["length"], "betta")
+        render(PREVIEW, (full, low, game_model), SHAPES["betta"]["length"], "betta")
     low.location = (0.08, 0.0, 0.0)
+    game_model.location = (0.16, 0.0, 0.0)
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "betta.blend"))
 
 

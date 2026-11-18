@@ -19,7 +19,7 @@ extends Node3D
 ## well want it bigger than life). No sound.
 ##
 ## It swims as small characins do: a wave down the back half of the body, drawn by the shader (no
-## bones). Its mouth opens: `gape`.
+## bones). Its mouth opens: `gape` (and through the open mouth its gills show).
 ##
 ## Everything that moves runs on `phase`, 0 to 1 through one `beat`, in which its tail beats
 ## `tail_beats` times (a whole number), so its motion comes round again exactly every beat. Either
@@ -31,8 +31,9 @@ extends Node3D
 ## `NeonTetra.school_mesh(type)` with one MultiMesh (GameCommon's Flock takes it as its
 ## `custom_mesh`).
 ##
-## The models are creatures/neon_tetra/models/<type>_tetra.glb (and _lo, and _school), built by
-## tools/build_neon_tetra.py; neon_tetra.gdshader draws the markings and swims it.
+## The models are creatures/neon_tetra/models/<type>_tetra.glb (and _lo, _game and _school),
+## built by tools/build_neon_tetra.py; neon_tetra.gdshader draws the markings and swims it. Only
+## the models shown are ever loaded: with `game` (or `low`) set, the full model is never loaded.
 
 enum Type { NEON, CARDINAL }
 
@@ -49,10 +50,11 @@ const DEPTHS := {Type.NEON: 0.0081, Type.CARDINAL: 0.0104}
 const WIDTHS := {Type.NEON: 0.0041, Type.CARDINAL: 0.0049}
 ## Each type's name in its model's file name.
 const NAMES := {Type.NEON: "neon", Type.CARDINAL: "cardinal"}
-## What each type sets in the shader.
+## What each type sets in the shader (`iris_low`: the colour of the lower half of its cartoon
+## eye's iris).
 const TYPES := {
-	Type.NEON: {"length_m": 0.035, "red_from": 0.43},
-	Type.CARDINAL: {"length_m": 0.042, "red_from": 0.04},
+	Type.NEON: {"length_m": 0.035, "red_from": 0.43, "iris_low": Color(0.72, 0.74, 0.74)},
+	Type.CARDINAL: {"length_m": 0.042, "red_from": 0.04, "iris_low": Color(0.78, 0.1, 0.07)},
 }
 
 ## Which of the two it is.
@@ -73,7 +75,8 @@ const TYPES := {
 	set(value):
 		sway = value
 		_send(&"sway", value)
-## How far its mouth is open: 0 shut, 1 wide open (as when it bites).
+## How far its mouth is open: 0 shut, 1 wide open (as when it bites). From about half open its
+## gills show inside.
 @export_range(0.0, 1.0) var gape := 0.0:
 	set(value):
 		gape = clampf(value, 0.0, 1.0)
@@ -83,6 +86,32 @@ const TYPES := {
 	set(value):
 		low = value
 		_show()
+## The game model (Twilight Princess weight: a few hundred triangles, spent on the outline, the
+## eye, the mouth and the fins' edges) in place of the full one. Only the model shown is ever
+## loaded, so a game that always has this (or `low`) set can leave the full model's .glb out of its
+## export. `low` still shows the low model.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye: 0 the eye as it is in life, 1 a bigger cartoon eye (a wide bright stare: a
+## white, a huge pupil, the iris lit blue-green along its top, a highlight, an outline).
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send(&"cartoon_eyes", cartoon_eyes)
+## Where the cartoon eyes look: x towards the snout (+1) or back (-1), y up (+1) or down (-1), in
+## each eye's own plane, so both look the same way.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value.clamp(Vector2(-1.0, -1.0), Vector2.ONE)
+		_send(&"eye_look", eye_look)
+## A blink: 0 open, 1 shut (a lid the colour of the skin over each eye, on the cartoon eye and the
+## eye in life alike).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send(&"blink", blink)
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set
 ## it yourself.
 var phase := 0.0:
@@ -95,12 +124,20 @@ static var _meshes := {}
 var _material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
 
 
 ## A type's full model's mesh, or its low one's (each one surface, to wear
 ## `new_material(type)`): for drawing one without this node.
 static func mesh_of(low_wanted := false, which := Type.NEON) -> Mesh:
 	return _mesh_at(MODEL % [NAMES[which], "_lo" if low_wanted else ""])
+
+
+## A type's game model's mesh (one surface, to wear `new_material(type)`; loaded without Godot's
+## automatic LODs, which would bend in straight pieces far off): for drawing a game model without
+## this node.
+static func game_mesh(which := Type.NEON) -> Mesh:
+	return _mesh_at(MODEL % [NAMES[which], "_game"])
 
 
 ## A type's school model's mesh: a few hundred triangles, the same size and the same way round as
@@ -113,9 +150,9 @@ static func school_mesh(which := Type.NEON) -> Mesh:
 	return _mesh_at(MODEL % [NAMES[which], "_school"])
 
 
-## A new material for a type's `mesh_of()` meshes. Its shader settings are the game's to set:
-## `phase` (0..1 through one beat), `tail_beats`, `sway`, `gape`, `curl`, `wave`, `glow` and the
-## colours (the top of the shader lists them).
+## A new material for a type's `mesh_of()` and `game_mesh()` meshes. Its shader settings are the
+## game's to set: `phase` (0..1 through one beat), `tail_beats`, `sway`, `gape`, `curl`, `wave`,
+## `glow`, `cartoon_eyes`, `eye_look`, `blink` and the colours (the top of the shader lists them).
 static func new_material(which := Type.NEON) -> ShaderMaterial:
 	var made := ShaderMaterial.new()
 	made.shader = SHADER
@@ -134,6 +171,9 @@ func _ready() -> void:
 	_send(&"tail_beats", float(tail_beats))
 	_send(&"sway", sway)
 	_send(&"gape", gape)
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 
 
 ## Each frame, for one that is not having its `phase` set for it: moves it on through its beat.
@@ -147,12 +187,12 @@ func step(_velocity: Vector3, delta: float) -> void:
 ## more than 0 the tail comes round to its left, +X), `wave` (the length of the wave along its
 ## body, in body lengths), `glow` (how brightly the stripe shines of itself), `stripe_to`,
 ## `red_from`, and the colours (`back`, `back_dark`, `stripe_blue`, `stripe_green`, `red`,
-## `silver`, `belly`, `fin`, `mouth_inside`).
+## `silver`, `belly`, `fin`, `mouth_inside`, `gill_red`, `gill_raker`, `iris_low`).
 func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)
 
 
-## Its one material (both models wear it).
+## Its one material (every model wears it).
 func material() -> ShaderMaterial:
 	return _material
 
@@ -162,33 +202,46 @@ func _send(setting: StringName, value: Variant) -> void:
 		_material.set_shader_parameter(setting, value)
 
 
-# (a new type: its models, and its settings in the shader)
+# (a new type: its settings in the shader, and its models made again as they are shown)
 func _dress() -> void:
-	if not is_inside_tree() and _full == null:
-		return
 	for setting: String in TYPES[type]:
 		_material.set_shader_parameter(setting, TYPES[type][setting])
-	if _full:
-		_full.queue_free()
-		_low.queue_free()
-	_full = _instance_of(false)
-	_low = _instance_of(true)
+	if not is_inside_tree():
+		return
+	for shown: MeshInstance3D in [_full, _low, _game]:
+		if shown:
+			shown.queue_free()
+	_full = null
+	_low = null
+	_game = null
 	_show()
 
 
+# (each model is made, and loaded, only when it is first shown)
 func _show() -> void:
+	if not is_inside_tree():
+		return
+	if low and not _low:
+		_low = _instance_of("_lo")
+	elif not low and game and not _game:
+		_game = _instance_of("_game")
+	elif not low and not game and not _full:
+		_full = _instance_of("")
 	if _full:
-		_full.visible = not low
+		_full.visible = not low and not game
+	if _low:
 		_low.visible = low
+	if _game:
+		_game.visible = game and not low
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of(which: String) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted, type)
+	mesh.mesh = game_mesh(type) if which == "_game" else mesh_of(which == "_lo", type)
 	mesh.material_override = _material
 	# (its tail swings out past where the still model ends)
 	mesh.extra_cull_margin = LENGTHS[type] * 0.3
-	mesh.name = "TetraLo" if low_wanted else "Tetra"
+	mesh.name = "Tetra" + {"": "", "_lo": "Lo", "_game": "Game"}[which]
 	add_child(mesh)
 	return mesh
 
@@ -197,6 +250,16 @@ static func _mesh_at(path: String) -> Mesh:
 	if not _meshes.has(path):
 		var made := (load(path) as PackedScene).instantiate()
 		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
-		_meshes[path] = found.mesh
+		# (the game model without the automatic LODs; the others as they always were)
+		_meshes[path] = without_lods(found.mesh) if path.ends_with("_game.glb") else found.mesh
 		made.free()
 	return _meshes[path]
+
+
+## The mesh with only its own triangles: none of the thinned LOD meshes Godot's importer makes,
+## which a body bent in the vertex shader would show in straight pieces far off.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return plain

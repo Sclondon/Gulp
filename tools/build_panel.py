@@ -551,11 +551,14 @@ def outline(inner, dial_at):
     valve(inner * (half + 0.16), 1.22, 0.15, -0.04)
     # a thin copper loop over it
     run(COPPER, [(inner * half, 0.12, 2.5), (inner * (half + 0.1), 0.12, 2.42), (inner * (half + 0.12), 0.12, 2.15), (inner * half, 0.12, 2.04)], 0.05, (side, side))
-    # wires from terminals by the head's crown, lying on its face just inside the rim, down to
-    # terminals on the shoulders (the user: "Too much gap space": nothing loops out past the outline)
+    # wires from terminals by the head's crown, out over its rim and down round the outside of the
+    # pipe that arches over it, close against it all the way, into the shoulders' tops (the user:
+    # "Too much gap space", then "Whyd you get rid of the wires?": they stay, and hug the outline)
     for way in (1.0, -1.0):
-        lie = [(p[0], -0.03 if k in (0, 5) else -0.09, p[2]) for k, p in enumerate(ring_points(dial_at, 0.735, 90.0 - way * 22.0, 90.0 - way * 112.0, 0.0, 6))]
-        run(RUBBER, lie, 0.035, ("Y", "Y"), 4)
+        hug = ring_points(dial_at, 1.02, 90.0 - way * 34.0, 90.0 - way * 90.0, 0.1, 5)
+        start = (dial_at[0] + way * 0.2, -0.02, dial_at[1] + 0.7)
+        foot = (hug[-1][0], 0.1, SHOULDER)
+        run(RUBBER, [start, (dial_at[0] + way * 0.36, -0.1, dial_at[1] + 0.84)] + hug + [foot], 0.045, ("Y", "Z"), 4)
 
 
 # --- The paint: every part unwrapped into one atlas, and colour, light and contact shadow baked

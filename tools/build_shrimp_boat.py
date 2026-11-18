@@ -19,8 +19,13 @@ Objects (each a node of the .glb):
   Wheel                the ship's wheel in the wheelhouse, origin at its hub, turns about local Y (Godot Z)
   OutriggerPort        the port outrigger with its net, floats, door and lines, origin at its hinge on the mast
   OutriggerStarboard   the same on the starboard side; both turn about local Y (Godot Z) to raise or lower
-  ConsoleSpot, BoySpot, CaptainSpot, DiverSpot, HelmetCable, Waterline   empties (Godot Node3D): marker points.
-  Each spot is a floor point; its -Z in Godot is the way that figure or thing faces.
+  ConsoleSpot, BoySpot, CaptainSpot, DiverSpot, HelmetCable, MonitorSpot, Waterline   empties (Godot Node3D):
+  marker points. Each spot is a floor point; its -Z in Godot is the way that figure or thing faces.
+
+The title camera stands abeam off the starboard side (the user, 2026-11-18: "The boat should be perpendicular in the
+start scene, and the pc against the portside wall", "And hooked up to a monitor"), so the cabin is walled to port and
+open to starboard and aft, and nothing on the starboard side hangs between that camera and the cabin or the people.
+tools/SHRIMP_BOAT.md holds the design sheet this follows.
 
 Materials are plain colours with names (no image textures). A colour attribute "Col" multiplies them (plank tints,
 grime at the boot top, the dark seams between planks, the mesh pattern of the nets) and is exported as COLOR_0.
@@ -44,15 +49,19 @@ bpy.ops.wm.read_factory_settings(use_empty=True)
 RNG = random.Random(11)
 
 MATERIALS = [
-    ("hull_white", (0.86, 0.85, 0.80)),
-    ("hull_stripe", (0.08, 0.32, 0.36)),
-    ("bottom_red", (0.46, 0.15, 0.10)),
-    ("deck_wood", (0.56, 0.47, 0.36)),
+    ("hull_white", (0.80, 0.79, 0.73)),
+    ("hull_stripe", (0.20, 0.38, 0.38)),
+    ("bottom_red", (0.44, 0.17, 0.11)),
+    ("deck_wood", (0.55, 0.45, 0.33)),
     ("cabin_wood", (0.55, 0.38, 0.22)),
     ("trim", (0.34, 0.22, 0.13)),
-    ("roof", (0.72, 0.72, 0.68)),
+    ("roof", (0.70, 0.70, 0.66)),
     ("glass", (0.10, 0.15, 0.19)),
-    ("net_green", (0.17, 0.31, 0.19)),
+    ("net_green", (0.12, 0.24, 0.16)),
+    ("rust", (0.46, 0.22, 0.10)),
+    ("name_board", (0.88, 0.86, 0.78)),
+    ("primer_red", (0.47, 0.24, 0.17)),
+    ("lamp_green", (0.20, 0.75, 0.35)),
     ("rope", (0.68, 0.60, 0.44)),
     ("wire", (0.24, 0.24, 0.25)),
     ("metal_rust", (0.43, 0.25, 0.15)),
@@ -103,7 +112,8 @@ def deck_top(y):
 
 
 def bulwark_h(y):
-    return 0.55 + 0.2 * max(0.0, (y - 2.0) / 4.5) ** 2
+    # low aft, so that the deck's people show over it from abeam; the sheer sweeps up to the bow
+    return 0.45 + 0.32 * max(0.0, (y - 2.0) / 4.5) ** 2
 
 
 def sheer(y):
@@ -118,7 +128,7 @@ def sheer_half(u):
 
 
 def water_half(u):
-    return sheer_half(u) * (0.92 - 0.3 * smoothstep(0.55, 1.0, u))
+    return sheer_half(u) * (0.92 - 0.36 * smoothstep(0.55, 1.0, u))
 
 
 def keel(u):
@@ -173,6 +183,7 @@ class Build:
         self.tris = []
         self.mats = []
         self.parts = []   # (label, first tri, end tri)
+        self.smooth_deg = 38   # edges sharper than this stay hard; the outriggers (nets) are smoothed more
 
     def part(self, label, verts, polys, mats, cols=None, convex=False):
         V = [Vector(v) for v in verts]
@@ -242,7 +253,7 @@ class Build:
                 odd = True
                 # a ray that grazes an edge can count one crossing twice: a face is wrong only if
                 # rays from two different points of it both say so
-                for wa, wb, wc in ((1 / 3, 1 / 3, 1 / 3), (0.45, 0.33, 0.22)):
+                for wa, wb, wc in ((1 / 3, 1 / 3, 1 / 3), (0.45, 0.33, 0.22), (0.2, 0.3, 0.5)):
                     at = pa * wa + pb * wb + pc * wc + n * 2e-5
                     hits = 0
                     while hits < 60:
@@ -288,7 +299,7 @@ class Build:
         bpy.ops.object.select_all(action="DESELECT")
         obj.select_set(True)
         bpy.context.view_layer.objects.active = obj
-        bpy.ops.object.shade_smooth_by_angle(angle=math.radians(38))
+        bpy.ops.object.shade_smooth_by_angle(angle=math.radians(self.smooth_deg))
         return obj
 
 
@@ -299,11 +310,68 @@ def box_corners(c):
     return c, polys
 
 
-def box(b, x0, x1, y0, y1, z0, z1, mat, col=None, label="box"):
+FOOT_GRIME = (0.84, 0.81, 0.74)
+
+
+def box(b, x0, x1, y0, y1, z0, z1, mat, col=None, label="box", grime=False):
+    """grime: the bottom corners darker (dirt and wet at the foot of a painted wall)."""
     c = [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0),
          (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)]
     v, p = box_corners(c)
+    if grime:
+        top = col if col is not None else WHITE
+        col = [FOOT_GRIME] * 4 + [top] * 4
     b.part(label, v, p, mat, col, convex=True)
+
+
+def hull_patch(b, s, ys, zlo, zhi, mat, label="patch", nz=3, width=None, out=0.006, cols=None):
+    """A thin closed slab lying on the hull's outside (side s: +1 starboard, -1 port), over the y values ys,
+    between heights zlo(y) and zhi(y). width(t) (t 0 at the top, 1 at the bottom), if given, makes it a
+    streak instead: centred on the middle of ys, that wide at each height. Only where the hull is not raked
+    (aft of y 1.5, or above the deck)."""
+    rows = []
+    for i, y in enumerate(ys):
+        rows.append(y)
+    grid_f = []
+    grid_b = []
+    yc = (ys[0] + ys[-1]) / 2
+    for i, y in enumerate(rows):
+        cf = []
+        cb = []
+        for j in range(nz + 1):
+            t = j / nz
+            yy = y
+            if width is not None:
+                f = i / (len(rows) - 1) - 0.5
+                yy = yc + f * width(t)
+            z = zhi(yy) + (zlo(yy) - zhi(yy)) * t
+            u = u_of(yy)
+            sh = sheer(yy)
+            x = outer_half(u, min(z, sh - 0.005), sh)
+            cf.append((s * (x + out), yy, z))
+            cb.append((s * (x - 0.012), yy, z))
+        grid_f.append(cf)
+        grid_b.append(cb)
+    ni = len(rows)
+    nj = nz + 1
+    verts = [p for row in grid_f for p in row] + [p for row in grid_b for p in row]
+    if callable(cols):
+        cols = [cols(j / nz) for _ in range(2 * ni) for j in range(nj)]
+    F = lambda i, j: i * nj + j
+    B = lambda i, j: ni * nj + i * nj + j
+    polys = []
+    for i in range(ni - 1):
+        for j in range(nj - 1):
+            # j runs downwards (t), so (y, -z) orders these the other way round from (y, z)
+            polys.append([F(i, j), F(i, j + 1), F(i + 1, j + 1), F(i + 1, j)])
+            polys.append([B(i, j), B(i + 1, j), B(i + 1, j + 1), B(i, j + 1)])
+    for i in range(ni - 1):
+        polys.append([F(i, 0), F(i + 1, 0), B(i + 1, 0), B(i, 0)])
+        polys.append([B(i, nj - 1), B(i + 1, nj - 1), F(i + 1, nj - 1), F(i, nj - 1)])
+    for j in range(nj - 1):
+        polys.append([F(0, j), B(0, j), B(0, j + 1), F(0, j + 1)])
+        polys.append([F(ni - 1, j), F(ni - 1, j + 1), B(ni - 1, j + 1), B(ni - 1, j)])
+    b.part(label, verts, polys, mat, cols)
 
 
 def obox(b, centre, ax, ay, az, mat, col=None, label="obox"):
@@ -540,7 +608,7 @@ def station(u):
          (max(0.0, bs - T), y, sh),
          (bs, y, sh)]
     C = [(0.35, 0.33, 0.30), (0.95, 0.94, 0.92), WHITE]
-    zs = [sh - 0.26, d, 0.15, 0.0] + [k * f for f in (0.3, 0.55, 0.75, 0.9)]
+    zs = [sh - 0.26, d, 0.25, 0.0] + [k * f for f in (0.3, 0.55, 0.75, 0.9)]
     zc = [WHITE, (0.95, 0.94, 0.91), GRIME, (0.9, 0.86, 0.82), WHITE, WHITE, WHITE, WHITE]
     for z, c in zip(zs, zc):
         S.append((outer_half(u, z, sh), yy(z), z))
@@ -548,6 +616,9 @@ def station(u):
     S.append((0.07 * min(1.0, bs / 0.3), yy(k), k))
     C.append(WHITE)
     ring = [(0.0, y, d)] + S + [(0.0, yy(k), k)] + [(-x, yv, z) for x, yv, z in reversed(S)]
+    # faded, uneven paint: each station a shade lighter or darker above the water
+    m = 0.95 + 0.06 * RNG.random()
+    C = [C[0]] + [(c[0] * m, c[1] * m, c[2] * m * 0.99) for c in C[1:6]] + C[6:]
     cols = [(0.3, 0.28, 0.26)] + C + [WHITE] + list(reversed(C))
     return ring, cols
 
@@ -647,9 +718,13 @@ for i in range(-13, 13):
         if y1 - y0 < 0.1:
             continue
         v = 0.8 + 0.2 * RNG.random()
-        if RNG.random() < 0.12:
-            v *= 0.82
-        col = (v, v * 0.98, v * 0.94)
+        roll = RNG.random()
+        if roll < 0.12:
+            v *= 0.82                                   # oil and fish stains
+        if roll > 0.95:
+            col = (1.0, 0.93, 0.80)                     # a plank put in new, not yet weathered
+        else:
+            col = (v, v * 0.98, v * 0.94)
         c8 = [(x0, y0, deck(y0) - 0.012), (x1, y0, deck(y0) - 0.012), (x1, y1, deck(y1) - 0.012), (x0, y1, deck(y1) - 0.012),
               (x0, y0, deck_top(y0)), (x1, y0, deck_top(y0)), (x1, y1, deck_top(y1)), (x0, y1, deck_top(y1))]
         vv, pp = box_corners(c8)
@@ -683,16 +758,23 @@ WH_X = 1.35
 WH_Y0, WH_Y1 = 1.6, 3.9
 WT = 0.08
 WH_Z0 = deck(WH_Y0) - 0.08
-WH_TOP = 3.07
-win_front = [(-1.05, -0.45, 2.05, 2.7), (-0.32, 0.32, 2.05, 2.7), (0.45, 1.05, 2.05, 2.7)]
-win_port = [(2.0, 2.6, 2.0, 2.65), (2.95, 3.55, 2.0, 2.65)]
-win_star = [(2.95, 3.55, 2.0, 2.65)]
-door = (1.85, 2.5, WH_Z0, 2.85)
+WH_TOP = 3.27      # the wheelhouse stands a step higher than the cabin behind it
+WH_ROOF = 3.25     # underside of its roof
+RT = WH_ROOF + 0.1  # top of its roof
+win_front = [(-1.05, -0.45, 2.15, 2.85), (-0.32, 0.32, 2.15, 2.85), (0.45, 1.05, 2.15, 2.85)]
+win_port = [(2.0, 2.6, 2.15, 2.8), (2.95, 3.55, 2.15, 2.8)]
+win_star = [(2.75, 3.15, 2.15, 2.8), (3.3, 3.7, 2.15, 2.8)]
+door = (1.85, 2.5, WH_Z0, 2.95)
 wall(boat, "y", WH_Y1 - WT, WH_Y1, -WH_X, WH_X, WH_Z0, WH_TOP, win_front, "hull_white", "wheelhouse front")
 wall(boat, "y", WH_Y0, WH_Y0 + WT, -WH_X, WH_X, WH_Z0, WH_TOP, [], "hull_white", "wheelhouse back")
 wall(boat, "x", -WH_X, -WH_X + WT, WH_Y0 + WT, WH_Y1 - WT, WH_Z0, WH_TOP, win_port, "hull_white", "wheelhouse port")
 wall(boat, "x", WH_X - WT, WH_X, WH_Y0 + WT, WH_Y1 - WT, WH_Z0, WH_TOP, win_star + [door], "hull_white",
      "wheelhouse starboard")
+# a grimy foot round the house where the deck water runs
+for s in (1, -1):
+    xa, xb = sorted((s * (WH_X + 0.005), s * (WH_X - 0.02)))
+    box(boat, xa, xb, WH_Y0, WH_Y1, WH_Z0, deck(WH_Y1) + 0.22, "hull_white", (0.9, 0.88, 0.82), label="house foot",
+        grime=True)
 for a0, a1, z0, z1 in win_front:
     box(boat, a0 - 0.01, a1 + 0.01, WH_Y1 - WT / 2 - 0.01, WH_Y1 - WT / 2 + 0.01, z0 - 0.01, z1 + 0.01, "glass", label="glass")
     box(boat, a0 - 0.04, a1 + 0.04, WH_Y1 - 0.02, WH_Y1 + 0.05, z0 - 0.06, z0, "trim", label="sill")
@@ -702,15 +784,32 @@ for a0, a1, z0, z1 in win_port:
 for a0, a1, z0, z1 in win_star:
     box(boat, WH_X - WT / 2 - 0.01, WH_X - WT / 2 + 0.01, a0 - 0.01, a1 + 0.01, z0 - 0.01, z1 + 0.01, "glass", label="glass")
     box(boat, WH_X - 0.02, WH_X + 0.05, a0 - 0.04, a1 + 0.04, z0 - 0.06, z0, "trim", label="sill")
-# the door, a little ajar of the wall's face, with a small window and a knob
-box(boat, WH_X - 0.05, WH_X - 0.02, door[0] + 0.01, door[1] - 0.01, door[2] + 0.1, door[3] - 0.01, "cabin_wood", label="door")
-box(boat, WH_X - 0.025, WH_X + 0.005, door[0] + 0.15, door[1] - 0.15, 2.2, 2.6, "glass", label="door glass")
+    box(boat, WH_X - 0.02, WH_X + 0.04, a0 - 0.04, a1 + 0.04, z1, z1 + 0.05, "trim", label="lintel")
+    for a in (a0 - 0.04, a1):
+        box(boat, WH_X - 0.02, WH_X + 0.03, a, a + 0.04, z0, z1, "trim", label="jamb")
+# the door: varnish gone grey, a small window and a knob
+box(boat, WH_X - 0.05, WH_X - 0.02, door[0] + 0.01, door[1] - 0.01, door[2] + 0.1, door[3] - 0.01, "cabin_wood",
+    (0.82, 0.8, 0.78), label="door", grime=True)
+box(boat, WH_X - 0.025, WH_X + 0.005, door[0] + 0.15, door[1] - 0.15, 2.3, 2.7, "glass", label="door glass")
+box(boat, WH_X - 0.02, WH_X + 0.04, door[0] - 0.04, door[1] + 0.04, door[3], door[3] + 0.05, "trim", label="door lintel")
 sphere(boat, (WH_X + 0.01, door[1] - 0.1, 1.95), 0.035, 8, 5, "brass", label="knob")
 for x in (-WH_X, WH_X):
     for y in (WH_Y0, WH_Y1):
         box(boat, x - 0.05, x + 0.05, y - 0.05, y + 0.05, WH_Z0, WH_TOP, "trim", label="corner post")
-box(boat, -WH_X - 0.15, WH_X + 0.15, WH_Y0 - 0.1, WH_Y1 + 0.25, 3.05, 3.15, "roof", label="wheelhouse roof")
-box(boat, -WH_X - 0.16, WH_X + 0.16, WH_Y1 + 0.2, WH_Y1 + 0.27, 2.98, 3.16, "trim", label="roof fascia front")
+box(boat, -WH_X - 0.15, WH_X + 0.15, WH_Y0 - 0.1, WH_Y1 + 0.25, WH_ROOF, RT, "roof", label="wheelhouse roof")
+box(boat, -WH_X - 0.16, WH_X + 0.16, WH_Y1 + 0.2, WH_Y1 + 0.27, WH_ROOF - 0.07, RT + 0.01, "trim", label="roof fascia front")
+for s in (1, -1):
+    xa, xb = sorted((s * (WH_X + 0.15), s * (WH_X + 0.21)))
+    box(boat, xa, xb, WH_Y0 - 0.1, WH_Y1 + 0.27, WH_ROOF - 0.07, RT + 0.01, "trim", label="roof fascia side")
+# a brow over the front windows
+beam(boat, (0, WH_Y1 + 0.02, 2.98), (0, WH_Y1 + 0.3, 2.9), 2.6, 0.04, "trim", label="brow")
+box(boat, -WH_X, WH_X, WH_Y1, WH_Y1 + 0.06, 2.92, 2.98, "trim", label="brow back")
+# running lights on boards at the house's front corners: green to starboard, red to port
+for s, lamp in ((1, "lamp_green"), (-1, "life_red")):
+    xa, xb = sorted((s * (WH_X + 0.0), s * (WH_X + 0.05)))
+    box(boat, xa, xb, WH_Y1 - 0.42, WH_Y1 - 0.04, 2.95, 3.15, "trim", label="light board")
+    xa, xb = sorted((s * (WH_X + 0.05), s * (WH_X + 0.13)))
+    box(boat, xa, xb, WH_Y1 - 0.2, WH_Y1 - 0.08, 3.0, 3.1, lamp, label="running light")
 # the wheel's pedestal and a shelf of instruments under the front windows
 WHEEL_HUB = Vector((0.0, 3.35, deck(3.35) + 1.05))
 box(boat, -0.12, 0.12, WHEEL_HUB.y + 0.08, WHEEL_HUB.y + 0.28, deck(3.4) - 0.02, WHEEL_HUB.z + 0.12, "cabin_wood",
@@ -720,38 +819,54 @@ cyl(boat, (0, WHEEL_HUB.y + 0.08, WHEEL_HUB.z), (0, WHEEL_HUB.y - 0.02, WHEEL_HU
 box(boat, -1.25, 1.25, WH_Y1 - 0.45, WH_Y1 - WT, 1.78, 1.86, "cabin_wood", label="chart shelf")
 box(boat, -1.25, 1.25, WH_Y1 - 0.4, WH_Y1 - WT, deck(3.6) - 0.02, 1.78, "cabin_wood", label="shelf front")
 # roof gear: searchlight, horn, exhaust stack
-cyl(boat, (0.55, 3.75, 3.15), (0.55, 3.75, 3.36), 0.045, 0.045, 8, "metal_dark", label="light post")
-cyl(boat, (0.55, 3.58, 3.45), (0.55, 3.9, 3.45), 0.13, 0.12, 12, "metal_dark", label="searchlight")
-cyl(boat, (0.55, 3.9, 3.45), (0.55, 3.925, 3.45), 0.105, 0.105, 12, "lamp_glass", label="searchlight lens")
-cyl(boat, (-0.45, 3.55, 3.15), (-0.45, 3.55, 3.32), 0.03, 0.03, 6, "metal_dark", label="horn post")
-cyl(boat, (-0.45, 3.45, 3.36), (-0.45, 3.85, 3.36), 0.025, 0.09, 10, "brass", label="horn")
-cyl(boat, (-0.95, 2.3, 3.1), (-0.95, 2.3, 4.35), 0.085, 0.08, 10, "metal_dark", label="stack")
-cyl(boat, (-0.95, 2.3, 4.32), (-0.95, 2.3, 4.4), 0.12, 0.12, 10, "metal_dark", label="stack cap")
-cyl(boat, (-0.95, 2.3, 3.12), (-0.95, 2.3, 3.24), 0.13, 0.12, 10, "metal_rust", label="stack collar")
+cyl(boat, (0.55, 3.75, RT), (0.55, 3.75, RT + 0.21), 0.045, 0.045, 8, "metal_dark", label="light post")
+cyl(boat, (0.55, 3.58, RT + 0.3), (0.55, 3.9, RT + 0.3), 0.13, 0.12, 12, "metal_dark", label="searchlight")
+cyl(boat, (0.55, 3.9, RT + 0.3), (0.55, 3.925, RT + 0.3), 0.105, 0.105, 12, "lamp_glass", label="searchlight lens")
+cyl(boat, (-0.45, 3.55, RT), (-0.45, 3.55, RT + 0.17), 0.03, 0.03, 6, "metal_dark", label="horn post")
+cyl(boat, (-0.45, 3.45, RT + 0.21), (-0.45, 3.85, RT + 0.21), 0.025, 0.09, 10, "brass", label="horn")
+# the exhaust stack: tall, black, sooty at the top, a rusty collar where it meets the roof
+cyl(boat, (-0.95, 2.25, RT - 0.05), (-0.95, 2.25, 5.0), 0.1, 0.09, 10, "metal_dark", label="stack")
+cyl(boat, (-0.95, 2.25, 4.98), (-0.95, 2.25, 5.06), 0.13, 0.13, 10, "metal_dark", label="stack lip")
+cyl(boat, (-0.95, 2.25, 5.2), (-0.95, 2.25, 5.24), 0.16, 0.16, 10, "metal_dark", label="rain cap")
+for a in (0.0, 2.1, 4.2):
+    cyl(boat, (-0.95 + 0.06 * math.cos(a), 2.25 + 0.06 * math.sin(a), 5.04), (-0.95 + 0.06 * math.cos(a),
+        2.25 + 0.06 * math.sin(a), 5.21), 0.012, 0.012, 4, "metal_dark", label="cap leg")
+cyl(boat, (-0.95, 2.25, RT - 0.03), (-0.95, 2.25, RT + 0.14), 0.15, 0.13, 10, "metal_rust", label="stack collar")
+cyl(boat, (-0.95, 2.25, 3.9), (-0.95, 2.25, 3.96), 0.115, 0.115, 10, "metal_rust", label="stack band")
+# a whip aerial on the roof's starboard aft corner
+cyl(boat, (1.2, 1.75, RT), (1.2, 1.75, RT + 0.12), 0.04, 0.04, 6, "metal_dark", label="aerial base")
+cyl(boat, (1.2, 1.75, RT + 0.1), (1.2, 1.75, 5.9), 0.012, 0.006, 4, "metal_dark", label="aerial")
 
-# --- the open-backed cabin behind the wheelhouse: roof on the wheelhouse's back wall and two aft posts,
-# low walls at the sides (closed above the waist in the forward half), wholly open aft
+# --- the open cabin behind the wheelhouse: a full wall to PORT (the console stands against it inside), open to
+# starboard and aft from deck to roof (posts at the corners only), roofed lower than the wheelhouse
 CB_X = 1.45
-CB_Y0, CB_Y1 = -0.7, WH_Y0
+CB_Y0, CB_Y1 = -1.25, WH_Y0
 CB_Z0 = deck(CB_Y0) - 0.06
-WAIST = deck(CB_Y0) + 1.05
-CB_ROOF = 3.06     # the cabin roof's underside: 2.13 m above the cabin floor
-for s in (1, -1):
-    xa, xb = sorted((s * CB_X, s * (CB_X - WT)))
-    box(boat, xa, xb, CB_Y0, CB_Y1, CB_Z0, WAIST, "hull_white", label="cabin low wall")
-    box(boat, xa, xb, 0.45, CB_Y1, WAIST, CB_ROOF + 0.02, "hull_white", label="cabin upper wall")
-    xa2, xb2 = sorted((s * (CB_X + 0.03), s * (CB_X - WT - 0.03)))
-    box(boat, xa2, xb2, CB_Y0 - 0.02, 0.45, WAIST, WAIST + 0.045, "trim", label="cabin wall cap")
-    xa3, xb3 = sorted((s * (CB_X + 0.01), s * (CB_X - 0.11)))
-    box(boat, xa3, xb3, CB_Y0, CB_Y0 + 0.12, CB_Z0, CB_ROOF + 0.02, "trim", label="cabin aft post")
-    box(boat, xa3, xb3, 0.39, 0.51, CB_Z0, CB_ROOF + 0.02, "trim", label="cabin mid post")
+CB_ROOF = 3.06     # the cabin roof's underside: 2.15 m above the cabin floor at its aft end
+box(boat, -CB_X, -CB_X + WT, CB_Y0, CB_Y1, CB_Z0, CB_ROOF + 0.02, "hull_white", label="cabin port wall", grime=True)
+box(boat, -CB_X - 0.03, -CB_X + WT + 0.01, CB_Y0, CB_Y1, CB_Z0, deck(CB_Y0) + 0.1, "trim", label="port wall foot")
+for y in (CB_Y0,):   # forward, the wheelhouse corner post holds the roof
+    box(boat, CB_X - 0.11, CB_X + 0.01, y, y + 0.12, CB_Z0, CB_ROOF + 0.02, "trim", label="cabin starboard post")
+box(boat, -CB_X - 0.01, -CB_X + 0.11, CB_Y0, CB_Y0 + 0.12, CB_Z0, CB_ROOF + 0.02, "trim", label="cabin port post")
 box(boat, -CB_X - 0.13, CB_X + 0.13, CB_Y0 - 0.15, CB_Y1 + 0.05, CB_ROOF, CB_ROOF + 0.08, "roof", label="cabin roof")
 box(boat, -CB_X - 0.14, CB_X + 0.14, CB_Y0 - 0.17, CB_Y0 - 0.1, CB_ROOF - 0.06, CB_ROOF + 0.09, "trim",
     label="cabin roof fascia")
-# life ring on the cabin's port side, outside
-torus(boat, (-CB_X - 0.07, 1.05, 2.45), (1, 0, 0), 0.27, 0.06, 16, 7,
+for s in (1, -1):
+    xa, xb = sorted((s * (CB_X + 0.13), s * (CB_X + 0.19)))
+    box(boat, xa, xb, CB_Y0 - 0.17, CB_Y1 + 0.05, CB_ROOF - 0.04, CB_ROOF + 0.09, "trim", label="cabin roof side fascia")
+# a low grab rail round the cabin roof's edge
+for s in (1, -1):
+    x = s * (CB_X + 0.05)
+    tube(boat, [(x, CB_Y0 - 0.05, CB_ROOF + 0.08), (x, CB_Y0 - 0.05, CB_ROOF + 0.3), (x, CB_Y1 - 0.15, CB_ROOF + 0.3),
+                (x, CB_Y1 - 0.15, CB_ROOF + 0.08)], 0.022, 5, "metal_dark", label="roof rail")
+# the life ring, hung outside the starboard bulwark forward of the house
+LR_Y = 3.35
+LR_Z = sheer(LR_Y) - 0.3
+LR_X = outer_half(u_of(LR_Y), LR_Z - 0.2, sheer(LR_Y)) + 0.075
+torus(boat, (LR_X, LR_Y, LR_Z), (1, 0, 0.25), 0.25, 0.055, 16, 7,
       lambda k, j: "life_red" if (k // 2) % 2 == 0 else "hull_white", label="life ring")
-box(boat, -CB_X - 0.03, -CB_X, 1.0, 1.1, 2.68, 2.78, "metal_dark", label="ring hook")
+tube(boat, [(LR_X - 0.05, LR_Y, LR_Z + 0.3), (sheer_half(u_of(LR_Y)) - 0.02, LR_Y, sheer(LR_Y) + 0.04)], 0.012, 5, "rope",
+     label="ring lanyard")
 
 # --- mast, crosstree, boom and standing rigging
 MAST_Y = 1.85
@@ -759,7 +874,8 @@ MAST_TOP = 9.5
 cyl(boat, (0, MAST_Y, deck(MAST_Y) - 0.05), (0, MAST_Y, MAST_TOP), 0.12, 0.075, 10, "mast_white", label="mast")
 sphere(boat, (0, MAST_Y, MAST_TOP + 0.06), 0.08, 8, 5, "lamp_glass", label="masthead light")
 box(boat, -0.7, 0.7, MAST_Y - 0.05, MAST_Y + 0.05, 7.55, 7.65, "mast_white", label="crosstree")
-box(boat, -0.48, 0.48, MAST_Y - 0.1, MAST_Y + 0.1, 3.36, 3.62, "metal_rust", label="outrigger collar")
+HINGE_Z = 3.65   # the outriggers' hinges, on a collar on the mast just above the wheelhouse roof
+box(boat, -0.48, 0.48, MAST_Y - 0.1, MAST_Y + 0.1, HINGE_Z - 0.14, HINGE_Z + 0.12, "metal_rust", label="outrigger collar")
 BOOM0 = Vector((0, MAST_Y - 0.12, 4.05))
 BOOM1 = Vector((0, -3.4, 5.45))
 cyl(boat, BOOM0, BOOM1, 0.075, 0.05, 8, "mast_white", label="boom")
@@ -777,24 +893,32 @@ for s in (1, -1):
     y = -6.1
     tube(boat, [(s * 0.05, MAST_Y - 0.05, MAST_TOP - 0.25), (s * (sheer_half(u_of(y)) - 0.05), y, sheer(y) + 0.02)],
          LINE, 5, "wire", label="backstay")
-    y = 0.2
+    y = 3.2
     tube(boat, [(s * 0.68, MAST_Y, 7.6), (s * (sheer_half(u_of(y)) - 0.05), y, sheer(y) + 0.02)],
          LINE, 5, "wire", label="shroud")
 
-# --- winch just aft of the cabin, starboard of the middle
-d = deck(-1.3)
-box(boat, 0.45, 1.45, -1.5, -1.05, d - 0.02, d + 0.08, "metal_rust", label="winch base")
+# --- winch on the middle line just aft of the cabin, clear of the view into it from abeam
+WX, WY = -0.95, -2.0     # the winch's place relative to how it was first drawn (x 0.45..1.45, y -1.5..-1.05)
+d = deck(-2.0)
+box(boat, 0.45 + WX, 1.45 + WX, -1.5 + WY + 1.3, -1.05 + WY + 1.3, d - 0.02, d + 0.08, "metal_rust", label="winch base")
+wy = -1.27 + WY + 1.3
 for x in (0.47, 1.39):
-    box(boat, x, x + 0.04, -1.45, -1.1, d + 0.06, d + 0.48, "metal_rust", label="winch cheek")
-cyl(boat, (0.45, -1.27, d + 0.32), (1.45, -1.27, d + 0.32), 0.03, 0.03, 8, "metal_dark", label="winch shaft")
+    box(boat, x + WX, x + 0.04 + WX, wy - 0.18, wy + 0.17, d + 0.06, d + 0.48, "metal_rust", label="winch cheek")
+cyl(boat, (0.45 + WX, wy, d + 0.32), (1.45 + WX, wy, d + 0.32), 0.03, 0.03, 8, "metal_dark", label="winch shaft")
 for xa, xb in ((0.55, 0.85), (1.05, 1.35)):
-    cyl(boat, (xa, -1.27, d + 0.32), (xb, -1.27, d + 0.32), 0.15, 0.15, 12, "wire", label="winch drum")
+    cyl(boat, (xa + WX, wy, d + 0.32), (xb + WX, wy, d + 0.32), 0.15, 0.15, 12, "wire", label="winch drum")
     for x in (xa, xb - 0.03):
-        cyl(boat, (x, -1.27, d + 0.32), (x + 0.03, -1.27, d + 0.32), 0.22, 0.22, 12, "metal_rust", label="drum flange")
-box(boat, 0.88, 1.02, -1.42, -1.12, d + 0.08, d + 0.45, "metal_rust", label="gearbox")
+        cyl(boat, (x + WX, wy, d + 0.32), (x + 0.03 + WX, wy, d + 0.32), 0.22, 0.22, 12, "metal_rust", label="drum flange")
+box(boat, 0.88 + WX, 1.02 + WX, wy - 0.15, wy + 0.15, d + 0.08, d + 0.45, "metal_rust", label="gearbox")
+# a fish hold hatch in the middle of the aft deck
+d = deck_top(-4.3)
+box(boat, -0.95, 0.25, -4.85, -3.85, d - 0.02, d + 0.26, "trim", label="hatch coaming", grime=True)
+box(boat, -1.0, 0.3, -4.9, -3.8, d + 0.26, d + 0.31, "deck_wood", (0.78, 0.74, 0.68), label="hatch cover")
+for y in (-4.6, -4.1):
+    box(boat, -1.02, 0.32, y - 0.04, y + 0.04, d + 0.3, d + 0.34, "metal_rust", label="hatch batten")
 
 # --- the diver's air pump (a wooden box with a big wheel at each end) and its hose
-PUMP = Vector((0.95, -2.9, deck_top(-2.9)))
+PUMP = Vector((0.95, -4.1, deck_top(-4.1)))
 d = PUMP.z
 box(boat, PUMP.x - 0.23, PUMP.x + 0.23, PUMP.y - 0.22, PUMP.y + 0.22, d - 0.01, d + 0.72, "cabin_wood", label="pump box")
 box(boat, PUMP.x - 0.25, PUMP.x + 0.25, PUMP.y - 0.24, PUMP.y + 0.24, d + 0.72, d + 0.77, "trim", label="pump lid")
@@ -819,18 +943,18 @@ for s in (1, -1):
     grip = Vector((wx, PUMP.y + math.cos(a) * 0.3, WHEEL_Z + math.sin(a) * 0.3))
     cyl(boat, grip, grip + Vector((s * 0.16, 0, 0)), 0.022, 0.022, 6, "metal_dark", label="crank")
     cyl(boat, grip + Vector((s * 0.06, 0, 0)), grip + Vector((s * 0.17, 0, 0)), 0.03, 0.03, 6, "cabin_wood", label="crank grip")
-dd = deck_top(-2.0)
-COIL = Vector((1.45, -2.05, dd))
+dd = deck_top(-5.0)
+COIL = Vector((1.42, -5.0, dd))
 for i, R in enumerate((0.27, 0.24, 0.21)):
     torus(boat, COIL + Vector((0.01 * i, -0.01 * i, 0.03 + 0.05 * i)), (0, 0, 1), R, 0.028, 16, 6, "hose_rubber",
           label="hose coil")
-hose = catmull([(PUMP.x, PUMP.y + 0.05, d + 0.86), (PUMP.x + 0.05, PUMP.y + 0.25, d + 0.95),
-                (PUMP.x + 0.25, PUMP.y + 0.55, d + 0.45), (COIL.x - 0.15, COIL.y - 0.3, dd + 0.08),
-                (COIL.x - 0.27, COIL.y, dd + 0.13)], 4)
+hose = catmull([(PUMP.x, PUMP.y + 0.05, d + 0.86), (PUMP.x + 0.05, PUMP.y - 0.15, d + 0.95),
+                (PUMP.x + 0.2, PUMP.y - 0.5, d + 0.45), (COIL.x - 0.25, COIL.y + 0.32, dd + 0.08),
+                (COIL.x - 0.2, COIL.y + 0.05, dd + 0.13)], 4)
 tube(boat, hose, 0.028, 6, "hose_rubber", label="hose to coil")
-HOSE_END = Vector((1.25, -3.55, deck_top(-3.55) + 0.03))
-hose2 = catmull([(COIL.x + 0.21, COIL.y - 0.05, dd + 0.13), (COIL.x + 0.25, COIL.y - 0.4, dd + 0.05),
-                 (1.5, -3.0, deck_top(-3.0) + 0.03), (HOSE_END.x + 0.1, HOSE_END.y + 0.2, HOSE_END.z),
+HOSE_END = Vector((1.3, -2.95, deck_top(-2.95) + 0.03))
+hose2 = catmull([(COIL.x + 0.15, COIL.y + 0.15, dd + 0.13), (COIL.x + 0.2, COIL.y + 0.45, dd + 0.05),
+                 (1.6, -4.1, deck_top(-4.1) + 0.03), (1.5, -3.4, deck_top(-3.4) + 0.03),
                  (HOSE_END.x, HOSE_END.y, HOSE_END.z)], 4)
 tube(boat, hose2, 0.028, 6, "hose_rubber", label="hose to diver")
 
@@ -839,7 +963,7 @@ d = deck_top(-5.8)
 box(boat, -1.5, -0.9, -6.2, -5.78, d - 0.005, d + 0.34, "crate_wood", (0.95, 0.95, 0.95), label="crate")
 box(boat, -1.45, -0.95, -6.15, -5.8, d + 0.34, d + 0.64, "crate_wood", (0.82, 0.8, 0.76), label="crate")
 box(boat, -1.5, -0.95, -5.72, -5.3, d - 0.005, d + 0.34, "crate_wood", (1.0, 0.98, 0.94), label="crate")
-for cx, cy, n in ((1.15, -5.9, 3), (1.25, -5.2, 1)):
+for cx, cy, n in ((1.15, -5.9, 3), (-0.35, -6.0, 1)):
     for i in range(n):
         z0 = d - 0.005 + 0.12 * i
         cyl(boat, (cx, cy, z0), (cx, cy, z0 + 0.38), 0.21, 0.26, 12, "basket", label="basket")
@@ -862,6 +986,66 @@ for s in (1, -1):
     obox(boat, (ax_, AY + s * 0.43, 1.07), (0.012, 0, 0), (0, s * 0.06, -0.04), (0, 0.04, 0.08) if s > 0 else (0, -0.04, 0.08),
          "metal_rust", label="fluke")
 
+# --- wear and repair on the hull: scuppers with rust weeping from them, rust under the cleats and the
+# hawse, a patch of red primer, a patch of fresher white, blank name boards, tyre fenders to starboard
+
+
+def flat(z):
+    return lambda y: z
+
+
+def under_rail(dz):
+    return lambda y: sheer(y) - dz
+
+
+RUST_TINT = (0.58, 0.34, 0.2)   # times hull_white: a rust brown
+
+
+def weep(t):
+    """Rust weeping down white paint: strong at the top, fading into the white (t: 0 top, 1 bottom)."""
+    k = (1 - t) ** 1.3
+    return tuple(1.0 + (c - 1.0) * k for c in RUST_TINT)
+
+
+def streak(s, y, top, length, wide):
+    """A few thin runs of rust from one point, each its own length."""
+    runs = ((-wide * 0.35, 0.55 + 0.3 * RNG.random(), 0.004), (0.0, 1.0, 0.007), (wide * 0.4, 0.4 + 0.4 * RNG.random(), 0.01))
+    for dy, f, out in runs:
+        ln = length * f
+        w = wide * (0.5 if dy else 0.8)
+        hull_patch(boat, s, [y + dy - w / 2, y + dy, y + dy + w / 2], lambda yy, a=top, b=ln: a(yy) - b, top,
+                   "hull_white", label="rust run", nz=3, width=lambda t, w=w: w * (1 - 0.8 * t), out=out, cols=weep)
+
+
+for s in (1, -1):
+    for i, y in enumerate((-5.2, -3.6, -2.0, -0.4, 1.0)):
+        # a freeing port at deck level: a dark slot in the bulwark
+        hull_patch(boat, s, [y - 0.13, y + 0.13], lambda yy: deck(yy) + 0.02, lambda yy: deck(yy) + 0.1, "metal_dark",
+                   label="scupper", nz=1)
+        if (i + (s > 0)) % 2 == 0:
+            streak(s, y, lambda yy: deck(yy) + 0.02, 0.35 + 0.2 * RNG.random(), 0.14)
+    for y in (-6.0, -1.3):
+        streak(s, y, under_rail(0.31), 0.3 + 0.15 * RNG.random(), 0.08)
+# the anchor's stain, above the deck on the starboard bow
+streak(1, 5.2, under_rail(0.31), 0.25, 0.16)
+# a plank renewed below the stripe, primed red-lead and never painted over
+hull_patch(boat, 1, [-3.4, -3.0, -2.6, -2.25], flat(0.38), flat(0.52), "primer_red", label="primer plank", nz=1)
+# blank name boards on the bow bulwarks (the name is left off)
+for s in (1, -1):
+    ys = [3.95, 4.3, 4.6, 4.95]
+    hull_patch(boat, s, ys, under_rail(0.5), under_rail(0.31), "trim", label="name board frame", nz=1, out=0.01)
+    hull_patch(boat, s, [y if i in (1, 2) else y + (0.04 if i == 0 else -0.04) for i, y in enumerate(ys)],
+               under_rail(0.48), under_rail(0.33), "name_board", label="name board", nz=1, out=0.018)
+box(boat, -1.0, 1.0, -HALF - 0.03, -HALF + 0.02, 0.7, 1.0, "trim", label="transom board frame")
+box(boat, -0.95, 0.95, -HALF - 0.045, -HALF + 0.02, 0.73, 0.97, "name_board", label="transom name board")
+# tyre fenders hung on ropes from the starboard rail
+for y in (-4.4, -0.8, 2.3):
+    zt = sheer(y) - 0.42
+    xt = outer_half(u_of(y), zt + 0.2, sheer(y)) + 0.1
+    torus(boat, (xt, y, zt), (1, 0, 0.3), 0.2, 0.085, 18, 6, "hose_rubber", label="tyre")
+    tube(boat, [(xt - 0.02, y, zt + 0.22), (sheer_half(u_of(y)) + 0.01, y, sheer(y) + 0.05)], 0.014, 5, "rope",
+         label="tyre rope")
+
 # ---------------------------------------------------------------------------------------------- the wheel
 wheel = Build("Wheel", WHEEL_HUB)
 H = WHEEL_HUB
@@ -879,8 +1063,9 @@ OUT_LEN = 6.5
 OUT_ANGLE = math.radians(65)
 outriggers = []
 for s, name in ((-1, "OutriggerPort"), (1, "OutriggerStarboard")):
-    hinge = Vector((s * 0.42, MAST_Y, 3.5))
+    hinge = Vector((s * 0.42, MAST_Y, HINGE_Z))
     o = Build(name, hinge)
+    o.smooth_deg = 65
     direction = Vector((s * math.cos(OUT_ANGLE), 0, math.sin(OUT_ANGLE)))
     tip = hinge + direction * OUT_LEN
     cyl(o, hinge, tip, 0.085, 0.05, 8, "mast_white", label="pole")
@@ -889,38 +1074,54 @@ for s, name in ((-1, "OutriggerPort"), (1, "OutriggerStarboard")):
     cyl(o, tip + Vector((0, -0.1, -0.1)), tip + Vector((0, 0.1, -0.1)), 0.09, 0.09, 10, "metal_rust", label="tip block")
     # lines: topping lift to the mast, guys forward and aft to the rail
     tube(o, [tip + Vector((-s * 0.03, 0, 0.02)), (s * 0.05, MAST_Y, MAST_TOP - 0.35)], LINE, 5, "wire", label="lift")
-    for y in (4.4, -1.6):
+    # The starboard side faces the title camera (abeam): its aft guy lands well aft of the cabin, its door hangs
+    # high from the pole (above the cabin roof as seen from abeam) and its net is hauled up short, so that
+    # nothing of it hangs between the camera and the cabin or the captain. The port side hangs low.
+    star = s > 0
+    for y in (4.4, -2.2 if star else -1.6):
         tube(o, [tip + Vector((0, 0, -0.05)), (s * (sheer_half(u_of(y)) - 0.05), y, sheer(y) + 0.02)], LINE, 5, "wire",
              label="guy")
-    # otter door hung outboard against the hull, from a point along the pole
+    # otter door, from a point along the pole: against the hull (port), or hauled up under the pole (starboard)
     hang = hinge + direction * 4.6
-    DX = s * 2.42
-    ring_at = Vector((DX, 1.0, 2.75))
+    if star:
+        DX = hang.x
+        DY0 = 0.95
+        dz0, dz1 = 5.45, 6.35
+        ring_at = Vector((DX, DY0 + 1.0, dz1 + 0.35))
+    else:
+        DX = s * 2.42
+        DY0 = 0.0
+        dz0, dz1 = 1.0, 1.9
+        ring_at = Vector((DX, 1.0, 2.75))
     tube(o, [hang, ring_at], LINE * 1.3, 5, "wire", label="door line")
     torus(o, ring_at, (1, 0, 0), 0.05, 0.012, 8, 4, "metal_dark", label="door ring")
-    dz0, dz1 = 1.0, 1.9
     dpts = [(0.0, dz0), (1.85, dz0), (2.0, dz0 + 0.15), (2.0, dz1 - 0.12), (1.88, dz1), (0.12, dz1), (0.0, dz1 - 0.12)]
-    prism(o, dpts, (DX, 0.0, 0.0), (0, 1, 0), (0, 0, 1), 0.04, "door_wood", label="otter door")
-    box(o, DX - 0.05, DX + 0.05, 0.0, 1.95, dz0 - 0.02, dz0 + 0.07, "metal_rust", label="door shoe")
+    prism(o, dpts, (DX, DY0, 0.0), (0, 1, 0), (0, 0, 1), 0.04, "door_wood", label="otter door")
+    box(o, DX - 0.05, DX + 0.05, DY0, DY0 + 1.95, dz0 - 0.02, dz0 + 0.07, "metal_rust", label="door shoe")
     for yb in (0.45, 1.5):
-        beam(o, (DX + s * 0.045, yb, dz0 + 0.07), (DX + s * 0.045, yb + (0.25 if yb < 1 else -0.25), dz1 - 0.05),
+        beam(o, (DX + s * 0.045, DY0 + yb, dz0 + 0.07), (DX + s * 0.045, DY0 + yb + (0.25 if yb < 1 else -0.25), dz1 - 0.05),
              0.08, 0.03, "metal_rust", up=(s, 0, 0), label="door brace")
-        tube(o, [ring_at, (DX + s * 0.06, yb + (0.1 if yb < 1 else -0.1), dz1 - 0.05)], 0.012, 5, "metal_dark",
+        tube(o, [ring_at, (DX + s * 0.06, DY0 + yb + (0.1 if yb < 1 else -0.1), dz1 - 0.05)], 0.012, 5, "metal_dark",
              label="bridle")
+    # rust run down the door from its shoe bolts (vertex colours would need more points: a thin plate instead)
+    box(o, DX + s * 0.04 - 0.004, DX + s * 0.04 + 0.004, DY0 + 0.9, DY0 + 1.0, dz0 + 0.07, dz1 - 0.2, "rust",
+        label="door rust")
     # the net, hanging from the tip to drip dry: a lumpy bag with a mesh pattern in its colours
     tx, ty, tz = tip
-    ctrl = [(tx, ty, tz - 0.1), (tx + s * 0.07, ty - 0.03, tz - 0.5), (tx + s * 0.15, ty - 0.09, tz - 1.3),
-            (tx + s * 0.21, ty - 0.15, tz - 2.2), (tx + s * 0.23, ty - 0.21, tz - 3.2), (tx + s * 0.21, ty - 0.23, tz - 4.2),
-            (tx + s * 0.17, ty - 0.19, tz - 5.1), (tx + s * 0.13, ty - 0.11, tz - 5.9), (tx + s * 0.09, ty - 0.01, tz - 6.5),
-            (tx + s * 0.07, ty + 0.07, tz - 6.95), (tx + s * 0.06, ty + 0.11, tz - 7.2)]
+    drop = 0.62 if star else 1.0       # the starboard net is hauled up short
+    ys = 1.0 if star else -1.0         # and drifts forward, the port one aft
+    fat = 1.2 if star else 1.0
+    offs = [(0.0, 0.0, 0.1), (0.07, 0.03, 0.5), (0.15, 0.09, 1.3), (0.21, 0.15, 2.2), (0.23, 0.21, 3.2), (0.21, 0.23, 4.2),
+            (0.17, 0.19, 5.1), (0.13, 0.11, 5.9), (0.09, 0.01, 6.5), (0.07, -0.07, 6.95), (0.06, -0.11, 7.2)]
+    ctrl = [(tx + s * ox, ty + ys * oy, tz - (0.1 + (oz - 0.1) * drop)) for ox, oy, oz in offs]
     path = catmull(ctrl, 4)
     m = len(path)
     lumps_k = [0.85 + 0.3 * RNG.random() for _ in range(m)]
-    lumps_j = [0.9 + 0.2 * RNG.random() for _ in range(16)]
+    lumps_j = [0.9 + 0.2 * RNG.random() for _ in range(14)]
     radii = []
     for k in range(m):
         t = k / (m - 1)
-        r = (0.06 + 0.36 * t ** 0.7) * (1 - 0.85 * smoothstep(0.88, 1.0, t))
+        r = fat * (0.06 + 0.36 * t ** 0.7) * (1 - 0.85 * smoothstep(0.88, 1.0, t))
         radii.append(r * (1.0 if k == 0 else lumps_k[k]))
 
     def jit(k, j):
@@ -929,7 +1130,7 @@ for s, name in ((-1, "OutriggerPort"), (1, "OutriggerStarboard")):
     def mesh_col(k, j):
         return (0.55, 0.6, 0.55) if (k + j) % 2 else WHITE
 
-    tube(o, path, radii, 16, "net_green", cols=mesh_col, jitter=jit, label="net")
+    tube(o, path, radii, 14, "net_green", cols=mesh_col, jitter=jit, label="net")
     # head rope with floats, and a dark lead line, winding round the bag
     P, F = frames(path)
 
@@ -980,13 +1181,17 @@ def marker(name, at, turn_deg=0.0):
           % (name, at[0], at[1], at[2], at[0], at[2], -at[1], turn_deg))
 
 
-# Godot's -Z (Blender +Y, the bow) is the way an unturned marker faces; 180 turns it to face aft.
-CONSOLE = (0.0, CB_Y1, deck_top(CB_Y1))
-marker("ConsoleSpot", CONSOLE, 180)
-marker("BoySpot", (0.0, CB_Y1 - 0.9, deck_top(CB_Y1 - 0.9)), 0)
-marker("CaptainSpot", (-0.95, -3.4, deck_top(-3.4)), 180)
-marker("DiverSpot", (0.95, -3.8, deck_top(-3.8)), 180)
-marker("HelmetCable", (0.0, CB_Y1, deck_top(CB_Y1) + 1.5), 180)
+# Godot's -Z (Blender +Y, the bow) is the way an unturned marker faces; -90 turns it to face starboard (+X),
+# 90 to face port.
+WALL_X = -CB_X + WT                    # the inside face of the cabin's port wall
+CY = (CB_Y0 + CB_Y1) / 2               # the middle of the wall's length
+CONSOLE = (WALL_X, CY, deck_top(CY))
+marker("ConsoleSpot", CONSOLE, -90)
+marker("BoySpot", (WALL_X + 0.85, CY, deck_top(CY)), 90)
+marker("HelmetCable", (WALL_X, CY, deck_top(CY) + 1.3), -90)
+marker("MonitorSpot", (WALL_X, CY, deck_top(CY) + 1.75), -90)
+marker("CaptainSpot", (1.6, 2.2, deck_top(2.2)), -90)
+marker("DiverSpot", (1.0, -3.2, deck_top(-3.2)), -90)
 marker("Waterline", (0.0, 0.0, 0.0), 0)
 print("HOSE END (not a marker): blender (%.3f, %.3f, %.3f)" % tuple(HOSE_END))
 

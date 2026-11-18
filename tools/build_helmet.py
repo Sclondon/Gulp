@@ -86,11 +86,29 @@ for name, at in zip(("CableA", "CableB"), SOCKETS):
 
 # the bench the computer stands on: planks on an iron frame
 for k in range(3):
-    box(WOOD, (2.7, 0.19, 0.07), (0.0, -0.25 + 0.2 * k, 0.465))
-for x in (-1.25, 1.25):
+    box(WOOD, (2.4, 0.19, 0.07), (0.0, -0.25 + 0.2 * k, 0.465))
+for x in (-1.1, 1.1):
     box(IRON, (0.1, 0.5, 0.43), (x, -0.05, 0.215))
-box(IRON, (2.5, 0.06, 0.08), (0.0, -0.28, 0.25))
+box(IRON, (2.2, 0.06, 0.08), (0.0, -0.28, 0.25))
 bench = join("Bench")
+
+# the monitor the computer is hooked up to (the user: "And hooked up to a monitor"): an iron box on
+# a wall bracket with a round glass screen in a brass ring, two knobs, a vent (in metres; its origin
+# is the middle of its back, against the wall; its face towards -Y)
+box(IRON, (0.72, 0.3, 0.56), (0.0, -0.17, 0.0))
+box(IRON, (0.78, 0.05, 0.62), (0.0, -0.3, 0.0))
+cyl(BRASS, 0.24, 0.06, (-0.08, -0.34, 0.03), "Y", 28)
+torus(BRASS, 0.2, 0.04, (-0.08, -0.37, 0.03), "Y", 28)
+for z in (0.14, -0.02, -0.16):
+    cyl(BRASS, 0.04, 0.06, (0.27, -0.35, z), "Y", 8)
+for x, z in ((-0.33, 0.25), (0.33, 0.25), (-0.33, -0.25), (0.33, -0.25)):
+    rivet(x, z, 0.03, -0.325)
+box(IRON, (0.1, 0.3, 0.1), (-0.25, -0.02, -0.33))
+box(IRON, (0.1, 0.3, 0.1), (0.25, -0.02, -0.33))
+run(RUBBER, [(0.0, -0.1, -0.28), (0.05, -0.16, -0.5), (0.0, -0.12, -0.75)], 0.03, ("-Z", None), 4)
+monitor = join("Monitor")
+cyl(SCREEN, 0.19, 0.02, (-0.08, -0.365, 0.03), "Y", 28)
+screen = join("MonitorScreen", (-0.08, -0.365, 0.03), monitor)
 
 # a slack cable, one unit long
 pipe(RUBBER, [(0.0, 0.0, 0.0), (0.2, 0.0, -0.14), (0.5, 0.0, -0.22), (0.8, 0.0, -0.14), (1.0, 0.0, 0.0)], 0.03, 4)
@@ -106,10 +124,12 @@ print("HELMET triangles %d" % triangles)
 unwrap(meshes)
 bench.location.x = 6.0
 cable.location.x = -6.0
+monitor.location.x = 12.0
 bpy.context.view_layer.update()
 bake(ATLAS, 1024, meshes)
 bench.location.x = 0.0
 cable.location.x = 0.0
+monitor.location.x = 0.0
 bpy.context.view_layer.update()
 os.makedirs(os.path.dirname(BLEND), exist_ok=True)
 bpy.ops.wm.save_as_mainfile(filepath=BLEND)
