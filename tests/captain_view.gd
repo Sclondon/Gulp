@@ -83,6 +83,10 @@ func _initialize() -> void:
 	# (seventh round) His bare head, the cap hidden: front, three-quarter, his left side, the back and from above.
 	for h in [["bare_front", Vector3(0, 0, 1)], ["bare_three_quarter", Vector3(-0.62, 0, 0.78)], ["bare_side", Vector3(1, 0, 0)], ["bare_back", Vector3(0, 0, -1)], ["bare_above", Vector3(0, 1, 0.12)]]:
 		_shots.append([h[0], (h[1] as Vector3).normalized(), Vector3(0, 1.45, 0.02), 0.5, true, 5.0, true])
+	_shots.append(["bare_below", Vector3(0, -0.7, 0.7).normalized(), Vector3(0, 1.43, 0.02), 0.5, true, 5.0, true])
+	# (eighth round) The boxers close: front, three-quarter, side.
+	for h in [["box_front", Vector3(0, 0, 1)], ["box_three_quarter", Vector3(-0.62, 0, 0.78)], ["box_side", Vector3(-1, 0, 0)]]:
+		_shots.append([h[0], (h[1] as Vector3).normalized(), Vector3(0, 0.68, 0.0), 0.55, true, 5.0])
 
 
 func _hair(key: String) -> ShaderMaterial:
