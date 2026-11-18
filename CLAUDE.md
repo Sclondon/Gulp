@@ -555,3 +555,7 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   triangles, body texture 512x256), Telma (2,308; 256x256 plus small face tiles), Shad (2,663; 512x512 plus tiles),
   Ordona. Look and measure only; copy nothing. A whole person there is about 2,300 to 2,700 triangles with one small
   mirrored hand-painted body picture and separate small face tiles; Gulp's captain drew 10,124 in his open look.
+- "the tattoos need to be moveable so we can postion them eventually" (the user, 2026-11-18): tattoos are never baked
+  into a figure's skin picture. Each is its own small picture, placed by a table (which picture, where on which body
+  part, size, turn), laid over the skin as an overlay that can be rebuilt from the table; a positioning tool comes
+  later. The captain first, the older brother's forearms after.
