@@ -70,6 +70,8 @@ var _titled := false
 # shown in.
 var _warming: Array[String] = []
 var _warm_all := 0
+# The loading screen (scripts/loading_swarm.gd), while it is up.
+var _loading: LoadingSwarm
 var _warm_first := 0
 var _warm_view: SubViewport
 var _warm_now: Node3D
@@ -461,6 +463,11 @@ func _open_title() -> void:
 	pad.visible = false
 	_dive = -1.0
 	_begin_warm()
+	# (the loading screen, over everything, until the starting waters' animals are ready: not for
+	# pictures and tests, which want the title itself)
+	if _trick == "" and _shot_at < 0.0:
+		_loading = LoadingSwarm.new()
+		add_child(_loading)
 
 
 # A browser compiles each animal's shader the first time the animal is drawn, and on Windows that
@@ -538,6 +545,12 @@ func _title_step(delta: float) -> void:
 		camera.global_transform = title.eye(size.y > size.x)
 		_warm()
 		_card.primed = 1.0 if _warm_all == 0 else clampf(float(_warm_all - _warming.size()) / maxf(_warm_first, 1.0), 0.0, 1.0)
+		if is_instance_valid(_loading):
+			# (it is up for at least three seconds, so the logo is seen made)
+			_loading.progress = minf(_card.primed, _clock / 3.0)
+			if _card.primed >= 1.0 and _clock > 4.2:
+				_loading.finish()
+				_loading = null
 		if _trick == "--dive" and _clock > 0.6 and _card.primed >= 1.0:
 			_trick = ""
 			_card.go.emit()
