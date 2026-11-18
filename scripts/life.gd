@@ -86,6 +86,15 @@ func _ready() -> void:
 		_school(_krill_rules(), _krill_mesh(), KRILL_LENGTH, "", 0.55, 0.92, i)
 	for i in SARDINE_SCHOOLS:
 		_school(_sardine_rules(), Fish.school_mesh(), SARDINE_LENGTH, "open" if i % 2 == 0 else "kelp", 0.4, 0.85, 100 + i)
+	if ResourceLoader.exists("res://creatures/anchovy/anchovy.gd"):
+		for i in 3:
+			var rules := _sardine_rules()
+			rules.size = 1.0
+			rules.count = 44
+			rules.max_speed = 2.0
+			rules.cruise_speed = 1.1
+			rules.bounds_size = Vector3(3.5, 3.0, 3.5)
+			_school(rules, Fish.school_mesh("anchovy"), 0.14, ["sand", "grass", "kelp"][i], 0.4, 0.85, 300 + i)
 	if Species.has("mackerel"):
 		for i in 2:
 			var rules := _sardine_rules()

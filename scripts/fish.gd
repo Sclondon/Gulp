@@ -72,6 +72,7 @@ func set_kind(to: String) -> void:
 	if made:
 		var entry := Species.of(to)
 		_wear(made, Species.long_of(to, made), float(entry.get("front", -1.0)), bool(entry.get("curls", true)))
+		made.rotation.y = float(entry.get("turn", 0.0))
 	else:
 		# (the shark, and any kind whose creature is not installed yet)
 		if not _meshes.has("shark"):
@@ -133,8 +134,9 @@ func pose(delta: float, effort: float, turning: float) -> void:
 	if &"wings" in _look:
 		# (a flying fish spreads its wings when it bolts)
 		_look.set(&"wings", move_toward(_look.get(&"wings"), 1.0 if effort > 1.1 else 0.0, delta * 3.0))
-	# (it really moves through the water, so there is no more current to add)
-	_look.call(&"step", Vector3.ZERO, delta)
+	# (it really moves through the water, so there is no more current to add; what walks is told
+	# how fast it goes, to step by)
+	_look.call(&"step", velocity if &"walk" in _look else Vector3.ZERO, delta)
 	if _curls:
 		_look.call(&"set_shader_parameter", &"curl", _bend * CURL)
 	_gape = move_toward(_gape, bite, delta * (9.0 if bite > _gape else 4.0))

@@ -11,6 +11,7 @@ class_name Species
 ## - long, front: its length as built (0: the script's LENGTH) and how far its nose is ahead of
 ##   its own origin (left out: half its length, an origin at its middle).
 ## - set: properties to set on the creature when it is made.
+## - turn: turned this far round (radians) in its holder (a crab walks sideways).
 ## - curls: its shader has `curl` (left out: it has).
 ## - how: "swim" (the default), "floor" (it keeps to the bottom, on it or just over it), or
 ##   "giant" (it cruises, takes no notice of anything, and nothing eats it).
@@ -67,7 +68,7 @@ const ALL := {
 	"bat_ray": {"script": "bat_ray/bat_ray", "zones": ["sand", "grass"], "band": [0.05, 0.35], "count": 3, "size": [1.0, 1.4]},
 	"leopard_shark": {"script": "leopard_shark/leopard_shark", "zones": ["sand", "grass"], "band": [0.03, 0.3], "count": 3, "size": [1.3, 1.6]},
 	# What walks on the bottom.
-	"crab": {"script": "rock_crab/rock_crab", "curls": false, "how": "floor", "zones": ["reef", "kelp", "sand"], "band": [0.0, 0.0], "count": 8, "size": [0.12, 0.2]},
+	"crab": {"script": "rock_crab/rock_crab", "long": 0.16, "turn": 1.5708, "curls": false, "how": "floor", "zones": ["reef", "kelp", "sand"], "band": [0.0, 0.0], "count": 8, "size": [0.12, 0.2]},
 	"prawn": {"script": "spot_prawn/spot_prawn", "curls": false, "how": "floor", "zones": ["reef", "grass"], "band": [0.0, 0.0], "count": 8, "size": [0.15, 0.22]},
 	"lobster": {"script": "spiny_lobster/spiny_lobster", "curls": false, "how": "floor", "zones": ["reef", "kelp"], "band": [0.0, 0.0], "count": 4, "size": [0.4, 0.6]},
 	"nudibranch": {"script": "nudibranch/nudibranch", "curls": false, "how": "floor", "zones": ["reef", "kelp"], "band": [0.0, 0.0], "count": 6, "size": [0.1, 0.16]},
