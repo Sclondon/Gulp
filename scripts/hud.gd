@@ -18,6 +18,8 @@ var over := false: set = set_over
 ## The longest the player has been in any run (metres), and in this one.
 var best := 0.0
 var reached := 0.0
+## The shared sea's high scores, when online: each [name, length, kind], longest first.
+var scores: Array = []
 
 var _again: AgainButton
 var _clock := 0.0
@@ -94,6 +96,18 @@ func _draw() -> void:
 		var at := Vector2(left + wide - best_wide, bar.end.y + 38.0 * u)
 		draw_string(font, at, best_text, HORIZONTAL_ALIGNMENT_LEFT, -1.0, text_size, Color(1.0, 0.86, 0.45))
 		_crown(at + Vector2(-34.0 * u, -11.0 * u), 22.0 * u, Color(1.0, 0.86, 0.45))
+	# The high scores of the shared sea: a crown, then name and length, the longest first.
+	if not scores.is_empty():
+		var small := int(20.0 * u)
+		var line := 26.0 * u
+		var right := size.x - 16.0 * u
+		var from := bar.end.y + 70.0 * u
+		_crown(Vector2(right - 22.0 * u, from - 30.0 * u), 22.0 * u, Color(1.0, 0.86, 0.45))
+		for k in mini(scores.size(), 5 if not over else 10):
+			var row: Array = scores[k]
+			var said := "%s  %.2f m" % [String(row[0]), float(row[1])]
+			var said_wide := font.get_string_size(said, HORIZONTAL_ALIGNMENT_LEFT, -1.0, small).x
+			draw_string(font, Vector2(right - said_wide, from + k * line), said, HORIZONTAL_ALIGNMENT_LEFT, -1.0, small, Color(ink, 0.85 if k > 0 else 1.0))
 	if over:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.0, 0.02, 0.08, 0.6))
 		var middle := Vector2(size.x * 0.5, size.y * 0.5 - 150.0 * u)

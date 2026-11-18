@@ -20,6 +20,9 @@ extends Control
 ## starts the run beside one of those, with nothing hunting (to look at it).
 
 const SAVE := "user://gulp.cfg"
+## The shared sea of players lives on the site's server (--server=<url> for another; a web build
+## joins it by itself, anything else only when told a server; --offline never does).
+const ARENA_SERVER := "https://scareathon-v3-production.up.railway.app"
 
 var sea: Sea
 var life: Life
@@ -28,6 +31,7 @@ var camera: Camera3D
 var hud: Hud
 var pad: TouchPad
 var bot: Bot
+var arena: Arena
 
 ## The run is over (the player was eaten).
 var over := false
@@ -45,6 +49,13 @@ var _frames := 0
 # For a picture: "--feed" fills its stage after a moment (the choice of what to become),
 # "--leap" sends it up through the surface.
 var _trick := ""
+var _server := ""
+var _offline := false
+var _name := "FISH"
+# For the two-copy test of the arena: "a" (a tuna that swims into the other) or "b" (a sardine
+# that stays put).
+var _role := ""
+var _role_done := false
 var _quit_at := -1.0
 var _shot_at := -1.0
 var _shot_out := ""
@@ -77,6 +88,15 @@ func _ready() -> void:
 			_start_kind = ["sardine", "smolt", "salmon", "tuna", "shark"][clampi(int(arg.get_slice("=", 1)), 0, 4)]
 		elif arg == "--feed" or arg == "--leap":
 			_trick = arg
+		elif arg.begins_with("--server="):
+			_server = arg.get_slice("=", 1)
+		elif arg == "--offline":
+			_offline = true
+		elif arg.begins_with("--name="):
+			_name = arg.get_slice("=", 1)
+		elif arg.begins_with("--role="):
+			_role = arg.get_slice("=", 1)
+			calm = true
 		elif arg.begins_with("--as="):
 			_start_kind = arg.get_slice("=", 1)
 		elif arg.begins_with("--shot="):
@@ -87,7 +107,7 @@ func _ready() -> void:
 		elif arg.begins_with("--out="):
 			_shot_out = arg.get_slice("=", 1)
 	# (a test's runs are not kept as the player's best)
-	_saves = not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0)
+	_saves = not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0 or _role != "")
 	var container := SubViewportContainer.new()
 	container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	container.stretch = true
@@ -138,6 +158,14 @@ func _ready() -> void:
 	player.choice.connect(_on_choice)
 	player.leapt.connect(_on_splash)
 	player.splashed.connect(_on_splash)
+	if _server == "" and OS.has_feature("web") and not (_checking or _touching):
+		_server = ARENA_SERVER
+	if _server != "" and not _offline:
+		arena = Arena.new()
+		arena.player = player
+		_viewport.add_child(arena)
+		arena.board_changed.connect(func() -> void: hud.scores = arena.top)
+		arena.open(_server, _name)
 	if botted:
 		bot = Bot.new()
 		bot.player = player
@@ -158,6 +186,8 @@ func _ready() -> void:
 func restart() -> void:
 	var at := Sea.clear_of_rocks(Vector3(-24.0, Sea.SURFACE - 7.0, 6.0), 0.5)
 	player.begin(at, _start_kind)
+	if arena:
+		arena.spawn()
 	hud.offer([])
 	life.make_way(at)
 	over = false
@@ -214,6 +244,10 @@ func _process(delta: float) -> void:
 	if not player.choosing:
 		player.step(delta)
 		life.step(delta)
+	if arena:
+		arena.step(delta)
+		if _role != "":
+			_play_role()
 		if _frames % 4 == 0 and player.alive:
 			var food := life.nearest_food()
 			player.near_food = food != Vector3.INF and food.distance_to(player.mouth()) < 0.4 + player.length * 1.2
@@ -229,7 +263,7 @@ func _process(delta: float) -> void:
 		hud.reached = maxf(hud.reached, player.length)
 	# (wider in an upright window, where the picture is narrow)
 	camera.fov = 72.0 if size.y > size.x else 60.0
-	hud.danger = lerpf(hud.danger, 1.0 if life.hunters > 0 and player.alive else 0.0, 1.0 - exp(-6.0 * delta))
+	hud.danger = lerpf(hud.danger, 1.0 if (life.hunters > 0 or (arena and arena.hunters() > 0)) and player.alive else 0.0, 1.0 - exp(-6.0 * delta))
 	pad.stamina = player.stamina
 	if over:
 		_over_for += delta
@@ -255,6 +289,33 @@ func _process(delta: float) -> void:
 		print("GULP COST a frame: schools %.2f ms, fish %.2f ms, jellies %.2f ms, flocks themselves %.2f ms" % [cost.x, cost.y, cost.z, life.flock_ms / maxf(life.steps, 1.0)])
 		var drawn := Engine.get_frames_drawn()
 		print("GULP RAN %.0f s" % _clock + (", %d frames drawn, %.1f ms a frame" % [drawn, 1000.0 * _clock / drawn] if drawn > 0 else ""))
+		get_tree().quit()
+
+
+## The two-copy test of the arena (tests/arena.sh): "b" is a sardine held where it started; "a" is
+## a tuna held back until it can see the other and both may be eaten, then let go to swim into it.
+func _play_role() -> void:
+	var start := Vector3(-24.0, Sea.SURFACE - 7.0, 6.0)
+	if _role == "b":
+		if player.alive:
+			player.global_position = start + Vector3(9.0, 0.0, 0.0)
+		for line in arena.log_lines:
+			if line.begins_with("eaten by") and not _role_done:
+				_role_done = true
+				print("ARENA PASS b was eaten by the other player; top ", arena.top)
+	else:
+		var seen := false
+		for rival: Arena.Rival in arena.rivals.values():
+			seen = seen or (rival.visible and rival.alive)
+		if not seen or _clock < 5.0:
+			player.global_position = start
+		for line in arena.log_lines:
+			if line.begins_with("ate") and not _role_done:
+				_role_done = true
+				print("ARENA PASS a ate the other player and is %.2f m" % player.length)
+	if _clock > 16.0:
+		if not _role_done:
+			print("ARENA FAIL %s: online %s, rivals %d, log %s" % [_role, arena.online, arena.rivals.size(), arena.log_lines])
 		get_tree().quit()
 
 
@@ -343,6 +404,8 @@ func _on_splash(at: Vector3) -> void:
 
 
 func _on_died(by: String) -> void:
+	if arena and by != "player":
+		arena.died(by)
 	hud.offer([])
 	if bot:
 		print("GULP BOT eaten by %s at %.0f s, stage %d, %.2f m, %d meals" % [by, _clock, player.stage, player.length, player.meals])
