@@ -72,7 +72,7 @@ func _ready() -> void:
 			if marker:
 				_spots[named] = _place_in(marker, boat)
 	# The computer: the control panel's housings on a bench against the wall, leaning back a
-	# little, the two small boxes on top of the instruments; and its monitor on the wall over it.
+	# little, the two small boxes under the instruments; and its monitor on the wall over it.
 	# (The models face +Z; a marker faces its -Z: so they are turned round on the spot.)
 	var about := Basis(Vector3.UP, PI)
 	var console: Transform3D = _spots["ConsoleSpot"]
@@ -87,8 +87,9 @@ func _ready() -> void:
 	var aside := (PanelModel.GAUGE_WIDE + PanelModel.SIDE_WIDE) * 0.5 + 0.12
 	(computer.find_child("Helm") as Node3D).position.x = -aside
 	(computer.find_child("Engine") as Node3D).position.x = aside
-	(computer.find_child("Switches") as Node3D).position = Vector3(-PanelModel.SMALL_WIDE * 0.5 - 0.05, PanelModel.GAUGE_TALL + 0.05, 0.0)
-	(computer.find_child("Aux") as Node3D).position = Vector3(PanelModel.SMALL_WIDE * 0.5 + 0.05, PanelModel.GAUGE_TALL + 0.05, 0.0)
+	(computer.find_child("Switches") as Node3D).position = Vector3(-PanelModel.SMALL_WIDE * 0.5 - 0.05, 0.0, 0.0)
+	(computer.find_child("Aux") as Node3D).position = Vector3(PanelModel.SMALL_WIDE * 0.5 + 0.05, 0.0, 0.0)
+	(computer.find_child("Gauges") as Node3D).position.y = PanelModel.SMALL_TALL + 0.03
 	boat.add_child(computer)
 	var monitor := _take(parts, "Monitor")
 	if monitor:

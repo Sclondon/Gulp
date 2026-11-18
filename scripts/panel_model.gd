@@ -171,7 +171,7 @@ func _init() -> void:
 
 ## Lays the housings out for a screen (pixels) and a layout unit (pixels): the helm in the lower
 ## left corner, the engine in the lower right, the instruments between them; the switch box and
-## the valve box either side of the instruments where there is room, and on top of them where
+## the valve box either side of the instruments where there is room, and under them where
 ## there is not (an upright phone), the side housings then made smaller to fit.
 func lay_out(screen: Vector2, unit: float) -> void:
 	if screen == _for_size or screen.x < 2.0 or screen.y < 2.0:
@@ -194,8 +194,10 @@ func lay_out(screen: Vector2, unit: float) -> void:
 		switches.position = Vector3(-(GAUGE_WIDE + SMALL_WIDE) * 0.5 - GAP, foot, 0.0)
 		aux.position = Vector3((GAUGE_WIDE + SMALL_WIDE) * 0.5 + GAP, foot, 0.0)
 	else:
-		switches.position = Vector3(-SMALL_WIDE * 0.5 - GAP * 0.5, foot + GAUGE_TALL + 0.05, 0.0)
-		aux.position = Vector3(SMALL_WIDE * 0.5 + GAP * 0.5, foot + GAUGE_TALL + 0.05, 0.0)
+		# (under the instruments, as in the concept: the user, "These go under the sonar")
+		switches.position = Vector3(-SMALL_WIDE * 0.5 - GAP * 0.5, foot, 0.0)
+		aux.position = Vector3(SMALL_WIDE * 0.5 + GAP * 0.5, foot, 0.0)
+		gauges.position = Vector3(0.0, foot + SMALL_TALL + 0.03, 0.0)
 
 
 func _far() -> float:
