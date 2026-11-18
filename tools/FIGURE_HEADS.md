@@ -60,3 +60,19 @@ Pictures of these: render them yourself with the scratchpad's `hbm\look.py`.
 Bare base model; hair by hair shader later; tattoos as a movable overlay; planned UVs; nothing of the Twilight Princess
 reference models is copied (they are a yardstick only); the bundle is CC0, so a mesh derived from it may ship, but the
 bundle file itself stays out of the repo.
+
+## The independent critic (the user's rule, 2026-11-18)
+
+"Many of their body parts are scuffed and incorrectly formed- after a build you should show the model in tpose and face
+and hand close ups to an agent that has no context, then ask it for critiques compared to the concept art so you can get
+good prompts to fix the issues."
+
+After every build of a figure:
+1. `blender --background --factory-startup --python tools/critic_pack.py -- <figure.glb> <outdir> [hide ...]` writes
+   `body.png`, `head.png`, `hands.png`, `feet.png` (painted over plain grey; hide `_cap` for the captain's bare head,
+   `ink` for a tattoo layer).
+2. A FRESH agent with no project context is given only those pictures and the figure's concept sheets, and asked for a
+   blunt critique body part by body part (what is wrong, what the concept shows, a concrete instruction, a severity) and
+   a ranked top ten, written to `<outdir>/critique.md`.
+3. That critique, not the builder's own opinion of its work, is the brief for the builder's next round. A builder never
+   grades its own figure as done.

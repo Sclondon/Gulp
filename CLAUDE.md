@@ -903,3 +903,9 @@ Claude's.
   conversation /app/d2fe19426ff0ebc4 is also used by another session for biome covers: do not type into it while it is
   generating). Builder: `tools/build_npc.py` -> `models/npc/<name>.glb`. Which builds, faces, names and outfits the
   townsfolk get is not decided: ask.
+- The independent critic (the user, 2026-11-18, late afternoon): "All 3 still need a LOT of polish"; "Many of their body
+  parts are scuffed and incorrectly formed- after a build you should show the model in tpose and face and hand close ups
+  to an agent that has no context, then ask it for critiques compared to the concept art so you can get good prompts to
+  fix the issues". Standing procedure now: `tools/critic_pack.py` renders the pack, a fresh no-context agent writes the
+  critique against the concept sheets, and that critique is the builder's next brief (`tools/FIGURE_HEADS.md`, last
+  section). Builders also judge lit perspective renders as the game shows the figure, not only flat sheet views.
