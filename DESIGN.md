@@ -55,8 +55,22 @@ ruins, and finds the pieces of the treasure. Between times there is a rod over t
 Five pieces, each in a chest that needs more gear than the last, so the plot is the gear ladder:
 the docks (under the wharf, a plain chest); the pirate ship's hold (crowbar); the liner's saloon (key ring, hard-hat
 suit); the temple at Atlantis (lamp, armoured suit); the last under the sleeping old one in the canyon's floor (the
-deep suit, the winch). Each piece shows on the chart once found. Who lost it and why is not written: the user has
-only said "your lost treasure". Ask before writing lore.
+deep suit, the winch). Each piece shows on the chart once found. Whose treasure it is ties to the photographs
+below; beyond the user's words nothing is written. Ask before writing lore.
+
+## The photographs (the plot)
+
+The user: "when you are diving as the boy, there should be old photographs to find on the sea floor of the captain
+young man with his love"; "you need to collect all the pics to ge t the plot"; "he should be a gay captain".
+
+The story is not told in words. Scattered on the sea floor, found only as the diver, are old photographs of the
+captain as a young man with the man he loved. Each is a sepia picture, in a cracked frame or loose and curling, half
+under the sand, with a faint glint; picked up, it is shown large for a moment and goes into an album at the chart
+table, in its place in the order the pictures were taken. All of them together give the plot, and the last chest
+cannot be found without the full album. Claude's picks: twelve pictures, two or three at each place a suit can
+reach, the deepest last. What each shows, who he was, and what became of him are NOT written: ask the user before
+writing any of it. The pictures are concept-art work (generated, then quality passes), the two men drawn as the
+captain is (a smooth mask of a face, no eyes; the captain's big nose, young and beardless or nearly).
 
 ## Roguelike elements
 

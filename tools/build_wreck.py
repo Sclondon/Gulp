@@ -51,7 +51,7 @@ DATA = os.path.join(HERE, "..", "models", "wreck_liner.json")
 BLEND = os.path.join(HERE, "blend", "wreck_liner.blend")
 ATLAS = {"bow": os.path.join(HERE, "..", "textures", "wreck_atlas_bow.png"),
          "stern": os.path.join(HERE, "..", "textures", "wreck_atlas_stern.png")}
-ATLAS_SIZE = {"bow": 2048, "stern": 2048}
+ATLAS_SIZE = {"bow": 4096, "stern": 2048}
 BAKE = "--no-bake" not in sys.argv
 SAMPLES = 48
 rng = random.Random(7)
@@ -80,6 +80,7 @@ _PIVOT = Vector((0.0, -20.0, 0.0))
 M_STERN = (Matrix.Translation((1.0, -5.5, -1.4)) @ Matrix.Translation(_PIVOT) @ Matrix.Rotation(math.radians(20.0), 4, "Z")
            @ Matrix.Rotation(math.radians(-2.0), 4, "X") @ Matrix.Rotation(math.radians(5.0), 4, "Y") @ Matrix.Translation(-_PIVOT))
 M_OF = {"bow": M_BOW, "stern": M_STERN}
+to_bow = M_BOW.inverted()
 
 
 GAIN = 1.8
@@ -87,7 +88,7 @@ GAIN = 1.8
 
 # --- Paint: procedural materials for the bake. Soft patches, rust running down, pale growth and
 # silt on whatever faces up, planks on decks.
-def paint(name, base, rust, growth, size=3.0, streak=None, planks=False, grow=0.6):
+def paint(name, base, rust, growth, size=3.0, streak=None, planks=False, grow=0.6, seams=False, waterline=False, crust=0.0):
     # (every colour times GAIN: the first pictures in the game's water were far darker than its sand)
     base, rust, growth = (tuple(min(1.0, c * GAIN) for c in t) for t in (base, rust, growth))
     streak = tuple(min(1.0, c * GAIN) for c in streak) if streak else None
@@ -156,6 +157,43 @@ def paint(name, base, rust, growth, size=3.0, streak=None, planks=False, grow=0.
         seam.inputs[0].default_value = 1.0
         links.new(ramp(wave.outputs["Fac"], 0.04, 0.16), seam.inputs[1])
         colour = mix(colour, tuple(c * 0.35 for c in base), times(seam.outputs["Value"], ramp(noise((k * 4, k * 4, k * 4), (5.0, 1.0, 2.0)), 0.25, 0.5)))
+    def flip(fac):
+        node = nodes.new("ShaderNodeMath")
+        node.operation = "SUBTRACT"
+        node.inputs[0].default_value = 1.0
+        links.new(fac, node.inputs[1])
+        return node.outputs["Value"]
+
+    def bands(direction, scale, shift=0.0):
+        stretch = nodes.new("ShaderNodeMapping")
+        stretch.inputs["Location"].default_value = (shift, shift, shift)
+        links.new(place.outputs["Object"], stretch.inputs["Vector"])
+        wave = nodes.new("ShaderNodeTexWave")
+        wave.wave_type = "BANDS"
+        wave.bands_direction = direction
+        wave.inputs["Scale"].default_value = scale
+        wave.inputs["Distortion"].default_value = 0.0
+        links.new(stretch.outputs["Vector"], wave.inputs["Vector"])
+        return wave.outputs["Fac"]
+
+    if seams:
+        # plate seams: strakes 1.4 m high, plates 3 m long, each seam with a fainter rivet row beside it
+        line = tuple(c * 0.45 for c in base)
+        colour = mix(colour, line, flip(ramp(bands("Z", 0.224), 0.0, 0.02)))
+        colour = mix(colour, line, flip(ramp(bands("Y", 0.105), 0.0, 0.012)))
+        faint = tuple(c * 0.75 for c in base)
+        colour = mix(colour, faint, flip(ramp(bands("Z", 0.224, 0.09), 0.0, 0.01)))
+    if crust:
+        # growth breaking up the paint wherever it faces
+        colour = mix(colour, growth, ramp(noise((k * 2.2, k * 2.2, k * 2.2), (2.0, 6.0, 1.0), 3.0), 0.62 - crust * 0.2, 0.72 - crust * 0.15))
+    if waterline:
+        # a band of weed along the old waterline
+        split_at = nodes.new("ShaderNodeSeparateXYZ")
+        links.new(place.outputs["Object"], split_at.inputs["Vector"])
+        under = ramp(split_at.outputs["Z"], WL - 0.7, WL - 0.05)
+        over = flip(ramp(split_at.outputs["Z"], WL + 0.1, WL + 1.0))
+        weed = (0.05 * GAIN, 0.1 * GAIN, 0.03 * GAIN)
+        colour = mix(colour, weed, times(times(under, over), ramp(noise((k * 3.0, k * 3.0, k * 1.0), (1.0, 4.0, 8.0), 3.0), 0.42, 0.62)))
     # pale growth and silt on what faces up
     geo = nodes.new("ShaderNodeNewGeometry")
     split = nodes.new("ShaderNodeSeparateXYZ")
@@ -169,10 +207,11 @@ def paint(name, base, rust, growth, size=3.0, streak=None, planks=False, grow=0.
 
 # (the palette after the concept art, tools/art_src/concept_liner_wreck.jpg: slate-blue hull plate
 # with orange rust runs, a dull red bottom, grimy white houses, warm brown decks, moss on what faces up)
-HULL = paint("hull", (0.028, 0.038, 0.048), (0.19, 0.075, 0.03), (0.13, 0.19, 0.08), 3.5, (0.26, 0.095, 0.03))
-ANTIFOUL = paint("antifoul", (0.16, 0.045, 0.028), (0.11, 0.05, 0.03), (0.2, 0.22, 0.14), 3.0, (0.21, 0.08, 0.03))
+HULL = paint("hull", (0.028, 0.038, 0.048), (0.19, 0.075, 0.03), (0.13, 0.19, 0.08), 3.5, (0.26, 0.095, 0.03), seams=True, waterline=True)
+ANTIFOUL = paint("antifoul", (0.16, 0.045, 0.028), (0.11, 0.05, 0.03), (0.16, 0.22, 0.1), 3.0, (0.21, 0.08, 0.03), seams=True, waterline=True, crust=0.3)
 DECKING = paint("deck", (0.15, 0.095, 0.05), (0.09, 0.065, 0.04), (0.16, 0.22, 0.09), 2.5, None, True, 0.5)
-WHITE = paint("super", (0.46, 0.48, 0.43), (0.24, 0.15, 0.07), (0.17, 0.25, 0.1), 2.5, (0.2, 0.085, 0.03))
+WHITE = paint("super", (0.46, 0.48, 0.43), (0.24, 0.15, 0.07), (0.17, 0.25, 0.1), 2.5, (0.2, 0.085, 0.03), seams=True)
+RUST = paint("rustrun", (0.075, 0.03, 0.012), (0.11, 0.04, 0.014), (0.075, 0.03, 0.012), 0.5, None, False, 0.0)
 FUNNEL = paint("funnel", (0.36, 0.25, 0.12), (0.2, 0.09, 0.035), (0.17, 0.24, 0.1), 2.0, (0.12, 0.05, 0.02))
 PANEL = paint("saloon", (0.09, 0.06, 0.035), (0.05, 0.036, 0.022), (0.24, 0.23, 0.19), 1.5, None, False, 0.7)
 INSIDE = paint("inside", (0.1, 0.055, 0.035), (0.06, 0.04, 0.025), (0.22, 0.21, 0.18), 2.0, (0.14, 0.06, 0.03))
@@ -559,6 +598,14 @@ for k in range(18):
     jag = (1.0 if k % 2 == 0 else 0.6) + rng.uniform(-0.08, 0.08)
     tear.append((7.5 + math.cos(a) * 2.5 * jag, 3.45 + math.sin(a) * 1.9 * jag))
 cutters.append(prism(INSIDE, tear, "yz", 2.4, 4.3))
+# the saloon's starboard side torn open (the concept art's): the grand staircase seen from outside
+SALOON_HOLE = (-7.4, 6.6)
+gash = []
+for k in range(22):
+    a = math.tau * k / 22
+    jag = (1.0 if k % 2 == 0 else 0.68) + rng.uniform(-0.1, 0.1)
+    gash.append((SALOON_HOLE[0] + math.cos(a) * 2.1 * jag, SALOON_HOLE[1] + math.sin(a) * 2.0 * jag))
+cutters.append(prism(INSIDE, gash, "yz", 2.55, 4.3))
 for c in cutters:
     cut(body, c)
 
@@ -775,14 +822,26 @@ for x0, x1, y0, y1, z1, sect in ((-2.3, 2.3, 5.3, 8.9, 11.7, "bow"), (-2.0, 2.0,
             y = y0 + (y1 - y0) * (k + 0.5) / 3.0
             decal(DARK, (side * 2.0, y, z1 - 0.8), (side, 0.0, 0.0), rect(0.55, 0.6), sect=sect)
 
-# --- Masts: the foremast fallen aft across the well deck onto the bridge, its crow's nest; a stub of
-# the mainmast on the stern
-mast0 = Vector((0.2, 19.6, 8.62))
-mast1 = Vector((-0.7, 10.6, 13.0))
-cyl(IRON, mast0, mast1, 0.28, 0.12, sides=8, collide=True, sect="bow")
-nest = mast0.lerp(mast1, 0.62)
+# --- Masts: the foremast still standing on the forecastle (as in the concept art), broken short,
+# leaning a little aft, its crow's nest, weed hanging from its stays; its top lies on the sand off
+# the port bow. A stub of the mainmast on the stern.
+mast0 = Vector((0.2, 19.6, fc_top(19.6) - 0.05))
+mast1 = Vector((0.05, 18.9, 15.3))
+cyl(IRON, mast0, mast1, 0.28, 0.2, sides=8, collide=True, sect="bow")
 axis = (mast1 - mast0).normalized()
-cyl(IRON, nest - axis * 0.35, nest + axis * 0.35, 0.48, 0.5, sides=8, sect="bow")
+# (the break: a jagged spike above the last whole piece)
+cone(IRON, mast1 + axis * 0.55 + Vector((0.08, 0.0, 0.0)), 0.6, 0.17, sect="bow")
+nest = mast0.lerp(mast1, 0.8)
+cyl(IRON, nest - axis * 0.35, nest + axis * 0.35, 0.48, 0.52, sides=8, sect="bow")
+STAY_TOP = mast0.lerp(mast1, 0.95)
+STAYS = [(0.0, 29.75, fc_top(29.75) + 0.15)] + [(side * (deck_edge(20.2) - 0.06), 20.2, fc_top(20.2)) for side in (-1.0, 1.0)] + [(0.0, 14.5, 10.5)]
+for end in STAYS:
+    rod(IRON, [STAY_TOP, Vector(end)], 0.035, sect="bow")
+    for k in range(1, 9):
+        at = STAY_TOP.lerp(Vector(end), k / 9.0)
+        if rng.random() < 0.75:
+            cone(MOSS, at, rng.uniform(0.3, 1.2), 0.1, sect="bow")
+cyl(IRON, to_bow @ Vector((-6.6, 19.0, 0.25)), to_bow @ Vector((-7.6, 13.8, 0.25)), 0.22, 0.15, sides=8, sect="bow")
 cyl(IRON, (0.0, -21.0, DECK - 0.05), (0.05, -21.0, 9.4), 0.25, 0.2, sides=8, collide=True, sect="stern")
 
 # --- Hatch coamings (their covers gone; one lies askew on the deck)
@@ -810,10 +869,29 @@ for side in (-1.0, 1.0):
     ya, za = 27.0, 6.3
     n = hull_normal(side, ya, za)
     decal(DARK, (side * hull_x(ya, za + 0.85), ya, za + 0.85), n, [(math.cos(math.tau * k / 8) * 0.34, math.sin(math.tau * k / 8) * 0.26) for k in range(8)], sect="bow")
-    at = Vector((side * hull_x(ya, za), ya, za)) + n * 0.14
-    box(IRON, at.x - 0.11, at.x + 0.11, ya - 0.11, ya + 0.11, za - 0.85, za + 0.75, sect="bow")
     flukes = [(-0.62, -0.85), (0.62, -0.85), (0.72, -0.45), (0.38, -0.66), (0.0, -0.56), (-0.38, -0.66), (-0.72, -0.45)]
-    prism(IRON, [(ya + u, za + v - 0.15) for u, v in flukes], "yz", at.x - 0.1, at.x + 0.1, sect="bow")
+    if side < 0.0:
+        at = Vector((side * hull_x(ya, za), ya, za)) + n * 0.14
+        box(IRON, at.x - 0.11, at.x + 0.11, ya - 0.11, ya + 0.11, za - 0.85, za + 0.75, sect="bow")
+        prism(IRON, [(ya + u, za + v - 0.15) for u, v in flukes], "yz", at.x - 0.1, at.x + 0.1, sect="bow")
+    else:
+        # (the starboard anchor run out of its hawse: hanging low against the bow on its chain, as in
+        # the concept art; half as big again)
+        ring_at = Vector((side * (hull_x(25.6, 3.4) + 0.35), 25.6, 3.4))
+        top = Vector((side * hull_x(ya, za + 0.85), ya, za + 0.85)) + n * 0.12
+        x = ring_at.x
+        box(IRON, x - 0.16, x + 0.16, 25.44, 25.76, 0.95, 3.35, sect="bow")
+        prism(IRON, [(25.6 + u * 1.5, 1.6 + v * 1.5) for u, v in flukes], "yz", x - 0.15, x + 0.15, sect="bow")
+        cyl(IRON, (x - 0.05, 25.6, 3.55), (x + 0.05, 25.6, 3.55), 0.28, sides=8, sect="bow")
+        # the chain: links standing flat and edge on in turn, sagging from the hawse to the ring
+        steps = 18
+        for k in range(steps):
+            t = (k + 0.5) / steps
+            here = top.lerp(ring_at + Vector((0.0, 0.0, 0.25)), t) + Vector((side * 0.25 * math.sin(math.pi * t), 0.0, 0.0))
+            ahead = top.lerp(ring_at, t + 0.05) - top.lerp(ring_at, t)
+            m = Matrix.Translation(here) @ ahead.to_track_quat("Z", "Y").to_matrix().to_4x4() @ Matrix.Rotation(math.pi * 0.5 * (k % 2), 4, "Z")
+            plate(IRON, (0.3, 0.1, 0.42), m, sect="bow")
+        cone(RUST, ring_at + Vector((0.0, 0.0, -0.05)), 0.9, 0.09, sect="bow")
     # the bow rail, still standing (the famous one)
     ys = [22.0 + k * 1.0 for k in range(8)] + [29.6]
     for y in ys:
@@ -836,6 +914,10 @@ def davit(side, y, bend, sect):
     arm = [Vector((0.0, 0.0, 0.3)), Vector((0.0, 0.0, 1.3)), Vector((0.35, 0.0, 2.0)), Vector((0.9, 0.0, 1.95)), Vector((1.0, 0.0, 1.5))]
     turn = Matrix.Rotation(-side * bend, 3, "Y")
     rod(IRON, [Vector((side * 3.05, y, BOAT)) + turn @ Vector((side * p.x, p.y, p.z)) for p in arm], 0.075, sect=sect)
+    tip = Vector((side * 3.05, y, BOAT)) + turn @ Vector((side * arm[-1].x, 0.0, arm[-1].z))
+    cone(MOSS, tip, rng.uniform(0.5, 1.4), 0.1, sect=sect)
+    elbow = Vector((side * 3.05, y, BOAT)) + turn @ Vector((side * arm[2].x, 0.0, arm[2].z))
+    cone(IRON, elbow, rng.uniform(0.2, 0.6), 0.06, sect=sect)
 
 
 for y, bend in ((9.0, 0.0), (7.2, 0.5), (1.6, 0.0), (-0.2, 0.0)):
@@ -874,12 +956,21 @@ def railing(side, y0, y1, droop, sect):
         cyl(IRON, Vector((side * 3.2, y, BOAT - 0.02)), Vector((side * 3.2, y, BOAT)) + turn @ Vector((0.0, 0.0, 1.0)), 0.03, sides=4, sect=sect)
     for h in (0.5, 1.0):
         rod(IRON, [Vector((side * 3.2, y, BOAT)) + turn @ Vector((0.0, 0.0, h)) for y in ys], 0.03, sect=sect)
+    # (draped with weed, rusticles hanging)
+    for a, b in zip(ys, ys[1:]):
+        for t in (0.3, 0.75):
+            at = Vector((side * 3.2, a + (b - a) * t, BOAT)) + turn @ Vector((0.0, 0.0, 0.98))
+            cone(MOSS if rng.random() < 0.6 else IRON, at, rng.uniform(0.3, 1.0), 0.08, sect=sect)
 
 
 railing(1.0, 1.8, 5.4, 0.0, "bow")
 railing(-1.0, 8.6, 11.4, 0.7, "bow")
 railing(1.0, -5.6, -8.4, 0.25, "bow")
 railing(1.0, -17.0, -14.2, 0.35, "stern")
+railing(-1.0, -0.6, 4.6, 0.45, "bow")
+railing(1.0, 9.4, 11.8, 0.15, "bow")
+railing(-1.0, -9.2, -6.2, 0.9, "bow")
+railing(-1.0, -17.4, -15.0, 0.2, "stern")
 
 # weed hanging in green drips off the deck edges (the concept art's), and promenade shutters fallen
 # open below their windows
@@ -960,6 +1051,8 @@ for side in (-1.0, 1.0):
                 ok = False
             if side > 0 and 4.9 < y < 10.1:
                 ok = False
+            if side > 0 and -9.7 < y < -5.1:
+                ok = False
             if z > 5.0 and any(abs(y - q) < 0.7 for q in REAL[side]):
                 ok = False
             if ok:
@@ -969,6 +1062,8 @@ for side in (-1.0, 1.0):
                 annulus(BRONZE, c, n, 0.22, 0.3, 0.009)
             y += 1.5
     for y in REAL[side]:
+        if side > 0 and -9.7 < y < -5.1:
+            continue
         n = hull_normal(side, y, 5.9)
         annulus(BRONZE, Vector((side * hull_x(y, 5.9), y, 5.9)), n, 0.25, 0.33, 0.009)
 # the port side's promenade windows (a cabin block behind: painted), the stern's, the front's
@@ -979,6 +1074,83 @@ for side in (-1.0, 1.0):
         decal(DARK, (side * SUPER, y, 8.55), (side, 0.0, 0.0), rect(1.4, 1.2), sect="stern")
 for x in (-2.2, -0.8, 0.8, 2.2):
     decal(DARK, (x, 14.78 - abs(x) * 0.12, 8.4), (0.0, 1.0, 0.0), rect(0.9, 1.1), sect="bow")
+
+
+# --- Rust running down from every porthole, window and scupper (the concept art's streaks)
+def run_down(c, n, top_w, length, lift=0.011, sect=None):
+    """A tapering rust run painted down a surface from a point."""
+    middle = Vector(c) + Vector((0.0, 0.0, -length * 0.5))
+    decal(RUST, middle, n, [(-top_w * 0.4, length * 0.5), (top_w * 0.4, length * 0.5), (top_w * 0.3, 0.0), (top_w * 0.15, -length * 0.5), (-top_w * 0.2, -length * 0.5), (-top_w * 0.32, 0.0)], lift, sect=sect)
+
+
+for side in (-1.0, 1.0):
+    for z in (4.6, 5.9):
+        y = -24.5
+        while y < 27.5:
+            ok = hull_x(y, z) > 1.0 and abs(y - BREAK) > 2.2 and not (side > 0 and 4.9 < y < 10.1) and not (side > 0 and -9.6 < y < -5.2)
+            if ok and rng.random() < 0.8:
+                n = hull_normal(side, y, z)
+                length = rng.uniform(0.6, 2.2)
+                run_down(Vector((side * hull_x(y, z - 0.3 - length * 0.5), y, z - 0.3)), n, 0.24, length)
+            y += 1.5
+    for y in REAL[side]:
+        if side > 0 and -9.7 < y < -5.1:
+            continue
+        n = hull_normal(side, y, 5.4)
+        run_down(Vector((side * hull_x(y, 5.0), y, 5.6)), n, 0.26, rng.uniform(0.8, 2.4))
+    # scuppers along the deck edge, each with its run
+    y = -23.0
+    while y < 26.0:
+        if abs(y - BREAK) > 2.0 and hull_x(y, 6.8) > 1.2 and not (side > 0 and -9.6 < y < -5.2):
+            n = hull_normal(side, y, 6.6)
+            c = Vector((side * hull_x(y, 6.75), y, 6.75))
+            decal(DARK, c, n, rect(0.3, 0.14), 0.014)
+            run_down(c + Vector((0.0, 0.0, -0.07)), n, 0.3, rng.uniform(1.0, 3.2))
+        y += rng.uniform(2.0, 3.2)
+    # under the promenade's windows (real on the starboard side, painted on the port)
+    for y in WINDOWS:
+        for k in range(2):
+            run_down(Vector((side * (SUPER + 0.004), y + rng.uniform(-0.6, 0.6), 7.88)), (side, 0.0, 0.0), 0.3, rng.uniform(0.6, 1.6), 0.016)
+
+# --- A second tier of white houses on the boat deck (the concept's), its windows painted
+box([WHITE, DECKING], -1.75, 1.75, 5.8, 8.4, 11.65, 13.3, collide=True, sect="bow", rule=lambda f: 1 if on_top(f) else 0)
+for side in (-1.0, 1.0):
+    for y in (6.3, 7.1, 7.9):
+        decal(DARK, (side * 1.75, y, 12.5), (side, 0.0, 0.0), rect(0.5, 0.55), sect="bow")
+        run_down(Vector((side * 1.754, y, 12.2)), (side, 0.0, 0.0), 0.25, rng.uniform(0.5, 1.2), 0.016, sect="bow")
+for x in (-0.9, 0.0, 0.9):
+    decal(DARK, (x, 8.4, 12.5), (0.0, 1.0, 0.0), rect(0.5, 0.55), sect="bow")
+for side in (-1.0, 1.0):
+    y = 5.9
+    while y < 8.4:
+        cone(MOSS, (side * 1.78, y, 13.28), rng.uniform(0.4, 1.1), 0.1, sect="bow")
+        y += rng.uniform(0.5, 1.0)
+
+# --- The break: the hull's frames standing bare beyond the torn plating, some bent; plates peeled out
+def frame_at(y, sect, bend):
+    for side in (-1.0, 1.0):
+        pts = []
+        for x, z in ZS[3:]:
+            zz = keel(y) + z * (DECK - keel(y)) / DECK
+            pts.append(Vector((side * (x * fine(y, zz) - 0.22), y, zz)))
+        pts += [Vector((side * (SUPER - 0.15), y, 7.6)), Vector((side * (SUPER - 0.15), y, BOAT - 0.15))]
+        # (bent: the upper part dragged along the ship and outwards)
+        pts = [p + Vector((side * bend * 0.3 * max(0.0, p.z - 4.0) / 6.0, bend * max(0.0, p.z - 4.0) / 6.0, 0.0)) for p in pts]
+        rod(INSIDE, pts, 0.09, sect=sect)
+
+
+for y, bend in ((-11.0, 0.0), (-11.8, -0.7), (-12.5, -1.4)):
+    frame_at(y, "bow", bend)
+for y, bend in ((-9.6, 0.0), (-8.9, 0.6), (-8.2, 1.2)):
+    frame_at(y, "stern", bend)
+for (x, y, z, turn, sect) in ((3.65, -10.9, 3.0, 0.5, "bow"), (-3.65, -11.2, 5.0, -0.45, "bow"), (3.6, -11.4, 8.4, 0.7, "bow"),
+                              (3.65, -9.5, 2.6, -0.5, "stern"), (-3.65, -9.2, 4.4, 0.6, "stern")):
+    plate(HULL, (0.08, 1.8, 1.4), Matrix.Translation((x, y, z)) @ Matrix.Rotation(turn, 4, "Z") @ Matrix.Rotation(rng.uniform(-0.3, 0.3), 4, "X"), sect=sect)
+    for k in range(3):
+        cone(IRON, (x + rng.uniform(-0.3, 0.3), y + rng.uniform(-0.8, 0.8), z - 0.6), rng.uniform(0.3, 0.8), 0.06, sect=sect)
+# ribs either side of the saloon's torn side (its edges, clear of the way in)
+for y in (SALOON_HOLE[0] - 1.9, SALOON_HOLE[0] + 1.9):
+    rod(INSIDE, [(B - 0.1, y, 4.6), (B + 0.05, y + 0.15, 6.6), (SUPER - 0.05, y - 0.1, 8.7)], 0.08, sect="bow")
 
 
 # ============================================================================================
@@ -1055,6 +1227,7 @@ ROUTES = [
     ("promenade colonnade, gallery, staircase, break", 0.5, to_world("bow", [(6.0, 12.2, 8.55), (3.3, 12.2, 8.55), (1.8, 11.0, 8.45), (1.8, 4.0, 8.45), (1.8, -3.0, 8.45), (1.6, -4.7, 8.4), (0.5, -6.4, 8.2), (0.0, -7.6, 6.6), (0.0, -10.6, 5.8), (0.0, -14.0, 5.8)])),
     ("skylight into the saloon, out the break", 0.75, to_world("bow", [(3.2, -7.6, 13.0), (1.0, -7.6, 10.6), (0.0, -7.6, 8.6), (0.0, -10.4, 6.0), (0.0, -14.0, 5.8)])),
     ("the gap between the halves", 1.5, [gap + Vector((-7.0, 0.0, 0.0)), gap + Vector((7.0, 0.0, 0.0))]),
+    ("the saloon's torn side, over the stairs, out the break", 0.5, to_world("bow", [(7.0, -7.4, 6.8), (3.3, -7.4, 6.8), (2.2, -7.4, 7.2), (0.0, -7.8, 8.0), (0.0, -10.4, 6.2), (0.0, -14.0, 5.8)])),
     ("a porthole (small fish)", 0.12, to_world("bow", [(5.0, 2.8, 5.9), (hull_x(2.8, 5.9) + 0.2, 2.8, 5.9), (2.3, 2.8, 5.9), (1.4, 2.8, 5.0)])),
     ("down the fourth funnel, the engine room, out the break", 0.5, to_world("stern", [(0.0, -15.5, 14.0), (0.0, -15.5, 8.4), (0.0, -15.5, 4.6), (0.0, -12.6, 4.6), (0.0, -9.0, 4.6), (0.0, -6.5, 4.6)])),
 ]
@@ -1200,7 +1373,7 @@ REEF = [
     spot("bow", (3.05, 9.0, BOAT + 0.4)), spot("bow", (-3.05, 1.6, BOAT + 0.4)),
     spot("bow", (1.35, STAIR[0], 5.4)), spot("bow", (-1.35, STAIR[0], 5.4)),
     spot("bow", (2.2, -8.6, 4.0)), spot("bow", (-2.4, -5.2, PROM)),
-    spot("bow", (B + 0.02, 1.0, 4.0), (1.0, 0.0, 0.0)), spot("bow", (B + 0.02, 12.8, 3.0), (1.0, 0.0, 0.0)), spot("bow", (B + 0.02, -6.5, 3.0), (1.0, 0.0, 0.0)),
+    spot("bow", (B + 0.02, 1.0, 4.0), (1.0, 0.0, 0.0)), spot("bow", (B + 0.02, 12.8, 3.0), (1.0, 0.0, 0.0)), spot("bow", (B + 0.02, -2.5, 3.0), (1.0, 0.0, 0.0)),
     spot("bow", (0.0, 13.4, 11.2), (0.0, math.sin(-roof_tilt), math.cos(roof_tilt))), spot("bow", (-1.6, 13.0, 11.55), (0.0, math.sin(-roof_tilt), math.cos(roof_tilt))),
     spot("bow", (nest.x, nest.y, nest.z + 0.5)),
     spot("stern", (1.5, -25.0, poop_top(-25.0))), spot("stern", (-1.8, -28.0, poop_top(-28.0))), spot("stern", (1.15, FUNNELS[4], BOAT + 0.7)),

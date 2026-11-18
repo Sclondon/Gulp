@@ -82,7 +82,7 @@ the concept has two tiers of white houses above the promenade, this has one deck
 the concept's staircase is seen through a hole in the side, here through the break and the skylight; no fish or
 kelp come with the wreck (the game's own sea life does that).
 
-## As built (2026-11-18)
+## As built (2026-11-18, after pass 2; pass 3 changed the numbers: see its entry below)
 
 - **Size and lie.** 60 m stem to counter as built upright (about 66 m end to end as it lies, the stern section
   5 to 7 m off); 7 m beam; keel to boat deck 9.9 m, the standing funnel's rim 17.4 m above the keel (needs 20 m of
@@ -123,6 +123,34 @@ kelp come with the wreck (the game's own sea life does that).
   strake with portholes; glass panes on the dome; weed drips; shutters; reef thicker and on the sand; then the
   shader's `lift` (a power curve on dark paint) set to 0.3 so rooms read without washing the hull out; reef kept
   out of the routes (it filled the funnel's mouth and the foot of the stairs); barrel sponges off the decks.
+- Pass 3 (the coordinator, beside the concept: "reads much plainer than the picture"):
+  - Reef about tripled: 1,089 kit pieces (was about 400), 9 to 15 in each ReefSpot clump; 70 clumps on the sand,
+    each of 6 to 12; 12 big coral heads (bommies) on the sand with table corals on top, given to Sea as rocks with
+    the kit's own spheres. Seaweed from GameCommon's `seaweed` stands on the decks and, tall, on the sand. Pale
+    pieces are tinted from a warm list (pink, orange, purple, yellow-green, gold). Reef is still kept a metre or more
+    off every route.
+  - The reef's colours: in a neutral white light (`tests/wreck_view.gd -- --neutral`: no fog, no water colour, no
+    post shader) they come through: reds, pinks, greens, purples, golds. Under the game's water they turn blue. That
+    is the sea's light (blue ambient light, a blue sun, blue fog, the post shader's tint), not the wreck's.
+  - Hull: plate seams (1.4 m strakes, 3 m plates) with a fainter rivet row beside each, baked in; a band of weed
+    along the old waterline; the red bottom broken by growth; rust run decals under every porthole, window and
+    scupper (scuppers added along the deck edge); the starboard anchor out of its hawse and hanging low against the
+    bow on a chain of links; railings bent and draped with weed and rusticles (four more runs); weed and rusticles
+    off every davit; a second tier of white house on the boat deck, with windows.
+  - The break: the hull's frames stand bare beyond the torn plating on both halves (some bent), torn plates peeled
+    outwards; the saloon's starboard side torn open in a jagged hole with ribs at its edges, so the staircase and the
+    dome read from outside. A new swim route goes in through that hole, over the stairs and out of the break (room
+    0.5).
+  - The foremast now stands on the forecastle, broken short at about 15 m, with its crow's nest and four stays
+    (to the stem, both sides, the bridge) hung with weed; its top lies on the sand off the port bow. It clears the
+    hatch route.
+  - The bow atlas went to 4096: the decals had cut the picture's use to 36%. Both halves now have about 45 texels
+    a metre (2.2 cm).
+  - Now 17,606 triangles; 1,016 spheres of hull plus 122 of the coral heads; a `Sea.clear_of_rocks` call costs
+    about 12 us beside the wreck.
+  - Still different from the concept: the game's water is blue, not teal (being changed separately); the rust
+    runs read as tidy tan stripes, not the concept's soft streaks; the concept's promenade windows are bigger, with
+    brass frames; there are no fish or bubbles.
 - Not verified: a phone or a web build; the cost of 400 reef pieces and 14,600 triangles on a phone; how it sits on
   the map's real ground (sinking 0.45 to 1.4 m allows for some unevenness); fish actually swimming the routes in
   play (only the collision is checked).

@@ -20,6 +20,7 @@ var _wreck: Wreck
 var _sea: Sea
 var _camera: Camera3D
 var _bed := 10.0
+var _neutral := false
 
 
 func _initialize() -> void:
@@ -27,6 +28,8 @@ func _initialize() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg == "--check":
 			check = true
+		elif arg == "--neutral":
+			_neutral = true
 		elif arg.begins_with("--out="):
 			_out = arg.get_slice("=", 1)
 	if check:
@@ -132,9 +135,10 @@ func _reef_count() -> Array:
 	var placed := 0
 	var reef := _wreck.get_node_or_null(^"Reef")
 	if reef:
-		for many: MultiMeshInstance3D in reef.get_children():
-			kinds += 1
-			placed += many.multimesh.instance_count
+		for many: Node in reef.get_children():
+			if many is MultiMeshInstance3D:
+				kinds += 1
+				placed += (many as MultiMeshInstance3D).multimesh.instance_count
 	return [kinds, placed]
 
 
@@ -248,6 +252,9 @@ func _shoot() -> void:
 		["the_break", bow_at(16.0, -14.0, 13.0), bow_at(0.0, -10.0, 5.0), true],
 		["game_fog", bow_at(13.0, 22.0, 9.0), bow_at(0.0, 10.0, 7.0), false],
 		["bow_rail", bow_at(4.0, 33.0, 12.5), bow_at(0.0, 25.0, 8.8), false],
+		["bow_approach", bow_at(9.0, -0.5, 8.0), bow_at(2.8, -7.6, 6.6), false],
+		["saloon_torn_side", bow_at(9.0, -7.4, 7.6), bow_at(0.0, -7.2, 6.6), false],
+		["foredeck", bow_at(7.0, 30.0, 14.0), bow_at(0.0, 20.0, 9.0), false],
 		["saloon_up_the_stairs", bow_at(0.0, -10.1, 6.6), bow_at(0.0, -5.0, 10.4), false],
 		["promenade_colonnade", bow_at(1.9, -3.4, 8.4), bow_at(1.9, 10.0, 8.4), false],
 		["tear_from_outside", bow_at(8.5, 7.5, 3.6), bow_at(0.0, 8.0, 3.2), false],
@@ -260,10 +267,13 @@ func _shoot() -> void:
 	]
 	_sea.sand.visible = false
 	_sea.eye = _camera
+	if _neutral:
+		_neutralise()
 	for frame in 8:
 		await process_frame
 	for shot: Array in shots:
-		_sea._env.fog_density = SHOTS_FOG if shot[3] else 0.04
+		if not _neutral:
+			_sea._env.fog_density = SHOTS_FOG if shot[3] else 0.04
 		_camera.look_at_from_position(shot[1], shot[2])
 		for frame in 4:
 			await process_frame
@@ -273,3 +283,23 @@ func _shoot() -> void:
 		print("WRECK shot ", shot[0])
 	print("WRECK PICTURES DONE")
 	quit()
+
+
+# A plain, white light with no water colour, fog or post shader: to judge the paint and the reef's own
+# colours apart from the sea's.
+func _neutralise() -> void:
+	var env: Environment = _sea._env
+	env.fog_enabled = false
+	env.background_color = Color(0.35, 0.37, 0.4)
+	env.ambient_light_color = Color(1.0, 1.0, 1.0)
+	env.ambient_light_energy = 0.55
+	env.glow_enabled = false
+	for light: DirectionalLight3D in _sea.find_children("*", "DirectionalLight3D", true, false):
+		light.light_color = Color(1.0, 0.97, 0.92)
+		light.light_energy = 1.1
+	for node: Node in root.get_children():
+		if node is SubViewportContainer:
+			(node as SubViewportContainer).material = null
+	for node: Node in _sea.get_children():
+		if node.name == "Water" or node.name == "Snow":
+			(node as Node3D).visible = false

@@ -23,10 +23,15 @@ const PROPS := "res://scenery/sea_floor_props/sea_floor_props.gd"
 ## Beyond this the water hides it (m, to the nearest point of a half), as Scenery's plants.
 const SEEN := 60.0
 ## How many reef pieces at a ReefSpot, and how far round it they spread (m).
-const CLUMP := Vector2i(4, 8)
-const SPREAD := 1.3
+const CLUMP := Vector2i(9, 15)
+const SPREAD := 1.5
 ## Reef spilling on to the sand along the hull (the concept art's): clumps along each half.
-const SPILL := 30
+const SPILL := 70
+## Big coral heads on the sand beside her (they stop a swimmer).
+const HEADS := 12
+const WEED := "res://plants/seaweed/seaweed_bed.gd"
+## Tints for pieces the kit paints pale to be tinted.
+const WARM: Array[Color] = [Color(1.0, 0.55, 0.65), Color(1.0, 0.62, 0.38), Color(0.78, 0.55, 1.0), Color(0.8, 1.0, 0.5), Color(1.0, 0.85, 0.45), Color(1.0, 1.0, 1.0)]
 ## Each half's keel on the bed, end to end, in the wreck's own space (as build_wreck.py lays them).
 const KEELS := [[Vector2(-0.4, -29.0), Vector2(-0.2, 9.0)], [Vector2(-2.25, 16.6), Vector2(4.4, 34.9)]]
 
@@ -134,12 +139,12 @@ func _load_data() -> void:
 
 
 # Whether a point is in the way of a swim route (reef is kept out of the openings).
-func _on_route(p: Vector3) -> bool:
+func _on_route(p: Vector3, margin := 1.0) -> bool:
 	for route: Dictionary in _routes:
 		var points: PackedVector3Array = route.points
 		for i in points.size() - 1:
 			var near := Geometry3D.get_closest_point_to_segment(p, points[i], points[i + 1])
-			if near.distance_to(p) < float(route.room) + 1.0:
+			if near.distance_to(p) < float(route.room) + margin:
 				return true
 	return false
 
@@ -149,10 +154,13 @@ static func _distance(box: AABB, p: Vector3) -> float:
 	return nearest.distance_to(p)
 
 
-# Reef life on the wreck: at each ReefSpot a clump of corals, sponges, fans and anemones from
-# GameCommon's sea floor kit (the tropical and the cold-water pieces Scenery plants on the reef and
-# among the kelp's rocks), standing out of the surface along the spot's +Y. One MultiMesh a piece.
-# They do not stop a swimmer.
+# Reef life on the wreck (the concept art, tools/art_src/concept_liner_wreck.jpg: decks, rails and
+# the sand at her foot thick with coral, fans, sponges and weed in warm colours). From GameCommon's
+# sea floor kit (the tropical and cold-water pieces Scenery plants) and its seaweed:
+# - a clump at every ReefSpot and ReefPatch (+Y out of the surface), denser where she is seen first;
+# - clumps and big coral heads on the sand along both sides, as if the reef had spilled off her;
+# - weed standing on the decks and tall on the sand.
+# None within a metre of a swim route. Only the coral heads stop a swimmer (their own spheres).
 func _grow_reef() -> void:
 	var props: GDScript = load(PROPS)
 	var kinds: PackedStringArray = props.call(&"names", "tropical")
@@ -161,34 +169,66 @@ func _grow_reef() -> void:
 	var on_decks := kinds.duplicate()
 	on_decks.remove_at(on_decks.find("barrel_sponge"))
 	var placed := {}
+	var to_local := global_transform.affine_inverse()
+	var weed_at := PackedVector3Array()
+	var weed_size := PackedFloat32Array()
+	var weed_kind := PackedInt32Array()
 	for spot in _spots:
-		var base := global_transform.affine_inverse() * spot.global_transform.orthonormalized()
+		var base := to_local * spot.global_transform.orthonormalized()
 		for k in _rng.randi_range(CLUMP.x, CLUMP.y):
-			var piece := on_decks[_rng.randi() % on_decks.size()]
 			var off := Vector2.from_angle(_rng.randf() * TAU) * SPREAD * sqrt(_rng.randf())
-			var size := _rng.randf_range(0.7, 1.6)
-			var local := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * size), Vector3(off.x, -0.03, off.y))
-			if _on_route(global_transform * (base * local).origin):
-				continue
-			var tints: PackedColorArray = props.call(&"tints_of", piece)
-			if not placed.has(piece):
-				placed[piece] = [[], []]
-			placed[piece][0].append(base * local)
-			placed[piece][1].append(tints[_rng.randi() % tints.size()] if tints.size() > 0 else Color.WHITE)
-	# (and on the sand along each side, as if the reef had spilled off the decks)
+			var local := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * _rng.randf_range(0.8, 1.8)), Vector3(off.x, -0.03, off.y))
+			_put(props, placed, on_decks[_rng.randi() % on_decks.size()], base * local)
+		# (weed on what faces up)
+		if base.basis.y.normalized().y > 0.7:
+			for k in _rng.randi_range(1, 4):
+				var off := Vector2.from_angle(_rng.randf() * TAU) * SPREAD * sqrt(_rng.randf())
+				var foot := global_transform * (base * Vector3(off.x, -0.02, off.y))
+				if not _on_route(foot):
+					weed_at.append(foot)
+					var kind: int = [1, 2, 3, 4][_rng.randi() % 4]
+					weed_kind.append(kind)
+					weed_size.append(_rng.randf_range(0.6, 1.4) if kind != 3 else _rng.randf_range(1.0, 2.2))
+	# (on the sand along each side)
 	for k in SPILL:
-		var keel: Array = KEELS[k % 2]
-		var along: Vector2 = (keel[0] as Vector2).lerp(keel[1], _rng.randf())
-		var across: Vector2 = ((keel[1] as Vector2) - keel[0]).normalized().orthogonal() * (1.0 if _rng.randf() < 0.5 else -1.0)
-		var middle := along + across * _rng.randf_range(4.2, 6.5)
-		for j in _rng.randi_range(4, 8):
-			var piece := kinds[_rng.randi() % kinds.size()]
-			var at := middle + Vector2.from_angle(_rng.randf() * TAU) * 1.6 * sqrt(_rng.randf())
-			var tints: PackedColorArray = props.call(&"tints_of", piece)
-			if not placed.has(piece):
-				placed[piece] = [[], []]
-			placed[piece][0].append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * _rng.randf_range(1.2, 2.6)), Vector3(at.x, -0.05, at.y)))
-			placed[piece][1].append(tints[_rng.randi() % tints.size()] if tints.size() > 0 else Color.WHITE)
+		var middle := _beside(_rng.randf_range(4.0, 7.0))
+		for j in _rng.randi_range(6, 12):
+			var at := middle + Vector2.from_angle(_rng.randf() * TAU) * 2.0 * sqrt(_rng.randf())
+			_put(props, placed, kinds[_rng.randi() % kinds.size()], Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * _rng.randf_range(1.2, 2.6)), Vector3(at.x, -0.05, at.y)))
+		for j in _rng.randi_range(2, 5):
+			var at := middle + Vector2.from_angle(_rng.randf() * TAU) * 2.5 * sqrt(_rng.randf())
+			var foot := global_transform * Vector3(at.x, -0.05, at.y)
+			if not _on_route(foot):
+				weed_at.append(foot)
+				var kind := 3 if _rng.randf() < 0.6 else 4
+				weed_kind.append(kind)
+				weed_size.append(_rng.randf_range(1.5, 3.8) if kind == 3 else _rng.randf_range(0.8, 1.6))
+	# (big coral heads among them: they stop a swimmer)
+	var heads: PackedStringArray = props.call(&"names", "bommie")
+	var made := 0
+	for attempt in HEADS * 4:
+		if made >= HEADS:
+			break
+		var at := _beside(_rng.randf_range(6.5, 9.5))
+		var piece := heads[_rng.randi() % heads.size()]
+		var where := Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * _rng.randf_range(0.6, 1.0)), Vector3(at.x, -0.3, at.y))
+		var world := global_transform * where
+		var clear := true
+		for sphere: Vector4 in props.call(&"spheres_of", piece):
+			if _on_route(world * Vector3(sphere.x, sphere.y, sphere.z), sphere.w * where.basis.get_scale().x + 1.0):
+				clear = false
+		if not clear:
+			continue
+		made += 1
+		_put(props, placed, piece, where, false)
+		for sphere: Vector4 in props.call(&"spheres_of", piece):
+			var middle := world * Vector3(sphere.x, sphere.y, sphere.z)
+			var rock := Vector4(middle.x, middle.y, middle.z, sphere.w * world.basis.get_scale().x)
+			_spheres.append(rock)
+			Sea.add_rock(rock)
+		# (a table coral or two on its shoulder)
+		for j in 2:
+			_put(props, placed, "table_coral", Transform3D(Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3.ONE * _rng.randf_range(1.0, 1.8)), where * Vector3(_rng.randf_range(-0.8, 0.8), (props.call(&"size_of", piece) as Vector3).y * 0.8, _rng.randf_range(-0.8, 0.8))))
 	_reef = Node3D.new()
 	_reef.name = "Reef"
 	add_child(_reef)
@@ -209,3 +249,34 @@ func _grow_reef() -> void:
 		drawn.material_override = props.call(&"material_of", piece)
 		drawn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_reef.add_child(drawn)
+	if ResourceLoader.exists(WEED) and not weed_at.is_empty():
+		var bed: Node3D = (load(WEED) as GDScript).new()
+		bed.name = "Weed"
+		bed.top_level = true
+		bed.set(&"far", SEEN)
+		bed.set(&"cell", 8.0)
+		bed.set(&"current", Vector2(0.3, 0.1))
+		_reef.add_child(bed)
+		bed.global_transform = Transform3D.IDENTITY
+		bed.call(&"plant", weed_at, weed_size, weed_kind, Sea.SURFACE)
+
+
+# One reef piece placed (in the wreck's space), unless it is in a route's way; tinted from the
+# piece's own tints, or else warm (the concept's pinks, oranges, purples, yellow-greens).
+func _put(props: GDScript, placed: Dictionary, piece: String, where: Transform3D, check := true) -> void:
+	if check and _on_route(global_transform * where.origin):
+		return
+	var tints: PackedColorArray = props.call(&"tints_of", piece)
+	var tint := tints[_rng.randi() % tints.size()] if tints.size() > 1 else WARM[_rng.randi() % WARM.size()]
+	if not placed.has(piece):
+		placed[piece] = [[], []]
+	placed[piece][0].append(where)
+	placed[piece][1].append(tint)
+
+
+# A place on the sand (the wreck's space, x and z) `out` metres off one side of either half's keel.
+func _beside(out: float) -> Vector2:
+	var keel: Array = KEELS[_rng.randi() % 2]
+	var along: Vector2 = (keel[0] as Vector2).lerp(keel[1], _rng.randf())
+	var across: Vector2 = ((keel[1] as Vector2) - keel[0]).normalized().orthogonal() * (1.0 if _rng.randf() < 0.5 else -1.0)
+	return along + across * out

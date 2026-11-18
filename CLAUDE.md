@@ -343,3 +343,6 @@ a half on a Windows desktop browser. Build the web export from the clean worktre
 - "yes make the design and implement it" (the treasure mode above, 2026-11-18): the design is `DESIGN.md`.
 - The Wayside Interactive logo for the loading screen is in `C:\Projects\scareathon\trailer\wayside-logo\out`
   (`png/WaysideInteractive_mark.png`, `_seal.png`, `_stacked.png`, and the animated sequences as mp4).
+- "he should be a gay captain"; "captian should have bushy chest hair and tattoos" (2026-11-18): the captain's
+  love in the photographs is a man (DESIGN.md "The photographs"); his figure gets an open shirt, chest hair and
+  old sailor's tattoos (concept first, then `tools/build_title_figures.py`).
