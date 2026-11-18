@@ -81,6 +81,9 @@ func _ready() -> void:
 	_view.own_world_3d = true
 	_view.size = Vector2i(_wide)
 	_view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	# (no swapping to cruder versions of a mesh in this view: in a browser the sardines were drawn
+	# as their crudest one, a few spikes, though the mesh is made without them here too)
+	_view.mesh_lod_threshold = 0.0
 	add_child(_view)
 	var air := Environment.new()
 	air.background_mode = Environment.BG_COLOR
@@ -119,6 +122,7 @@ func _ready() -> void:
 	look.set_shader_parameter(&"sheen", 0.5)
 	look.set_shader_parameter(&"riders", 0)
 	fish.material_override = look
+	fish.lod_bias = 64.0
 	fish.custom_aabb = AABB(Vector3(-5000.0, -5000.0, -500.0), Vector3(10000.0, 10000.0, 1000.0))
 	_view.add_child(fish)
 	for k in _home.size():
@@ -183,7 +187,9 @@ func _process(delta: float) -> void:
 		# (it faces the way it goes; in its place, to the right or the left by rows, as fish
 		# holding against a current)
 		var going := _at[k] - was
-		var facing := going.angle() if going.length() > big * 0.03 else (0.0 if int(_home[k].y) % 2 == 0 else PI) + sin(_clock * 1.3 + _seed[k] * 50.0) * 0.12
+		# (by its speed, not by how far it went this frame: in a slow browser frame the small sway of a
+		# fish in its place was far enough to turn it every which way)
+		var facing := going.angle() if going.length() > big * 2.5 * maxf(delta, 0.001) else (0.0 if int(_home[k].y) % 2 == 0 else PI) + sin(_clock * 1.3 + _seed[k] * 50.0) * 0.12
 		_way[k] = lerp_angle(_way[k], facing, 1.0 - exp(-10.0 * delta))
 		# (the model's nose is -Z and its back +Y: its nose along the way it goes on the screen,
 		# its flank to the eye, rolled a little so the back and the tail's beat show)
