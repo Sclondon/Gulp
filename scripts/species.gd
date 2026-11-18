@@ -131,6 +131,9 @@ const ALL := {
 	"ichthyosaur": {"script": "ichthyosaur/ichthyosaur", "breathes": true, "zones": ["open"], "band": [0.5, 1.0], "count": 2, "size": [3.6, 4.2]},
 	"mosasaur": {"script": "mosasaur/mosasaur", "breathes": true, "zones": ["open"], "band": [0.3, 0.9], "count": 1, "size": [10.0, 12.0]},
 	"plesiosaur": {"script": "plesiosaur/plesiosaur", "long": 9.0, "front": 4.3, "curls": false, "breathes": true, "zones": ["open"], "band": [0.4, 0.95], "count": 1, "size": [8.0, 9.0]},
+	# Arctic animals (the user, 2026-11-18); there is no cold sea here yet, so they are in the open ocean (Claude's pick).
+	"walrus": {"script": "walrus/walrus", "breathes": true, "hunts": false, "zones": ["open"], "band": [0.2, 0.9], "count": 1, "size": [2.8, 3.2]},
+	"narwhal": {"script": "narwhal/narwhal", "breathes": true, "hunts": false, "zones": ["open"], "band": [0.5, 1.0], "count": 2, "size": [4.2, 4.6]},
 	"devil_ray": {"script": "devil_ray/devil_ray", "long": 0.64, "front": 0.32, "hunts": false, "zones": ["open", "sand"], "band": [0.5, 0.95], "count": 5, "size": [0.6, 0.7]},
 	"eagle_ray": {"script": "spotted_eagle_ray/spotted_eagle_ray", "long": 1.15, "front": 0.575, "hunts": false, "zones": ["reef", "sand"], "band": [0.05, 0.4], "count": 2, "size": [1.1, 1.3]},
 	"manta": {"script": "manta_ray/manta_ray", "long": 3.06, "front": 1.53, "how": "giant", "zones": ["open", "reef"], "band": [0.5, 0.9], "count": 2, "size": [3.0, 3.4]},
