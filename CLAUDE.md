@@ -550,3 +550,8 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
 - "Dont try to model the beard it should be made with a hair shader" (the user, 2026-11-18): beards, moustaches and
   head hair on the figures are locks drawn with the shared hair shader (`shaders/ink/hair_ink.gdshader`), never a
   sculpted mass and never painted onto the face texture. Applies to the captain now and both brothers after.
+- More Twilight Princess figures to measure against (the user, 2026-11-18: "I downloaded some more references models
+  for you to compare to"), in `C:\Users\stewa\Downloads` as zips: Non-Playable Characters - Hylian Knight (2,533
+  triangles, body texture 512x256), Telma (2,308; 256x256 plus small face tiles), Shad (2,663; 512x512 plus tiles),
+  Ordona. Look and measure only; copy nothing. A whole person there is about 2,300 to 2,700 triangles with one small
+  mirrored hand-painted body picture and separate small face tiles; Gulp's captain drew 10,124 in his open look.
