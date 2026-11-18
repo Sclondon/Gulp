@@ -647,3 +647,13 @@ Claude's.
 - The captain (the user, 2026-11-18, of the sheet-against-model comparison): "Looks like his face and waist need work"
   (circled: the boxers' tall flat waistband, the head from the side); "his hands / fingers also seemed scuffed"; "let me
   see the model without the textures" (in plain grey he has almost no face or body forms: the paint was carrying it).
+- The captain, rounds five and six (2026-11-18, `tools/build_captain.py`, still NOT in the game): forms are modelled, not
+  only painted (brow, cheeks, eye slits, lips, a bigger nose, pecs, a belly roll over the band, kneecaps; `refine()`,
+  `FACE_FORMS`, `BODY_FORMS`); the boxers are their own garment with a thin low band and a procedurally painted cloth
+  (clean hearts, fly, hem); head paint is taken from one sheet view at a time (no doubled features); the hands are one
+  welded surface (wrist, wedge palm, short fingers grown from the palm's quads) and are kept out of the outline fitting.
+  Hair shader: new uniforms, all off at 0: `root_ragged`, `side_ragged`, `ragged_width`, `lock_gaps`, `tufts`,
+  `tuft_width`, `tuft_length`, `under_shade`. Check a figure in plain grey as well as painted (the user asked to "see the
+  model without the textures", which showed the paint had been carrying a formless mesh). Body, head and hands: 5,626
+  triangles. Still wrong: the moustache is one big pale blob and the beard a smooth plate (the hair is the stubborn
+  part after six rounds); the painted hands are flat-coloured with hard seams; the eye slits are shallow.

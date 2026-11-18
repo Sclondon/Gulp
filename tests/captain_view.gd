@@ -12,11 +12,13 @@ const HAIR_SHADER := "res://shaders/ink/hair_ink.gdshader"
 const HAIR := {
 	# (white-grey as the head sheet paints it; the ink a soft grey shadow between the clumps, not black)
 	# (a warm grey, as the sheets paint it: lit, it came out nearly white)
-	"captain_beard": [Color(0.57, 0.55, 0.5), Color(0.66, 0.64, 0.59), Color(0.34, 0.32, 0.29), Color(0.8, 0.78, 0.73)],
+	# (fifth round: the head sheet's near-white, sampled: lights about (0.86, 0.85, 0.80), the mass (0.74, 0.72, 0.67),
+	# warm grey shadows (0.48, 0.45, 0.40); it read grey-brown and striped before)
+	"captain_beard": [Color(0.68, 0.66, 0.61), Color(0.84, 0.83, 0.78), Color(0.46, 0.43, 0.38), Color(0.95, 0.94, 0.9)],
 	# (the moustache: the beard's colours, its ends broken into strands)
-	"captain_tips_beard": [Color(0.6, 0.58, 0.53), Color(0.68, 0.66, 0.61), Color(0.34, 0.32, 0.29), Color(0.8, 0.78, 0.73)],
+	"captain_tips_beard": [Color(0.78, 0.76, 0.71), Color(0.88, 0.87, 0.82), Color(0.48, 0.45, 0.4), Color(0.95, 0.94, 0.9)],
 	# (the same grey as the beard: the sideburns run into it)
-	"captain_headhair": [Color(0.57, 0.55, 0.5), Color(0.66, 0.64, 0.59), Color(0.34, 0.32, 0.29), Color(0.8, 0.78, 0.73)],
+	"captain_headhair": [Color(0.44, 0.42, 0.39), Color(0.56, 0.55, 0.51), Color(0.38, 0.36, 0.33), Color(0.82, 0.81, 0.77)],
 	"captain_chesthair": [Color(0.56, 0.54, 0.5), Color(0.64, 0.62, 0.58), Color(0.38, 0.36, 0.33), Color(0.78, 0.77, 0.74)],
 }
 
@@ -62,12 +64,22 @@ func _initialize() -> void:
 	world.add_child(_cam)
 	# (name, eye direction from him, look-at height, ortho size)
 	var body := [["front", Vector3(0, 0, 1)], ["side", Vector3(-1, 0, 0)], ["back", Vector3(0, 0, -1)], ["three_quarter", Vector3(0.7, 0, 0.7)]]
-	var head := [["head_front", Vector3(0, 0, 1)], ["head_three_quarter", Vector3(0.62, 0, 0.78)], ["head_side", Vector3(1, 0, 0)], ["head_below", Vector3(0, -0.72, 0.69).normalized()], ["head_back", Vector3(0, 0, -1)]]
+	var head := [["head_front", Vector3(0, 0, 1)], ["head_three_quarter", Vector3(-0.62, 0, 0.78)], ["head_side", Vector3(1, 0, 0)], ["head_below", Vector3(0, -0.72, 0.69).normalized()], ["head_back", Vector3(0, 0, -1)]]
 	for lit in [true, false]:
 		for b in body:
 			_shots.append([b[0] + ("_lit" if lit else "_unlit"), b[1], 0.84, 1.78, lit])
 		for h in head:
-			_shots.append([h[0] + ("_lit" if lit else "_unlit"), h[1], 1.47, 0.46, lit])
+			# (0.52: at 0.46 the three-quarter view cut his cap and nose at the picture's edges, and laid beside the
+			# sheet's next view the two caps read as one doubled cap)
+			# (the three-quarter view centred on his head as the sheet's is, nose and peak included: looked at from his
+			# middle the face ran off the picture's right edge)
+			var at: Variant = Vector3(0.03, 1.47, 0.025) if h[0] == "head_three_quarter" else 1.47
+			_shots.append([h[0] + ("_lit" if lit else "_unlit"), h[1], at, 0.52, lit])
+	# His left hand close, lit: its back, its palm (from between him and it), the thumb's side (from in front) and
+	# fingertips-on (from below). (Blender's (0.57, -0.06, 0.66) is the game's (0.57, 0.66, 0.06).)
+	var hand_at := Vector3(0.56, 0.67, 0.05)
+	for h in [["hand_back", Vector3(1, 0, 0.35)], ["hand_palm", Vector3(-1, 0, -0.1)], ["hand_thumb", Vector3(0.1, 0, 1)], ["hand_tips", Vector3(0.15, -1, 0.1)]]:
+		_shots.append([h[0], (h[1] as Vector3).normalized(), hand_at, 0.24, true, 0.12])
 
 
 func _hair(key: String) -> ShaderMaterial:
@@ -81,8 +93,8 @@ func _hair(key: String) -> ShaderMaterial:
 	m.set_shader_parameter(&"metres", 1.0)
 	# (one smooth shell: the locks are the shader's broad soft bands along the hair; faint strand lines; soft grey
 	# where the shell turns away)
-	m.set_shader_parameter(&"locks", 0.7)
-	m.set_shader_parameter(&"lock_width", 0.016)
+	m.set_shader_parameter(&"locks", 0.55)
+	m.set_shader_parameter(&"lock_width", 0.019)
 	m.set_shader_parameter(&"lock_length", 0.08)
 	m.set_shader_parameter(&"strand_gap", 0.006)
 	m.set_shader_parameter(&"lit_lines", 0.0)
@@ -90,7 +102,7 @@ func _hair(key: String) -> ShaderMaterial:
 	m.set_shader_parameter(&"wrap", 0.35)
 	m.set_shader_parameter(&"shadow_fill", 0.55)
 	m.set_shader_parameter(&"root_ink", 0.04)
-	m.set_shader_parameter(&"gap_ink", 0.3)
+	m.set_shader_parameter(&"gap_ink", 0.18)
 	m.set_shader_parameter(&"flick_gain", 0.1)
 	m.set_shader_parameter(&"flick_gloss", 14.0)
 	m.set_shader_parameter(&"lighten", 0.0)
@@ -98,8 +110,22 @@ func _hair(key: String) -> ShaderMaterial:
 	# (ragged ends only where an end can open without showing into a shell: the tips and moustache, and the hair under
 	# the cap, whose skin under it is painted grey)
 	# (not on the hair under the cap: its ends opened onto the darker grey painted under it, a row of dark teeth)
-	m.set_shader_parameter(&"tip_ragged", 0.35 if key == "captain_tips_beard" else 0.0)
+	# (the moustache whole: two full lobes, no strands at their tips)
+	m.set_shader_parameter(&"tip_ragged", 0.1 if key == "captain_headhair" else 0.0)
 	m.set_shader_parameter(&"strand_cover", 0.75)
+	m.set_shader_parameter(&"lock_gaps", 0.2)
+	# (sixth round: darker where it faces down: under the moustache, under the chin, toward the neck)
+	m.set_shader_parameter(&"under_shade", 0.6 if key == "captain_beard" else 0.35)
+	# (the head sheet's pointed clumps in rows, each over the top of the one below)
+	# (sixth round: fewer, broader, softer locks; the fifth round's read as bright scratchy streaks from the side)
+	m.set_shader_parameter(&"tufts", 0.45 if key == "captain_beard" else 0.35)
+	m.set_shader_parameter(&"tuft_width", 0.021 if key == "captain_beard" else 0.013)
+	m.set_shader_parameter(&"tuft_length", 0.036 if key == "captain_beard" else 0.024)
+	# (fifth round: the shells' edges broken into strands: the beard's line on the cheeks and its sides by the ears,
+	# the hair under the cap at its two ends by the temples and its lower edge)
+	m.set_shader_parameter(&"root_ragged", 0.1 if key == "captain_beard" else 0.0)
+	m.set_shader_parameter(&"side_ragged", 0.05 if key == "captain_beard" else 0.05 if key == "captain_headhair" else 0.0)
+	m.set_shader_parameter(&"ragged_width", 0.022)
 	if key == "captain_headhair":
 		# (short, combed close: fainter, wider locks, and only a short fringe of strand ends at the nape)
 		m.set_shader_parameter(&"strand_gap", 0.008)
@@ -135,9 +161,11 @@ func _process(_delta: float) -> bool:
 		_set_lit(shot[4])
 		var dir: Vector3 = shot[1]
 		_cam.size = shot[3]
-		var at := Vector3(0, shot[2], 0)
-		_cam.position = at + dir * 5.0
-		_cam.look_at(at, Vector3.UP)
+		var at: Vector3 = shot[2] if shot[2] is Vector3 else Vector3(0, shot[2], 0)
+		var dist: float = shot[5] if shot.size() > 5 else 5.0
+		_cam.near = 0.01
+		_cam.position = at + dir * dist
+		_cam.look_at(at, Vector3.UP if absf(dir.y) < 0.9 else Vector3.FORWARD)
 	elif f % 3 == 2 and _out != "":
 		root.get_texture().get_image().save_png("%s/%s.png" % [_out, shot[0]])
 	return false
