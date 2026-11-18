@@ -40,13 +40,14 @@ const EDGE := Bay.EDGE * Bay.K
 const ZONES := {
 	"beach": {"at": Vector2(60.0, -125.0), "radius": 0.0},
 	"river": {"at": Vector2(126.0, -40.0), "radius": 30.0},
-	"kelp": {"at": Vector2(42.4, 48.6), "radius": 16.0, "also": [[Vector2(35.0, -130.0), 13.0]]},
+	"kelp": {"at": Vector2(42.4, 48.6), "radius": 16.0, "region": "kelp"},
 	"docks": {"at": Vector2(66.0, 68.0), "radius": 16.0, "also": [[Vector2(3.0, -123.0), 12.0]]},
-	"sand": {"at": Vector2(-10.0, -105.0), "radius": 22.0},
+	"sand": {"at": Vector2(-20.0, -80.0), "radius": 22.0, "region": "dunes"},
 	"pirate": {"at": Vector2(-65.0, -42.0), "radius": 18.0},
 	"trench": {"at": Vector2(30.0, -36.0), "radius": 45.0, "deeper": 45.0},
 	"ruins": {"at": Vector2(-53.0, 26.0), "radius": 30.0},
-	"grass": {"at": Vector2(82.0, 52.0), "radius": 12.0},
+	"grass": {"at": Vector2(-56.0, 2.0), "radius": 12.0, "region": "grass"},
+	"crags": {"at": Vector2(-82.0, -40.0), "radius": 16.0, "region": "crags"},
 	"reef": {"at": Vector2(-37.0, 126.0), "radius": 24.0},
 	"open": {"at": Vector2(-95.0, 10.0), "radius": 24.0},
 }
@@ -132,11 +133,16 @@ static func zone_at(x: float, z: float) -> String:
 		return "open"
 	var deep := SURFACE - ground(x, z)
 	for zone: String in ZONES:
-		if zone == "open" or zone == "beach":
+		if zone == "open" or zone == "beach" or ZONES[zone].has("region"):
 			continue
 		for patch: Array in patches(zone):
 			if Vector2(x, z).distance_to(patch[0]) < float(patch[1]) and deep >= float(ZONES[zone].get("deeper", 0.0)):
 				return zone
+	# (the zones that are the user's drawn biomes: BiomeRegions)
+	var biome := BiomeRegions.at(x, z)
+	for zone: String in ZONES:
+		if ZONES[zone].get("region", "") == biome and biome != "":
+			return zone
 	if deep > 0.0 and deep < Bay.BEACH_DEEP:
 		return "beach"
 	return ""
@@ -282,6 +288,9 @@ static func _spot(rng: RandomNumberGenerator, zone: String) -> Vector2:
 		return flat
 	if not ZONES.has(zone):
 		return Vector2(rng.randf_range(WEST + 6.0, EAST - 6.0), z)
+	# (a zone that is one of the user's drawn biomes: anywhere in it, a few metres in from its edge)
+	if ZONES[zone].has("region"):
+		return BiomeRegions.spot(rng, ZONES[zone].region, 4.0)
 	var all := patches(zone)
 	var pick: Array = all[0]
 	if all.size() > 1:

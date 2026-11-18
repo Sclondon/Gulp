@@ -30,19 +30,24 @@ const PIRATE := "res://scripts/pirate_wreck.gd"
 ## mangrove / river entrance area", and 2026-11-18: "the margrove river part goes in the center
 ## part where that river meets the bay". Off: the slough's banks are bare.
 const MANGROVES := true
-## How many garden eels (the rest is the placer's: scripts/biomes.gd).
-const EEL_COUNT := 260
-## The garden's ridge in the sand off Santa Cruz (world, its two ends), and the small colony beside the
-## liner (its middle; how many).
-const EEL_RIDGE: Array[Vector2] = [Vector2(-25.0, -100.0), Vector2(5.0, -110.0)]
-const REEF_EEL_AT := Vector2(-30.0, 104.0)
-const REEF_EELS := 50
+## The garden eel colonies, all in the dune sea (BiomeRegions DUNES): each a band across the current
+## (its two ends, world) and how many eels. (The old ridge off Santa Cruz and the small colony by the
+## liner, moved into the dunes 2026-11-18.)
+const EEL_COLONIES := [[[Vector2(-50.0, -98.0), Vector2(-42.0, -76.0)], 110], [[Vector2(2.0, -82.0), Vector2(8.0, -62.0)], 100],
+		[[Vector2(-112.0, 128.0), Vector2(-104.0, 150.0)], 50]]
+## The dune sea's anchors: where (world), how big, which way.
+const DUNE_ANCHORS := [[Vector2(-28.0, -88.0), 2.2, 0.6], [Vector2(-78.0, -92.0), 1.6, 2.1]]
 ## How long a garden eel counts as for the eating rule (m), and how long one stays gone (s).
 const EEL_LENGTH := 0.6
 const EEL_BACK := 25.0
 ## Beyond this the water hides plants (m), and docks and moored boats.
 const SEEN := 60.0
 const DOCKS_SEEN := 80.0
+## The eelgrass is drawn only this far (m): short tufts are lost in the water sooner, and the meadows are
+## thick (tools/BIOMES.md, "The eight biomes").
+const GRASS_SEEN := 40.0
+## The tint the outcrops' stacks and shards wear on the kit's rock.
+const CRAG_ROCK := Color(0.32, 0.3, 0.3)
 ## The kit's pieces (rocks, cliffs, the reef's life): full models within PIECES_NEAR of the eye,
 ## light ones out to PIECES_SEEN, none beyond (m, to the nearest edge of the piece's cube).
 const PIECES_NEAR := 8.0
@@ -198,6 +203,9 @@ func _tint(piece: String) -> Color:
 
 # A place in a zone (in one of its patches, picked by size), within `share` of its radius.
 func _in_zone(zone: String, share := 1.0) -> Vector2:
+	# (a zone that is one of the user's drawn biomes: anywhere in it, in from its edge)
+	if Sea.ZONES[zone].has("region"):
+		return BiomeRegions.spot(_rng, Sea.ZONES[zone].region, 3.0 + 6.0 * (1.0 - share))
 	var all := Sea.patches(zone)
 	var pick: Array = all[0]
 	if all.size() > 1:
@@ -368,10 +376,18 @@ func _plant_kelp() -> void:
 # the slough's shallow edges.
 func _plant_grass() -> void:
 	_grass = (load(GRASS) as GDScript).new()
-	_grass.set(&"far", SEEN)
-	_grass.set(&"current", Vector2(0.3, 0.1))
+	_grass.set(&"far", GRASS_SEEN)
+	# (squares of 12 m, not 8: about half the draws over a thick meadow)
+	_grass.set(&"cell", 12.0)
+	# (leaning well over in the current, as the concept's meadow does: concept_biome_grass.png)
+	_grass.set(&"current", Vector2(0.55, 0.18))
 	_grass.set(&"push_radius", 0.7)
 	add_child(_grass)
+	# (the concept's olive and straw eelgrass, not the component's spring green)
+	_grass.call(&"set_shader_parameter", &"grass_deep", Color(0.15, 0.25, 0.08))
+	_grass.call(&"set_shader_parameter", &"grass_bright", Color(0.36, 0.5, 0.15))
+	_grass.call(&"set_shader_parameter", &"tip_pale", Color(0.78, 0.74, 0.38))
+	_grass.call(&"set_shader_parameter", &"grass_lit", Color(0.7, 0.78, 0.34))
 	_grass.call(&"plant", _biomes.grass_places, _biomes.grass_heights)
 
 
@@ -465,7 +481,7 @@ func _plant_mangroves() -> void:
 		while s < a.distance_to(b):
 			var at := a + (b - a).normalized() * s
 			for side: float in [-1.0, 1.0]:
-				var p := at + across * side * _rng.randf_range(Bay.SLOUGH_HALF * Bay.K + 0.8, Bay.SLOUGH_HALF * Bay.K + 3.0)
+				var p := at + across * side * _rng.randf_range(Bay.SLOUGH_HALF * Bay.K - 2.5, Bay.SLOUGH_HALF * Bay.K + 2.0)
 				places.append(Vector3(p.x, Sea.SURFACE, p.y))
 				turns.append(_rng.randf() * TAU)
 				sizes.append(_rng.randf_range(0.8, 1.15))
@@ -482,24 +498,53 @@ func _plant_mangroves() -> void:
 
 # The garden eels: a few loose patches of them in the open sand, each in its burrow.
 func _plant_eels() -> void:
-	# The garden: along a low ridge across the current in the sand off Santa Cruz (BIOMES.md 5.4).
-	var places := PackedVector3Array()
-	for i in EEL_COUNT:
-		var along := EEL_RIDGE[0].lerp(EEL_RIDGE[1], _rng.randf())
-		var at := along + Vector2.from_angle(_rng.randf() * TAU) * _rng.randf_range(0.0, 3.2) * Vector2(1.0, 0.6)
-		places.append(Vector3(at.x, Sea.ground(at.x, at.y), at.y))
-	_add_colony(places, EEL_RIDGE[0].lerp(EEL_RIDGE[1], 0.5), 22.0)
-	# A small one on the liner's sand apron, where garden eels really live, next to a reef (the
-	# coordinator's default for the user's question 3).
-	places = PackedVector3Array()
-	var tries := 0
-	while places.size() < REEF_EELS and tries < 2000:
-		tries += 1
-		var at := REEF_EEL_AT + Vector2.from_angle(_rng.randf() * TAU) * _rng.randf_range(0.0, 4.0)
-		if _kept_clear(at, 3.0) or FloorTypes.of(at.x, at.y) != FloorTypes.SAND:
-			continue
-		places.append(Vector3(at.x, Sea.ground(at.x, at.y), at.y))
-	_add_colony(places, REEF_EEL_AT, 6.0)
+	# The colonies, all in the dune sea now (BiomeRegions DUNES; the old ridge off Santa Cruz and the small
+	# colony by the liner moved into it, 2026-11-18): each a band across the current over the dunes'
+	# sand, its eels on clean sand only.
+	for colony: Array in EEL_COLONIES:
+		var ends: Array = colony[0]
+		var places := PackedVector3Array()
+		var tries := 0
+		while places.size() < int(colony[1]) and tries < int(colony[1]) * 20:
+			tries += 1
+			var along: Vector2 = (ends[0] as Vector2).lerp(ends[1], _rng.randf())
+			var at := along + Vector2.from_angle(_rng.randf() * TAU) * _rng.randf_range(0.0, 3.4) * Vector2(1.0, 0.6)
+			if BiomeRegions.at(at.x, at.y) != BiomeRegions.DUNES or FloorTypes.of(at.x, at.y) != FloorTypes.SAND or _kept_clear(at, 3.0):
+				continue
+			places.append(Vector3(at.x, Sea.ground(at.x, at.y), at.y))
+		var middle: Vector2 = (ends[0] as Vector2).lerp(ends[1], 0.5)
+		_add_colony(places, middle, (ends[0] as Vector2).distance_to(ends[1]) * 0.5 + 4.0)
+
+
+# The dune sea's litter (concept_biome_dunes.png): an old anchor half sunk in the sand on a dune's back,
+# its chain trailing off down the slope in a curve; a second, smaller, further west. The docks' Anchor
+# and Chain pieces, scaled up (the concept's anchor stands taller than a diver). Nothing else (the dune
+# sea is open and bare).
+func _build_dune_litter(kit: Node3D) -> void:
+	for n in DUNE_ANCHORS.size():
+		var each: Array = DUNE_ANCHORS[n]
+		# (a site each, hidden beyond SEEN: one box round both was drawn from the far side of the map)
+		var site := _Site.new()
+		var at: Vector2 = each[0]
+		var big: float = each[1]
+		var turn: float = each[2]
+		var floor_y := Sea.ground(at.x, at.y)
+		# (stood up on its crown, leaning, the shank and stock out of the sand: the anchor lies along its
+		# own Z, so it is tipped up about X; half of it under the sand)
+		var basis := Basis(Vector3.UP, turn) * Basis(Vector3.RIGHT, 1.1) * Basis(Vector3.FORWARD, 0.25)
+		var where := Transform3D(basis.scaled(Vector3.ONE * big), Vector3(at.x, floor_y + 0.45 * big, at.y))
+		site.add("Anchor", where)
+		Sea.add_rock(Vector4(at.x, floor_y + 0.4 * big, at.y, 0.35 * big))
+		# The chain: three runs from under the ring, end to end, wandering over the sand.
+		var from := Vector2((where * Vector3(0.0, 0.08, -0.82)).x, (where * Vector3(0.0, 0.08, -0.82)).z)
+		var heading := turn + PI * 0.5
+		for k in 3:
+			var chain_at := from
+			var foot := Sea.ground(chain_at.x, chain_at.y) - 0.06 * big
+			site.add("Chain", Transform3D(Basis(Vector3.UP, heading).scaled(Vector3.ONE * big * 0.8), Vector3(chain_at.x, foot, chain_at.y)))
+			from += Vector2(cos(-heading), sin(-heading)) * 3.6 * big * 0.8 * 0.95
+			heading += _rng.randf_range(-0.5, 0.5)
+		_draw_site(site, kit, "Dunes%d" % n, SEEN)
 
 
 func _add_colony(places: PackedVector3Array, middle: Vector2, radius: float) -> void:
@@ -573,6 +618,7 @@ func _build_docks() -> void:
 	# (and a second, smaller and without seals, south-south-west of the ship: the user, 2026-11-18, "lets add
 	# another rocky outcrop island just south south west of the pirate ship to fill in that empty spot")
 	_build_outcrop(kit, OUTCROP_SOUTH, "OutcropSouth", 2.1, false)
+	_build_dune_litter(kit)
 	_paint_shells()
 	kit.free()
 
@@ -758,7 +804,7 @@ func _boat(site: _Site, piece: String, at: Vector2, turn: float) -> void:
 
 
 # A site drawn: one MultiMesh a piece, hidden beyond DOCKS_SEEN.
-func _draw_site(site: _Site, kit: Node3D, label: String) -> void:
+func _draw_site(site: _Site, kit: Node3D, label: String, seen := DOCKS_SEEN) -> void:
 	var skiff: MeshInstance3D = null
 	if site.pieces.has("Skiff") and ResourceLoader.exists(GEAR):
 		var gear: Node3D = (load(GEAR) as PackedScene).instantiate()
@@ -774,14 +820,22 @@ func _draw_site(site: _Site, kit: Node3D, label: String) -> void:
 		var many := MultiMesh.new()
 		many.transform_format = MultiMesh.TRANSFORM_3D
 		many.mesh = source.mesh
+		# (the outcrops' stacks and shards wear the sea floor kit's rock, tinted dark, as the crags' own
+		# pinnacles round them do: concept_biome_crags.png; their plain docks paint drew pale and flat)
+		var kit_rock := _props != null and (piece == "Pillar" or piece == "Shard")
+		many.use_colors = kit_rock
 		many.instance_count = wheres.size()
 		for i in wheres.size():
 			many.set_instance_transform(i, wheres[i])
+			if kit_rock:
+				many.set_instance_color(i, CRAG_ROCK)
 		var drawn := MultiMeshInstance3D.new()
 		drawn.name = "%s%s" % [label, piece]
 		drawn.multimesh = many
+		if kit_rock:
+			drawn.material_override = SeaFloorProps.material("rock")
 		drawn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		drawn.visibility_range_end = DOCKS_SEEN
+		drawn.visibility_range_end = seen
 		add_child(drawn)
 	if skiff:
 		skiff.free()
@@ -877,6 +931,13 @@ func _grow_on_structures() -> void:
 		growth.grow_on(_outcrop_spheres, COLD_UP_SHALLOW, 30, 0.5, 1.0, Vector2(0.9, 1.4), Vector2(0.3, 12.0), Callable(), 0.25)
 		growth.grow_on(_outcrop_spheres, COLD_SIDE, 70, -0.3, 0.6, Vector2(0.9, 1.5), Vector2(6.0, 999.0), Callable(), 0.25)
 		growth.grow_on(_outcrop_spheres, COLD_UNDER, 20, -1.0, -0.3, Vector2(0.8, 1.2), Vector2(6.0, 999.0), Callable(), 0.25)
+	# The crags' pinnacles, stacks, arches and shards (concept_biome_crags.png): white plumose anemones
+	# on their sides and lit shoulders, pink coralline (strawberry anemone sheets) over their faces, sea
+	# stars and urchins on top.
+	for spheres: Array in _biomes.grow_spheres:
+		growth.grow_on(spheres, ["plumose_anemones"], 4, -0.1, 0.9, Vector2(1.4, 2.4), Vector2(3.0, 999.0), Callable(), 0.15)
+		growth.grow_on(spheres, ["strawberry_anemones"], 3, -0.5, 0.8, Vector2(1.2, 2.0), Vector2(3.0, 999.0), Callable(), 0.1)
+		growth.grow_on(spheres, ["ochre_star", "bat_star", "urchin_purple"], 1, 0.4, 1.0, Vector2(1.0, 1.5), Vector2(3.0, 999.0), Callable(), 0.1)
 	var grown := 0
 	for piece: String in growth.pieces:
 		grown += (growth.pieces[piece][0] as Array).size()

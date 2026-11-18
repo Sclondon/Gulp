@@ -16,9 +16,9 @@ const CLIFF_TALL := SeaFloorProps.CLIFF_TALL
 ## The sea's own pieces (each models/kit/<name>.glb with <name> and <name>_lo, and <name>.json).
 const OWN: PackedStringArray = ["reef_slab_a", "reef_slab_b", "reef_slab_c", "understory_kelp", "understory_kelp_b", "kelp_canopy",
 		"bull_kelp", "surfgrass", "pile_mussels", "pile_strawberry", "pile_plumose", "sea_pen", "sea_pen_deep", "sea_whip",
-		"sand_dollars", "whale_fall", "kelp_raft", "fish_shed"]
+		"sand_dollars", "whale_fall", "kelp_raft", "fish_shed", "plumose_anemones"]
 ## Which of them sway as kelp does (metres a free tip moves each way).
-const KELP_SWAY := {"bull_kelp": 0.35, "kelp_canopy": 0.25, "understory_kelp": 0.12, "understory_kelp_b": 0.12, "surfgrass": 0.14, "kelp_raft": 0.2}
+const KELP_SWAY := {"plumose_anemones": 0.06, "bull_kelp": 0.35, "kelp_canopy": 0.25, "understory_kelp": 0.12, "understory_kelp_b": 0.12, "surfgrass": 0.14, "kelp_raft": 0.2}
 
 static var _info := {}
 static var _meshes := {}

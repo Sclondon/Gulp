@@ -334,7 +334,7 @@ func _go_near() -> void:
 	var what := Vector3.ZERO
 	var big := 1.0
 	match _near:
-		"kelp", "grass", "reef", "sand", "river", "open", "trench", "docks", "ruins", "pirate", "beach":
+		"kelp", "grass", "reef", "sand", "river", "open", "trench", "docks", "ruins", "pirate", "beach", "crags":
 			var zone: Vector2 = Sea.ZONES[_near].at
 			what = Vector3(zone.x, Sea.ground(zone.x, zone.y) + 3.0, zone.y)
 			big = 4.0

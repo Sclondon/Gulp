@@ -9,94 +9,86 @@ extends RefCounted
 ##
 ## The numbers are Claude's (the level design's) picks; change freely. Budgets are in BIOMES.md.
 
-## The reefs: where the floor is rock for a biome (read by FloorTypes). Inside `r` of `at`, within
-## `depth`, where the place's noise (`freq`, `seed`, its axes turned by `turn` and the first one
-## squeezed by `stretch`, so reefs run as fingers) is above `above`, rising towards `rise` at the
-## rim (so the reef breaks up towards its edge); never in its `channels` (polylines, half width).
+## The reefs left as circles: where the floor is rock round Carmel's cove (read by FloorTypes; the
+## kelp forests' and the crags' rock is painted by their regions now: FloorTypes._type_at). Inside
+## `r` of `at`, within `depth`, where the place's noise (`freq`, `seed`, its axes turned by `turn` and
+## the first one squeezed by `stretch`, so reefs run as fingers) is above `above`, rising towards
+## `rise` at the rim; never in its `channels` (polylines, half width).
+## (Retired 2026-11-18, for the user's drawn biomes: the circle reefs kelp_south, kelp_north (Capitola,
+## outside the user's green), outcrop and outcrop_south (inside the crags now).)
 const REEFS := [
-	{"name": "kelp_south", "at": Vector2(42.4, 48.6), "r": 18.0, "depth": [4.5, 17.5], "freq": 0.07, "seed": 21, "above": -0.3, "rise": 0.35,
-	 "turn": 0.05, "stretch": 0.35,
-	 "channels": [[[Vector2(60.0, 56.0), Vector2(46.0, 58.0), Vector2(36.0, 60.0), Vector2(24.0, 62.0)], 2.6],
-			[[Vector2(56.0, 48.0), Vector2(42.0, 48.0), Vector2(28.0, 52.0)], 2.2]],
-	 "barrens": [[Vector2(46.0, 54.0), 4.0]]},
-	{"name": "kelp_north", "at": Vector2(35.0, -130.0), "r": 14.0, "depth": [3.0, 12.5], "freq": 0.09, "seed": 22, "above": -0.15, "rise": 0.4,
-	 "turn": -0.5, "stretch": 0.3, "channels": [], "barrens": []},
-	{"name": "outcrop", "at": Vector2(-93.0, -52.0), "r": 20.0, "depth": [0.0, 26.0], "freq": 0.12, "seed": 23, "above": -0.5, "rise": 0.4,
-	 "turn": 0.0, "stretch": 1.0, "channels": [], "barrens": []},
-	{"name": "outcrop_south", "at": Vector2(-74.0, -14.0), "r": 16.0, "depth": [0.0, 26.0], "freq": 0.12, "seed": 25, "above": -0.5, "rise": 0.4,
-	 "turn": 0.0, "stretch": 1.0, "channels": [], "barrens": []},
 	{"name": "carmel", "at": Vector2(21.2, 130.7), "r": 13.0, "depth": [2.5, 15.0], "freq": 0.1, "seed": 24, "above": -0.25, "rise": 0.4,
 	 "turn": 0.0, "stretch": 0.6, "channels": [], "barrens": []},
 ]
 
 ## The layers of each place. Keys (all optional but `what`):
 ## what: "prop" (the sea floor kit's `pieces`), "kelp", "grass", "seaweed" (`kind`: SeaweedBed.Kind)
-## area: [middle, radius]; on: FloorTypes; depth: [from, to] m; slope_max; density: [core, edge] per
-## 100 m², falling over the outer `edge` m of the area; noise: [freq, seed, above]; spacing: m apart
-## on the jittered grid; clump: [least, most, within m]; size: [from, to] (scale for props, metres for
-## plants); reach / edge_reach (kelp: its length as a share of the water's depth); lift (m);
-## near_rock: only within this of a floor piece already placed; keep: [[polyline, half]...] clear.
+## region: a BiomeRegions name (the place is that biome, faded in over its edge); or area: [middle,
+## radius] and edge (m); or neither (the whole map). avoid: [[middle, radius]...] kept clear.
+## on: FloorTypes; depth: [from, to] m; slope_max / slope_min; density: [core, edge] per 100 m²;
+## noise: [freq, seed, above]; spacing: m apart on the jittered grid; clump: [least, most, within m];
+## size: [from, to] (scale for props, metres for plants); reach / edge_reach (kelp: its length as a
+## share of the water's depth); lift (m); lean (props: tipped up to this many radians, as a leaning
+## pinnacle); grow (props: growth is put on them after, `grow_spheres`); near_rock: only within this
+## of a floor piece already placed; keep: [[polyline, half]...] clear.
+##
+## The eight biomes are the user's (BiomeRegions); what is in each, how thick and every number here
+## are Claude's picks from the concept art (tools/art_src/concept_biome_*.png) and BIOMES.md's
+## research: change freely. Budgets: BIOMES.md, "The eight biomes".
 const TABLES := {
-	"kelp_south": {"area": [Vector2(42.4, 48.6), 18.0], "edge": 8.0, "layers": [
-		{"what": "prop", "pieces": ["rock_boulder", "rock_split", "rock_ledge", "rock_stack", "rock_boulder_small"], "on": [1, 4], "depth": [5.0, 17.0],
-		 "density": [2.6, 0.8], "spacing": 3.2, "clump": [1, 2, 3.0], "size": [0.8, 1.5], "lift": -0.25, "tint": Color(0.6, 0.55, 0.5)},
-		{"what": "prop", "pieces": ["reef_slab_a", "reef_slab_b", "reef_slab_c"], "on": [1, 4], "depth": [4.5, 17.0], "slope_max": 0.6, "density": [4.4, 2.5],
-		 "spacing": 3.6, "size": [0.8, 1.3], "lift": -0.35, "tint": Color(0.62, 0.57, 0.52)},
-		{"what": "prop", "pieces": ["bull_kelp"], "on": [1], "depth": [5.0, 13.0], "slope_max": 0.7, "density": [0.0, 4.0], "spacing": 2.5, "to_surface": 8.0},
-		{"what": "kelp", "on": [1], "depth": [5.5, 17.0], "slope_max": 0.8, "density": [4.2, 1.0], "noise": [0.09, 3, -0.45],
-		 "spacing": 3.0, "clump": [4, 7, 1.0, 0.25], "reach": [1.2, 1.6], "edge_reach": [0.55, 0.95], "canopy": [3, 7.0]},
-		{"what": "prop", "pieces": ["understory_kelp", "understory_kelp", "understory_kelp_b"], "on": [1], "depth": [4.0, 16.0], "density": [22.0, 6.0],
-		 "noise": [0.15, 4, -0.2], "spacing": 0.9, "clump": [2, 6, 1.8], "size": [0.8, 1.4], "lift": -0.03},
-		{"what": "seaweed", "kind": 2, "on": [1, 4], "depth": [3.0, 17.0], "density": [30.0, 10.0], "noise": [0.2, 5, -0.25],
-		 "spacing": 0.7, "clump": [2, 6, 1.0], "size": [0.16, 0.3]},
-		{"what": "seaweed", "kind": 3, "on": [1], "depth": [2.0, 8.0], "density": [6.0, 2.0], "spacing": 1.6, "size": [1.8, 3.0]},
-		{"what": "prop", "pieces": ["urchin_purple"], "on": [4], "depth": [4.0, 17.0], "density": [45.0, 45.0], "spacing": 0.7,
+	# Kelp forest (concept_biome_kelp.png): groves of tall giant kelp up to a canopy on rock ridges, lanes
+	# of sand between (the grove noise leaves lanes; FloorTypes leaves sand channels between ridges),
+	# understory, red weed, urchins on pink barrens, stars, fans and sponges by the rocks.
+	"kelp": {"region": "kelp", "layers": [
+		{"what": "prop", "pieces": ["rock_boulder", "rock_split", "rock_ledge", "rock_stack", "rock_boulder_small"], "on": [1, 4], "depth": [3.0, 28.0],
+		 "density": [1.4, 0.5], "spacing": 3.8, "clump": [1, 2, 3.0], "size": [0.8, 1.5], "lift": -0.25, "tint": Color(0.6, 0.55, 0.5)},
+		{"what": "prop", "pieces": ["reef_slab_a", "reef_slab_b", "reef_slab_c"], "on": [1, 4], "depth": [3.0, 28.0], "slope_max": 0.6, "density": [2.6, 1.2],
+		 "spacing": 4.2, "size": [0.8, 1.3], "lift": -0.35, "tint": Color(0.62, 0.57, 0.52)},
+		{"what": "kelp", "on": [1], "depth": [5.0, 28.0], "slope_max": 0.8, "density": [3.2, 0.6], "noise": [0.04, 3, -0.12],
+		 "spacing": 3.4, "clump": [4, 7, 1.2, 0.3], "reach": [1.05, 1.3], "edge_reach": [0.55, 0.9], "canopy": [3, 7.0]},
+		{"what": "prop", "pieces": ["bull_kelp"], "on": [1], "depth": [4.0, 12.0], "slope_max": 0.7, "density": [1.0, 3.0], "spacing": 2.5, "to_surface": 8.0},
+		{"what": "prop", "pieces": ["understory_kelp", "understory_kelp", "understory_kelp_b"], "on": [1], "depth": [3.0, 28.0], "density": [14.0, 4.0],
+		 "noise": [0.15, 4, -0.2], "spacing": 1.0, "clump": [2, 5, 1.6], "size": [0.8, 1.4], "lift": -0.03},
+		{"what": "seaweed", "kind": 2, "on": [1, 4], "depth": [3.0, 28.0], "density": [16.0, 6.0], "noise": [0.2, 5, -0.25],
+		 "spacing": 0.8, "clump": [2, 6, 1.0], "size": [0.16, 0.3]},
+		{"what": "seaweed", "kind": 3, "on": [1], "depth": [2.0, 9.0], "density": [6.0, 2.0], "spacing": 1.6, "size": [1.8, 3.0]},
+		{"what": "prop", "pieces": ["urchin_purple"], "on": [4], "depth": [4.0, 28.0], "density": [30.0, 20.0], "spacing": 0.8,
 		 "clump": [1, 3, 0.6], "size": [0.9, 1.3], "lift": -0.02},
-		{"what": "prop", "pieces": ["urchin_purple", "urchin_red"], "on": [1], "depth": [5.0, 17.0], "density": [4.0, 1.0], "spacing": 1.2,
+		{"what": "prop", "pieces": ["urchin_purple", "urchin_red"], "on": [1], "depth": [5.0, 28.0], "density": [3.0, 1.0], "spacing": 1.3,
 		 "clump": [2, 5, 1.0], "near_rock": 2.0, "size": [0.9, 1.3], "lift": -0.02},
 		{"what": "prop", "pieces": ["sea_fan_red", "sea_fan_gold", "hydrocoral", "vase_sponge", "puffball_sponges", "strawberry_anemones"], "on": [1],
-		 "depth": [8.0, 17.0], "density": [3.0, 0.8], "spacing": 1.5, "near_rock": 2.5, "size": [0.9, 1.6], "lift": -0.02},
-		{"what": "prop", "pieces": ["ochre_star", "bat_star", "green_anemone"], "on": [1, 4], "depth": [4.0, 17.0], "density": [3.0, 1.0],
-		 "spacing": 1.4, "size": [0.9, 1.5], "lift": -0.02},
+		 "depth": [8.0, 28.0], "density": [2.2, 0.6], "spacing": 1.6, "near_rock": 2.5, "size": [0.9, 1.6], "lift": -0.02},
+		{"what": "prop", "pieces": ["ochre_star", "bat_star", "green_anemone"], "on": [1, 4], "depth": [4.0, 28.0], "density": [2.4, 0.8],
+		 "spacing": 1.5, "size": [0.9, 1.5], "lift": -0.02},
 	]},
-	"kelp_north": {"area": [Vector2(35.0, -130.0), 14.0], "edge": 6.0, "layers": [
-		{"what": "prop", "pieces": ["rock_ledge", "rock_slab", "rock_split"], "on": [1], "depth": [3.0, 12.5], "density": [2.0, 0.8],
-		 "spacing": 3.5, "size": [0.8, 1.3], "lift": -0.35, "tint": Color(0.68, 0.64, 0.58)},
-		{"what": "prop", "pieces": ["reef_slab_a", "reef_slab_b", "reef_slab_c"], "on": [1], "depth": [3.0, 12.5], "slope_max": 0.6, "density": [4.0, 2.0],
-		 "spacing": 3.6, "size": [0.7, 1.1], "lift": -0.4, "tint": Color(0.7, 0.66, 0.6)},
-		{"what": "kelp", "on": [1], "depth": [8.0, 12.5], "slope_max": 0.8, "density": [1.2, 0.5], "noise": [0.1, 6, -0.3],
-		 "spacing": 3.6, "clump": [2, 3, 0.7, 0.25], "reach": [1.0, 1.3], "edge_reach": [0.7, 0.95]},
-		# (the north forest is the bull kelp one: BIOMES.md 5.3)
-		{"what": "prop", "pieces": ["bull_kelp"], "on": [1], "depth": [3.0, 12.5], "slope_max": 0.8, "density": [12.0, 4.0], "spacing": 1.8,
-		 "clump": [1, 2, 0.9, 0.4], "to_surface": 8.0},
-		{"what": "prop", "pieces": ["understory_kelp", "understory_kelp_b", "understory_kelp_b"], "on": [1], "depth": [3.0, 12.5], "density": [20.0, 6.0],
-		 "spacing": 1.0, "clump": [2, 5, 1.6], "size": [0.7, 1.2], "lift": -0.03},
-		{"what": "seaweed", "kind": 2, "on": [1], "depth": [2.0, 12.5], "density": [22.0, 8.0], "spacing": 0.8, "clump": [2, 5, 1.0], "size": [0.16, 0.3]},
-		{"what": "seaweed", "kind": 3, "on": [1], "depth": [2.0, 7.0], "density": [6.0, 2.0], "spacing": 1.6, "size": [1.6, 2.6]},
-		{"what": "prop", "pieces": ["ochre_star", "bat_star", "urchin_purple", "green_anemone", "puffball_sponges"], "on": [1], "depth": [3.0, 12.5],
-		 "density": [3.0, 1.0], "spacing": 1.4, "size": [0.9, 1.4], "lift": -0.02},
-	]},
-	"outcrop": {"area": [Vector2(-93.0, -52.0), 20.0], "edge": 6.0, "layers": [
-		{"what": "prop", "pieces": ["rock_boulder", "rock_boulder_small", "rock_split"], "on": [1], "depth": [16.0, 26.0], "density": [5.0, 0.5],
-		 "spacing": 2.6, "clump": [1, 3, 2.5], "size": [0.9, 1.6], "lift": -0.25},
-		{"what": "prop", "pieces": ["reef_slab_a", "reef_slab_b", "reef_slab_c"], "on": [1], "depth": [14.0, 26.0], "slope_max": 0.6, "density": [3.0, 1.0],
-		 "spacing": 3.8, "size": [0.8, 1.2], "lift": -0.35, "tint": Color(0.66, 0.62, 0.58)},
-		# (the outcrop's kelp is a ring of bull kelp, so the ship lies in open sand under light: BIOMES.md 5.6)
-		{"what": "prop", "pieces": ["bull_kelp"], "on": [1], "depth": [3.0, 14.0], "density": [8.0, 2.0], "spacing": 2.0, "to_surface": 8.0},
-		{"what": "prop", "pieces": ["strawberry_anemones", "hydrocoral", "sea_fan_red", "vase_sponge", "green_anemone", "ochre_star"], "on": [1],
-		 "depth": [10.0, 26.0], "density": [4.0, 1.0], "spacing": 1.3, "near_rock": 2.5, "size": [0.9, 1.6], "lift": -0.02},
-		{"what": "seaweed", "kind": 2, "on": [1], "depth": [3.0, 24.0], "density": [18.0, 6.0], "spacing": 0.9, "clump": [2, 5, 1.0], "size": [0.16, 0.28]},
-	]},
-	# (the second islet, south-south-west of the pirate ship: the same growth as the first)
-	"outcrop_south": {"area": [Vector2(-74.0, -14.0), 16.0], "edge": 6.0, "layers": [
-		{"what": "prop", "pieces": ["rock_boulder", "rock_boulder_small", "rock_split"], "on": [1], "depth": [16.0, 26.0], "density": [5.0, 0.5],
-		 "spacing": 2.6, "clump": [1, 3, 2.5], "size": [0.9, 1.6], "lift": -0.25},
-		{"what": "prop", "pieces": ["reef_slab_a", "reef_slab_b", "reef_slab_c"], "on": [1], "depth": [14.0, 26.0], "slope_max": 0.6, "density": [3.0, 1.0],
-		 "spacing": 3.8, "size": [0.8, 1.2], "lift": -0.35, "tint": Color(0.66, 0.62, 0.58)},
-		{"what": "prop", "pieces": ["bull_kelp"], "on": [1], "depth": [3.0, 14.0], "density": [8.0, 2.0], "spacing": 2.0, "to_surface": 8.0},
-		{"what": "prop", "pieces": ["strawberry_anemones", "hydrocoral", "sea_fan_red", "vase_sponge", "green_anemone", "ochre_star"], "on": [1],
-		 "depth": [10.0, 26.0], "density": [4.0, 1.0], "spacing": 1.3, "near_rock": 2.5, "size": [0.9, 1.6], "lift": -0.02},
-		{"what": "seaweed", "kind": 2, "on": [1], "depth": [3.0, 24.0], "density": [18.0, 6.0], "spacing": 0.9, "clump": [2, 5, 1.0], "size": [0.16, 0.28]},
+	# Rocky crags (concept_biome_crags.png): leaning pinnacles and sea stacks, shards, arches and boulder
+	# piles with many gaps to dart through, round the pirate ship and its islets (clear of the ship's lane:
+	# Scenery._kept_clear, and of the islets' own columns). Pink coralline crust on the floor and on the
+	# rocks (strawberry anemone sheets, tinted), white plumose anemones, sea stars, urchins.
+	"crags": {"region": "crags", "avoid": [[Vector2(-93.0, -52.0), 8.0], [Vector2(-74.0, -14.0), 7.0]],
+		"keep": [[[Vector2(-86.0, -42.0), Vector2(-44.0, -42.0)], 10.0]], "layers": [
+		{"what": "prop", "pieces": ["rock_pinnacle"], "on": [1, 4, 0], "depth": [10.0, 30.0], "slope_max": 0.6, "density": [1.3, 0.3], "spacing": 7.0,
+		 "size": [1.1, 2.0], "lift": -0.5, "lean": 0.4, "grow": true, "tint": Color(0.56, 0.54, 0.52)},
+		# (the shards: pinnacles leaning hard over, as the concept's blades of rock)
+		{"what": "prop", "pieces": ["rock_pinnacle"], "on": [1, 4, 0], "depth": [10.0, 30.0], "slope_max": 0.6, "density": [0.6, 0.15], "spacing": 8.0,
+		 "size": [0.9, 1.5], "lift": -0.6, "lean": 0.75, "grow": true, "tint": Color(0.52, 0.5, 0.5)},
+		{"what": "prop", "pieces": ["rock_stack", "rock_ledge", "rock_stack"], "on": [1, 4], "depth": [10.0, 30.0], "slope_max": 0.6, "density": [1.2, 0.4],
+		 "spacing": 6.0, "size": [1.1, 2.0], "lift": -0.45, "lean": 0.28, "grow": true, "tint": Color(0.58, 0.55, 0.52)},
+		{"what": "prop", "pieces": ["rock_arch"], "on": [1, 4, 0], "depth": [12.0, 30.0], "slope_max": 0.4, "density": [0.16, 0.0], "spacing": 14.0,
+		 "size": [1.0, 1.4], "lift": -0.3, "grow": true, "tint": Color(0.58, 0.55, 0.52)},
+		{"what": "prop", "pieces": ["rock_split", "rock_boulder", "rock_boulder_small", "rock_boulder"], "on": [1, 4, 0], "depth": [8.0, 30.0], "density": [1.8, 0.6],
+		 "spacing": 3.6, "clump": [2, 5, 2.4], "size": [0.8, 1.6], "lift": -0.25, "tint": Color(0.6, 0.57, 0.54)},
+		{"what": "prop", "pieces": ["reef_slab_a", "reef_slab_b", "reef_slab_c"], "on": [1, 4], "depth": [8.0, 30.0], "slope_max": 0.6, "density": [1.6, 0.8],
+		 "spacing": 4.4, "size": [0.8, 1.2], "lift": -0.35, "tint": Color(0.64, 0.58, 0.56)},
+		{"what": "prop", "pieces": ["plumose_anemones"], "on": [1, 4], "depth": [6.0, 30.0], "density": [4.0, 1.0], "spacing": 1.3, "clump": [1, 3, 0.9],
+		 "near_rock": 2.2, "size": [1.5, 2.6], "lift": -0.03},
+		{"what": "prop", "pieces": ["strawberry_anemones"], "on": [1, 4], "depth": [6.0, 30.0], "density": [4.0, 1.5], "spacing": 1.1, "clump": [1, 3, 0.8],
+		 "near_rock": 2.0, "size": [1.0, 1.8], "lift": -0.02},
+		{"what": "prop", "pieces": ["ochre_star", "bat_star", "urchin_purple", "urchin_red", "green_anemone"], "on": [1, 4], "depth": [6.0, 30.0],
+		 "density": [4.0, 1.5], "spacing": 1.2, "size": [0.9, 1.5], "lift": -0.02},
+		{"what": "prop", "pieces": ["hydrocoral", "sea_fan_red", "vase_sponge"], "on": [1, 4], "depth": [10.0, 30.0], "density": [1.6, 0.5], "spacing": 1.6,
+		 "near_rock": 2.5, "size": [1.0, 1.7], "lift": -0.02},
+		{"what": "seaweed", "kind": 2, "on": [1, 4], "depth": [3.0, 30.0], "density": [8.0, 3.0], "spacing": 1.0, "clump": [2, 5, 1.0], "size": [0.16, 0.28]},
 	]},
 	"carmel": {"area": [Vector2(21.2, 130.7), 13.0], "edge": 4.0, "layers": [
 		{"what": "prop", "pieces": ["rock_boulder", "rock_split", "rock_stack"], "on": [1], "depth": [2.5, 15.0], "density": [3.0, 1.0],
@@ -108,53 +100,91 @@ const TABLES := {
 		{"what": "prop", "pieces": ["understory_kelp", "understory_kelp_b"], "on": [1], "depth": [3.0, 14.0], "density": [25.0, 8.0], "spacing": 1.0, "clump": [2, 5, 1.6], "size": [0.7, 1.2], "lift": -0.03},
 		{"what": "seaweed", "kind": 2, "on": [1], "depth": [2.0, 15.0], "density": [40.0, 10.0], "spacing": 0.8, "clump": [2, 5, 1.0], "size": [0.16, 0.3]},
 	]},
-	# The eelgrass meadow: on sand and mud 1.5 to 8 m (the zone's circle reaches the canyon's lip:
-	# the depth band stops it), thick at its core, bare blowouts where the noise is low, a trail.
-	"grass": {"area": [Vector2(82.0, 52.0), 12.0], "edge": 4.0, "keep": [[[Vector2(76.0, 50.0), Vector2(85.0, 46.0), Vector2(94.0, 50.0)], 1.0]], "layers": [
-		{"what": "grass", "on": [0, 2], "depth": [1.5, 8.0], "slope_max": 0.35, "density": [380.0, 70.0], "noise": [0.12, 7, -0.5],
-		 "spacing": 0.5, "clump": [1, 3, 0.6], "size": [0.85, 1.2], "edge_size": [0.4, 0.7]},
-		{"what": "seaweed", "kind": 0, "on": [0, 2], "depth": [1.0, 8.0], "density": [8.0, 3.0], "spacing": 1.0, "clump": [1, 3, 0.8], "size": [0.25, 0.5]},
+	# Sea grass (concept_biome_grass.png): dense eelgrass meadows leaning in the current, bare sandy
+	# blowouts where the noise is low, and sandy paths winding through (`keep`): cozy cover for small fish.
+	"grass": {"region": "grass", "keep": [
+			[[Vector2(-100.0, -30.0), Vector2(-86.0, -24.0), Vector2(-78.0, -14.0), Vector2(-64.0, -12.0), Vector2(-52.0, -6.0), Vector2(-44.0, -14.0)], 1.4],
+			[[Vector2(-92.0, 14.0), Vector2(-90.0, 0.0), Vector2(-96.0, -14.0), Vector2(-94.0, -30.0)], 1.2],
+			[[Vector2(-64.0, 18.0), Vector2(-60.0, 8.0), Vector2(-62.0, -4.0), Vector2(-58.0, -14.0)], 1.2],
+			[[Vector2(-28.0, 60.0), Vector2(-34.0, 74.0), Vector2(-46.0, 84.0), Vector2(-62.0, 94.0)], 1.4],
+			[[Vector2(-20.0, 98.0), Vector2(-26.0, 88.0), Vector2(-22.0, 76.0)], 1.2]], "layers": [
+		{"what": "grass", "on": [0, 2], "depth": [1.0, 30.0], "slope_max": 0.35, "density": [520.0, 110.0], "noise": [0.06, 7, -0.38],
+		 "spacing": 0.55, "clump": [2, 4, 0.6], "size": [0.95, 1.2], "edge_size": [0.45, 0.8]},
+		{"what": "seaweed", "kind": 0, "on": [0, 2], "depth": [1.0, 30.0], "density": [2.0, 1.0], "spacing": 1.6, "clump": [1, 3, 0.8], "size": [0.25, 0.5]},
 	]},
-	# The slough: eelgrass along the channel's shallow edges, sea lettuce on the mud.
-	"slough": {"area": [Vector2(110.0, -38.0), 16.0], "edge": 3.0, "layers": [
-		{"what": "grass", "on": [2], "depth": [1.0, 2.8], "slope_max": 0.6, "density": [250.0, 100.0], "spacing": 0.5, "clump": [1, 3, 0.6], "size": [0.45, 0.8]},
-		{"what": "seaweed", "kind": 0, "on": [2], "depth": [0.6, 4.5], "density": [10.0, 4.0], "spacing": 1.0, "clump": [1, 3, 0.8], "size": [0.25, 0.45]},
+	# The dune sea (concept_biome_dunes.png): open, exposed, rolling pale sand (the dunes are the floor's
+	# own shape: Bay.dune_height), sparse life: sea pen meadows in the troughs' patches, sand dollars,
+	# scallops, a few lone boulders. The garden eels and the anchor are Scenery's.
+	"dunes": {"region": "dunes", "layers": [
+		{"what": "prop", "pieces": ["sea_pen"], "on": [0], "depth": [10.0, 30.0], "slope_max": 0.25, "density": [10.0, 2.0], "noise": [0.05, 31, 0.05],
+		 "spacing": 1.5, "clump": [3, 9, 1.8], "size": [0.9, 1.4], "lift": -0.04},
+		{"what": "prop", "pieces": ["sand_dollars"], "on": [0], "depth": [8.0, 30.0], "slope_max": 0.2, "density": [1.6, 0.4], "noise": [0.06, 47, 0.15],
+		 "spacing": 3.0, "clump": [1, 2, 1.6, 1.0], "size": [0.8, 1.2], "lift": -0.01},
+		{"what": "prop", "pieces": ["scallop"], "on": [0], "depth": [10.0, 30.0], "density": [1.5, 0.4], "spacing": 2.2, "clump": [1, 3, 1.0], "size": [0.9, 1.3], "lift": -0.02},
+		{"what": "prop", "pieces": ["rock_boulder", "rock_boulder_small"], "on": [0], "depth": [10.0, 30.0], "slope_max": 0.3, "density": [0.2, 0.05], "spacing": 6.0,
+		 "size": [0.8, 1.4], "lift": -0.25, "tint": Color(0.75, 0.72, 0.66)},
+	]},
+	# The river (Elkhorn Slough, concept_biome_river.png: the mangroves are Scenery's) and its estuary round
+	# the mouth (the user: "a seaweedy / grassy area around the mouth instead of regular beach"): eelgrass
+	# meadows on the mud of the banks and the mouth's flats, sea lettuce and red weed among it, thinning
+	# down the channel's middle; it fades into the beach along the shore and the canyon head offshore.
+	"river": {"region": "river", "layers": [
+		{"what": "grass", "on": [0, 2], "depth": [0.4, 7.0], "slope_max": 0.6, "density": [320.0, 90.0], "noise": [0.09, 77, -0.35],
+		 "spacing": 0.55, "clump": [2, 4, 0.6], "size": [0.6, 1.1], "edge_size": [0.4, 0.7]},
+		{"what": "seaweed", "kind": 0, "on": [0, 2], "depth": [0.4, 9.0], "density": [14.0, 5.0], "spacing": 1.0, "clump": [1, 3, 0.8], "size": [0.25, 0.5]},
+		{"what": "seaweed", "kind": 2, "on": [0, 2], "depth": [1.0, 10.0], "density": [6.0, 2.0], "spacing": 1.2, "clump": [2, 4, 0.8], "size": [0.16, 0.3]},
 	]},
 	# The harbours' floors and the breakwater's foot.
 	"docks_monterey": {"area": [Vector2(66.0, 68.0), 18.0], "edge": 3.0, "layers": [
 		{"what": "seaweed", "kind": 0, "on": [2, 0], "depth": [1.0, 7.0], "density": [5.0, 2.0], "spacing": 1.2, "clump": [1, 3, 0.8], "size": [0.25, 0.45]},
 		{"what": "seaweed", "kind": 1, "on": [1], "depth": [0.0, 3.0], "density": [40.0, 15.0], "spacing": 0.6, "clump": [2, 5, 0.8], "size": [0.25, 0.4]},
 	]},
-	# The rocky points of the beach strip: rockweed, surfgrass in the surge, feather boa, anemones, stars.
-	"points": {"area": [], "edge": 2.0, "layers": [
+	# The beach shallows: on the rocky points rockweed, surfgrass in the surge, feather boa, anemones and
+	# stars; on the sand a sand dollar band where it meets the shelf (BIOMES.md 5.1).
+	"beach": {"region": "beach", "layers": [
+		# (concept_biome_beach.png: tide-pool rocks along the sandy shores too, in patches, each with its
+		# surfgrass, rockweed, anemones and stars round it)
+		{"what": "prop", "pieces": ["rock_boulder", "rock_split", "rock_boulder_small", "rock_slab"], "on": [0], "depth": [0.6, 4.5], "density": [1.0, 0.5],
+		 "noise": [0.05, 44, 0.2], "spacing": 4.0, "clump": [2, 5, 2.5], "size": [0.7, 1.3], "lift": -0.25, "tint": Color(0.72, 0.68, 0.6)},
+		{"what": "prop", "pieces": ["surfgrass"], "on": [0], "depth": [0.4, 4.5], "density": [40.0, 20.0], "spacing": 0.8, "clump": [3, 6, 0.8],
+		 "near_rock": 1.6, "size": [0.9, 1.4], "lift": -0.02},
+		{"what": "seaweed", "kind": 1, "on": [0], "depth": [0.3, 4.5], "density": [25.0, 10.0], "spacing": 0.7, "clump": [2, 4, 0.8], "near_rock": 1.0,
+		 "size": [0.25, 0.4]},
+		{"what": "prop", "pieces": ["green_anemone", "ochre_star", "bat_star"], "on": [0], "depth": [0.3, 4.5], "density": [6.0, 3.0], "spacing": 1.0,
+		 "clump": [1, 2, 0.6], "near_rock": 1.2, "size": [0.9, 1.4], "lift": -0.02},
 		{"what": "prop", "pieces": ["surfgrass"], "on": [1], "depth": [0.5, 4.0], "slope_max": 0.8, "density": [40.0, 15.0], "noise": [0.12, 43, -0.3],
 		 "spacing": 1.0, "clump": [3, 7, 0.9], "size": [0.8, 1.3], "lift": -0.02},
 		{"what": "seaweed", "kind": 1, "on": [1], "depth": [0.3, 2.0], "density": [25.0, 10.0], "spacing": 0.6, "clump": [2, 5, 0.8], "size": [0.25, 0.4]},
 		{"what": "seaweed", "kind": 3, "on": [1], "depth": [1.5, 5.5], "density": [5.0, 2.0], "spacing": 1.6, "size": [1.5, 2.5]},
 		{"what": "prop", "pieces": ["green_anemone", "ochre_star", "mussel_clump", "bat_star"], "on": [1], "depth": [0.3, 5.5], "density": [5.0, 2.0],
 		 "spacing": 1.0, "clump": [1, 3, 0.8], "size": [0.9, 1.4], "lift": -0.02},
-	]},
-	# The beach strip's sand dollar band, where it meets the shelf (BIOMES.md 5.1): beds on edge.
-	"beach": {"area": [], "edge": 2.0, "layers": [
-		{"what": "prop", "pieces": ["sand_dollars"], "on": [0, 5], "depth": [3.5, 5.0], "slope_max": 0.25, "density": [20.0, 20.0], "noise": [0.06, 47, -0.5],
+		{"what": "prop", "pieces": ["sand_dollars"], "on": [0, 5], "depth": [2.5, 6.0], "slope_max": 0.5, "density": [20.0, 20.0], "noise": [0.06, 47, -0.5],
 		 "spacing": 2.0, "clump": [1, 3, 1.6, 1.0], "size": [0.8, 1.3], "lift": -0.01},
 	]},
-	# The sand flats off Santa Cruz (BIOMES.md 5.4): the sea pen meadow on the deeper, finer half.
-	"sand_flats": {"area": [Vector2(-10.0, -105.0), 26.0], "edge": 6.0, "keep": [[[Vector2(-25.0, -100.0), Vector2(5.0, -110.0)], 5.0]], "layers": [
-		{"what": "prop", "pieces": ["sea_pen"], "on": [0, 2], "depth": [14.5, 22.0], "slope_max": 0.3, "density": [25.0, 3.0], "noise": [0.07, 31, -0.15],
-		 "spacing": 1.3, "clump": [3, 8, 1.5], "size": [0.8, 1.3], "lift": -0.04},
-	]},
-	# The canyon's floor and the deep basin (BIOMES.md 5.5): tall white sea pens and sea whips on the mud.
-	"canyon_floor": {"area": [], "edge": 2.0, "layers": [
-		{"what": "prop", "pieces": ["sea_pen_deep", "sea_pen_deep", "sea_whip"], "on": [2], "depth": [60.0, 100.0], "slope_max": 0.3, "density": [6.0, 6.0],
-		 "noise": [0.05, 53, -0.1], "spacing": 2.5, "clump": [4, 10, 2.0], "size": [0.8, 1.3], "lift": -0.05},
-	]},
-	# The canyons' rock bands and the shelf's edge: what grows on deep rock.
-	"walls": {"area": [], "edge": 2.0, "layers": [
+	# The trench (the drawn trench and its terraced walls, deeper than the shelf; not Atlantis's basin):
+	# rock pieces on the steep risers, deep growth on them, tall white sea pens and sea whips on the
+	# mud of the treads and the floor.
+	"trench": {"region": "trench", "layers": [
 		{"what": "prop", "pieces": ["rock_ledge", "rock_slab", "rock_split", "rock_stack"], "on": [1], "depth": [12.0, 106.0], "slope_min": 0.5, "density": [2.4, 2.4],
 		 "noise": [0.06, 61, -0.35], "spacing": 3.4, "clump": [1, 3, 3.0], "size": [1.3, 2.8], "lift": -0.8, "downhill": true, "tint": Color(0.6, 0.58, 0.55)},
 		{"what": "prop", "pieces": ["vase_sponge", "sea_fan_red", "puffball_sponges", "feather_dusters"], "on": [1], "depth": [22.0, 95.0], "slope_min": 0.4,
 		 "density": [2.0, 2.0], "spacing": 1.8, "clump": [1, 3, 1.2], "size": [1.4, 2.4], "lift": -0.05},
+		# (concept_biome_trench.png: silted ledges with white anemones and sponges on their lips, sea pens on them)
+		{"what": "prop", "pieces": ["plumose_anemones"], "on": [0, 1, 2], "depth": [28.0, 106.0], "slope_max": 0.4, "density": [2.0, 1.0], "spacing": 2.0,
+		 "clump": [2, 4, 1.0], "near_rock": 3.0, "size": [1.6, 2.6], "lift": -0.05},
+		{"what": "prop", "pieces": ["vase_sponge", "puffball_sponges", "vase_sponge"], "on": [0, 2], "depth": [28.0, 106.0], "slope_max": 0.3, "density": [1.6, 0.8],
+		 "spacing": 2.2, "clump": [1, 3, 1.2], "size": [1.5, 2.6], "lift": -0.03},
+		{"what": "prop", "pieces": ["sea_pen_deep", "sea_pen_deep", "sea_whip"], "on": [0, 2], "depth": [28.0, 106.0], "slope_max": 0.3, "density": [5.0, 5.0],
+		 "noise": [0.05, 53, -0.1], "spacing": 2.5, "clump": [4, 10, 2.0], "size": [0.8, 1.3], "lift": -0.05},
+	]},
+	# The liner's reef (concept_biome_reef.png): its bommies and their corals are Scenery._place_reef's and the
+	# wreck's own; here the canyon's rims and walls either side of where it bridges grow the warm pocket's
+	# corals, fans and sponges too, so the reef runs off the hull onto the rock.
+	"reef": {"region": "reef", "layers": [
+		{"what": "prop", "pieces": ["brain_coral", "barrel_sponge", "soft_coral", "sea_rods", "sea_fan_purple", "table_coral"], "on": [0, 1, 2], "depth": [18.0, 45.0],
+		 "slope_max": 0.5, "density": [1.4, 0.4], "noise": [0.08, 71, -0.2], "spacing": 2.4, "clump": [1, 3, 1.4], "size": [0.9, 1.6], "lift": -0.05},
+		{"what": "prop", "pieces": ["sea_fan_purple", "barrel_sponge", "sea_rods", "pillar_coral"], "on": [1], "depth": [26.0, 70.0], "slope_min": 0.5,
+		 "density": [1.2, 0.4], "spacing": 2.4, "clump": [1, 2, 1.2], "size": [1.0, 1.7], "lift": -0.05},
 	]},
 }
 
@@ -162,9 +192,9 @@ const TABLES := {
 const CURRENT := Vector2(0.3, 0.1)
 
 ## The places' order (big things first in each; the tables above).
-const ORDER := ["kelp_south", "kelp_north", "outcrop", "outcrop_south", "carmel", "grass", "slough", "docks_monterey", "points", "beach", "sand_flats", "canyon_floor", "walls"]
+const ORDER := ["kelp", "crags", "carmel", "grass", "dunes", "river", "docks_monterey", "beach", "trench", "reef"]
 ## The whole map's corners for the tables without an area of their own ("points", "walls").
-const WHOLE := [Vector2(-122.0, -160.0), Vector2(122.0, 160.0)]
+const WHOLE := [Vector2(Bay.WEST, Bay.NORTH), Vector2(Bay.EAST, Bay.SOUTH)]
 
 # What came out: floor pieces (name -> [transforms, colours]), kelp (places, lengths), grass
 # (places, heights), seaweed (places, sizes, kinds), and how many of each layer (for the checks).
@@ -177,10 +207,16 @@ var weed_places := PackedVector3Array()
 var weed_sizes := PackedFloat32Array()
 var weed_kinds := PackedInt32Array()
 var made := {}
+## The spheres (world x, y, z, radius) of each placed piece of a `grow` layer, one array a piece:
+## Scenery grows the crags' coralline, anemones and stars on them (`grow_on`).
+var grow_spheres: Array = []
 
 var _rng := RandomNumberGenerator.new()
 var _props: GDScript
 var _rocks: Array[Vector3] = []   # floor pieces' middles (x, z) and how far they reach (y)
+# (the same, by 8 m square of floor: a candidate is tried only against the rocks round it)
+var _rock_cells := {}
+const _ROCK_CELL := 8.0
 var _kept: Callable
 
 
@@ -230,9 +266,18 @@ func _layer(table: Dictionary, layer: Dictionary) -> int:
 		if can.size() != (layer.pieces as Array).size():
 			layer = layer.duplicate()
 			layer.pieces = can
-	var area: Array = table.area
-	var low: Vector2 = WHOLE[0] if area.is_empty() else (area[0] as Vector2) - Vector2.ONE * float(area[1])
-	var high: Vector2 = WHOLE[1] if area.is_empty() else (area[0] as Vector2) + Vector2.ONE * float(area[1])
+	var low: Vector2 = WHOLE[0]
+	var high: Vector2 = WHOLE[1]
+	if table.has("region"):
+		var box := BiomeRegions.bounds(table.region)
+		if box.size == Vector2.ZERO:
+			return 0
+		low = box.position
+		high = box.end
+	elif not (table.get("area", []) as Array).is_empty():
+		var area: Array = table.area
+		low = (area[0] as Vector2) - Vector2.ONE * float(area[1])
+		high = (area[0] as Vector2) + Vector2.ONE * float(area[1])
 	var spacing: float = layer.get("spacing", 1.0)
 	var density: Array = layer.get("density", [1.0, 1.0])
 	var noise: FastNoiseLite = null
@@ -280,7 +325,11 @@ func _layer(table: Dictionary, layer: Dictionary) -> int:
 
 # How far into its area a point is, 0 at the rim to 1 past `edge` (less than 0: outside).
 func _edge(table: Dictionary, at: Vector2) -> float:
-	var area: Array = table.area
+	if table.has("region"):
+		if BiomeRegions.at(at.x, at.y) != table.region:
+			return -1.0
+		return BiomeRegions.weight(table.region, at.x, at.y)
+	var area: Array = table.get("area", [])
 	if area.is_empty():
 		return 1.0
 	var inside := float(area[1]) - at.distance_to(area[0])
@@ -301,6 +350,11 @@ func _fits(table: Dictionary, layer: Dictionary, p: Vector2) -> bool:
 	var steep := FloorTypes.slope(p.x, p.y)
 	if steep > float(layer.get("slope_max", 99.0)) or steep < float(layer.get("slope_min", 0.0)):
 		return false
+	if table.has("region") and BiomeRegions.at(p.x, p.y) != table.region:
+		return false
+	for away: Array in table.get("avoid", []):
+		if p.distance_to(away[0]) < float(away[1]):
+			return false
 	for keep: Array in table.get("keep", []):
 		if _line_distance(p, keep[0]) < float(keep[1]):
 			return false
@@ -309,7 +363,7 @@ func _fits(table: Dictionary, layer: Dictionary, p: Vector2) -> bool:
 	if layer.has("near_rock"):
 		var reach: float = layer.near_rock
 		var near := false
-		for rock in _rocks:
+		for rock: Vector3 in _rocks_near(p):
 			if Vector2(rock.x, rock.z).distance_to(p) < rock.y + reach:
 				near = true
 				break
@@ -317,7 +371,7 @@ func _fits(table: Dictionary, layer: Dictionary, p: Vector2) -> bool:
 			return false
 	elif layer.what != "prop" or not (layer.pieces as Array)[0].begins_with("rock"):
 		# (nothing grows inside a rock: keep out of the floor pieces' feet)
-		for rock in _rocks:
+		for rock: Vector3 in _rocks_near(p):
 			if Vector2(rock.x, rock.z).distance_to(p) < rock.y * 0.55:
 				return false
 	return true
@@ -347,15 +401,47 @@ func _put(layer: Dictionary, p: Vector2, edge: float) -> void:
 			if layer.has("to_surface"):
 				# (bull kelp: sized so its float rides at the surface; the model is `to_surface` m tall)
 				big = deep / float(layer.to_surface) * _rng.randf_range(0.97, 1.03)
+			if layer.has("lean"):
+				# (a tall piece stays under the surface, 2 m clear)
+				big = minf(big, (deep - 2.0) / maxf((_props.call(&"size_of", piece) as Vector3).y, 0.1))
 			var basis := Basis(Vector3.UP, _rng.randf() * TAU)
 			if layer.get("downhill", false):
 				# (a ledge on a wall faces down the slope)
 				var fall := Vector2(Sea.ground(p.x + 1.0, p.y) - Sea.ground(p.x - 1.0, p.y), Sea.ground(p.x, p.y + 1.0) - Sea.ground(p.x, p.y - 1.0))
 				basis = Basis(Vector3.UP, atan2(-fall.x, -fall.y))
-			add_piece(piece, Transform3D(basis.scaled(Vector3.ONE * big), Vector3(p.x, floor_y + float(layer.get("lift", 0.0)), p.y)), layer.get("tint", Color.WHITE))
+			if layer.has("lean"):
+				# (a leaning pinnacle: tipped over some way, by up to `lean`)
+				var way := _rng.randf() * TAU
+				basis = Basis(Vector3(cos(way), 0.0, sin(way)), _rng.randf_range(0.3, 1.0) * float(layer.lean)) * basis
+			var where := Transform3D(basis.scaled(Vector3.ONE * big), Vector3(p.x, floor_y + float(layer.get("lift", 0.0)), p.y))
+			add_piece(piece, where, layer.get("tint", Color.WHITE))
+			if layer.get("grow", false):
+				var spheres: Array = []
+				for s: Vector4 in _props.call(&"spheres_of", piece):
+					var m := where * Vector3(s.x, s.y, s.z)
+					spheres.append(Vector4(m.x, m.y, m.z, s.w * big))
+				grow_spheres.append(spheres)
 			if piece.begins_with("rock"):
 				var reach := (_props.call(&"size_of", piece) as Vector3)
-				_rocks.append(Vector3(p.x, maxf(reach.x, reach.z) * 0.5 * big, p.y))
+				var rock := Vector3(p.x, maxf(reach.x, reach.z) * 0.5 * big, p.y)
+				_rocks.append(rock)
+				var key := Vector2i(floori(p.x / _ROCK_CELL), floori(p.y / _ROCK_CELL))
+				if not _rock_cells.has(key):
+					_rock_cells[key] = []
+				(_rock_cells[key] as Array).append(rock)
+
+
+# The rocks placed so far whose middles are within two squares of a point (none reaches further).
+func _rocks_near(p: Vector2) -> Array:
+	var out := []
+	var cx := floori(p.x / _ROCK_CELL)
+	var cz := floori(p.y / _ROCK_CELL)
+	for x in range(cx - 2, cx + 3):
+		for z in range(cz - 2, cz + 3):
+			var list: Variant = _rock_cells.get(Vector2i(x, z))
+			if list != null:
+				out.append_array(list)
+	return out
 
 
 ## A floor piece placed (its spheres go to the sea's rocks), tinted with one of its tints.

@@ -20,6 +20,8 @@ const MUD_TINT := Color(0.56, 0.5, 0.36)
 const CRUST_COLOUR := Color(0.74, 0.44, 0.5)
 ## How much darker the sand under a kelp forest is (the damp kind's share, 0 to 1).
 const UNDER_KELP := 0.85
+## How much of the dune sea's sand is the sand's pale kind (0 to 1).
+const DUNE_PALE := 0.9
 const WHITE_COLOUR := Color(0.86, 0.85, 0.8)
 ## Rocky shores: within this of the shore (m) near the rocky points (world: a segment and how far
 ## along the shore from it the rock goes).
@@ -86,22 +88,27 @@ static func paint(sand: SandGround) -> void:
 			sand.paint_all(Sand.Kind.PACKED, shares)
 		else:
 			sand.paint_all(SAND_KIND[type], shares)
-	# (the sand between a kelp forest's reefs is darker and richer: drift weed and shade, damp
-	# kind at part strength; BIOMES.md 5.2)
+	# (the sand between a kelp forest's ridges is darker and richer: drift weed and shade, the damp kind
+	# at part strength (BIOMES.md 5.2); the dune sea's is clean pale sand (Sand's PALE kind, which also
+	# ripples more): BiomeRegions' kelp and dunes, faded in over their edges)
 	var under := PackedByteArray()
 	under.resize(_types.size())
+	var pale := PackedByteArray()
+	pale.resize(_types.size())
 	for r in _rows:
 		for c in _cols:
 			var i := r * _cols + c
 			if _types[i] != SAND:
 				continue
 			var p := Vector2(Bay.WEST + c * Bay.GRID, Bay.NORTH + r * Bay.GRID)
+			under[i] = int(UNDER_KELP * 255.0 * BiomeRegions.weight(BiomeRegions.KELP, p.x, p.y))
 			for reef: Dictionary in Biomes.REEFS:
-				if String(reef.name).begins_with("kelp") or reef.name == "carmel":
-					var off := p.distance_to(reef.at) / float(reef.r)
-					if off < 1.0:
-						under[i] = maxi(under[i], int(UNDER_KELP * 255.0 * (1.0 - smoothstep(0.7, 1.0, off))))
+				var off := p.distance_to(reef.at) / float(reef.r)
+				if off < 1.0:
+					under[i] = maxi(under[i], int(UNDER_KELP * 255.0 * (1.0 - smoothstep(0.7, 1.0, off))))
+			pale[i] = int(DUNE_PALE * 255.0 * BiomeRegions.weight(BiomeRegions.DUNES, p.x, p.y))
 	sand.paint_all(Sand.Kind.DAMP, under)
+	sand.paint_all(Sand.Kind.PALE, pale)
 	var look := sand.material()
 	if look:
 		look.set_shader_parameter(&"stone_colour", ROCK_COLOUR)
@@ -119,6 +126,14 @@ static func _build() -> void:
 	walls.seed = 41
 	walls.frequency = 0.06
 	walls.fractal_octaves = 3
+	var ridges := FastNoiseLite.new()
+	ridges.seed = 21
+	ridges.frequency = 0.05
+	ridges.fractal_octaves = 3
+	var barrens := FastNoiseLite.new()
+	barrens.seed = 27
+	barrens.frequency = 0.04
+	barrens.fractal_octaves = 2
 	var reefs: Array = []
 	for reef: Dictionary in Biomes.REEFS:
 		var noise := FastNoiseLite.new()
@@ -134,10 +149,10 @@ static func _build() -> void:
 			var g := Sea.ground(x, z)
 			var s := Vector2(Sea.ground(x + 1.0, z) - Sea.ground(x - 1.0, z), Sea.ground(x, z + 1.0) - Sea.ground(x, z - 1.0)).length() * 0.5
 			_slopes[i] = s
-			_types[i] = _type_at(Vector2(x, z), Sea.SURFACE - g, s, walls, reefs)
+			_types[i] = _type_at(Vector2(x, z), Sea.SURFACE - g, s, walls, reefs, ridges, barrens)
 
 
-static func _type_at(p: Vector2, deep: float, steep: float, walls: FastNoiseLite, reefs: Array) -> int:
+static func _type_at(p: Vector2, deep: float, steep: float, walls: FastNoiseLite, reefs: Array, ridges: FastNoiseLite, barrens: FastNoiseLite) -> int:
 	var shore := Bay.shore_distance(p)
 	if shore < -1.0:
 		return SAND
@@ -148,7 +163,35 @@ static func _type_at(p: Vector2, deep: float, steep: float, walls: FastNoiseLite
 	for harbour: Array in Bay.HARBOURS:
 		if chart.distance_to(harbour[0]) < float(harbour[1]) * 0.75:
 			return MUD
-	# The biomes' reefs (kelp on rock, the outcrop's talus): rock, crust in the barrens.
+	# The user's biomes (BiomeRegions; tools/BIOMES.md, "The eight biomes").
+	var biome := BiomeRegions.at(p.x, p.y)
+	match biome:
+		BiomeRegions.KELP:
+			# Rock reef ridges running across the current with sand channels between (kelp holds only to
+			# rock), the ridges breaking up towards the region's edge; urchin barrens of pink crust.
+			if deep > 3.0:
+				var w := BiomeRegions.weight(biome, p.x, p.y)
+				var turned := p.rotated(-0.32)
+				var n := ridges.get_noise_2d(turned.x * 0.45, turned.y * 1.6)
+				if n > lerpf(0.25, -0.12, w):
+					return CRUST if barrens.get_noise_2d(p.x, p.y) > 0.42 else ROCK
+		BiomeRegions.CRAGS:
+			# Rock nearly everywhere, sand in pockets and lanes between, coralline crust in patches.
+			var n := ridges.get_noise_2d(p.x * 1.3 + 400.0, p.y * 1.3)
+			if n > lerpf(0.3, -0.35, BiomeRegions.weight(biome, p.x, p.y)):
+				return CRUST if barrens.get_noise_2d(p.x + 200.0, p.y) > 0.38 else ROCK
+		BiomeRegions.GRASS:
+			# Sand with mud where the eelgrass has trapped silt.
+			if ridges.get_noise_2d(p.x * 0.8 - 300.0, p.y * 0.8) > 0.18:
+				return MUD
+		BiomeRegions.DUNES:
+			# Clean sand (painted pale in `paint`), nothing else.
+			return SAND
+		BiomeRegions.RIVER:
+			# The slough and its estuary: mud and silt, with sand showing through in patches out at the mouth.
+			if ridges.get_noise_2d(p.x * 1.4 + 900.0, p.y * 1.4) > -0.25 or p.distance_to(BiomeRegions.ESTUARY) > 14.0 and deep < 1.0:
+				return MUD
+	# The rocky reefs left by the shore (Carmel's): rock, crust in the barrens.
 	for k in Biomes.REEFS.size():
 		var reef: Dictionary = Biomes.REEFS[k]
 		if Biomes.on_reef(reef, reefs[k], p, deep):

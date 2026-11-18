@@ -11,6 +11,9 @@ extends SceneTree
 const TILE := 32.0
 const PX := 256
 const LABELLED := 1600
+## Each biome's colour on the chart (--biomes): the user's four as they drew them, the rest Claude's.
+const TINTS := {"kelp": Color(0.1, 0.9, 0.2), "dunes": Color(1.0, 0.9, 0.1), "grass": Color(1.0, 0.25, 0.25), "crags": Color(0.9, 0.2, 0.9),
+		"trench": Color(0.3, 0.3, 1.0), "beach": Color(0.2, 0.95, 0.95), "river": Color(0.65, 0.4, 0.15), "reef": Color(1.0, 0.55, 0.1)}
 
 var _out := ""
 var _view: SubViewport
@@ -125,6 +128,8 @@ func _label(whole: Image, wide: float, high: float) -> void:
 	# The land tinted and the shoreline drawn (the user: "Need too see where the shoreline is on the
 	# map": the beach sand and the land are the same pale colour from above).
 	var per := wide / w
+	# (--biomes: every biome's own tint over what it covers, BiomeRegions' grid; the drawn ones outlined below)
+	var biomes := OS.get_cmdline_user_args().has("--biomes")
 	for py in h:
 		for px in w:
 			var at := Vector2(Sea.WEST + (px + 0.5) * per, Sea.NORTH + (py + 0.5) * per)
@@ -133,6 +138,10 @@ func _label(whole: Image, wide: float, high: float) -> void:
 				small.set_pixel(px, py, Color(0.1, 0.95, 1.0))
 			elif d < 0.0:
 				small.set_pixel(px, py, small.get_pixel(px, py).lerp(Color(0.42, 0.5, 0.32), 0.6))
+			elif biomes:
+				var biome := BiomeRegions.at(at.x, at.y)
+				if biome != "":
+					small.set_pixel(px, py, small.get_pixel(px, py).lerp(TINTS[biome], 0.12 + 0.18 * BiomeRegions.weight(biome, at.x, at.y)))
 	var sheet := SubViewport.new()
 	sheet.size = Vector2i(w, h)
 	sheet.transparent_bg = false
@@ -146,7 +155,7 @@ func _label(whole: Image, wide: float, high: float) -> void:
 	var to_px := func(p: Vector2) -> Vector2: return Vector2((p.x - Sea.WEST) * scale, (p.y - Sea.NORTH) * scale)
 	# (--biomes: BiomeRegions' outlines, tinted, under the names)
 	if OS.get_cmdline_user_args().has("--biomes"):
-		var tint := {"kelp": Color(0.1, 0.9, 0.2), "dunes": Color(1.0, 0.9, 0.1), "grass": Color(1.0, 0.25, 0.25), "crags": Color(0.9, 0.2, 0.9)}
+		var tint := TINTS
 		for biome: String in BiomeRegions.SHAPES:
 			for shape: Array in BiomeRegions.SHAPES[biome]:
 				var pts := PackedVector2Array()
@@ -154,7 +163,7 @@ func _label(whole: Image, wide: float, high: float) -> void:
 					pts.append(to_px.call(v))
 				var fill := Polygon2D.new()
 				fill.polygon = pts
-				fill.color = Color(tint[biome], 0.22)
+				fill.color = Color(tint[biome], 0.0)
 				sheet.add_child(fill)
 				var edge := Line2D.new()
 				edge.points = pts

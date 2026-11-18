@@ -304,18 +304,22 @@ func _schooling() -> void:
 			biter._pack_t = 1.0
 			var fish := -1
 			for i in prey.rider_count():
-				if not prey.rider_gone(i):
+				# (one in open water: the swarm may hang among a biome's rocks, which push the hunter off it)
+				if not prey.rider_gone(i) and Sea.clear_of_rocks(prey.rider_position(i), biter.length) == prey.rider_position(i):
 					fish = i
 					break
 			if fish >= 0:
 				biter.global_position = prey.rider_position(fish) - biter.heading * biter.length * 0.42
+			# (a take is one more gone this frame than the last: eaten ones come back meanwhile, so the
+			# count from before the pack arrived can fall below where it started)
+			var was := prey.riders_gone()
 			await _frames(1)
 			most_gone = maxi(most_gone, prey.riders_gone())
-			if most_gone > gone_before:
+			if prey.riders_gone() > was:
 				took_at = n
 				break
-	_check("pack hunters at a swarm take from it and ball it up", most_gone > gone_before and balled,
-			"%d barracuda, %s at it, balled %s, a fish taken %s (%.1f s with its mouth among them)" % [pack.size(), biter != null, balled, most_gone > gone_before, took_at / 60.0])
+	_check("pack hunters at a swarm take from it and ball it up", took_at >= 0 and balled,
+			"%d barracuda, %s at it, balled %s, a fish taken %s (%.1f s with its mouth among them)" % [pack.size(), biter != null, balled, took_at >= 0, took_at / 60.0])
 	main.restart()
 	await _frames(3)
 

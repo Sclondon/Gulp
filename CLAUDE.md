@@ -453,9 +453,16 @@ choices below are Claude's.
   and, when Claude began tracing the colours pixel by pixel: "You shouldnt be that exact just look at the map and see
   the areas I was trying to highlight". So `scripts/biome_regions.gd` (BiomeRegions) holds rough outlines read off
   the drawings by eye, world metres, kelp over dunes where they overlap (`at`, `weight`); `tests/overhead.gd
-  --biomes` draws them. The Soquel branch of the trench is wider (`bake_bay.gd` `TRENCH_ADD`). Not yet built:
-  concept art per biome, then dressing each region to it (the old circle-shaped zones and Biomes' tables still
-  place everything).
+  --biomes` draws them. The Soquel branch of the trench is wider (`bake_bay.gd` `TRENCH_ADD`). Built since:
+  the next note.
+- **The eight biomes are built** (2026-11-18; the user added "Trench, beach shallows, and river need to count as biomes
+  as well, and the reef on the ship", and an estuary meadow at the river mouth). `BiomeRegions` is the one source of where
+  each is (kelp, dunes, grass, crags as drawn; trench by depth; beach the shore strip; river the slough and its mouth;
+  reef round the liner), on Bay's 2 m grid; `Biomes.TABLES` has one table each (the old circle places are folded in),
+  `FloorTypes` paints each one's floor, `Bay.dune_height` shapes the dune sea, `Sea.ZONES` kelp/sand/grass/crags place
+  animals anywhere in their region. New kit piece: white plumose anemones (`tools/build_plumose.py`). Each biome, its
+  rules, budget, decisions and what is rough: tools/BIOMES.md, "The eight biomes". In-water pictures:
+  `tools/bay_shot.gd -- --biomes [--only=<name>]`; the chart: `tests/overhead.gd -- --biomes` tints every biome.
 - **A second rocky islet** (2026-11-18, the user: "lets add another rocky outcrop island just south south west of the
   pirate ship to fill in that empty spot a bit as well"): `Scenery.OUTCROP_SOUTH` (-74, -14), built by the same
   `_build_outcrop` (now taking its middle, a name, the islet's turn and whether seals lie on it: these have none;

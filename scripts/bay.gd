@@ -146,7 +146,7 @@ static func height(x: float, z: float) -> float:
 	for shelf: Array in [WRECK_SHELF, WRECK_SEAT_SOUTH, RUINS_TERRACE, PIRATE_HOLLOW]:
 		flat = maxf(flat, shelf_weight(p, shelf))
 	var bumps := 0.6 * sin(x * 0.07 + 1.3) * cos(z * 0.06) + 0.2 * sin(x * 0.21 + z * 0.17)
-	return SURFACE - deep + bumps * clampf(deep * 0.15, 0.0, 1.0) * (1.0 - flat)
+	return SURFACE - deep + bumps * clampf(deep * 0.15, 0.0, 1.0) * (1.0 - flat) + dune_height(p, deep) * (1.0 - flat)
 
 
 ## How far from the shore a point is (world metres; less than 0 on land).
@@ -220,3 +220,35 @@ static func _line_distance(p: Vector2, line: Array) -> float:
 	for i in line.size() - 1:
 		best = minf(best, p.distance_to(Geometry2D.get_closest_point_to_segment(p, line[i], line[i + 1])))
 	return best
+
+## The dune sea (BiomeRegions DUNES, the user's yellow): rolling sand waves in the floor's own shape,
+## lying across the current (Biomes.CURRENT, from the west), on the shelf only: they fade out up the
+## beach slope and over the trench's rim, and where the drawn outline ends (tools/BIOMES.md, "The eight
+## biomes": a dune field from GameCommon's sand, `SandDunes`, as a height added to the floor).
+static var _dunes: SandDunes
+
+
+static func dune_height(p: Vector2, deep: float) -> float:
+	var w := BiomeRegions.shape_weight(BiomeRegions.DUNES, p.x, p.y)
+	if w <= 0.0:
+		return 0.0
+	w *= smoothstep(16.0, 22.0, deep) * (1.0 - smoothstep(27.0, 29.0, deep))
+	if w <= 0.0:
+		return 0.0
+	if _dunes == null:
+		_dunes = SandDunes.new()
+		_dunes.wind = Vector2(0.3, 0.1)
+		_dunes.seed = 7
+		_dunes.floor_roll = 0.25
+		_dunes.floor_span = 14.0
+		_dunes.long_backs = true
+		_dunes.sharp = 0.35
+		# (a lee lower than this is a gentle slope, not a slip face: the 2 m grid draws short slip faces as teeth)
+		_dunes.soft_below = 2.7
+		_dunes.field(Rect2(-112.0, -126.0, 175.0, 86.0), SandDunes.Field.TRANSVERSE, DUNE_HEIGHTS, 0.05, 2.2)
+		_dunes.field(Rect2(-124.0, 112.0, 60.0, 50.0), SandDunes.Field.TRANSVERSE, DUNE_HEIGHTS, 0.05, 2.2)
+	return _dunes.height_at(p.x, p.y) * w
+
+
+## How high the dunes stand, lowest and highest (m).
+const DUNE_HEIGHTS := Vector2(1.5, 3.2)

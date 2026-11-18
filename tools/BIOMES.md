@@ -201,6 +201,102 @@ boat began to draw at the liner: about 20 of its draws there are not this pass's
 150 draws): start, kelp, sand, ruins, docks (now), trench, open, beach. Still over: the liner (its own reef), grass
 (animals), pirate (the growth added 24k), river.
 
+## The eight biomes (2026-11-18, built to the user's regions and the concept art)
+
+The user: "We need to make proper biomes, with concept art for each considering our needs. Green is kelp forest, yellow
+is sand dune sea, red is sea grassy fields, purple is rocky crags" (outlines over the overhead chart); "the green
+section should be kelp forest not dune sea"; "You shouldnt be that exact just look at the map and see the areas I was
+trying to highlight"; then "Trench, beach shallows, and river need to count as biomes as well, and the reef on the
+ship"; and "there should be a seaweedy / grassy area around the mouth instead of regular beach". Concepts (style brief
+in CLAUDE.md): `tools/art_src/concept_biome_{kelp,dunes,grass,crags,trench,beach,river,reef}.png`. Everything below
+that is not a quote is Claude's pick.
+
+**Where each is: `scripts/biome_regions.gd` (BiomeRegions), the one source.** Worked out once on Bay's 2 m grid: each
+corner's biome (the first in `ORDER` that has it: river, reef, trench, beach, crags, kelp, grass, dunes) and how far in
+from its edge it is (a chamfer distance), so `at(x, z)`, `weight(name, x, z)` (0..1 over `EDGE` 8 m), `bounds(name)`,
+`spot(rng, name, inside)` are lookups. The user's four are rough polygons (`SHAPES`, read by eye, unchanged from the
+first reading); the reef is an outline round the liner's bommies; the river is Elkhorn Slough's channel and banks
+(`Bay.SLOUGH`, however it winds) plus the estuary within 25 m of its mouth (96, -40) shallower than 10 m; the beach is
+the shore's strip (within `Bay.BEACH`, under 6 m); the trench is every floor deeper than 28 m (the bake raises all else
+to the 26 m shelf) less Atlantis's basin (`RUINS_CLEAR`, the ruins dress their own). Where a drawn outline runs down a
+canyon wall, the trench wins (it is before them in ORDER), so no outline needed smoothing. `shape_weight` reads the
+polygons alone, for Bay's dunes (the grid needs the floor, the floor needs the dunes).
+
+**Who reads it.** `Biomes.TABLES` (one table a biome with `"region"`; densities fade over the edge by `weight`; the old
+circles kelp_south, kelp_north, outcrop, outcrop_south, grass, sand_flats, slough, points, canyon_floor and walls are
+gone, folded into the eight; Carmel's cove reef and the Monterey harbour floor stay as circles); `FloorTypes._type_at`
+(the floor's make by biome, below); `FloorTypes.paint` (the kelp's damp dark sand and the dunes' pale sand by `weight`);
+`Bay.dune_height`; `Sea.ZONES` ("kelp", "sand" (the dunes), "grass" and a new "crags" carry `"region"`: `Sea.place`
+picks a point anywhere in the region, 4 m in from its edge; `zone_at` tries the circle zones first, then the regions);
+`Scenery._in_zone` the same. Species: moray, rockfish, octopus, lobster, starfish, purple urchin, crab, seal and
+garibaldi also live in "crags"; bat rays and leopard sharks in "grass" too.
+
+| biome | floor (FloorTypes) | what stands and grows (Biomes table, Scenery) | in the sea (desktop count) |
+| --- | --- | --- | --- |
+| kelp | rock ridges across the current with sand channels between (noise stretched 0.45 x 1.6, turned 0.32), breaking up towards the edge; pink crust barrens; damp dark sand between | giant kelp in clumps of 4 to 7 on rock 5 to 28 m, groves and lanes by a slow noise (0.04), 1.05 to 1.3 times the depth (to the canopy, capped 25 m), canopy mats over the core clumps; boulders, reef slabs, understory kelp, red weed, feather boa shallow, urchins on the barrens and by rocks, fans, sponges, strawberry anemones, stars | 275 kelp plants, 1,237 understory, 1,886 red weed |
+| dunes | clean sand painted the sand's PALE kind (paler, more ripples); **the floor's own shape**: `Bay.dune_height` | open and bare: sea pen meadows in patches, sand dollars, scallops, a few lone boulders; garden eels in three colonies (`Scenery.EEL_COLONIES`: the old ridge off Santa Cruz and the liner's colony moved in); two half-buried anchors with chain runs (`DUNE_ANCHORS`, the docks kit's Anchor and Chain scaled 1.6 and 2.2) | 712 sea pens, 260 eels |
+| grass | sand with silty mud patches | eelgrass at 520 tufts per 100 m² at the core (clumps of 2 to 4), bare blowouts where the noise is low, five sandy paths (`keep`), sea lettuce; olive and straw colours and a stronger lean (`Scenery._plant_grass`), drawn to 40 m (`GRASS_SEEN`) in 12 m squares | 11,632 tufts |
+| crags | rock nearly everywhere, sand pockets, crust patches | leaning pinnacles (`lean` 0.4) and hard-leaning ones as shards (0.75), stacks and ledges, rare arches, boulder piles in clumps, reef slabs: all kept 2 m under the surface, off the islets' columns (`avoid`) and 10 m round the pirate ship's lane (`keep`); on them (`grow` -> `Biomes.grow_spheres`, grown in `Scenery._grow_on_structures`) white plumose anemones, pink strawberry anemone sheets for coralline, stars and urchins; on the floor plumose clumps, strawberry sheets, stars, urchins, hydrocoral, fans, red weed. The outcrops' own stacks and shards now wear the kit's rock, tinted dark (`CRAG_ROCK`) | 15 + 5 pinnacles, 12 stacks, 1 arch, 81 plumose clumps on the floor (more grown on the rocks) |
+| trench | the old rules: rock on steep risers in beds, mud on the deep flats | rock ledges down the risers, sponges and fans on them, and on the silted treads (concept: white anemones, sponges, sea pens on every ledge) plumose clumps by the rock, sponges, tall white sea pens and whips (now from 28 m, on sand or mud) | 242 ledges, 287 pens, 31 plumose clumps, 170 sponges |
+| beach | the old rules (rocky points, Carmel's white sand) | the rocky points as before (surfgrass, rockweed, feather boa, anemones, mussels, stars) plus tide-pool rock patches on the sandy shores with surfgrass, rockweed, anemones and stars round them (`near_rock`); the sand dollar band, now 2.5 to 6 m and on slopes to 0.5 | 22 tide-pool rocks |
+| river | mud and silt (sand in patches out at the mouth) | eelgrass on the banks and the estuary's flats, sea lettuce, red weed; the mangroves (`Scenery._plant_mangroves`) now stand from 2.5 m inside the channel's edge to 2 m up the bank, so their roots arch into the water | 1,291 tufts, 536 weed |
+| reef | as before | the liner's own reef and the bommies (unchanged) and now the warm pocket's corals, fans and sponges on the canyon's rims and walls either side of it | 44 |
+
+**New kit piece: `plumose_anemones`** (`tools/build_plumose.py` -> `models/kit/plumose_anemones.glb`, `.json`,
+`tools/blend/kit_plumose.blend`): three or four white Metridium columns with lobed, frilled crowns, 1,632 triangles, the
+light one 264 (two anemones); closed shapes, checked by the kit's winding test from six sides (ok). The kit's soft
+shader, its own sway (`Kit.KELP_SWAY` 0.06). GameCommon's living anemone has a plumose too, but as a node each; this one
+draws by the hundred.
+
+**Budget, measured** (`--perf=...`, 390x844, the sea's picture; other sessions on the machine: frame ms swing 1 to 3).
+Before (the table above, second pass) -> after. Places are `Sea.ZONES`' middles, and "sand", "grass" moved to their
+regions, so those two rows are new places, not the same ones.
+
+| place | draws | triangles | frame ms | note |
+| --- | --- | --- | --- | --- |
+| start | 19 -> 93 | 94k -> 153k | 7.3 -> 3.8 | the start is at the dunes' edge beside the crags (not looked into further) |
+| kelp | 96 -> 97 | 145k -> 126k | 9.3 -> 7.3 | lighter |
+| sand (now the dunes) | 20 -> 23 | 150k -> 92k | 9.1 -> 8.4 | |
+| grass (now the west meadow) | 59 -> 109 | 249k -> 178k | 9.1 -> 6.2 | 48k of it eelgrass in 10 draws; the rest the pirate ship (31 draws), the kit's far pieces, the sand |
+| pirate | 84 -> 92 | 217k -> 171k | 7.2 -> 9.2 | |
+| crags (new) | 85 | 131k | 8.9 | |
+| river | 23 -> 25 | 172k -> 186k | 9.7 -> 12.8 | 84 animals drawn (their schools), not plants |
+| trench | 14 -> 67 | 74k -> 106k | 6.7 -> 7.3 | **heavier**: the treads' anemones, sponges and pens, and the place now looks at a dressed wall |
+| reef | 171 -> 161 | 379k -> 254k | 6.8 -> 16.2 | the frame here swung most (render cpu 4.6 ms); triangles lower |
+| beach | 15 -> 11 | 89k -> 86k | 7.5 -> 6.1 | |
+
+Within the proxy (150k triangles, 150 draws): kelp, sand, crags, trench, beach; just over on triangles: start (153k),
+pirate (171k), grass (178k), river (animals). What got heavier: the start (draws and triangles) and the trench.
+
+**Decisions** (all Claude's, for the user's regions):
+- *Regions on a grid, not polygons asked each time.* What: BiomeRegions bakes biome and distance-to-edge once on Bay's
+  2 m grid. Why: the placer and FloorTypes ask tens of thousands of times; depth-ruled biomes (trench, beach) need the
+  floor anyway. Practice: a biome/splat map over the terrain grid, as terrain systems paint layers. Alternatives:
+  point-in-polygon each call (slow, and the trench and beach are not polygons), a picture mask (another file to keep in
+  step).
+- *Dunes in the floor's height.* What: `Bay.dune_height`: GameCommon's `SandDunes` field of transverse ridges across the
+  current (1.5 to 3.2 m, lee faces softened below 2.7 m so the 2 m grid does not draw teeth), only inside the dunes
+  outline and on the shelf (faded out above 22 m and past 27 m). Why: the concept's rolling dunes are shape, not paint.
+  Practice: a procedural height layer added to a base heightfield, masked by a biome weight. Alternatives: rebaking
+  `data/monterey.bin` with them (one more thing to redo on every rebake), ripples only in the shader (flat from any
+  distance). Sand streaming off the crests was left out: GameCommon's `SandWind` thickens the level's fog and turns the
+  sky sand-coloured (built for a desert), too much to bend for one effect.
+- *The crags' shards are the kit's pinnacles leaning hard over*, not the docks kit's Shard and Pillar spread over the
+  region (tried first: their plain paint drew pale and flat beside the kit's rock). The two islets keep theirs, now in
+  the kit's rock.
+- *Growth on the crags' rocks by the same rules as the outcrop* (`grow_on` on each rock's spheres), white plumose and
+  pink strawberry sheets standing in for coralline.
+- *The trench excludes Atlantis's basin* (a 30 m circle) and the river includes the estuary (the user's mouth meadow),
+  both as rules in BiomeRegions.
+
+**Rough or unverified**: nobody has swum them; pictures were taken with `tools/bay_shot.gd --biomes` (no post shader,
+no animals) and compared with the concepts by eye, two to three passes each. The trench picture shows its walls but not
+its ledges' anemones well; the beach's turquoise water, surf foam and the river's tea-coloured water were not done
+(the water's colour is one for the whole sea); the dune sea has no sand streaming off its crests; the kelp's understory
+is thinner than the concept's; the grass reads greener than the concept under the game's light. Phones untried.
+`tests/setpiece_hits.gd --only=docks` (or kit) prints script errors on the sea's own kit pieces (`Dictionary` has no key
+`reef_slab_a`...): not looked at (the test is another agent's, being changed).
+
 ---
 
 ## 3. The system
