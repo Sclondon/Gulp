@@ -24,8 +24,7 @@ const EAST := 122.0
 const NORTH := -160.0
 const SOUTH := 160.0
 const CELL := 1.0
-## (was 2: the canyons were widened; the user, later: "trench needs to be skinnier")
-const WIDEN := 0.0
+const WIDEN := 2.0
 ## Within EASE_BEACH of the shore the floor goes down to EASE_BEACH_DEEP; beyond, no steeper than
 ## EASE_SLOPE (m down a m out).
 const EASE_BEACH := 14.0
@@ -40,9 +39,13 @@ const OUT := "res://data/monterey.bin"
 const NARROW_FROM := 24.0
 const LIFT := 14.0
 const DEEPEST := 106.0
-## The user's drawn trench (see _trench): not used. The user: "I didnt want it to be based exactly on my
-## rough drawing just meant trench needs to be skinnier". Kept, off.
-const USE_TRENCH_MASK := false
+## The user's drawn trench (see _trench), over the whole map. The user went back and forth (traced from the
+## drawing; then "I didnt want it to be based exactly on my rough drawing just meant trench needs to be
+## skinnier", so _narrow; then, of the traced one: "This had the best layout"). On. _narrow is kept, unused.
+const USE_TRENCH_MASK := true
+## ...but round Carmel (east of x and south of z, world m, blended over 8 m) the drawn mask shapes the
+## Carmel Canyon: the user asked for it there.
+const CARMEL_DRAWN := Vector2(-82.0, 66.0)
 const TRENCH := "res://data/trench_mask.png"
 const SHELF := 26.0
 const SHELF_EASE := 5.0
@@ -139,6 +142,14 @@ func _initialize() -> void:
 		wide = _trench(wide, cols, rows)
 	else:
 		wide = _narrow(wide)
+		# (and the Carmel Canyon as the user drew it, there only: "There should be a canyone leading up to
+		# carmel like the overlay I drew": a narrow canyon from Carmel west, the shelf either side of it)
+		var drawn := _trench(wide, cols, rows)
+		for r in rows:
+			for c in cols:
+				var i := r * cols + c
+				var k := smoothstep(CARMEL_DRAWN.x, CARMEL_DRAWN.x + 8.0, WEST + c * CELL) * smoothstep(CARMEL_DRAWN.y, CARMEL_DRAWN.y + 8.0, NORTH + r * CELL)
+				wide[i] = lerpf(wide[i], drawn[i], k)
 	var shore := _shore_distance(wide, cols, rows)
 	# The near shore eased.
 	# (only near the shore, EASE_NEAR; and a canyon that drops far below the eased slope keeps its

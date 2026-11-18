@@ -35,7 +35,7 @@ const EEL_COUNT := 260
 ## The garden's ridge in the sand off Santa Cruz (world, its two ends), and the small colony beside the
 ## liner (its middle; how many).
 const EEL_RIDGE: Array[Vector2] = [Vector2(-25.0, -100.0), Vector2(5.0, -110.0)]
-const REEF_EEL_AT := Vector2(-4.0, 100.0)
+const REEF_EEL_AT := Vector2(-30.0, 104.0)
 const REEF_EELS := 50
 ## How long a garden eel counts as for the eating rule (m), and how long one stays gone (s).
 const EEL_LENGTH := 0.6
@@ -61,7 +61,7 @@ const PILE_DOWN := 0.7
 const MONTEREY := Vector2(66.0, 68.0)
 const SANTA_CRUZ := Vector2(3.0, -123.0)
 ## The outcrop the pirate ship struck, and its island (world).
-const OUTCROP := Vector2(-48.0, -72.0)
+const OUTCROP := Vector2(-50.0, -86.0)
 ## The south kelp forest's landmark: the arch across its main channel (world x, z; BIOMES.md 5.2).
 const ARCH := Vector2(44.0, 55.0)
 ## Where Carmel's pier starts at the shore (world; it runs north, BIOMES.md 5.12).

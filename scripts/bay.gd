@@ -51,8 +51,8 @@ const HARBOURS := [
 ## much narrower it is across (the liner's, along its hull).
 ## (the liner lies across the Carmel Canyon's head like a bridge: these are the two seats its ends rest on,
 ## each only filling the floor under it (the 7th item), level at its keel)
-const WRECK_SHELF := [Vector2(-2.7, 96.9), 7.0, 14.0, 19.8, Vector2(0.0, 0.0), Vector2(0.26, 1.0), true]
-const WRECK_SEAT_SOUTH := [Vector2(11.2, 149.0), 6.0, 12.0, 19.8, Vector2(0.0, 0.0), Vector2(0.26, 1.0), true]
+const WRECK_SHELF := [Vector2(-37.0, 100.0), 7.0, 14.0, 26.0, Vector2(0.0, 0.0), Vector2(0.0, 1.0), true]
+const WRECK_SEAT_SOUTH := [Vector2(-37.0, 152.0), 6.0, 12.0, 26.0, Vector2(0.0, 0.0), Vector2(0.0, 1.0), true]
 const RUINS_TERRACE := [Vector2(-53.0, 26.0), 34.0, 56.0, 93.0, Vector2(0.0, 0.0)]
 const PIRATE_HOLLOW := [Vector2(-20.0, -62.0), 20.0, 38.0, 21.0, Vector2(0.0, 0.06)]
 

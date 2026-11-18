@@ -47,16 +47,16 @@ const ZONES := {
 	"trench": {"at": Vector2(30.0, -36.0), "radius": 45.0, "deeper": 45.0},
 	"ruins": {"at": Vector2(-53.0, 26.0), "radius": 30.0},
 	"grass": {"at": Vector2(82.0, 52.0), "radius": 12.0},
-	"reef": {"at": Vector2(4.0, 122.0), "radius": 24.0},
+	"reef": {"at": Vector2(-37.0, 126.0), "radius": 24.0},
 	"open": {"at": Vector2(-95.0, 10.0), "radius": 24.0},
 }
 ## The liner's wreck (scripts/wreck.gd, another agent's): where the middle of its keel rests on the
 ## bottom, and its turn (rotation.y; the hull's length lies along the node's own Z). Across the head of the Carmel
 ## Canyon like a bridge (the user, 2026-11-18: "The liner should sit across the carmel trench top like a
-## bridge"): its ends rest on the rims 20 m down (Bay.WRECK_SHELF and WRECK_SEAT_SOUTH, two small seats), the
-## canyon open under its middle down to about 50 m. Found by tools/bay_probe.gd --span.
-const WRECK_AT := Vector3(4.0, 20.2, 122.0)
-const WRECK_HEADING := 0.26
+## bridge"): its ends rest on the rims 26 m down, 40 m off Carmel (where the user drew it) (Bay.WRECK_SHELF and WRECK_SEAT_SOUTH, two small seats), the
+## canyon open under its middle down to about 90 m. Found by tools/bay_probe.gd --span.
+const WRECK_AT := Vector3(-37.0, 14.0, 126.0)
+const WRECK_HEADING := 0.0
 ## Atlantis (scripts/ruins.gd, another agent's): the middle of its terrace on the bottom, and its
 ## turn (its front, the node's -Z, faces north-east, up the canyon). In the canyon's deep basin, 93 m down, on
 ## its flattest ground, at the floor's own depth (not a raised terrace: "atlantis shouldn't just be a giant crater").
@@ -70,9 +70,10 @@ const PIRATE_HEADING := 1.57
 ## the places are Claude's): the end of Monterey's commercial wharf, the end of the Santa Cruz wharf,
 ## the end of Carmel's pier at Stillwater Cove (world x, z). Selling there is another stage's.
 const MARKETS := {"monterey": Vector2(82.0, 56.0), "santa_cruz": Vector2(-8.0, -107.0), "carmel": Vector2(27.0, 121.0)}
-## Where a run starts (x, z): over the sand off Santa Cruz, by the pirate ship, with room east of it
-## for the title boat's circle (45 m round a middle 45 m east: Title.COURSE).
-const START := Vector2(-40.0, -55.0)
+## Where a run starts (x, z): where the user circled it on the chart (2026-11-18), on the shelf south-west
+## of the pirate ship, with room east of it for the title boat's circle (45 m round a middle 45 m east:
+## Title.COURSE; the seal rock, Scenery.OUTCROP, was moved north-west to stay 8 m clear of it).
+const START := Vector2(-65.0, -42.0)
 
 ## The rocks, each as a sphere: x, y, z, radius (Scenery adds them: `add_rock`). They are kept
 ## twice (tools/PERF.md, "Decision: two grids for the rocks"): by the square of floor they could be

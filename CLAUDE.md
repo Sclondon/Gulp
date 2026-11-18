@@ -414,7 +414,15 @@ choices below are Claude's.
   its ends on the two rims 33 m down, the canyon open under its middle to 60 to 70 m (`tools/bay_probe.gd --span=`
   found it: the rims within 0.3 m of each other). The ends rest on two small seats, `Bay.WRECK_SHELF` (north) and
   `WRECK_SEAT_SOUTH`, whose 7th item makes a shelf fill only (never dig), level under what rests on it.
-- **Skinnier canyons** (2026-11-18, current). The user drew rough lines over the overhead chart ("The trench area
+- **The trench is the user's drawing after all** (2026-11-18, current; latest of the notes below): of the overhead
+  traced from their lines the user said "This had the best layout", so `tools/bake_bay.gd` is back to
+  `USE_TRENCH_MASK` on and `WIDEN` 2 (`data/monterey.bin` is byte for byte 0835d1c's). On that chart they also moved
+  the liner west along the Carmel Canyon ("The liner needs to be further off the coast"; then "There should be a
+  canyone leading up to carmel like the overlay I drew"): it now bridges the drawn Carmel Canyon at (-37, 126),
+  north-south, its ends on the rims 26 m down, about 90 m under its middle, 40 m off Carmel. And the start, circled
+  by the user: `Sea.START` (-65, -42), on the shelf south-west of the pirate ship; the seal rock (`Scenery.OUTCROP`)
+  moved to (-50, -86) so the title boat's circle clears it by 8 m.
+- **Skinnier canyons** (2026-11-18, superseded by the note above). The user drew rough lines over the overhead chart ("The trench area
   needs to be skinner, just showing roughish boundaries"), and the first try traced them (below); then: "I didnt want
   it to be based exactly on my rough drawing just meant trench needs to be skinnier". So the bake now keeps the real
   canyons' courses and narrows them: no widening (`WIDEN` 0, was 2), and below `NARROW_FROM` (24 m) the first `LIFT`
