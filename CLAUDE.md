@@ -657,3 +657,17 @@ Claude's.
   model without the textures", which showed the paint had been carrying a formless mesh). Body, head and hands: 5,626
   triangles. Still wrong: the moustache is one big pale blob and the beard a smooth plate (the hair is the stubborn
   part after six rounds); the painted hands are flat-coloured with hard seams; the eye slits are shallow.
+- The user (2026-11-18, late morning): "The captain model shouldnt have a beard- we will add that on top. His belly has
+  an issue its sharp, his hands still seem poor quality compared to like twilight princess hands, and his shoulders
+  need a little work."; "We should make the captain model without a hat as well". So a figure's BASE model is the bare
+  person (no beard, no head hair, no hat): hair and hats are separate pieces added on top (the captain's hair shells go
+  to an optional `models/captain_hair.glb`, his cap is its own hideable mesh). Hands are judged against the Twilight
+  Princess reference hands.
+- The older brother (the user, same message): "should be the tallest of the 3, a little taller and rugby built, with a
+  less pointy more rugged square face like" a named American football player (a real person: his look is used only as
+  a general type, described in words: broad square face, wide jaw, squared chin, thick neck; never his name in a
+  prompt, never his photo, no likeness). `tools/art_src/concept_brother_tpose3.jpg` is the square-faced sheet; Gemini
+  kept drawing him squat (and refused a prompt that called the proportions dwarf-like), so
+  `concept_brother_tpose3_tall.jpg` is that sheet with the legs lengthened by Claude (legs x1.55 below the drawers'
+  hem): build him to the tall one. His head, fishing and diving sheets predate the square face. Gemini's prompt box
+  moves with the window's height (y 693 or 727 at this size): several "dropped" prompts were clicks that missed it.
