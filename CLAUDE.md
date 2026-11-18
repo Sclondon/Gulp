@@ -422,6 +422,15 @@ choices below are Claude's.
   north-south, its ends on the rims 26 m down, about 90 m under its middle, 40 m off Carmel. And the start, circled
   by the user: `Sea.START` (-65, -42), on the shelf south-west of the pirate ship; the seal rock (`Scenery.OUTCROP`)
   moved to (-50, -86) so the title boat's circle clears it by 8 m.
+- **Terraced trench** (2026-11-18, the user: "the trench needs to be carved out with terrace like steps, no just one
+  huge cliff"): inside the drawn trench the floor may be no deeper than `_steps(distance in from its edge)`: every
+  `TERRACE_WIDE` (6) m in, a `TERRACE_STEP` (14) m drop, flat for the first `TERRACE_TREAD` (0.6) of it, then a steep
+  riser (the wall-rock shading paints the risers as rock, the treads as silt). By distance, not depth: the real
+  walls drop 60 m in a few metres, where depth-steps came out a metre wide (tried first, kept unused as `_terrace`).
+  The trench is shallower for it in its narrow parts (the main canyon by Moss Landing about 53 m at x 30, the Carmel
+  Canyon under the liner about 38 m); the broad south-western basin still reaches 95 m. Outside the trench the floor
+  is raised to 26 m right up to its edge (an ease there left a moat). Same message: "the ruins need to be way further
+  out in the deepest part of the trench", circled at about (-60, 53): passed to the Atlantis builder.
 - **Skinnier canyons** (2026-11-18, superseded by the note above). The user drew rough lines over the overhead chart ("The trench area
   needs to be skinner, just showing roughish boundaries"), and the first try traced them (below); then: "I didnt want
   it to be based exactly on my rough drawing just meant trench needs to be skinnier". So the bake now keeps the real

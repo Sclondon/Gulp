@@ -51,6 +51,11 @@ const SHELF := 26.0
 const SHELF_EASE := 5.0
 const WALL := 3.0
 const TRENCH_SHORE := 12.0
+## Terraces down the trench's walls (see _steps): every TERRACE_WIDE metres in from its edge the floor
+## steps down TERRACE_STEP metres: flat for the first TERRACE_TREAD of each, then a steep riser.
+const TERRACE_WIDE := 6.0
+const TERRACE_STEP := 14.0
+const TERRACE_TREAD := 0.6
 ## The smoothing: box blurs this many cells round, this many times (about a Gaussian).
 const BLUR := 2
 const BLUR_PASSES := 3
@@ -199,6 +204,33 @@ func _narrow(src: PackedFloat32Array) -> PackedFloat32Array:
 	return out
 
 
+# The deepest the floor may be `inside` metres in from the trench's edge: its walls as terraces (the user,
+# 2026-11-18: "the trench needs to be carved out with terrace like steps, no just one huge cliff"). Steps
+# by distance, not by depth: the real walls drop 60 m in a few metres, where depth-steps would be too
+# narrow to see on the 2 m floor grid. The treads follow the trench's (drawn, wavering) edge.
+func _steps(inside: float) -> float:
+	var band := inside / TERRACE_WIDE
+	var whole := floorf(band)
+	return SHELF + TERRACE_STEP * (whole + smoothstep(TERRACE_TREAD, 1.0, band - whole))
+
+
+# (unused: steps by depth, the first try) The trench's walls in steps (the user, 2026-11-18: "the trench needs to be carved out with terrace like
+# steps, no just one huge cliff"): below SHELF, each TERRACE_STEP metres of depth is a flat tread for its
+# first TERRACE_TREAD and a smooth steep riser down to the next. The treads follow the floor's own contours,
+# so they wind along the walls; where a wall is gentle they are wide, where steep, narrow. Everything deeper
+# than SHELF is in the trench (outside it the floor is raised to SHELF), so the whole trench is stepped.
+func _terrace(src: PackedFloat32Array) -> PackedFloat32Array:
+	var out := src.duplicate()
+	for i in src.size():
+		var over := src[i] - SHELF
+		if over <= 0.0:
+			continue
+		var band := over / TERRACE_STEP
+		var whole := floorf(band)
+		out[i] = SHELF + TERRACE_STEP * (whole + smoothstep(TERRACE_TREAD, 1.0, band - whole))
+	return out
+
+
 # The trench where the user drew it (data/trench_mask.png, tools/trench_mask.gd: "The trench area needs to
 # be skinner, just showing roughish boundaries"): outside it the floor is raised to the shelf (no deeper
 # than SHELF, eased in over SHELF_EASE m from its edge); inside, it is at least as deep as a wall going
@@ -225,9 +257,12 @@ func _trench(src: PackedFloat32Array, cols: int, rows: int) -> PackedFloat32Arra
 			continue
 		if inside[i] > 0.0:
 			var cut := SHELF + clampf(to_out[i] * WALL, 0.0, 70.0)
-			out[i] = lerpf(src[i], maxf(src[i], cut), smoothstep(TRENCH_SHORE * 0.5, TRENCH_SHORE, shore[i]))
+			# (and its walls in steps, inward from its edge: see _steps)
+			var stepped := minf(maxf(src[i], cut), _steps(to_out[i]))
+			out[i] = lerpf(src[i], stepped, smoothstep(TRENCH_SHORE * 0.5, TRENCH_SHORE, shore[i]))
 		else:
-			out[i] = lerpf(src[i], minf(src[i], SHELF), smoothstep(0.0, SHELF_EASE, to_in[i]))
+			# (right up to the edge: the steps inside start at SHELF, so they meet; an ease here left a moat)
+			out[i] = minf(src[i], SHELF)
 	return out
 
 
