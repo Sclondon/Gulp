@@ -47,16 +47,17 @@ const ZONES := {
 	"trench": {"at": Vector2(30.0, -36.0), "radius": 45.0, "deeper": 45.0},
 	"ruins": {"at": Vector2(-53.0, 26.0), "radius": 30.0},
 	"grass": {"at": Vector2(82.0, 52.0), "radius": 12.0},
-	"reef": {"at": Vector2(38.0, 12.0), "radius": 24.0},
+	"reef": {"at": Vector2(0.0, 122.0), "radius": 24.0},
 	"open": {"at": Vector2(-95.0, 10.0), "radius": 24.0},
 }
 ## The liner's wreck (scripts/wreck.gd, another agent's): where the middle of its keel rests on the
-## bottom, and its turn (rotation.y; the hull's length lies along the node's own Z). On the level shelf
-## off Pacific Grove, north of the peninsula, 25 m down, lying south-west to north-east (the user, 2026-11-18,
-## chose this over their first X off Point Lobos, where the real floor is the Carmel Canyon's head and the
-## liner could only lie on a carved ledge: "the reef ... shouldn't just be a giant crater").
-const WRECK_AT := Vector3(38.0, 15.0, 12.0)
-const WRECK_HEADING := 2.3
+## bottom, and its turn (rotation.y; the hull's length lies along the node's own Z). Off Carmel, along the
+## coast between Cypress Point and Point Lobos, 40 m down (the user, 2026-11-18: "The ship should be off the
+## coast of carmel not in the kelp forest", after a turn on the shelf off Pacific Grove). The real floor there
+## is the Carmel Canyon's head (30 degrees and steeper everywhere), so it lies on a broad spur raised for it
+## (Bay.WRECK_SHELF: sloping a little to sea, its sides spread wide and uneven, not a carved ledge).
+const WRECK_AT := Vector3(0.0, 0.0, 122.0)
+const WRECK_HEADING := 0.32
 ## Atlantis (scripts/ruins.gd, another agent's): the middle of its terrace on the bottom, and its
 ## turn (its front, the node's -Z, faces north-east, up the canyon). In the canyon's deep basin, 93 m down, on
 ## its flattest ground, at the floor's own depth (not a raised terrace: "atlantis shouldn't just be a giant crater").

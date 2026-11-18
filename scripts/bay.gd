@@ -49,7 +49,8 @@ const HARBOURS := [
 ## Shelves made level (world metres): middle, flat out to, blended out to, depth at the middle (m),
 ## and how much deeper it gets per metre (x, z); a long one also its heading (as rotation.y) and how
 ## much narrower it is across (the liner's, along its hull).
-const WRECK_SHELF := [Vector2(38.0, 12.0), 34.0, 56.0, 25.0, Vector2(0.0, 0.0), Vector2(2.3, 2.2)]
+## (the liner's is a spur raised off Carmel, which only fills: its 7th item)
+const WRECK_SHELF := [Vector2(0.0, 122.0), 36.0, 84.0, 40.0, Vector2(-0.06, 0.0), Vector2(0.32, 1.9), true]
 const RUINS_TERRACE := [Vector2(-53.0, 26.0), 34.0, 56.0, 93.0, Vector2(0.0, 0.0)]
 const PIRATE_HOLLOW := [Vector2(-20.0, -62.0), 20.0, 38.0, 21.0, Vector2(0.0, 0.06)]
 
@@ -168,7 +169,12 @@ static func depth(p: Vector2) -> float:
 		var middle: Vector2 = shelf[0]
 		# (never right up to a shore: the shallows stay as they are)
 		var w := shelf_weight(p, shelf) * smoothstep(3.0, 10.0, d)
-		deep = lerpf(deep, float(shelf[3]) + (shelf[4] as Vector2).dot(p - middle), w)
+		var level := float(shelf[3]) + (shelf[4] as Vector2).dot(p - middle)
+		# (a spur only raises the floor round what lies on it: where it is already shallower it is left
+		# as it is, but under the thing itself it is level both ways)
+		if shelf.size() > 6 and bool(shelf[6]):
+			level = lerpf(minf(level, deep), level, smoothstep(0.85, 1.0, shelf_weight(p, shelf)))
+		deep = lerpf(deep, level, w)
 	return deep
 
 

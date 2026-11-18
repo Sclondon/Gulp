@@ -405,9 +405,14 @@ choices below are Claude's.
   work on a way to make the trench cliffs look good, stretched terrain looks bad". So: set pieces stand on the floor's
   own depth where it is flattest (`tools/bay_probe.gd --flat=`), levelled only by the difference, with uneven sides
   (`Bay.shelf_weight`, its spread capped) and never right up to a shore. Atlantis: the deep basin's flattest ground,
-  93 m down (it now needs the 100 m amplifier; it was 42 m on a raised terrace). The liner: the user chose (over
-  their X off Point Lobos, where the floor is the Carmel Canyon's head) the level shelf off Pacific Grove, 25 m down,
-  lying south-west to north-east; its shelf is long along the hull.
+  93 m down (it now needs the 100 m amplifier; it was 42 m on a raised terrace). The liner: first moved to the level
+  shelf off Pacific Grove (the user's pick of three), then the user: "The ship should be off the coast of carmel not
+  in the kelp forest". The floor off Carmel is the Carmel Canyon's head (`tools/bay_probe.gd --fit=` found no hull
+  placement under 30 degrees there), so it lies along the coast between Cypress Point and Point Lobos, 40 m down
+  (needs the 50 m amplifier), on a broad spur raised for it: `Bay.WRECK_SHELF`'s 7th item makes a shelf fill only
+  (never dig: Carmel Cove keeps its 8 to 13 m for the pier), level under the hull itself, its sides spread to 84 m.
+- `tests/overhead.gd` now tints the land and draws the shoreline in cyan (the user: "Need too see where the shoreline
+  is on the map").
 - **Decision: rock walls** (the cliffs). What: steep floor (`wall_from`/`wall_to` on 1 - the normal's y) is painted
   as rock from the sides in the sand's shader (`Sea.WALL_ROCK`/`WALL_MIX`, put into the sand's code as the caustics
   are): level beds that waver, a silted lip and shadowed foot each, which also tip the light, upright joints here and

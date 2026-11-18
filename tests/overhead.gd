@@ -122,6 +122,17 @@ func _label(whole: Image, wide: float, high: float) -> void:
 	var h := int(LABELLED * high / wide)
 	var small := whole.duplicate() as Image
 	small.resize(w, h, Image.INTERPOLATE_LANCZOS)
+	# The land tinted and the shoreline drawn (the user: "Need too see where the shoreline is on the
+	# map": the beach sand and the land are the same pale colour from above).
+	var per := wide / w
+	for py in h:
+		for px in w:
+			var at := Vector2(Sea.WEST + (px + 0.5) * per, Sea.NORTH + (py + 0.5) * per)
+			var d := Bay.shore_distance(at)
+			if absf(d) < 0.35:
+				small.set_pixel(px, py, Color(0.1, 0.95, 1.0))
+			elif d < 0.0:
+				small.set_pixel(px, py, small.get_pixel(px, py).lerp(Color(0.42, 0.5, 0.32), 0.6))
 	var sheet := SubViewport.new()
 	sheet.size = Vector2i(w, h)
 	sheet.transparent_bg = false
@@ -159,7 +170,7 @@ func _label(whole: Image, wide: float, high: float) -> void:
 	bar.position = Vector2(20.0, h - 30.0)
 	sheet.add_child(bar)
 	var bar_label := Label.new()
-	bar_label.text = "50 m   (north up)"
+	bar_label.text = "50 m   (north up; cyan: the shore, green: land)"
 	bar_label.add_theme_font_size_override(&"font_size", 20)
 	bar_label.add_theme_constant_override(&"outline_size", 6)
 	bar_label.add_theme_color_override(&"font_outline_color", Color.BLACK)
