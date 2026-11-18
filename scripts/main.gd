@@ -551,7 +551,7 @@ func _sound_out() -> void:
 		for threat: Array in life.threats():
 			var off: Vector3 = threat[0] - player.global_position
 			if off.length() < TouchPad.SONAR_RANGE:
-				seen.append(Vector3(off.dot(right), off.dot(ahead), 1.0))
+				seen.append(Vector3(off.dot(right), off.dot(ahead), 1.0 + Sonar.high(off.y)))
 		for each in life.creatures:
 			if seen.size() > 40:
 				break
@@ -559,9 +559,9 @@ func _sound_out() -> void:
 				var off := each.global_position - player.global_position
 				if off.length() < TouchPad.SONAR_RANGE:
 					if Life.is_food(player.length, each.length):
-						seen.append(Vector3(off.dot(right), off.dot(ahead), 0.0))
+						seen.append(Vector3(off.dot(right), off.dot(ahead), Sonar.high(off.y)))
 					elif each.hunts and Life.can_eat(each.length, player.length) and player.length >= each.length * Life.TOO_SMALL:
-						seen.append(Vector3(off.dot(right), off.dot(ahead), 1.0))
+						seen.append(Vector3(off.dot(right), off.dot(ahead), 1.0 + Sonar.high(off.y)))
 	pad.blips = seen
 	# (and the parts of the sea, as landmarks)
 	var marks := []

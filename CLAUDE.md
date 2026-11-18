@@ -321,3 +321,11 @@ a half on a Windows desktop browser. Build the web export from the clean worktre
   to play: needs a concept, a design and the character controller question solved, see the title figures note).
 - Landed since the list above: the Monterey map and docks, schooling and habits, water effects with day and night, the
   boat's quality pass, the fish logo (`scripts/title_logo.gd`; the picture logo is retired).
+- An idea, not yet a request ("Thinking about adding a mode where you return tomo, the boatm as the most valuable fish
+  you can become- you sell fish for money to unlock better / deeper diving equipment so that you can open chests /
+  look for your lost treasure plot"): a run ends by swimming back to the boat; the fish you have become is sold; money
+  buys diving gear that goes deeper; the boy in his suit walks the floor to open chests and follow a lost-treasure
+  story. It would tie together the diving suit, the roguelike elements, the evolution tree and the set pieces
+  (liner, pirate ship, Atlantis). Nothing built; ask before building.
+- The sonar shows height (2026-11-18): a blip above or below the fish is an arrowhead on a stalk (`Sonar.high`).
+  The smoke test's "pack hunters at a swarm" check failed once in three runs: it is flaky, not yet looked at.

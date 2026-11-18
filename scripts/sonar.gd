@@ -35,13 +35,21 @@ const LANDMARKS := {
 }
 
 ## What it shows: where each thing is from the fish (x to its right, y ahead, metres) and what it
-## is (z: 0 food, 1 a hunter); the landmarks, the same way, with their names; and the way the fish
+## is (z: 0 food, 1 a hunter, with how far above or below the fish it is added by `high`: the user,
+## 2026-11-18, "the sonar map needs to show objects relation to you in 3d"); the landmarks, the same way, with their names; and the way the fish
 ## is heading (radians round from north, the sea's -Z, turning towards east).
 var blips: Array[Vector3] = []
 var landmarks: Array = []
 var heading := 0.0
 
 var _face: Face
+
+
+## How far above (or below) the fish a thing is, folded into a blip's z: a quarter at TALL metres
+## up, minus a quarter that far down.
+const TALL := 8.0
+static func high(up: float) -> float:
+	return clampf(up / TALL, -1.0, 1.0) * 0.25
 
 
 func _init() -> void:
@@ -122,8 +130,21 @@ class Face:
 				continue
 			var lag := fposmod(sweep - off.angle(), TAU) / TAU
 			var bright := 0.45 + 0.55 * (1.0 - lag)
-			var colour := Color(1.0, 0.25, 0.15) if blip.z > 0.5 else Color(0.5, 1.0, 0.5)
-			draw_circle(middle + off * r * 0.8, 6.5 if blip.z > 0.5 else 4.5, Color(colour, bright))
+			var hunter := blip.z > 0.5
+			var colour := Color(1.0, 0.25, 0.15) if hunter else Color(0.5, 1.0, 0.5)
+			# (as on an old three-dimensional scope: a stalk stands from its place on the fish's own
+			# level up or down to the thing itself, which is an arrowhead pointing the way it lies)
+			var up := (blip.z - (1.0 if hunter else 0.0)) * 4.0
+			var foot := middle + off * r * 0.8
+			var at := foot + Vector2(0.0, -up * r * 0.11)
+			var big := 7.0 if hunter else 5.0
+			if absf(up) < 0.2:
+				draw_circle(at, big, Color(colour, bright))
+			else:
+				draw_line(foot, at, Color(colour, bright * 0.6), 2.0, true)
+				draw_circle(foot, 2.0, Color(colour, bright * 0.6))
+				var tip := -signf(up) * big * 1.3
+				draw_colored_polygon(PackedVector2Array([at + Vector2(0.0, tip), at + Vector2(big, -tip * 0.6), at + Vector2(-big, -tip * 0.6)]), Color(colour, bright))
 		# the compass: N, E, S and W round the rim, turning as the fish does; north brighter
 		for k in 4:
 			var bearing := k * PI * 0.5 - scope.heading
