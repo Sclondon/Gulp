@@ -4,7 +4,9 @@ The boat of the title screen. The user (2026-11-18): the boy, a sea captain and 
 boat (look up reference pics). In the open back cabin of the shrimping boat should be a old timey franketstein
 computer hooked up to a helmet on the boys head"; then, after seeing it: "The boat should be perpendicular in the
 start scene, and the pc against the portside wall", "And hooked up to a monitor"; and "spend more time coming up with
-a design ... for the boat as well and do a couple qualitu passes". Only the boat is here; the figures, the computer,
+a design ... for the boat as well and do a couple qualitu passes"; then "The captain needs to be driving the boat(which
+should be moving), the boy sitting on a stool plugged into the vr head set, and the diver operating machinery in the
+back". Only the boat is here; the figures, the computer,
 the monitor and the helmet are made elsewhere.
 
 - Built by `tools/build_shrimp_boat.py` (Blender 4.3: `blender --background --factory-startup --python
@@ -13,8 +15,10 @@ the monitor and the helmet are made elsewhere.
 
 ## Design sheet
 
-**What it is.** An old wooden Gulf of Mexico shrimp trawler of the 1950s-70s kind still tied up at Bayou La Batre
-or in the Carolinas: a double-rigger, house forward, working deck aft. Old and salty, kept going by hand, not a wreck.
+**What it is.** An old wooden Gulf of Mexico shrimp trawler of the 1950s-70s kind out of Bayou La Batre or the
+Carolinas: a double-rigger, house forward, working deck aft. Old and salty, kept going by hand, not a wreck. In the
+title it is **under way** at a few knots: the anchor is stowed on the foredeck, no mooring lines; the tyre fenders
+stay hanging (many working boats leave them so: my call).
 
 **The broadside silhouette** (the title shows the boat from starboard, abeam, so this is the whole picture), bow to
 the right as the camera sees it:
@@ -22,7 +26,9 @@ the right as the camera sees it:
   sweeping up to a high, flared bow (deck 1.5 m, rail 2.3 m). This sweep is the first thing that says "workboat".
 - A raked stem and a flat **transom** with a short rudder and propeller under it.
 - The **wheelhouse** forward of amidships: a tall white box a step higher than the cabin behind it, with a brow over
-  three front windows, two side windows and the starboard door, running lights at its front corners, a searchlight,
+  three front windows and two port side windows; to starboard (the camera's side) one big open window at standing
+  height and the door standing open, hooked back aft, so the captain shows at the wheel; running lights at its front
+  corners, a searchlight,
   a horn and a whip aerial on the roof, and a tall black **stack** behind it.
 - The **open cabin** behind it, lower-roofed: from this side a lit box open to the camera, posts at its corners, a
   grab rail on its roof. The computer stands against its far (port) wall.
@@ -51,15 +57,16 @@ fittings, red and white for the life ring. One spot of green (the starboard runn
 - The wheelhouse door's varnish gone grey; a rust run down one otter door.
 
 **Deck furniture**, placed so nothing stands between the camera and the cabin: the trawl winch on the middle line
-aft of the cabin, a fish-hold hatch with battens, the diver's hand-cranked air pump (a wooden box with a big wheel at
-each end) on the starboard aft deck with its hose to a coil and on to the diver's feet, a coil of rope to port,
-crates at the port quarter, shrimp baskets at the starboard quarter and one more to port, the anchor hung on the
-starboard bow, a life ring on the starboard bow bulwark, cleats on the rail.
+aft of the cabin, the diver's air pump a little to port of the middle (an old two-cylinder pump in a wooden chest
+with brass bands, two brass cylinders and a crosshead on its lid, a gauge, and a big crank wheel on its starboard side
+seen face on by the camera) with its hose to a coil on deck and on to the diver's feet, a fish-hold hatch with battens
+aft of it, a coil of rope to port, crates at the port quarter, shrimp baskets at the starboard quarter and one more to
+port, the anchor lashed down on the foredeck, a life ring on the starboard bow bulwark, cleats on the rail.
 
 **The starboard side is kept clear for the camera:** the cabin's starboard side is open from deck to roof; the
 starboard otter door is hauled up high under its outrigger, beside the net (above the roof line as seen from abeam);
 the starboard net is hauled up short; the starboard aft guy lands well aft of the cabin; the shrouds land forward of
-the wheelhouse door. The port side keeps its door hung low against the hull and its net long.
+the wheelhouse's open window and pass above the captain as seen from abeam. The port side keeps its door hung low against the hull and its net long.
 
 ## Axes, size and nodes
 
@@ -70,12 +77,13 @@ keel, so the boat can rock.
 
 | Node | Kind | What it is |
 | --- | --- | --- |
-| `Boat` | MeshInstance3D | everything fixed (13,339 triangles) |
-| `Wheel` | MeshInstance3D | the ship's wheel, origin at its hub, Godot (0, 2.02, -3.35); turns about its local Z (824) |
+| `Boat` | MeshInstance3D | everything fixed (12,751 triangles) |
+| `Wheel` | MeshInstance3D | the ship's wheel (rim radius 0.3 m), origin at its hub, Godot (0, 2.016, -3.2): 1.05 m above the deck under CaptainSpot and 0.45 m ahead of it; turns about its local Z, the boat's length (824) |
+| `PumpWheel` | MeshInstance3D | the air pump's crank wheel (radius 0.35 m), origin at its hub, Godot (-0.2, 1.879, 3.5): 1.0 m above the deck under DiverSpot and 0.5 m aft of it; turns about its local X (athwartships); its handle is at radius 0.22 m at the top when unturned, the grip sticking out to starboard (520) |
 | `OutriggerPort` | MeshInstance3D | origin at its hinge (-0.42, 3.65, -1.85), with its net, floats, otter door and lines (2,744) |
 | `OutriggerStarboard` | MeshInstance3D | the same at (0.42, 3.65, -1.85) (2,744) |
 
-Total **19,651 triangles**. Both outriggers are raised 65 degrees; they turn about their local Z. Their lines
+Total **19,583 triangles**. Both outriggers are raised 65 degrees; they turn about their local Z. Their lines
 (topping lift, guys, door line) are in their own objects and only look right at the built angle.
 
 **Markers** (Node3D). Each marker's -Z is the way it faces.
@@ -83,14 +91,17 @@ Total **19,651 triangles**. Both outriggers are raised 65 degrees; they turn abo
 | Marker | Godot position | Faces | What it is |
 | --- | --- | --- | --- |
 | `ConsoleSpot` | (-1.37, 0.924, -0.175) | starboard (+X) | cabin floor against the port wall's inside face, at the middle of its length |
-| `BoySpot` | (-0.52, 0.924, -0.175) | port (-X) | 0.85 m to starboard of ConsoleSpot, towards the console |
+| `BoySpot` | (-0.15, 0.924, -0.175) | port (-X) | where he sits on his stool: 0.62 m to starboard of the console's face (the face taken as 0.6 m out from the wall, the bench depth), level with ConsoleSpot; the deck there is clear |
 | `HelmetCable` | (-1.37, 2.224, -0.175) | starboard | 1.3 m above ConsoleSpot |
 | `MonitorSpot` | (-1.37, 2.674, -0.175) | starboard | on the port wall 1.75 m above the deck; the wall is plain there |
-| `CaptainSpot` | (1.60, 0.951, -2.2) | starboard | side deck outside the wheelhouse's starboard door |
-| `DiverSpot` | (1.00, 0.877, 3.2) | starboard | starboard aft deck, just forward of the air pump |
+| `CaptainSpot` | (0, 0.966, -2.75) | the bow (-Z) | inside the wheelhouse at the wheel |
+| `DiverSpot` | (-0.2, 0.879, 3.0) | aft (+Z) | aft deck, a little to port of the middle, at the pump's crank wheel |
+| `BowWave` | (0, 0, -5.115) | aft | the stem on the waterline (foam) |
+| `Wake` | (0, 0, 6.5) | aft | the middle of the transom on the waterline (foam) |
 | `Waterline` | (0, 0, 0) | the bow | |
 
-The diver's air hose ends on the deck at Godot (1.3, 0.92, 2.95). The air pump stands at Godot (0.95, 0.88, 4.1), its wheels facing the camera.
+The diver's air hose runs from the pump's outlet to a coil on deck at Godot (0.42, 0.9, 3.75) and ends on the deck
+near his feet at (0.15, 0.92, 2.75).
 
 **The cabin inside:** 2.85 m fore and aft (wheelhouse wall to the open aft end; 2.73 m between the aft posts and the
 wall), 2.74 m from the port wall's inside face to the open starboard edge, 2.13 to 2.16 m from the plank tops to the
@@ -143,20 +154,29 @@ camera; nothing on the starboard side crosses the cabin opening; the sheer, hous
 read in the side views. Left as they are: the boom and its hook fill the upper left of the title view (it is a real
 part of the rig); the hull white is calm and clean between the rust runs.
 
+**Pass 4** (the moving title: captain at the wheel, boy on a stool, diver at the pump; stand-ins at the new
+markers, title camera at Godot (10.5, 3, 0.4) looking at (0, 1.9, 0.1), plus a close view of the helm and all the
+earlier views). The title view shows, left to right: the diver standing side on at the pump with its crank wheel
+face on and the two brass cylinders behind it, the winch, the open cabin with the boy seated in front of the console
+at the port wall, the open wheelhouse door hooked back, and the captain at the wheel through the big open side window
+(head, shoulders and the wheel in view; the wheel itself is edge on, as it stands across the boat). No rigging line
+crosses the window, the cabin opening or either man. The stowed anchor lies below the bow bulwark, out of sight from
+abeam. Nothing needed changing after it.
+
 Earlier first build (2026-11-17/18, camera aft): the bow's raked stem pushed the outer skin inside the bulwarks (63
 faces inside out); fixed by raking the stem below the deck only. The glass was made see-through so the wheel shows.
 
 ## Checked
 
-- Inside-out faces in Blender: every one of the 586 closed parts on its own; a ray out of each triangle (from three
-  points of it) must leave the part's skin an even number of times. 0 of 19,651 face inwards (`INSIDE-OUT PASSED`).
+- Inside-out faces in Blender: every one of the 580 closed parts on its own; a ray out of each triangle (from three
+  points of it) must leave the part's skin an even number of times. 0 of 19,583 face inwards (`INSIDE-OUT PASSED`).
 - In Godot after `--import`, read back from the .glb: winding agrees with the normals on 100% of triangles and every
   mesh encloses a positive volume; node names and classes as above (no import-hint suffixes); markers face as listed;
-  COLOR_0 on every surface; 19,651 triangles.
+  COLOR_0 on every surface; 19,583 triangles.
 
 ## Not verified
 
-- Never seen in the game, with the game's water, lighting or post shader, or on a phone (19.7k triangles and blended
+- Never seen in the game, with the game's water, lighting or post shader, or on a phone (19.6k triangles and blended
   glass panes).
 - The real figures, console, monitor and helmet have not stood at the markers; only boxes and cylinders (boy 1.2 m,
   adults 1.8 m) did. From the title camera the bulwark hides the people's legs below the knee.
@@ -175,7 +195,8 @@ door or bow, diver aft by the pump, all facing as listed), the camera places, th
 Mine (change freely): the whole design sheet above (palette, the wear and where it is, tyre fenders, name boards
 left blank, the hatch, the running lights, aerial, brow and roof rail), the wheelhouse a step higher than the cabin,
 the low aft bulwark (0.45 m), the mast stepped inside the wheelhouse, the starboard door hauled up high and its net
-hauled up short (the port ones hang low), the captain outside the wheelhouse door rather than at the bow, where the
+hauled up short (the port ones hang low), the helm on the middle line with the big open window and the door hooked open aft, the pump
+chest to port of its crank wheel, the stowed anchor on the foredeck, the tyres left hanging, where the
 winch, pump, hatch, rope, crates and baskets stand, the see-through glass. The brief once asked for the bow on
 Blender -Y "so in Godot the bow points to -Z"; those two disagree, so the bow is on Blender +Y to get the Godot result.
 

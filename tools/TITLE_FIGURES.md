@@ -1,207 +1,404 @@
 # The title figures
 
-Three standing figures for the title scene (made 2026-11-18): the boy from Warren, a sea captain and an old-time
-diver. The scene, the boat, the computer and the boy's helmet are made elsewhere.
+Three standing figures for the title scene, 2026-11-18: the boy from Warren, a sea captain and an old-time diver.
+The scene, the boat, the computer and the boy's helmet are made elsewhere.
 
-The user's words (2026-11-18): "the main menu / start of the game should be the boy from warren, a sea captain, and
-and oldtimy diver on a shrimping boat (look up reference pics). In the open back cabin of the shrimping boat should
-be a old timey franketstein computer hooked up to a helmet on the boys head- the controls for the pc are the
-controls for the game".
+The user's words:
 
-## Files
+- "the main menu / start of the game should be the boy from warren, a sea captain, and and oldtimy diver on a
+  shrimping boat (look up reference pics). In the open back cabin of the shrimping boat should be a old timey
+  franketstein computer hooked up to a helmet on the boys head- the controls for the pc are the controls for the
+  game".
+- Then, on the first version: "Looks like you made new models for the captain and diver instead lf using our existing
+  human models" and "The captain needs the same smooth mask style face as rhe boy- except maybe a big nose and beard".
+- Then: "spend more time coming up with a design for the their outfits ... and do a couple qualitu passes".
 
-- `tools/build_title_figures.py`: builds all three in Blender 4.3:
-  `blender -b --factory-startup --python tools/build_title_figures.py`, then `godot --headless --path . --import`.
-- `tools/blend/title_figures.blend`: the editable file, one collection per figure (`boy`, `captain`, `diver`).
-  Re-running the script overwrites it.
-- `models/title_boy.glb`, `models/title_captain.glb`, `models/title_diver.glb`.
-- `scripts/title_figures.gd` (`TitleFigures`): makes and poses them.
+So the captain and the diver were made again on the existing man, from the design sheets below. The first version
+(new bodies built from tubes) is gone, replaced in the same files.
 
-## Using them
+## Files and use
 
-```
-var boy := TitleFigures.boy()          # also captain(), diver()
-add_child(boy)                         # stands at its origin, feet on y = 0, facing -Z; idles by itself
-TitleFigures.head_node(boy).add_child(helmet)
-TitleFigures.look_at_point(boy, screen.global_position)   # TitleFigures.look_about(boy) lets go
-```
+- `tools/build_title_figures.py`: builds all three.
+  1. `blender -b --factory-startup --python tools/build_title_figures.py` (about 7 s).
+  2. `godot --headless --path . --import`.
+- `tools/blend/title_figures.blend`: the editable file, a collection each (`boy`, `captain`, `diver`), overwritten
+  by the script.
+- `models/title_boy.glb`, `title_captain.glb`, `title_diver.glb`.
+- `scripts/title_figures.gd` (`TitleFigures`): `boy()`, `captain()`, `diver()`, `head_node(figure)`,
+  `look_at_point(figure, world_point)`, `look_about(figure)`.
+  - Each figure has its origin on the deck under him, faces -Z, and does its task once in the tree (see "At work"; `stand(figure)` gives the standing idle described here).
+  - Each is a `TitleFigures.Idle`. Under it, `Model` is the glb, turned 180 degrees and, for the adults, scaled 1.44.
+  - The Idle poses a few bones every frame:
+    - the arms brought down from the T pose all three are made in (`ARM_DOWN`: 80, 79 and 70 degrees), the elbows a
+      little bent, the fingers curled;
+    - breath and a slow sway;
+    - the head turned toward the point given (the diver turns his top half, his helmet being fixed to his
+      breastplate).
+  - Every mesh has `lod_bias` 64.
 
-Each figure is a `TitleFigures.Idle` (a Node3D). Under it, `Model` is the imported glb, turned 180 degrees (the
-models face +Z, as the boy's rig wants) and, for the adults, scaled by `ADULT_SCALE` (1.44). Its Skeleton3D has a
-`BoneAttachment3D` called `HeadMount` on the bone `head`. Every frame the Idle poses a few bones itself:
-breathing in the spine and chest, a slow sway, the boy's arms brought down from his T pose with the elbows a little
-bent and the fingers curled, and the head turned (eased, held to what a neck can do) toward the point it was given,
-or wandering slowly when it has none. The diver turns his whole top half instead, because his helmet is screwed to
-his breastplate. Each mesh's `lod_bias` is 64, so the importer's automatic LODs never show.
-
-### The boy's head, for the helmet
-
-`TitleFigures.head_node(boy)` is `Boy/Model/boy_armature/Skeleton3D/HeadMount`. It sits on the head bone's joint, where
-the head meets the neck: (0, 1.012, 0) above his feet when he stands straight. In its own frame +Y is up and **+Z is
-the way he faces** (it is under the turned model). Measured from that joint, in that frame (metres, the boy at his
-own size, 1.27 m to the top of his hair):
+**The boy's head, for the helmet:** `head_node(boy)` is `Boy/Model/boy_armature/Skeleton3D/HeadMount`, a
+BoneAttachment3D on the bone `head`. It sits at (0, 1.012, 0) above his feet when he stands straight. In its own
+frame +Y is up and +Z is the way he faces. Measured from that joint:
 
 | | x (side to side) | y (up) | z (back to front) |
 | --- | --- | --- | --- |
-| head (skin) | -0.110 .. 0.110 | -0.049 .. 0.235 | -0.106 .. 0.119 |
-| hair (bowl cut) | -0.119 .. 0.119 | 0.035 .. 0.247 | -0.126 .. 0.125 |
+| skin | -0.110 .. 0.110 | -0.049 .. 0.235 | -0.106 .. 0.119 |
+| bowl hair | -0.119 .. 0.119 | 0.035 .. 0.247 | -0.126 .. 0.125 |
 
-The top of his head is (0, 0.247, 0) on the hair and (0, 0.235, 0) on the skin. The middle of the skull is about
-(0, 0.093, 0.006). A helmet to fit over his hair wants an inside of about 0.24 wide and 0.26 deep, its crown at least
-0.25 above the joint. The bowl cut can be hidden (`boy_hair__bowl`, `boy_hairtop__bowl`) if the helmet should sit
-lower.
+- Top of the head: (0, 0.247, 0) on the hair, (0, 0.235, 0) on the skin.
+- Middle of the skull: about (0, 0.093, 0.006).
+- The hair meshes `boy_hair__bowl` and `boy_hairtop__bowl` can be hidden under a close helmet.
 
-## What each is made of
+## At work (the default)
 
-Triangles as exported. Heights as they stand in the scene.
+The user (2026-11-18): "The captain needs to be driving the boat(which should be moving), the boy sitting on a
+stool plugged into the vr head set, and the diver operating machinery in the back".
 
-### The boy: 6,093 triangles, 1.27 m
+A figure made by `boy()`, `captain()` or `diver()` does its task once it is in the tree. `TitleFigures.stand(figure)`
+gives the old standing idle, and `work(figure)` puts him back to his task.
 
-GameCommon's boy (`godot/character-controller`) turned out as Warren turns out its players (Warren's
-`scripts/looks.gd`, `Looks.decode` for the first seat, and `Looks.apply`):
+The arms and legs are placed by a two-bone solve each frame (`Idle._arm`, `_leg`), so the hands and feet really are
+on their marks. The constants below are in the figure's own space: metres from his origin on the deck, Y up, -Z
+ahead of him, +X to his right.
 
-- the outfit `trousers` with its braces left off (`"over": "none"`); the trouser cut `tube` and boots `round`, both
-  as made; no cap; face `base` (no face at all);
-- the head is HeadShape's `inside_round` (Warren's `Looks.HEAD`). `head_shaped()` in the build script is
-  `HeadShape._shaped` line for line, done once in Blender, not at run time;
-- the cut of hair is `bowl` (Warren's `Looks.HAIR`);
-- Warren's colours: shirt `SHIRTS[0]` (0.37, 0.19, 0.175), trousers (0.17, 0.17, 0.19), boots (0.17, 0.13, 0.1),
-  skin (0.79, 0.65, 0.54), hair (0.2, 0.16, 0.13).
+### The boy, at the console
 
-The skeleton and proportions are the boy's own: the build reads every joint out of the model and makes the armature
-again with GameCommon's `make_armature` (every bone straight up and unrotated, as the boy's are). The body, hands and
-boots come from GameCommon's `models/boy_tp.glb` (the boy collapsed for crowds). The head and the hair come from the
-full `models/boy.glb`, because they are seen close. Warren's own `boy.glb` (2026-10-17) has the same skeleton,
-and the same triangle counts in the parts used, as GameCommon's.
+- **Stool:** `BOY_SEAT_HEIGHT` 0.42. The stool stands at his origin; his hip joints are 0.479 up, his seat 0.06
+  under them, on the stool's top.
+- **Feet:** on a rung, `BOY_RUNG` (0, 0.14, -0.2), soles `BOY_FEET_APART` 0.16 apart. His legs are too short to reach
+  the deck from 0.42.
+- **Hands:**
+  - `BOY_LEFT_HAND` (-0.2, 0.8, -0.32) round the ball of a stick;
+  - `BOY_RIGHT_HAND` (0.2, 0.74, -0.32) on a button.
 
-**Where he is not Warren's boy:**
+  These are the middle of each grip. The targets first asked for, (-0.28, 0.98, -0.5) and (0.28, 0.9, -0.5), are
+  out of a 1.27 m boy's reach when seated: from his shoulders (about 0.78 up) they are 0.56 m away, against an arm
+  of about 0.42 m. So the constants were moved in to where his hands land with the elbows a little bent. The console
+  should be lined up with these.
+- **Life:** the stick moves in small slow circles (about 3 cm), and he leans with it. He breathes, presses the button
+  now and then, and looks about a little (or at `look_at_point`).
+- **The head mount when seated:** `head_node(boy)` is at about (-0.014, 0.888, -0.028) in his root space. Its +Z (the
+  way he faces) is about (0.13, -0.17, -0.98), its up (-0.03, 0.98, -0.17): he is looking a little down and to the
+  side as he wanders. It moves with the idle look by up to about 0.1 rad.
 
-- Warren draws his hair with ink-figure's `LockHair` (the cut `fringe`), not the modelled bowl cut. Here the bowl cut
-  is shown instead, because ink-figure is not in Gulp.
-- Warren's skin uses ink-figure's `skin_ink` shader, and the rig's toon shading. Here every figure has plain
-  materials, as imported (roughness 1), in the right colours.
+### The captain, at the wheel
 
-To match those too, install `godot/ink-figure` and dress him with `InkFigure.dress` / `LockHair.add_to`, as
-Warren's `Looks.ink` does.
+- `CAPTAIN_WHEEL_HUB` (0, 1.05, -0.45), `CAPTAIN_WHEEL_RADIUS` 0.3. The wheel's axis is along his facing.
+- Both hands are on the rim at ten and two, going round with it.
+- `wheel_turn(captain)` is the wheel's turn in radians. Positive turns its top to his right (clockwise as he sees
+  it). Over 15 s it ranged -0.42 to 0.43.
+- **Life:**
+  - his weight shifts from foot to foot (the feet stay planted, the knees taking it);
+  - he breathes;
+  - every 8 s he glances out to his left, then to his right.
 
-### The captain: 5,640 triangles, 1.83 m to the top of his cap
+### The diver, at the pump
 
-An old fishing-boat skipper: a navy peaked cap with a black peak and a brass cord, a white beard and moustache,
-bushy brows, grey hair under the cap, a big nose, a cream roll-neck fisherman's jumper with a ribbed hem and cuffs,
-dark trousers, tall black rubber sea boots with turned-down tops, and a short pipe in the left corner of his mouth.
-He is one mesh, `captain`, with materials `captain_sweater`, `_trousers`, `_skin`, `_beard`, `_boots`, `_cap`,
-`_peak`, `_pipe` and `_brass`. Beard, cap, peak, cord and pipe all follow the head bone.
+- `DIVER_CRANK_HUB` (0, 1.0, -0.34), `DIVER_CRANK_RADIUS` 0.2, one turn every `DIVER_CRANK_TURN` 2.4 s.
+- `crank_angle(diver)` is the angle in radians: 0 has the handle straight up from the hub, and it grows as the top
+  of the crank goes forward, away from him. The handle is at `DIVER_CRANK_HUB + DIVER_CRANK_RADIUS * (0, cos a,
+  -sin a)`.
+- Both hands are on the handle's bar (which sticks out across him), 11 cm apart, backs of the hands up.
+- The hub is 0.34 ahead rather than the 0.5 asked for: at 0.5 even a full lean left his hands 5 to 8 cm short of the
+  far side of the turn.
+- **Life:** he leans into it, more as the handle goes away and down, his hips going back and down. His top half
+  rocks with the turn; the helmet goes with it, fixed to the corselet.
 
-### The diver: 6,708 triangles, 1.93 m to the top of his helmet
+### Checked
 
-Standard diving dress, after the US Navy Mark V and Siebe Gorman's (shape only; nobody's model or texture):
+Each was run for 15 s (headless, 60 frames a second):
 
-- a spun-copper bonnet about 0.35 m across, as the Mark V's;
-- four lights: the big front one, two at the sides behind guard bars, one at the top front. Each has a brass rim
-  and dark glass;
-- an exhaust valve low on his right;
-- the air inlet's elbow at the back, with the black air hose running down his back to the deck. The hose lies on the
-  deck 0.95 m behind him, its end at about (-0.2, 0.03, 0.95) from his feet, ready to run to a pump;
-- a copper breastplate (corselet) whose edge rides up over the shoulders, a brass neck ring, and brass brails round
-  its edge with eight wing nuts;
-- lead weights hung front and back on studs;
-- a tan rubberised canvas suit with baggy folds at elbows and knees, black rubber cuffs and bare hands;
-- a leather belt with a brass buckle and a knife in its sheath on his right;
-- canvas boots with lead soles, brass toe caps and bands.
+| Figure | Hand-to-target, worst (left, right) |
+| --- | --- |
+| Boy | 3 mm, 2 mm |
+| Captain | 9 mm, 9 mm |
+| Diver | 17 mm, 15 mm (at the near-top of the turn, where the bar comes close to his chest) |
 
-He is one mesh, `diver`, with materials `diver_suit`, `_rubber`, `_skin`, `_copper`, `_brass`, `_glass`, `_lead`,
-`_leather` and `_canvas`. Copper and brass are metallic, the glass glossy. The helmet, corselet, brass, glass and
-weights all follow the chest bone, as the real helmet is locked to the breastplate. His head bone is there, but
-nothing hangs on it.
+- No bone turned more than 0.25 rad between two frames (0 SHAKE).
+- **Pictures:** windowed, of all three with stand-in props (a stool, a stick and a button, a wheel, a crank and its
+  machine) at four moments, 0.6 s apart: front, back, both sides, above, three-quarter, and close from three sides.
+  All were looked at.
+  - That showed the diver's dress coming out through the corselet at the front of the shoulders as his arms
+    went forward. Fixed:
+    - the dress under the middle of the corselet now goes with the chest;
+    - the corselet stands further off over the shoulders.
 
-### How the adults are built
+    Looked at again over the whole turn: clean.
+  - No thigh came through the body or below the seat. No arm went through a chest or the beard. The beard cleared
+    the arms at the wheel.
 
-They are made the way GameCommon's `tools/build_figure_template.py` makes a figure. They use `build_character.py`'s
-`Builder` (tubes and ellipsoids, each garment melted into one surface and cut to a budget), its `make_armature` and
-its `export`. That script is loaded in place from GameCommon, not copied. `kit.export` saves its files to a scratch
-folder in the system temp (`title_figures_*`), and the script then gathers them into the one .blend. Each adult is
-modelled 1.25 m tall, as the template asks, and stood at 1.44 times that. The skeleton keeps the boy's bone names and
-the template's contract (legs as siblings under the hips, ankles 0.05 above the sole). The arms are modelled hanging
-a little out from the body (the captain 18 degrees, the diver 22), which the contract allows, so standing needs
-little bending. Skin weights are smooth steps across each joint, measured along the slanted arm.
+## Where each comes from
 
-## Why not the controller's rig
+All sources are read in place by the build script. Nothing is copied, and nothing in GameCommon, Gloaming or Warren
+was changed.
 
-The brief said to install GameCommon's `character-controller` with `kit.sh` and use its rig. That was not done.
-Gulp already has `class_name Player` (the fish, `scripts/player.gd`) and `class_name Dust` (`scripts/dust.gd`).
-`kit.sh install` would leave those two files alone, and the controller's `character_rig.gd`, which needs its own
-`Player` (`Player.State`, `Player.Landing`...), would then fail to compile in Gulp. So nothing of the component was
-installed. The figures are on its skeleton and built with its Blender kit, and `TitleFigures.Idle` poses them itself
-(about 40 lines). If CharacterRig is wanted later, one of the two `Player` classes must be renamed first.
+| Figure | Existing model | What of it | What is new, and why |
+| --- | --- | --- | --- |
+| Boy (1.27 m, 6,093 tris) | GameCommon character controller: `models/boy_tp.glb` (body, hands, boots), `models/boy.glb` (head, bowl hair) | everything; Warren's look applied | nothing |
+| Captain (1.76 m, 6,309 tris) | GameCommon `godot/man/files/models/man.glb` (Gloaming's man) | skeleton, proportions, build keys (`heavy` 0.5, `body_gut` 0.35, `body_shoulders` 0.3, `body_neck` 0.4), hands, his own `man_legs__trousers` piece (trousers into boots, recoloured oilskin and rubber), and the gansey grown from his own body's surface | see below |
+| | GameCommon `models/boy.glb` `boy_head__base` | the boy's mask head, reshaped as HeadShape `mask_long`, scaled to 0.64 and set on the man's neck | |
+| Diver (1.83 m, 6,286 tris) | the same `man.glb`, no keys | skeleton, proportions, hands, and the canvas dress grown from his body's surface | the bonnet, corselet, brails, weights, belt fittings, knife, boots and hose |
 
-## Checks run (2026-11-18)
+**Made new, and why:**
 
-- **Renders** in Blender (workbench) of each figure from the front, the back, both sides, a quarter and above, and
-  close on the head (front, side, back) and a hand. **Godot pictures** (a window kept off screen, silent) of the
-  three standing posed, from the front, the back, both sides, above and a quarter, close on each head (front, side,
-  back, above) and hand, and again with all three turned to look at a point up and to their right. All were looked
-  at. Fixed from them: the adults' shoulders standing up square out of the jumper and the suit; the suit poking out
-  through the corselet at the shoulders; the light rims drawn as solid discs over the glass; the boy's collapsed hair
-  going ragged (now the full one); the suit showing through the cuffs.
-- **Clipping, measured** in Blender (rest pose, ray parity against each closed part):
-  - nothing of the captain's head or hair comes through his cap (0 of 59 and 0 of 11 points);
-  - his peak does not touch his head or brows;
-  - his pipe does not enter his head. It sits up to 9 mm into his beard and moustache, as a pipe held in the mouth
-    does;
-  - his beard sits up to 18 mm into the front of the roll neck (13 of 306 points), resting on the collar;
-  - no trouser comes through the jumper or the boots;
-  - the diver's suit does not come through the copper above the corselet's edge (0 of 106) or through his cuffs;
-  - the weights clear the suit;
-  - the boy's scalp shows through the hair at 1 point of 325, by 1.3 mm.
+- **The diver's gear:** nothing like it exists in GameCommon or Gloaming. It is built with the character
+  controller's `build_character.py` Builder, in place.
+- **Captain:**
+  - the nose and moustache, the one feature the user asked for besides the beard;
+  - the cap, its peak and cord;
+  - the roll collar and the ribbed hem and cuff bands, so the garment edges are clean;
+  - the pipe.
 
-  In the posed pictures, turning the heads put no beard through a collar and no helmet through anything.
-- **Winding:** in Godot, every surface of the three .glb files has its triangles wound with its normals (WINDING
-  OK). The boy's boots and the captain's head and beard have 2 near-degenerate triangles each. In Blender, every
-  closed piece faces out (ray parity), except the diver's four light rims. Each rim is a tube bent round and closed on
-  itself, so its two rounded ends lie inside each other: those faces are hidden inside the rim, and Godot's check
-  shows their winding agrees with their normals.
-- **Headless run:** a scratch script made all three with TitleFigures, added them to a tree, and stepped them 300
-  frames, with no errors. The boy's and the diver's heads turned to the point given (the boy's `HeadMount` faced it
-  to within a degree).
+  These are small Builder pieces fitted to the measured head and garment.
+- **Grown from existing surfaces, not modelled anew:**
+  - the beard and the hair are the mask head's own surface, cut out and stood off it;
+  - the gansey and the dress are the man's own surface, cut out and stood off it.
+
+  This is how Gloaming's `build_man.py` makes his braies.
+
+The man's head is not used: the captain wears the boy's mask head, and the diver's head is hidden by the helmet.
+His body under the clothes is dropped too, so it cannot poke through. Only his hands show.
+
+## Design sheets
+
+### What the scene asks of them
+
+They stand on the open back deck of a shrimp boat, next to a rusted-brass Frankenstein computer. They are seen
+whole, about 100 to 250 pixels tall on a phone and sometimes only 60, lit from above on a pale deck. So each one has
+to read from its silhouette and two or three big blocks of colour, not from detail. All three share one family:
+
+- the boy's smooth mask head, with form but no eyes and no mouth;
+- plain matte colour, no texture, no outline.
+
+The boat and the computer bring the rust, brass and dull paint. So the figures keep to a few strong, quiet colours
+of their own. Each has one warm accent so the eye finds him: the boy's red shirt, the captain's yellow oilskins,
+the diver's copper helmet.
+
+### The boy (unchanged)
+
+As Warren has him: a mask head with a bowl cut, a dull red shirt, dark trousers, boots. At the console he stands
+with his arms at his sides and turns his head. He wears the main session's helmet. Nothing about his design changes.
+
+### The captain: the old skipper
+
+- **Character:** weathered, warm and stocky. He is past sixty and has stood on this deck for forty years.
+- **At 60 pixels:**
+  - a dark cap on top;
+  - a big pale beard;
+  - a dark navy body;
+  - bright yellow legs;
+  - black boots.
+
+  The yellow trousers are what tell him from the boy and the diver.
+- **Silhouette from the front:** a broad barrel. The shoulders are wide and round, with no padded corners, and he
+  narrows a little to the legs. The head is small on that body, the beard making a wedge under it.
+- **Silhouette from the side:**
+  - a belly carried forward;
+  - the beard jutting;
+  - a big nose;
+  - the cap's peak pointing forward;
+  - boots with a slight toe.
+- **Body:** Gloaming's man (GameCommon `godot/man`) with his build turned heavier (`heavy`, `body_gut`), so he is
+  stocky, not a strongman. His own hands are kept.
+- **Head:** the boy's mask head (GameCommon's character controller `boy_head__base`, reshaped as one of HeadShape's
+  masks), sized to an adult. It has a big bulbous nose, the one feature allowed. Like the boy he has no eyes and no
+  mouth.
+- **Garments and gear, each with a reason:**
+  - **Gansey:** a navy knitted fisherman's jersey, close-fitting and worsted, the skipper's working dress from the
+    1900s to the 1950s. It is plain, since the patterns were fading by the 1930s. It has a ribbed roll collar,
+    ribbed cuffs and a ribbed hem, made as bands standing a little proud.
+  - **Oilskin trousers:** mustard yellow, tucked into his boots. They are the man's existing `legs__trousers` piece
+    in oilskin colours; that piece's own boots become his sea boots.
+  - **Sea boots:** black rubber.
+  - **Skipper's cap:** a navy peaked cap with a soft crown, a short black glossy peak, and a dull brass cord over the
+    peak. It is the one thing that makes him "captain" rather than "deckhand".
+  - **Beard:** full, short and rounded, white going grey. It is one smooth shell grown from his own face and fuller
+    at the chin, plus a moustache under the nose. It is smooth like the boy's hair, not strands.
+  - **Hair:** grey, close under the cap at the back and sides, smooth like the beard.
+  - **Pipe:** a short briar pipe in the corner of the beard, kept only if it sits well with a mask face.
+- **Palette** (sRGB):
+  - navy gansey and cap (0.17, 0.20, 0.30);
+  - oilskin yellow (0.82, 0.62, 0.20);
+  - black rubber (0.10, 0.10, 0.10);
+  - weathered skin (0.80, 0.60, 0.48);
+  - beard and hair, white going grey (0.86, 0.85, 0.82);
+  - nose warmer (0.84, 0.54, 0.44);
+  - peak (0.06, 0.06, 0.07);
+  - cord brass (0.72, 0.58, 0.30);
+  - pipe (0.36, 0.22, 0.13).
+
+### The diver: the old hard-hat
+
+- **Character:** heavy, old-fashioned, patient. All brass and canvas, he stands like a statue. You never see his
+  face; the helmet's lights are dark.
+- **At 60 pixels:** a big round copper head with a dark front light, a shining collar over the shoulders, a baggy tan
+  body, dark lumps of weights front and back, heavy feet, and a black hose curving off him. The round copper helmet
+  makes him unmistakable.
+- **Silhouette from the front:** a light bulb on a sack. The helmet is wider than his neck could ever be. The
+  corselet makes a wide sloped yoke; the sleeves are baggy, with black cuffs and bare hands; the legs are baggy into
+  big boots.
+- **Silhouette from the side:**
+  - the helmet's lights and valve sticking out;
+  - the weights jutting front and back;
+  - the hose looping from the back of the helmet down to the deck;
+  - the boots longer than a man's foot.
+- **Body:** the same man, average build (no keys), with his own hands. The dress is grown from his body's surface,
+  stood well off it and smoothed, so it bags like canvas over a man. His head is not kept: the helmet hides it.
+- **Gear** (after the Siebe Gorman 12-bolt and the US Navy Mark V; shapes only):
+  - **The bonnet:** a spun-copper helmet with four lights: the big round front light, two side lights behind guard
+    bars, and a small top light. It has an exhaust valve low on his right and the air inlet's goose-neck at the back.
+  - **The corselet:** a tinned-copper breastplate (rendered copper, to sit with the helmet). It rests on the chest
+    and back over the shoulders, with a brass neck ring the helmet screws onto. A broad brass band runs round its
+    edge where the brails clamp the dress's rubber collar, with twelve studs (the "12 bolt").
+  - **Weights:** a lead weight hung on the front of the corselet and another on the back, dark grey slabs.
+  - **Belt and knife:** a leather belt, with a brass-sheathed knife on his right hip.
+  - **Wrist cuffs:** black rubber at the end of each sleeve.
+  - **Boots:** canvas uppers, lead soles, brass toe caps, leather straps at the ankle.
+  - **Air hose:** black rubber, from the goose-neck down his back to the deck, where it runs off toward the pump.
+    The lifeline is left out (one line reads better than two).
+- **Palette** (sRGB):
+  - canvas tan (0.60, 0.53, 0.40);
+  - copper (0.74, 0.44, 0.27, metallic);
+  - brass (0.78, 0.62, 0.32, metallic);
+  - lead (0.34, 0.35, 0.37);
+  - rubber (0.12, 0.11, 0.10);
+  - leather (0.32, 0.20, 0.12);
+  - dark green-black glass (0.10, 0.14, 0.13);
+  - skin as the captain's.
+
+## References looked at (shape and dress only)
+
+- Fishermen's ganseys: worsted, close-fitting, gussets under the arms, navy, plainer by the 1930s:
+  flamboroughmanor.co.uk/ganseys/history.htm, ichscotland.org/node/162, and the Lloyd's Register Foundation's
+  "Guardians of the fishers: ganseys, oilskins and PFDs" (hec.lrfoundation.org.uk).
+- Standard dress: the corselet as an oval collar on chest and back, tinned copper with a broad band round its edge,
+  12 bolts clamping the dress (collections.sea.museum, Siebe Gorman helmet; divingheritage.com/siebekern.htm). The
+  Mark V bonnet is about 14 in wide and 13.5 in high, with four lights, a front light that opens and an exhaust valve
+  (divedesco.com, landandseacollection.com, navalunderseamuseum.org).
+
+## The captain's face
+
+It is the boy's head, so it reads as the same family of figure:
+
+- `boy_head__base` from GameCommon's `boy.glb`, reshaped by HeadShape's `mask_long`. That is one of HeadShape's own
+  shapes (a longer chin and narrower jaw, for a grown man); `head_shaped()` in the build script is `HeadShape._shaped`
+  line for line.
+- Scaled to 0.64 of the boy's size, its joint set on the man's head joint and 18 mm forward.
+- No eyes, no mouth and no brows.
+
+Added to it:
+
+- **A big round nose**, set at 40 % of the way from the head joint to the crown, on the face's own front (found by a
+  ray). It is four fused ellipsoids: bridge, bulb and two wings, in a warmer skin colour.
+- **The beard:** the face's own surface below the nose, stood off it. It is thickest at the chin (about 2 cm,
+  modelled), thins to nothing at its edges so it lies on the skin, and hangs a little under the chin.
+- **The moustache:** two soft rolls under the nose.
+- **The hair:** the head's own surface at the back and sides under the cap, stood off it, in a darker grey than the
+  beard.
+
+The pipe was kept: it comes out of the beard where a mouth would be, and with the beard hiding the mouth it reads
+well on the mask (pictures at title size and close up).
+
+## Quality passes
+
+Each pass rendered:
+
+- in Blender, every figure from the front, back, both sides, three-quarter and above, plus close-ups of the head and a
+  hand;
+- in Godot, all three posed (standing about, and turned to look at a point) on a pale deck lit from above:
+  - from the front, back, both sides, above and three-quarter;
+  - close on each head (front, side, back, above) and a hand;
+  - at title-scene size (about 120 and 220 pixels tall).
+
+Every picture was looked at against the design sheets.
+
+1. **First build:**
+   - The gansey, the hands and the dress came out in shards: the glTF splits its points at seams, so the surface
+     stood off in pieces. Fixed by joining the points first (`weld`).
+   - The belly was too big. `body_gut` went from 0.7 to 0.35.
+   - The roll collar was a tall drum. It was made lower and closer.
+   - The cap stood straight up like a kepi. It now has a soft crown flaring over the band.
+2. **Second:**
+   - The beard covered only under the chin. Blender's volume-keeping smooth had dragged the open shell 4 cm down.
+     Fixed with a plain smooth that holds the edges.
+   - The hair showed skin through it and had ragged edges. The head is now cut away under the cap and decimated
+     less, and the hair stands off further.
+   - The gansey's hem and cuffs were ragged. They are now cut by planes, with ribbed bands round them.
+   - Yellow trousers showed above the hem. The trouser top is cut lower and drawn in.
+   - The diver's cuffs were ragged. They are now rubber rings fitted to the measured sleeve.
+   - The diver's dress showed through the corselet in patches. The corselet was given a wider margin.
+   - The lead weights stood off too far. They now hang closer.
+   - The skin of the man's own neck showed at the gansey's neck. That neck piece was dropped; the collar covers the
+     join.
+3. **Third:**
+   - The diver's boots were too small and set too far back, so the dress came out of them by 5 cm. They are now
+     sized from the measured legs, as ellipses.
+   - The hair was the beard's white and read as a white cap from behind. It is now a darker grey.
+   - Triangles were trimmed: the dress, the rims of the lights, the hose and the gansey.
+4. **Fourth:** a grey patch of hair at the temple met the beard in a jagged line. The hair no longer comes forward
+   of the ears. After that, nothing that matters was found, so the passes stopped.
+
+For the user to judge, pictures of the finished figures are in the session's scratch folder:
+
+- `concept_sheet.png`: front, side, three-quarter and title size;
+- `concept_heads.png`.
+
+## Checks (final build)
+
+- **Clipping, measured** in Blender at rest, by ray parity for closed pieces, and for open shells by a ray out from the
+  body's middle:
+  - captain head through cap: 0 of 103 points;
+  - captain hair through cap: 6 of 27 points, by up to 6 mm, at the very edge under the band;
+  - captain trousers through gansey: 2 of 54 points, by up to 5 mm;
+  - captain wrists past the cuffs: 9 of 75 points, by up to 1 cm (where the hands come out);
+  - diver dress through the corselet: 3 of 139 points, by up to 5 mm;
+  - diver dress through the boots: 11 of 67 points, by up to 5 mm;
+  - diver dress through the cuffs: 0 of 32 points.
+
+  In the posed pictures, with the heads turned, nothing came through anything.
+- **Inside-out faces:**
+  - In Godot every surface of the three .glb files is wound with its normals (WINDING OK). The worst is 3 of 950
+    near-degenerate triangles in the diver's dress.
+  - In Blender, the shells grown from the body face outward: 98 % of the gansey's faces and 95 % of the dress's point
+    away from the body's middle. The rest sit in the armpits and crotch, where that test is loose.
+- **Headless run:** all three made with TitleFigures, added to a tree and stepped 300 frames, with no errors.
 - **Gulp's smoke test** (`sh tests/smoke.sh`): GULP SMOKE PASSED.
 
 ## Not verified
 
-- Not seen in the title scene, under its light, on the boat, or under Gulp's post shader; not on a phone.
-- The boy's helmet is not made, so it has not been tried on him.
-- Nobody has watched the idle moving for long. It was checked only in stills and by numbers. There is no
-  SHAKE-style check of the bones.
-- Over the brief's budget of 3,000 to 6,000 triangles: the boy is at 6,093 and the diver at 6,708 (his brass
-  fittings take about 2,200). Only the captain (5,640) is inside it. Detail is spent fairly evenly within each part,
-  not concentrated at faces and edges as on the Twilight Princess reference models.
+- Not seen in the real title scene, by the boat, under Gulp's post shader, or on a phone.
+- The idle was checked only in stills.
+- The boy's helmet was not tried on.
+- Triangles are slightly over 6,000 for every figure (6,093, 6,309 and 6,286). The diver's brass takes about 2,000
+  of his.
+- The captain's arms come down from a T pose by linear skinning. His shoulders were not looked at with the arms
+  moving.
 
 ## Whose calls
 
-The user's: the boy from Warren, a sea captain, an old-time diver, on a shrimp boat, the boy in a helmet wired to a
-computer (2026-11-18).
+The user's:
+
+- the three figures and the scene;
+- the existing human models;
+- the boy's mask face for the captain, with a big nose and a beard;
+- the design work and the quality passes.
 
 Claude's picks, all changeable:
 
-- the routes taken:
-  - the boy built in Blender from GameCommon's boy models;
-  - the bowl cut and plain materials standing in for Warren's ink hair and skin;
-  - the controller's rig not installed, for the class-name clash above;
-- the captain's dress: the peaked cap rather than a sou'wester, the cream roll-neck jumper rather than a pea coat,
-  black sea boots, the white beard and the pipe;
-- the diver details:
-  - the Mark V helmet shape, with Siebe Gorman-style chest and back weights (as the brief listed);
-  - eight wing nuts;
-  - the valve on his right;
-  - the hose lying behind him;
-  - no face behind the glass;
-- the poses and the idle: the boy standing with his arms at his sides, breathing, swaying and glancing about; the
-  diver turning his top half to look;
-- all colours apart from the boy's, which are Warren's.
+- the design sheets: the navy gansey, yellow oilskins, black boots and the skipper's cap; the diver's Mark V and Siebe
+  12-bolt mix, with no lifeline;
+- HeadShape `mask_long` for the captain, and the head scale;
+- the captain's build keys;
+- keeping the pipe;
+- dropping the man's body under the clothes and his head;
+- the colours apart from the boy's, which are Warren's.
 
 ## For GameCommon (not changed here)
 
-- `build_character.py`'s `export` writes under its own `ROOT` and always exports vertex colours (`ACTIVE`). A game
-  using the kit in place must point `kit.ROOT` elsewhere and export again. A `root` argument and a choice of vertex
-  colours would make that cleaner.
-- `character_rig.gd` names the controller's `Player` class directly. In a game with a `Player` of its own (Gulp), the
-  component cannot be installed as it is.
+- `build_character.py`'s Builder and `make_armature` serve well in place. Its `export` writes under its own `ROOT`,
+  so it was not used.
+- `character_rig.gd` names the controller's `Player` class, which Gulp already has. That is why the controller was
+  not installed and TitleFigures poses the figures itself.
+- The way garments are grown here could become a small shared tool:
+  - copy the body, cut it by planes, stand it off and smooth it, holding the border;
+  - add bands sized from the measured garment.

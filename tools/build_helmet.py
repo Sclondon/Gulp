@@ -110,6 +110,15 @@ monitor = join("Monitor")
 cyl(SCREEN, 0.19, 0.02, (-0.08, -0.365, 0.03), "Y", 28)
 screen = join("MonitorScreen", (-0.08, -0.365, 0.03), monitor)
 
+# the boy's stool (the user: "the boy sitting on a stool"): a round wooden seat 0.42 m up on three
+# iron legs with a foot ring (in metres; its origin on the floor under its middle)
+cyl(WOOD, 0.17, 0.05, (0.0, 0.0, 0.395), "Z", 16)
+for k in range(3):
+    a = math.tau * k / 3.0 + 0.5
+    pipe(IRON, [(math.cos(a) * 0.1, math.sin(a) * 0.1, 0.38), (math.cos(a) * 0.2, math.sin(a) * 0.2, 0.0)], 0.018, 1)
+torus(IRON, 0.17, 0.014, (0.0, 0.0, 0.14), "Z", 16)
+stool = join("Stool")
+
 # a slack cable, one unit long
 pipe(RUBBER, [(0.0, 0.0, 0.0), (0.2, 0.0, -0.14), (0.5, 0.0, -0.22), (0.8, 0.0, -0.14), (1.0, 0.0, 0.0)], 0.03, 4)
 cable = join("Cable")
@@ -125,11 +134,13 @@ unwrap(meshes)
 bench.location.x = 6.0
 cable.location.x = -6.0
 monitor.location.x = 12.0
+stool.location.x = 18.0
 bpy.context.view_layer.update()
 bake(ATLAS, 1024, meshes)
 bench.location.x = 0.0
 cable.location.x = 0.0
 monitor.location.x = 0.0
+stool.location.x = 0.0
 bpy.context.view_layer.update()
 os.makedirs(os.path.dirname(BLEND), exist_ok=True)
 bpy.ops.wm.save_as_mainfile(filepath=BLEND)

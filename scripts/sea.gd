@@ -261,7 +261,7 @@ func _surface() -> void:
 	water.set_shader_parameter(&"shallow", Color(0.1, 0.3, 0.56))
 	water.set_shader_parameter(&"swell", 1.6)
 	water.set_shader_parameter(&"whitecaps", 0.35)
-	water.set_shader_parameter(&"flow", 0.25)
+	water.set_shader_parameter(&"flow", 0.05)  # (the user, 2026-11-18: "the foam on the water surface is moving wa ytoo fast")
 	var size := Vector2(400.0, 400.0)
 	var cell := Vector2(4.0, 4.0)
 	var cols := int(size.x / cell.x)

@@ -17,9 +17,10 @@ surface); the hull goes on below it to the keel at about -0.9 m.
 Objects (each a node of the .glb):
   Boat                 everything fixed, one mesh
   Wheel                the ship's wheel in the wheelhouse, origin at its hub, turns about local Y (Godot Z)
+  PumpWheel            the diver's air pump's crank wheel, origin at its hub, turns about local X (athwartships)
   OutriggerPort        the port outrigger with its net, floats, door and lines, origin at its hinge on the mast
   OutriggerStarboard   the same on the starboard side; both turn about local Y (Godot Z) to raise or lower
-  ConsoleSpot, BoySpot, CaptainSpot, DiverSpot, HelmetCable, MonitorSpot, Waterline   empties (Godot Node3D):
+  ConsoleSpot, BoySpot, CaptainSpot, DiverSpot, HelmetCable, MonitorSpot, BowWave, Wake, Waterline   empties:
   marker points. Each spot is a floor point; its -Z in Godot is the way that figure or thing faces.
 
 The title camera stands abeam off the starboard side (the user, 2026-11-18: "The boat should be perpendicular in the
@@ -347,7 +348,7 @@ def hull_patch(b, s, ys, zlo, zhi, mat, label="patch", nz=3, width=None, out=0.0
             z = zhi(yy) + (zlo(yy) - zhi(yy)) * t
             u = u_of(yy)
             sh = sheer(yy)
-            x = outer_half(u, min(z, sh - 0.005), sh)
+            x = outer_half(u, min(z, sh - 0.005), sh) + lap_extra(yy, z)
             cf.append((s * (x + out), yy, z))
             cb.append((s * (x - 0.012), yy, z))
         grid_f.append(cf)
@@ -586,9 +587,39 @@ boat = Build("Boat")
 # --- hull: a loft of cross-sections from the transom (u = 0) to the stem (u = 1), deck and bulwarks included
 STATIONS = [0.0, 0.02, 0.06, 0.12, 0.2, 0.28, 0.36, 0.44, 0.52, 0.6, 0.66, 0.72, 0.77, 0.81, 0.85, 0.88,
             0.91, 0.935, 0.955, 0.97, 0.985, 1.0]
-SEG_STAR = ["deck_wood", "hull_white", "trim", "hull_stripe", "hull_white", "hull_white",
+# the topsides are lapped strakes (clinker): each plank's lower edge stands LAP proud of the one below it, so a line
+# of shadow runs under every seam. One strake low on the side is the second teal band.
+SEG_STAR = ["deck_wood", "hull_white", "trim", "hull_stripe",
+            "hull_white", "hull_white", "hull_white", "hull_white", "hull_white", "hull_stripe", "hull_stripe", "hull_white",
             "bottom_red", "bottom_red", "bottom_red", "bottom_red", "bottom_red", "bottom_red", "bottom_red"]
 GRIME = (0.86, 0.83, 0.76)
+LAP = 0.016
+
+
+def strake_profile(y):
+    """(height, how far proud of the smooth hull) down the topsides, from the bottom of the sheer band (zA) to the
+    boot top (0.25): seams s3 (in the bulwark), s1 and s2 (between the deck and the boot top), each a pair of
+    points (the upper strake's proud lower edge, then the lower strake tucked in under it). The deck's height d is
+    kept as a point too (the stem's rake hinges there)."""
+    u = u_of(y)
+    d = deck(y)
+    zA = sheer(y) - 0.26
+    lap = LAP * min(1.0, sheer_half(u) / 0.3)
+    s3 = d + (zA - d) * 0.5
+    s1 = 0.25 + (d - 0.25) * 0.66
+    s2 = 0.25 + (d - 0.25) * 0.33
+    return [(zA, 0.0), (s3, lap), (s3 - 0.006, 0.0), (d, 0.0), (s1, lap), (s1 - 0.006, 0.0), (s2, lap), (s2 - 0.006, 0.0),
+            (0.25, 0.0)]
+
+
+def lap_extra(y, z):
+    prof = strake_profile(y)
+    if z >= prof[0][0] or z <= prof[-1][0]:
+        return 0.0
+    for (za, ea), (zb, eb) in zip(prof, prof[1:]):
+        if zb <= z <= za:
+            return ea + (eb - ea) * (za - z) / max(za - zb, 1e-6)
+    return 0.0
 
 
 def station(u):
@@ -608,17 +639,20 @@ def station(u):
          (max(0.0, bs - T), y, sh),
          (bs, y, sh)]
     C = [(0.35, 0.33, 0.30), (0.95, 0.94, 0.92), WHITE]
-    zs = [sh - 0.26, d, 0.25, 0.0] + [k * f for f in (0.3, 0.55, 0.75, 0.9)]
-    zc = [WHITE, (0.95, 0.94, 0.91), GRIME, (0.9, 0.86, 0.82), WHITE, WHITE, WHITE, WHITE]
-    for z, c in zip(zs, zc):
-        S.append((outer_half(u, z, sh), yy(z), z))
+    SEAM = (0.8, 0.78, 0.74)     # a little grime in the shadow under each lap
+    prof = strake_profile(y)
+    zs = [(z, e) for z, e in prof] + [(0.0, 0.0)] + [(k * f, 0.0) for f in (0.3, 0.55, 0.75, 0.9)]
+    zc = [WHITE, WHITE, SEAM, (0.95, 0.94, 0.91), WHITE, SEAM, WHITE, SEAM, GRIME, (0.9, 0.86, 0.82),
+          WHITE, WHITE, WHITE, WHITE]
+    for (z, e), c in zip(zs, zc):
+        S.append((outer_half(u, z, sh) + e, yy(z), z))
         C.append(c)
     S.append((0.07 * min(1.0, bs / 0.3), yy(k), k))
     C.append(WHITE)
     ring = [(0.0, y, d)] + S + [(0.0, yy(k), k)] + [(-x, yv, z) for x, yv, z in reversed(S)]
     # faded, uneven paint: each station a shade lighter or darker above the water
     m = 0.95 + 0.06 * RNG.random()
-    C = [C[0]] + [(c[0] * m, c[1] * m, c[2] * m * 0.99) for c in C[1:6]] + C[6:]
+    C = [C[0]] + [(c[0] * m, c[1] * m, c[2] * m * 0.99) for c in C[1:12]] + C[12:]
     cols = [(0.3, 0.28, 0.26)] + C + [WHITE] + list(reversed(C))
     return ring, cols
 
@@ -652,10 +686,20 @@ for s in (1, -1):
         x, y, z = ring[4]
         pts.append((s * (x + 0.03), y, z))
     tube(boat, pts, 0.045, 6, "trim", label="rub rail")
+    # the lower teal band ends in a rubbing strake along its proud lower edge
+    pts = []
+    for u in STATIONS:
+        if u > 0.955:
+            break
+        ring, _ = station(u)
+        x, y, z = ring[10]
+        pts.append((s * (x + 0.012), y, z + 0.01))
+    tube(boat, pts, 0.03, 6, "hull_stripe", label="lower rubbing strake")
 last, _ = station(1.0)
 prev, _ = station(0.985)
-stem = [last[3]] + [last[i] for i in range(4, 13)]
+stem = [last[3]] + [last[i] for i in range(4, 19)]
 stem = [(0.0, y + 0.02, z) for _, y, z in stem]
+stem = [(0.0, stem[0][1] + 0.05, stem[0][2] + 0.38)] + stem   # the stem head stands up above the rail
 tube(boat, stem, 0.055, 6, "trim", label="stem bar")
 
 # transom bulwark board and its cap
@@ -763,12 +807,14 @@ WH_ROOF = 3.25     # underside of its roof
 RT = WH_ROOF + 0.1  # top of its roof
 win_front = [(-1.05, -0.45, 2.15, 2.85), (-0.32, 0.32, 2.15, 2.85), (0.45, 1.05, 2.15, 2.85)]
 win_port = [(2.0, 2.6, 2.15, 2.8), (2.95, 3.55, 2.15, 2.8)]
-win_star = [(2.75, 3.15, 2.15, 2.8), (3.3, 3.7, 2.15, 2.8)]
-door = (1.85, 2.5, WH_Z0, 2.95)
+# to starboard (the title camera's side) one wide opening, door high, from knee height to the lintel: the captain
+# shows at the wheel through it from the knees up (the concept art's open side). No door.
+win_star = [(1.76, 3.72, deck(2.75) + 0.48, 2.98)]
+door = None
 wall(boat, "y", WH_Y1 - WT, WH_Y1, -WH_X, WH_X, WH_Z0, WH_TOP, win_front, "hull_white", "wheelhouse front")
 wall(boat, "y", WH_Y0, WH_Y0 + WT, -WH_X, WH_X, WH_Z0, WH_TOP, [], "hull_white", "wheelhouse back")
 wall(boat, "x", -WH_X, -WH_X + WT, WH_Y0 + WT, WH_Y1 - WT, WH_Z0, WH_TOP, win_port, "hull_white", "wheelhouse port")
-wall(boat, "x", WH_X - WT, WH_X, WH_Y0 + WT, WH_Y1 - WT, WH_Z0, WH_TOP, win_star + [door], "hull_white",
+wall(boat, "x", WH_X - WT, WH_X, WH_Y0 + WT, WH_Y1 - WT, WH_Z0, WH_TOP, win_star, "hull_white",
      "wheelhouse starboard")
 # a grimy foot round the house where the deck water runs
 for s in (1, -1):
@@ -782,25 +828,19 @@ for a0, a1, z0, z1 in win_port:
     box(boat, -WH_X + WT / 2 - 0.01, -WH_X + WT / 2 + 0.01, a0 - 0.01, a1 + 0.01, z0 - 0.01, z1 + 0.01, "glass", label="glass")
     box(boat, -WH_X - 0.05, -WH_X + 0.02, a0 - 0.04, a1 + 0.04, z0 - 0.06, z0, "trim", label="sill")
 for a0, a1, z0, z1 in win_star:
-    box(boat, WH_X - WT / 2 - 0.01, WH_X - WT / 2 + 0.01, a0 - 0.01, a1 + 0.01, z0 - 0.01, z1 + 0.01, "glass", label="glass")
-    box(boat, WH_X - 0.02, WH_X + 0.05, a0 - 0.04, a1 + 0.04, z0 - 0.06, z0, "trim", label="sill")
+    # left open (no glass): the title camera, abeam to starboard, looks through it at the captain at the wheel
+    box(boat, WH_X - 0.1, WH_X + 0.06, a0 - 0.04, a1 + 0.04, z0 - 0.06, z0, "trim", label="sill")
     box(boat, WH_X - 0.02, WH_X + 0.04, a0 - 0.04, a1 + 0.04, z1, z1 + 0.05, "trim", label="lintel")
     for a in (a0 - 0.04, a1):
         box(boat, WH_X - 0.02, WH_X + 0.03, a, a + 0.04, z0, z1, "trim", label="jamb")
-# the door: varnish gone grey, a small window and a knob
-box(boat, WH_X - 0.05, WH_X - 0.02, door[0] + 0.01, door[1] - 0.01, door[2] + 0.1, door[3] - 0.01, "cabin_wood",
-    (0.82, 0.8, 0.78), label="door", grime=True)
-box(boat, WH_X - 0.025, WH_X + 0.005, door[0] + 0.15, door[1] - 0.15, 2.3, 2.7, "glass", label="door glass")
-box(boat, WH_X - 0.02, WH_X + 0.04, door[0] - 0.04, door[1] + 0.04, door[3], door[3] + 0.05, "trim", label="door lintel")
-sphere(boat, (WH_X + 0.01, door[1] - 0.1, 1.95), 0.035, 8, 5, "brass", label="knob")
 for x in (-WH_X, WH_X):
     for y in (WH_Y0, WH_Y1):
         box(boat, x - 0.05, x + 0.05, y - 0.05, y + 0.05, WH_Z0, WH_TOP, "trim", label="corner post")
 box(boat, -WH_X - 0.15, WH_X + 0.15, WH_Y0 - 0.1, WH_Y1 + 0.25, WH_ROOF, RT, "roof", label="wheelhouse roof")
-box(boat, -WH_X - 0.16, WH_X + 0.16, WH_Y1 + 0.2, WH_Y1 + 0.27, WH_ROOF - 0.07, RT + 0.01, "trim", label="roof fascia front")
+box(boat, -WH_X - 0.16, WH_X + 0.16, WH_Y1 + 0.2, WH_Y1 + 0.27, WH_ROOF - 0.07, RT + 0.01, "hull_stripe", label="roof fascia front")
 for s in (1, -1):
     xa, xb = sorted((s * (WH_X + 0.15), s * (WH_X + 0.21)))
-    box(boat, xa, xb, WH_Y0 - 0.1, WH_Y1 + 0.27, WH_ROOF - 0.07, RT + 0.01, "trim", label="roof fascia side")
+    box(boat, xa, xb, WH_Y0 - 0.1, WH_Y1 + 0.27, WH_ROOF - 0.07, RT + 0.01, "hull_stripe", label="roof fascia side")
 # a brow over the front windows
 beam(boat, (0, WH_Y1 + 0.02, 2.98), (0, WH_Y1 + 0.3, 2.9), 2.6, 0.04, "trim", label="brow")
 box(boat, -WH_X, WH_X, WH_Y1, WH_Y1 + 0.06, 2.92, 2.98, "trim", label="brow back")
@@ -811,7 +851,8 @@ for s, lamp in ((1, "lamp_green"), (-1, "life_red")):
     xa, xb = sorted((s * (WH_X + 0.05), s * (WH_X + 0.13)))
     box(boat, xa, xb, WH_Y1 - 0.2, WH_Y1 - 0.08, 3.0, 3.1, lamp, label="running light")
 # the wheel's pedestal and a shelf of instruments under the front windows
-WHEEL_HUB = Vector((0.0, 3.35, deck(3.35) + 1.05))
+CAPTAIN = Vector((0.0, 2.75, deck_top(2.75)))   # where the helmsman stands, facing the bow
+WHEEL_HUB = Vector((0.0, CAPTAIN.y + 0.45, CAPTAIN.z + 1.05))
 box(boat, -0.12, 0.12, WHEEL_HUB.y + 0.08, WHEEL_HUB.y + 0.28, deck(3.4) - 0.02, WHEEL_HUB.z + 0.12, "cabin_wood",
     label="pedestal")
 cyl(boat, (0, WHEEL_HUB.y + 0.08, WHEEL_HUB.z), (0, WHEEL_HUB.y - 0.02, WHEEL_HUB.z), 0.03, 0.03, 8, "brass",
@@ -824,15 +865,14 @@ cyl(boat, (0.55, 3.58, RT + 0.3), (0.55, 3.9, RT + 0.3), 0.13, 0.12, 12, "metal_
 cyl(boat, (0.55, 3.9, RT + 0.3), (0.55, 3.925, RT + 0.3), 0.105, 0.105, 12, "lamp_glass", label="searchlight lens")
 cyl(boat, (-0.45, 3.55, RT), (-0.45, 3.55, RT + 0.17), 0.03, 0.03, 6, "metal_dark", label="horn post")
 cyl(boat, (-0.45, 3.45, RT + 0.21), (-0.45, 3.85, RT + 0.21), 0.025, 0.09, 10, "brass", label="horn")
-# the exhaust stack: tall, black, sooty at the top, a rusty collar where it meets the roof
-cyl(boat, (-0.95, 2.25, RT - 0.05), (-0.95, 2.25, 5.0), 0.1, 0.09, 10, "metal_dark", label="stack")
-cyl(boat, (-0.95, 2.25, 4.98), (-0.95, 2.25, 5.06), 0.13, 0.13, 10, "metal_dark", label="stack lip")
-cyl(boat, (-0.95, 2.25, 5.2), (-0.95, 2.25, 5.24), 0.16, 0.16, 10, "metal_dark", label="rain cap")
-for a in (0.0, 2.1, 4.2):
-    cyl(boat, (-0.95 + 0.06 * math.cos(a), 2.25 + 0.06 * math.sin(a), 5.04), (-0.95 + 0.06 * math.cos(a),
-        2.25 + 0.06 * math.sin(a), 5.21), 0.012, 0.012, 4, "metal_dark", label="cap leg")
-cyl(boat, (-0.95, 2.25, RT - 0.03), (-0.95, 2.25, RT + 0.14), 0.15, 0.13, 10, "metal_rust", label="stack collar")
-cyl(boat, (-0.95, 2.25, 3.9), (-0.95, 2.25, 3.96), 0.115, 0.115, 10, "metal_rust", label="stack band")
+# the exhaust stack: black, standing up through the cabin roof's forward port corner, its top cut at a slant and
+# turned aft; a rusty collar where it meets the roof
+SX, SY = -0.95, 1.3
+cyl(boat, (SX, SY, 3.08), (SX, SY, 4.45), 0.1, 0.095, 10, "metal_dark", label="stack")
+tube(boat, [(SX, SY, 4.4), (SX, SY, 4.55), (SX, SY - 0.06, 4.66), (SX, SY - 0.18, 4.74)], 0.095, 10, "metal_dark",
+     label="stack bend")
+cyl(boat, (SX, SY, 3.12), (SX, SY, 3.26), 0.15, 0.13, 10, "metal_rust", label="stack collar")
+cyl(boat, (SX, SY, 3.95), (SX, SY, 4.0), 0.11, 0.11, 10, "metal_rust", label="stack band")
 # a whip aerial on the roof's starboard aft corner
 cyl(boat, (1.2, 1.75, RT), (1.2, 1.75, RT + 0.12), 0.04, 0.04, 6, "metal_dark", label="aerial base")
 cyl(boat, (1.2, 1.75, RT + 0.1), (1.2, 1.75, 5.9), 0.012, 0.006, 4, "metal_dark", label="aerial")
@@ -843,17 +883,36 @@ CB_X = 1.45
 CB_Y0, CB_Y1 = -1.25, WH_Y0
 CB_Z0 = deck(CB_Y0) - 0.06
 CB_ROOF = 3.06     # the cabin roof's underside: 2.15 m above the cabin floor at its aft end
-box(boat, -CB_X, -CB_X + WT, CB_Y0, CB_Y1, CB_Z0, CB_ROOF + 0.02, "hull_white", label="cabin port wall", grime=True)
+LINE_T = 0.018     # the dark board lining inside the port wall; its face is the wall's inside face (x = -CB_X + WT)
+box(boat, -CB_X, -CB_X + WT - LINE_T, CB_Y0, CB_Y1, CB_Z0, CB_ROOF + 0.02, "hull_white", label="cabin port wall",
+    grime=True)
+# the wall's inside: upright dark boards, each its own shade, under the console, monitor and pipes
+nb = 19
+for i in range(nb):
+    y0 = CB_Y0 + (CB_Y1 - CB_Y0) * i / nb
+    y1 = CB_Y0 + (CB_Y1 - CB_Y0) * (i + 1) / nb - 0.006
+    v = 0.75 + 0.3 * RNG.random()
+    box(boat, -CB_X + WT - LINE_T, -CB_X + WT, y0, y1, CB_Z0 + 0.05, CB_ROOF, "door_wood", (v, v * 0.97, v * 0.92),
+        label="wall board")
+# pipes running up the wall to the roof, clear of the console's length (y -0.98..1.33 from the main session's size)
+PIPE_X = -CB_X + WT + 0.07
+for py, pr in ((-1.12, 0.045), (1.46, 0.04)):
+    tube(boat, [(PIPE_X, py, deck(py) + 0.03), (PIPE_X, py, CB_ROOF - 0.14), (PIPE_X, py + (0.1 if py < 0 else -0.1),
+         CB_ROOF - 0.07), (PIPE_X, py + (0.35 if py < 0 else -0.35), CB_ROOF - 0.06)], pr, 8, "metal_rust",
+         label="wall pipe")
+    for z in (deck(py) + 0.6, CB_ROOF - 0.5):
+        box(boat, -CB_X + WT, PIPE_X + 0.01, py - 0.03, py + 0.03, z, z + 0.04, "metal_dark", label="pipe clip")
+tube(boat, [(PIPE_X, -0.77, CB_ROOF - 0.06), (PIPE_X, 1.11, CB_ROOF - 0.06)], 0.03, 8, "metal_rust", label="roof pipe")
 box(boat, -CB_X - 0.03, -CB_X + WT + 0.01, CB_Y0, CB_Y1, CB_Z0, deck(CB_Y0) + 0.1, "trim", label="port wall foot")
 for y in (CB_Y0,):   # forward, the wheelhouse corner post holds the roof
     box(boat, CB_X - 0.11, CB_X + 0.01, y, y + 0.12, CB_Z0, CB_ROOF + 0.02, "trim", label="cabin starboard post")
 box(boat, -CB_X - 0.01, -CB_X + 0.11, CB_Y0, CB_Y0 + 0.12, CB_Z0, CB_ROOF + 0.02, "trim", label="cabin port post")
 box(boat, -CB_X - 0.13, CB_X + 0.13, CB_Y0 - 0.15, CB_Y1 + 0.05, CB_ROOF, CB_ROOF + 0.08, "roof", label="cabin roof")
-box(boat, -CB_X - 0.14, CB_X + 0.14, CB_Y0 - 0.17, CB_Y0 - 0.1, CB_ROOF - 0.06, CB_ROOF + 0.09, "trim",
+box(boat, -CB_X - 0.14, CB_X + 0.14, CB_Y0 - 0.17, CB_Y0 - 0.1, CB_ROOF - 0.06, CB_ROOF + 0.09, "hull_stripe",
     label="cabin roof fascia")
 for s in (1, -1):
     xa, xb = sorted((s * (CB_X + 0.13), s * (CB_X + 0.19)))
-    box(boat, xa, xb, CB_Y0 - 0.17, CB_Y1 + 0.05, CB_ROOF - 0.04, CB_ROOF + 0.09, "trim", label="cabin roof side fascia")
+    box(boat, xa, xb, CB_Y0 - 0.17, CB_Y1 + 0.05, CB_ROOF - 0.04, CB_ROOF + 0.09, "hull_stripe", label="cabin roof side fascia")
 # a low grab rail round the cabin roof's edge
 for s in (1, -1):
     x = s * (CB_X + 0.05)
@@ -910,52 +969,56 @@ for xa, xb in ((0.55, 0.85), (1.05, 1.35)):
     for x in (xa, xb - 0.03):
         cyl(boat, (x + WX, wy, d + 0.32), (x + 0.03 + WX, wy, d + 0.32), 0.22, 0.22, 12, "metal_rust", label="drum flange")
 box(boat, 0.88 + WX, 1.02 + WX, wy - 0.15, wy + 0.15, d + 0.08, d + 0.45, "metal_rust", label="gearbox")
-# a fish hold hatch in the middle of the aft deck
-d = deck_top(-4.3)
-box(boat, -0.95, 0.25, -4.85, -3.85, d - 0.02, d + 0.26, "trim", label="hatch coaming", grime=True)
-box(boat, -1.0, 0.3, -4.9, -3.8, d + 0.26, d + 0.31, "deck_wood", (0.78, 0.74, 0.68), label="hatch cover")
-for y in (-4.6, -4.1):
+# a fish hold hatch in the middle of the aft deck, aft of the diver's pump
+d = deck_top(-4.55)
+box(boat, -0.95, 0.25, -5.0, -4.1, d - 0.02, d + 0.26, "trim", label="hatch coaming", grime=True)
+box(boat, -1.0, 0.3, -5.05, -4.05, d + 0.26, d + 0.31, "deck_wood", (0.78, 0.74, 0.68), label="hatch cover")
+for y in (-4.8, -4.3):
     box(boat, -1.02, 0.32, y - 0.04, y + 0.04, d + 0.3, d + 0.34, "metal_rust", label="hatch batten")
 
-# --- the diver's air pump (a wooden box with a big wheel at each end) and its hose
-PUMP = Vector((0.95, -4.1, deck_top(-4.1)))
-d = PUMP.z
-box(boat, PUMP.x - 0.23, PUMP.x + 0.23, PUMP.y - 0.22, PUMP.y + 0.22, d - 0.01, d + 0.72, "cabin_wood", label="pump box")
-box(boat, PUMP.x - 0.25, PUMP.x + 0.25, PUMP.y - 0.24, PUMP.y + 0.24, d + 0.72, d + 0.77, "trim", label="pump lid")
-box(boat, PUMP.x - 0.25, PUMP.x + 0.25, PUMP.y - 0.24, PUMP.y + 0.24, d - 0.01, d + 0.06, "trim", label="pump plinth")
-cyl(boat, (PUMP.x, PUMP.y - 0.22, d + 0.55), (PUMP.x, PUMP.y - 0.255, d + 0.55), 0.08, 0.08, 12, "brass", label="gauge")
-cyl(boat, (PUMP.x, PUMP.y - 0.25, d + 0.55), (PUMP.x, PUMP.y - 0.262, d + 0.55), 0.065, 0.065, 12, "lamp_glass",
-    label="gauge face")
-cyl(boat, (PUMP.x, PUMP.y + 0.05, d + 0.77), (PUMP.x, PUMP.y + 0.05, d + 0.86), 0.03, 0.025, 8, "brass", label="outlet")
-WHEEL_Z = d + 0.42
-cyl(boat, (PUMP.x - 0.33, PUMP.y, WHEEL_Z), (PUMP.x + 0.33, PUMP.y, WHEEL_Z), 0.025, 0.025, 8, "metal_dark",
-    label="pump axle")
-for s in (1, -1):
-    wx = PUMP.x + s * 0.29
-    torus(boat, (wx, PUMP.y, WHEEL_Z), (1, 0, 0), 0.34, 0.025, 20, 6, "metal_dark", label="pump wheel rim")
-    cyl(boat, (wx - 0.03, PUMP.y, WHEEL_Z), (wx + 0.03, PUMP.y, WHEEL_Z), 0.06, 0.06, 10, "brass", label="pump hub")
-    for i in range(6):
-        a = math.pi / 3 * i + 0.3
-        e = Vector((0, math.cos(a), math.sin(a)))
-        c0 = Vector((wx, PUMP.y, WHEEL_Z))
-        cyl(boat, c0 + e * 0.05, c0 + e * 0.33, 0.016, 0.014, 5, "metal_dark", label="pump spoke")
-    a = 0.3
-    grip = Vector((wx, PUMP.y + math.cos(a) * 0.3, WHEEL_Z + math.sin(a) * 0.3))
-    cyl(boat, grip, grip + Vector((s * 0.16, 0, 0)), 0.022, 0.022, 6, "metal_dark", label="crank")
-    cyl(boat, grip + Vector((s * 0.06, 0, 0)), grip + Vector((s * 0.17, 0, 0)), 0.03, 0.03, 6, "cabin_wood", label="crank grip")
-dd = deck_top(-5.0)
-COIL = Vector((1.42, -5.0, dd))
+# --- the diver's air pump: an old two-cylinder pump in a wooden chest near the middle line, wound by a big crank
+# wheel on its starboard side (the PumpWheel node). The diver stands forward of the wheel facing aft, side on to
+# the title camera, which sees the wheel face on.
+DIVER = Vector((-0.2, -3.0, deck_top(-3.0)))
+PUMP_HUB = Vector((DIVER.x, DIVER.y - 0.5, DIVER.z + 1.0))
+CH_X0, CH_X1 = DIVER.x - 0.72, DIVER.x - 0.1      # the chest, to port of the wheel
+CH_Y0, CH_Y1 = PUMP_HUB.y - 0.36, PUMP_HUB.y + 0.36
+d = DIVER.z
+CH_TOP = d + 0.82
+box(boat, CH_X0, CH_X1, CH_Y0, CH_Y1, d - 0.01, CH_TOP, "cabin_wood", label="pump chest", grime=True)
+box(boat, CH_X0 - 0.02, CH_X1 + 0.02, CH_Y0 - 0.02, CH_Y1 + 0.02, CH_TOP, CH_TOP + 0.05, "trim", label="pump lid")
+box(boat, CH_X0 - 0.02, CH_X1 + 0.02, CH_Y0 - 0.02, CH_Y1 + 0.02, d - 0.01, d + 0.07, "trim", label="pump plinth")
+for z in (d + 0.3, d + 0.62):
+    box(boat, CH_X0 - 0.008, CH_X1 + 0.008, CH_Y0 - 0.008, CH_Y1 + 0.008, z, z + 0.035, "brass", label="chest band")
+# the two brass cylinders standing on the lid, a crosshead over them, an outlet and a gauge
+cx = (CH_X0 + CH_X1) / 2
+for y in (PUMP_HUB.y - 0.17, PUMP_HUB.y + 0.17):
+    cyl(boat, (cx, y, CH_TOP + 0.04), (cx, y, CH_TOP + 0.4), 0.075, 0.075, 12, "brass", label="pump cylinder")
+    cyl(boat, (cx, y, CH_TOP + 0.4), (cx, y, CH_TOP + 0.44), 0.09, 0.09, 12, "brass", label="cylinder cap")
+    cyl(boat, (cx, y, CH_TOP + 0.44), (cx, y, CH_TOP + 0.56), 0.02, 0.02, 6, "metal_dark", label="piston rod")
+box(boat, cx - 0.04, cx + 0.04, PUMP_HUB.y - 0.24, PUMP_HUB.y + 0.24, CH_TOP + 0.56, CH_TOP + 0.61, "metal_dark",
+    label="crosshead")
+cyl(boat, (cx, PUMP_HUB.y, CH_TOP + 0.04), (cx, PUMP_HUB.y, CH_TOP + 0.16), 0.03, 0.025, 8, "brass", label="outlet")
+cyl(boat, (cx, CH_Y0 + 0.001, d + 0.5), (cx, CH_Y0 - 0.03, d + 0.5), 0.08, 0.08, 12, "brass", label="gauge")
+cyl(boat, (cx, CH_Y0 - 0.02, d + 0.5), (cx, CH_Y0 - 0.036, d + 0.5), 0.065, 0.065, 12, "lamp_glass", label="gauge face")
+# the wheel's shaft out of the chest's starboard side, with a bearing
+cyl(boat, (CH_X1 - 0.02, PUMP_HUB.y, PUMP_HUB.z), (PUMP_HUB.x - 0.03, PUMP_HUB.y, PUMP_HUB.z), 0.028, 0.028, 8, "metal_dark",
+    label="pump shaft")
+cyl(boat, (CH_X1 - 0.01, PUMP_HUB.y, PUMP_HUB.z), (CH_X1 + 0.03, PUMP_HUB.y, PUMP_HUB.z), 0.07, 0.07, 10, "brass",
+    label="bearing")
+# the air hose: from the outlet to a coil on deck by the pump, and on to the diver's feet
+dd = deck_top(-3.6)
+COIL = Vector((0.42, -3.75, dd))
 for i, R in enumerate((0.27, 0.24, 0.21)):
     torus(boat, COIL + Vector((0.01 * i, -0.01 * i, 0.03 + 0.05 * i)), (0, 0, 1), R, 0.028, 16, 6, "hose_rubber",
           label="hose coil")
-hose = catmull([(PUMP.x, PUMP.y + 0.05, d + 0.86), (PUMP.x + 0.05, PUMP.y - 0.15, d + 0.95),
-                (PUMP.x + 0.2, PUMP.y - 0.5, d + 0.45), (COIL.x - 0.25, COIL.y + 0.32, dd + 0.08),
-                (COIL.x - 0.2, COIL.y + 0.05, dd + 0.13)], 4)
+hose = catmull([(cx, PUMP_HUB.y, CH_TOP + 0.16), (cx + 0.05, PUMP_HUB.y - 0.12, CH_TOP + 0.22),
+                (cx + 0.2, CH_Y0 - 0.12, CH_TOP - 0.1), (COIL.x - 0.3, COIL.y - 0.22, dd + 0.08),
+                (COIL.x - 0.18, COIL.y - 0.1, dd + 0.13)], 4)
 tube(boat, hose, 0.028, 6, "hose_rubber", label="hose to coil")
-HOSE_END = Vector((1.3, -2.95, deck_top(-2.95) + 0.03))
-hose2 = catmull([(COIL.x + 0.15, COIL.y + 0.15, dd + 0.13), (COIL.x + 0.2, COIL.y + 0.45, dd + 0.05),
-                 (1.6, -4.1, deck_top(-4.1) + 0.03), (1.5, -3.4, deck_top(-3.4) + 0.03),
-                 (HOSE_END.x, HOSE_END.y, HOSE_END.z)], 4)
+HOSE_END = Vector((0.15, -2.75, deck_top(-2.75) + 0.03))
+hose2 = catmull([(COIL.x + 0.2, COIL.y + 0.1, dd + 0.13), (COIL.x + 0.3, COIL.y + 0.4, dd + 0.05),
+                 (0.5, -3.0, deck_top(-3.0) + 0.03), (HOSE_END.x, HOSE_END.y, HOSE_END.z)], 4)
 tube(boat, hose2, 0.028, 6, "hose_rubber", label="hose to diver")
 
 # --- crates and baskets at the stern, a coil of rope to port
@@ -972,19 +1035,25 @@ d = deck_top(-2.0)
 for i, R in enumerate((0.3, 0.26, 0.22)):
     torus(boat, (-1.35 + 0.01 * i, -2.0, d + 0.035 + 0.06 * i), (0, 0, 1), R, 0.035, 16, 6, "rope", label="rope coil")
 
-# --- anchor hung on the starboard bow, its stock across the rail
-AY = 5.2
-ax_ = 1.5
-top = sheer(AY) + 0.07
-cyl(boat, (ax_, AY, 0.75), (ax_, AY, top), 0.035, 0.035, 6, "metal_rust", label="anchor shank")
-cyl(boat, (1.18, AY, top - 0.03), (1.75, AY, top - 0.03), 0.025, 0.025, 6, "metal_rust", label="anchor stock")
-sphere(boat, (1.75, AY, top - 0.03), 0.04, 6, 4, "metal_rust", label="stock ball")
-torus(boat, (ax_, AY, top + 0.07), (1, 0, 0), 0.06, 0.015, 10, 4, "metal_rust", label="anchor ring")
+# --- the anchor stowed for sea: lying on the foredeck to starboard, its stock folded along its shank
+AX = 0.55
+
+
+def on_deck(x, y, up=0.035):
+    return (x, y, deck_top(y) + up)
+
+
+tube(boat, [on_deck(AX, 4.45), on_deck(AX, 5.0), on_deck(AX, 5.5)], 0.035, 6, "metal_rust", label="anchor shank")
+torus(boat, on_deck(AX, 5.58, 0.03), (0, 0, 1), 0.07, 0.016, 10, 4, "metal_rust", label="anchor ring")
+tube(boat, [on_deck(AX + 0.08, 4.75, 0.025), on_deck(AX + 0.08, 5.45, 0.025)], 0.025, 6, "metal_rust", label="anchor stock")
+sphere(boat, on_deck(AX + 0.08, 5.45, 0.03), 0.04, 6, 4, "metal_rust", label="stock ball")
 for s in (1, -1):
-    arm = [(ax_, AY, 0.78), (ax_, AY + s * 0.25, 0.8), (ax_, AY + s * 0.4, 0.95), (ax_, AY + s * 0.45, 1.1)]
+    arm = [on_deck(AX, 4.45), on_deck(AX + s * 0.22, 4.5), on_deck(AX + s * 0.36, 4.65), on_deck(AX + s * 0.42, 4.85)]
     tube(boat, arm, 0.03, 6, "metal_rust", label="anchor arm")
-    obox(boat, (ax_, AY + s * 0.43, 1.07), (0.012, 0, 0), (0, s * 0.06, -0.04), (0, 0.04, 0.08) if s > 0 else (0, -0.04, 0.08),
-         "metal_rust", label="fluke")
+    p = Vector(on_deck(AX + s * 0.41, 4.8, 0.03))
+    obox(boat, p, (0.07, 0, 0), (0, 0.09, 0.0), (0, 0, 0.012), "metal_rust", label="fluke")
+# a lashing over the shank to the deck
+torus(boat, on_deck(AX, 5.05, 0.02), (0, 1, 0), 0.05, 0.012, 10, 4, "rope", label="anchor lashing")
 
 # --- wear and repair on the hull: scuppers with rust weeping from them, rust under the cleats and the
 # hawse, a patch of red primer, a patch of fresher white, blank name boards, tyre fenders to starboard
@@ -1049,14 +1118,32 @@ for y in (-4.4, -0.8, 2.3):
 # ---------------------------------------------------------------------------------------------- the wheel
 wheel = Build("Wheel", WHEEL_HUB)
 H = WHEEL_HUB
-torus(wheel, H, (0, 1, 0), 0.34, 0.024, 24, 6, "cabin_wood", label="rim")
+torus(wheel, H, (0, 1, 0), 0.3, 0.024, 24, 6, "cabin_wood", label="rim")
 cyl(wheel, H + Vector((0, 0.05, 0)), H + Vector((0, -0.06, 0)), 0.07, 0.07, 12, "brass", label="hub")
 cyl(wheel, H + Vector((0, -0.06, 0)), H + Vector((0, -0.08, 0)), 0.045, 0.04, 12, "brass", label="hub cap")
 for i in range(8):
     a = math.pi / 4 * i
     e = Vector((math.cos(a), 0, math.sin(a)))
-    tube(wheel, [H + e * 0.05, H + e * 0.3, H + e * 0.37, H + e * 0.42, H + e * 0.5],
+    tube(wheel, [H + e * 0.05, H + e * 0.26, H + e * 0.33, H + e * 0.38, H + e * 0.45],
          [0.018, 0.015, 0.016, 0.026, 0.02], 6, "cabin_wood", label="spoke")
+
+# ---------------------------------------------------------------------------------------------- the pump's crank wheel
+# The diver's air pump: an old two-cylinder pump in a wooden chest, wound by a big crank wheel on its starboard
+# side. The wheel turns about X (athwartships), so the title camera abeam sees it face on; the handle is at the
+# top (radius 0.22) when the wheel is unturned.
+pump_wheel = Build("PumpWheel", PUMP_HUB)
+H = PUMP_HUB
+torus(pump_wheel, H, (1, 0, 0), 0.35, 0.026, 24, 6, "metal_dark", label="rim")
+cyl(pump_wheel, H + Vector((-0.04, 0, 0)), H + Vector((0.04, 0, 0)), 0.065, 0.065, 12, "brass", label="hub")
+for i in range(6):
+    a = math.pi / 3 * i + math.pi / 6
+    e = Vector((0, math.cos(a), math.sin(a)))
+    cyl(pump_wheel, H + e * 0.05, H + e * 0.34, 0.017, 0.014, 6, "metal_dark", label="spoke")
+grip = H + Vector((0, 0, 0.22))
+cyl(pump_wheel, H + Vector((0.0, 0, 0.0)) + Vector((0.01, 0, 0)), grip + Vector((0.01, 0, 0)), 0.02, 0.02, 6, "metal_dark",
+    label="crank arm")
+cyl(pump_wheel, grip, grip + Vector((0.2, 0, 0)), 0.018, 0.018, 6, "metal_dark", label="crank pin")
+cyl(pump_wheel, grip + Vector((0.05, 0, 0)), grip + Vector((0.19, 0, 0)), 0.03, 0.03, 8, "cabin_wood", label="crank grip")
 
 # ---------------------------------------------------------------------------------------------- outriggers
 OUT_LEN = 6.5
@@ -1156,7 +1243,7 @@ for s, name in ((-1, "OutriggerPort"), (1, "OutriggerStarboard")):
 # ---------------------------------------------------------------------------------------------- check and write
 total = 0
 wrong_all = 0
-for b in [boat, wheel] + outriggers:
+for b in [boat, wheel, pump_wheel] + outriggers:
     wrong, counted, bad = b.inside_out()
     print("INSIDE-OUT %s: %d of %d triangles face inwards, %d parts" % (b.name, wrong, counted, len(b.parts)))
     for label, n, of, where in bad:
@@ -1167,7 +1254,7 @@ for b in [boat, wheel] + outriggers:
 print("TRIANGLES total: %d" % total)
 print("INSIDE-OUT %s" % ("PASSED" if wrong_all == 0 else "FAILED (%d)" % wrong_all))
 
-objects = [b.make() for b in [boat, wheel] + outriggers]
+objects = [b.make() for b in [boat, wheel, pump_wheel] + outriggers]
 
 
 def marker(name, at, turn_deg=0.0):
@@ -1182,22 +1269,26 @@ def marker(name, at, turn_deg=0.0):
 
 
 # Godot's -Z (Blender +Y, the bow) is the way an unturned marker faces; -90 turns it to face starboard (+X),
-# 90 to face port.
+# 90 to face port, 180 to face aft.
 WALL_X = -CB_X + WT                    # the inside face of the cabin's port wall
 CY = (CB_Y0 + CB_Y1) / 2               # the middle of the wall's length
 CONSOLE = (WALL_X, CY, deck_top(CY))
 marker("ConsoleSpot", CONSOLE, -90)
-marker("BoySpot", (WALL_X + 0.85, CY, deck_top(CY)), 90)
+CONSOLE_DEEP = 0.6                     # the console bench's depth out from the wall (the main session's size)
+marker("BoySpot", (WALL_X + CONSOLE_DEEP + 0.62, CY, deck_top(CY)), 90)   # where he sits on his stool
 marker("HelmetCable", (WALL_X, CY, deck_top(CY) + 1.3), -90)
 marker("MonitorSpot", (WALL_X, CY, deck_top(CY) + 1.75), -90)
-marker("CaptainSpot", (1.6, 2.2, deck_top(2.2)), -90)
-marker("DiverSpot", (1.0, -3.2, deck_top(-3.2)), -90)
+marker("CaptainSpot", tuple(CAPTAIN), 0)       # at the wheel, facing the bow
+marker("DiverSpot", tuple(DIVER), 180)         # at the pump, facing aft
+stem_wl = station(1.0)[0][13]                  # the stem's point on the waterline
+marker("BowWave", (0.0, stem_wl[1], 0.0), 180)
+marker("Wake", (0.0, -HALF, 0.0), 180)
 marker("Waterline", (0.0, 0.0, 0.0), 0)
 print("HOSE END (not a marker): blender (%.3f, %.3f, %.3f)" % tuple(HOSE_END))
 
 lo = Vector((1e9, 1e9, 1e9))
 hi = Vector((-1e9, -1e9, -1e9))
-for b in [boat, wheel] + outriggers:
+for b in [boat, wheel, pump_wheel] + outriggers:
     for v in b.verts:
         lo = Vector(map(min, lo, v))
         hi = Vector(map(max, hi, v))

@@ -78,6 +78,8 @@ var _saves := true
 var _accept_was := false
 var _p_was := false
 var _grazed := 0.0
+# Where a run starts (x and z): by the kelp, or (from the title) under the boat.
+var _start := Vector2(-24.0, 6.0)
 var _near := ""
 
 
@@ -219,7 +221,7 @@ func _ready() -> void:
 
 ## Starts a run.
 func restart() -> void:
-	var at := Sea.clear_of_rocks(Vector3(-24.0, Sea.SURFACE - 7.0, 6.0), 0.5)
+	var at := Sea.clear_of_rocks(Vector3(_start.x, maxf(Sea.SURFACE - 7.0, Sea.ground(_start.x, _start.y) + 1.5), _start.y), 0.5)
 	player.begin(at, _start_kind)
 	if arena:
 		arena.spawn()
@@ -357,6 +359,10 @@ func _open_title() -> void:
 	add_child(_card)
 	_card.go.connect(func() -> void:
 		if _dive < 0.0:
+			# (the fish is put in the water under the boat, wherever that has got to)
+			_start = Vector2(title.global_position.x, title.global_position.z)
+			restart()
+			pad.visible = false
 			_dive = 0.0
 			_dive_from = camera.global_transform
 			_card.visible = false)
