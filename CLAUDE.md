@@ -559,3 +559,7 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   into a figure's skin picture. Each is its own small picture, placed by a table (which picture, where on which body
   part, size, turn), laid over the skin as an overlay that can be rebuilt from the table; a positioning tool comes
   later. The captain first, the older brother's forearms after.
+- "instead of projecting hte concept art onto it we should make proper uvs no?" (the user, 2026-11-18): figures get
+  planned UVs (seams hidden, a big face island, mirrored halves, a readable layout with a layout picture kept beside
+  the texture), as the Twilight Princess figures have; projecting a concept sheet is only how the first paint gets
+  into that layout. No smart-project UVs on figures.
