@@ -43,7 +43,7 @@ const ZONES := {
 	"kelp": {"at": Vector2(44.0, 55.0), "radius": 16.0, "also": [[Vector2(35.0, -130.0), 13.0]]},
 	"docks": {"at": Vector2(66.0, 68.0), "radius": 16.0, "also": [[Vector2(3.0, -123.0), 12.0]]},
 	"sand": {"at": Vector2(-10.0, -105.0), "radius": 22.0},
-	"pirate": {"at": Vector2(-20.0, -62.0), "radius": 18.0},
+	"pirate": {"at": Vector2(-65.0, -42.0), "radius": 18.0},
 	"trench": {"at": Vector2(30.0, -36.0), "radius": 45.0, "deeper": 45.0},
 	"ruins": {"at": Vector2(-53.0, 26.0), "radius": 30.0},
 	"grass": {"at": Vector2(82.0, 52.0), "radius": 12.0},
@@ -63,17 +63,17 @@ const WRECK_HEADING := 0.0
 const RUINS_AT := Vector3(-53.0, -53.0, 26.0)
 const RUINS_HEADING := -0.93
 ## The pirate ship (scripts/pirate_wreck.gd, another agent's): the middle of its sandy hollow, and
-## its turn (its length along the node's own Z). On the canyon's north rim, along it.
-const PIRATE_AT := Vector3(-20.0, 19.0, -62.0)
+## its turn (its length along the node's own Z). On the open shelf south-west of where it first lay, where the
+## user circled it on the chart (2026-11-18: "why havent you moved the pirate ship like I showed in the overlay").
+const PIRATE_AT := Vector3(-65.0, 19.0, -42.0)
 const PIRATE_HEADING := 1.57
 ## The fish markets' landings (the user: "the fish markets should be at monteray, santa cruz, and carmel";
 ## the places are Claude's): the end of Monterey's commercial wharf, the end of the Santa Cruz wharf,
 ## the end of Carmel's pier at Stillwater Cove (world x, z). Selling there is another stage's.
-const MARKETS := {"monterey": Vector2(82.0, 56.0), "santa_cruz": Vector2(-8.0, -107.0), "carmel": Vector2(21.0, 125.0)}
-## Where a run starts (x, z): where the user circled it on the chart (2026-11-18), on the shelf south-west
-## of the pirate ship, with room east of it for the title boat's circle (45 m round a middle 45 m east:
-## Title.COURSE; the seal rock, Scenery.OUTCROP, was moved north-west to stay 8 m clear of it).
-const START := Vector2(-65.0, -42.0)
+const MARKETS := {"monterey": Vector2(82.0, 56.0), "santa_cruz": Vector2(-8.0, -107.0), "carmel": Vector2(27.0, 121.0)}
+## Where a run starts (x, z): over the sand off Santa Cruz, east of the pirate ship, with room east of it
+## for the title boat's circle (45 m round a middle 45 m east: Title.COURSE).
+const START := Vector2(-40.0, -55.0)
 
 ## The rocks, each as a sphere: x, y, z, radius (Scenery adds them: `add_rock`). They are kept
 ## twice (tools/PERF.md, "Decision: two grids for the rocks"): by the square of floor they could be

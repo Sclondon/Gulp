@@ -61,11 +61,11 @@ const PILE_DOWN := 0.7
 const MONTEREY := Vector2(66.0, 68.0)
 const SANTA_CRUZ := Vector2(3.0, -123.0)
 ## The outcrop the pirate ship struck, and its island (world).
-const OUTCROP := Vector2(-50.0, -86.0)
+const OUTCROP := Vector2(-93.0, -52.0)
 ## The south kelp forest's landmark: the arch across its main channel (world x, z; BIOMES.md 5.2).
 const ARCH := Vector2(44.0, 55.0)
 ## Where Carmel's pier starts at the shore (world; it runs north, BIOMES.md 5.12).
-const CARMEL_PIER := Vector2(21.0, 115.0)
+const CARMEL_PIER := Vector2(27.0, 111.0)
 const OLD_ONE := "res://creatures/old_one/old_one.gd"
 const REEF_BACK := "res://creatures/reef_back/reef_back.gd"
 ## Where the old one lies asleep (world x, z: the canyon's deep floor north-east of Atlantis, 85 m).

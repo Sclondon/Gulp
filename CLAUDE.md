@@ -422,11 +422,16 @@ choices below are Claude's.
   north-south, its ends on the rims 26 m down, about 90 m under its middle, 40 m off Carmel. And the start, circled
   by the user: `Sea.START` (-65, -42), on the shelf south-west of the pirate ship; the seal rock (`Scenery.OUTCROP`)
   moved to (-50, -86) so the title boat's circle clears it by 8 m.
-- **A bigger Monterey Peninsula** (2026-11-18, the user: "The peninsula needs to be a little bigger"): the bake moves
-  its coast `PENINSULA_GROW` (6) m out to sea from Point Pinos round to Point Lobos (`_grow_peninsula`, west of
-  x 58 and south of z 56, fading over 10 m; Monterey's harbour is outside it). Carmel's cove shrank to a shallow
-  strip: the pier (`Scenery.CARMEL_PIER` (21, 115)), its dredged harbour, the market (21, 125), the white beach and
-  the Carmel rocky reef moved onto the new shore. Which peninsula was meant is Claude's reading.
+- **The peninsula: growing it went wrong, undone** (2026-11-18). The user: "The peninsula needs to be a little
+  bigger"; Claude moved the Monterey Peninsula's coast 6 m out evenly (`_grow_peninsula`), which filled Carmel Bay
+  and rounded the points; the user: "Nope you totally ruined the shape of the peninsula". It is off
+  (`PENINSULA_GROW` 0; the floor is byte for byte as before) and Carmel's pier, harbour, market, beach and reef are
+  back. Lesson: an even offset of a coastline loses its bays and points; if it is to be bigger, scale its shape, and
+  show a picture before building it. Not yet redone.
+- **The pirate ship moved** (2026-11-18): on the overlay the user's red line ran from the pirate ship to a circle;
+  Claude first read it as moving the start; the user: "why havent you moved the pirate ship like I showed in the
+  overlay". `Sea.PIRATE_AT` (-65, 19, -42) and its hollow, the seal rock (`Scenery.OUTCROP` (-93, -52), off its west
+  end as before), and the start back at (-40, -55), east of it.
 - **Terraced trench** (2026-11-18, the user: "the trench needs to be carved out with terrace like steps, no just one
   huge cliff"): inside the drawn trench the floor may be no deeper than `_steps(distance in from its edge)`: every
   `TERRACE_WIDE` (6) m in, a `TERRACE_STEP` (14) m drop, flat for the first `TERRACE_TREAD` (0.6) of it, then a steep

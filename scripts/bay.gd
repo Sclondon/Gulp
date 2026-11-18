@@ -44,7 +44,7 @@ const HARBOURS := [
 	[Vector2(66.0, 70.0), 20.0, 6.0],  # Monterey harbour (east of the wharf, off Del Monte: where the shore faces north)
 	[Vector2(-6.0, -123.0), 11.0, 5.0],  # Santa Cruz wharf
 	[Vector2(16.0, -128.0), 7.0, 4.5],  # Santa Cruz small craft harbour
-	[Vector2(21.0, 122.0), 7.0, 6.0],  # Carmel: Stillwater Cove (smaller since the peninsula grew), for the market's pier
+	[Vector2(27.0, 116.0), 8.0, 8.0],  # Carmel: Stillwater Cove, for the market's pier
 ]
 ## Shelves made level (world metres): middle, flat out to, blended out to, depth at the middle (m),
 ## and how much deeper it gets per metre (x, z); a long one also its heading (as rotation.y) and how
@@ -54,7 +54,7 @@ const HARBOURS := [
 const WRECK_SHELF := [Vector2(-37.0, 100.0), 7.0, 14.0, 26.0, Vector2(0.0, 0.0), Vector2(0.0, 1.0), true]
 const WRECK_SEAT_SOUTH := [Vector2(-37.0, 152.0), 6.0, 12.0, 26.0, Vector2(0.0, 0.0), Vector2(0.0, 1.0), true]
 const RUINS_TERRACE := [Vector2(-53.0, 26.0), 34.0, 56.0, 93.0, Vector2(0.0, 0.0)]
-const PIRATE_HOLLOW := [Vector2(-20.0, -62.0), 20.0, 38.0, 21.0, Vector2(0.0, 0.06)]
+const PIRATE_HOLLOW := [Vector2(-65.0, -42.0), 20.0, 38.0, 21.0, Vector2(0.0, 0.0)]
 
 static var _grid := PackedFloat32Array()
 static var _cols := 0

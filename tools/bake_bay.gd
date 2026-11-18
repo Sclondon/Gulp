@@ -56,7 +56,9 @@ const TRENCH_SHORE := 12.0
 const TERRACE_WIDE := 6.0
 ## The Monterey Peninsula grown (see _grow_peninsula): how far out (m), and the box it is in: west of x,
 ## south of z (world m).
-const PENINSULA_GROW := 6.0
+## (0: off. The user: "Nope you totally ruined the shape of the peninsula": growing the coast evenly filled
+## Carmel Bay and rounded the points)
+const PENINSULA_GROW := 0.0
 const PENINSULA := Vector2(58.0, 56.0)
 const TERRACE_STEP := 14.0
 const TERRACE_TREAD := 0.6
