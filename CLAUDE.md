@@ -452,3 +452,7 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   good game design \"levels\" out of them as we've described them so far" (the user, 2026-11-18): research and a level
   design for every place is being written to `tools/BIOMES.md` (phase one: no game files changed); building it
   (a rule-based placer in place of `scripts/scenery.gd`'s scattering, new kit pieces) follows the performance pass.
+- Installed but NOT yet placed in the sea (2026-11-18): `creatures/old_one` (OldOne: a sleeping set piece about 50 m
+  across, `wake` 0..1 set by the game; to stand in the canyon basin by Atlantis with `Sea.add_rock` spheres) and
+  `creatures/reef_back` (ReefBack: 35 m, walks on a skeleton with baked clips, `step(velocity)`; to walk a slow loop on
+  the deep floor). Their builder's placing notes are in each component's README in GameCommon. Each has its own shader.
