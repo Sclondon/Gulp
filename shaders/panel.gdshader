@@ -15,6 +15,8 @@ uniform float patch_size = 1.6;
 // Polished metal (0 dull paint or rust, 1 brass): a highlight, and the light and dark of a room
 // mirrored in it.
 uniform float shine = 0.0;
+// Hammered, dented metal: how much the surface seems to rise and fall (0 flat).
+uniform float dents = 0.0;
 // Light of its own (the plunger held, the scope).
 uniform vec3 glow : source_color = vec3(0.0);
 uniform sampler2D noise : repeat_enable, filter_linear_mipmap;
@@ -45,6 +47,11 @@ void fragment() {
 		colour = mix(colour, patch_b, smoothstep(0.5, 0.8, b) * patches * 0.8);
 	}
 	vec3 n = normalize(NORMAL);
+	if (dents > 0.0) {
+		vec2 d0 = at.xy * 0.55;
+		float h = blotch(d0);
+		n = normalize(n + vec3(h - blotch(d0 + vec2(0.03, 0.0)), h - blotch(d0 + vec2(0.0, 0.03)), 0.0) * dents * 5.0);
+	}
 	vec3 light = normalize(vec3(-0.5, 0.62, 0.6));
 	float d = dot(n, light);
 	float wrap = clamp(d * 0.5 + 0.5, 0.0, 1.0);

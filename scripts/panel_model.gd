@@ -43,8 +43,8 @@ const GAUGE_SUNK := 1.08
 const SIDE_UPRIGHT := 0.8
 
 const PAINTS := {
-	"iron": {"base": Color(0.5, 0.25, 0.1), "patch_a": Color(0.3, 0.14, 0.07), "patch_b": Color(0.33, 0.42, 0.3), "patches": 0.9, "patch_size": 1.3},
-	"brass": {"base": Color(0.78, 0.52, 0.17), "patch_a": Color(0.6, 0.37, 0.12), "patch_b": Color(0.5, 0.45, 0.22), "patches": 0.35, "patch_size": 1.1, "shine": 0.8},
+	"iron": {"base": Color(0.5, 0.25, 0.1), "patch_a": Color(0.3, 0.14, 0.07), "patch_b": Color(0.33, 0.42, 0.3), "patches": 0.9, "patch_size": 1.3, "dents": 1.0},
+	"brass": {"base": Color(0.78, 0.52, 0.17), "patch_a": Color(0.6, 0.37, 0.12), "patch_b": Color(0.5, 0.45, 0.22), "patches": 0.35, "patch_size": 1.1, "shine": 0.8, "dents": 0.5},
 	"copper": {"base": Color(0.8, 0.4, 0.2), "shine": 0.8},
 	"rubber": {"base": Color(0.1, 0.1, 0.11), "shine": 0.15},
 	"dark": {"base": Color(0.04, 0.03, 0.03)},

@@ -39,6 +39,8 @@ BLEND = os.path.join(HERE, "blend", "control_panel.blend")
 
 SIDE_WIDE = 2.2
 SIDE_TALL = 3.5
+SHOULDER = 2.5     # the side housings' square part; over it an arched head round the big dial
+BODY = 2.3         # the instrument housing's square part; over it heads round the scope and a dial
 WELL_Z = 1.05      # the socket's and the plunger's middle, above the foot
 WELL_OUT = 0.82    # their brass ring
 SLOT_R = 1.0       # the lever's slot: an arc round the plunger
@@ -252,21 +254,67 @@ def marker(name, at, parent):
     return obj
 
 
-def plate(wide, tall, thick=0.32):
-    """A housing's rusted plate, its face at y = 0: a raised rim, a rivet in each corner, feet."""
-    box(IRON, (wide, thick, tall), (0.0, thick * 0.5, tall * 0.5), 0.06)
+def plate(wide, tall, heads=(), thick=0.32):
+    """A housing's rusted plate, its face at y = 0: a square part `tall` high with a raised rim,
+    rivets and feet, and round heads (x, z, radius) standing over it, bolted round."""
+    box(IRON, (wide, thick, tall), (0.0, thick * 0.5, tall * 0.5), 0.07)
+    for x, z, r in heads:
+        cyl(IRON, r, thick, (x, thick * 0.5, z), "Y", 40, 0.06)
+        torus(IRON, r - 0.05, 0.05, (x, 0.0, z), "Y", 40)
+        count = int(r * 14)
+        for k in range(count):
+            a = math.tau * (k + 0.5) / count
+            if z + math.sin(a) * r > tall - 0.1:
+                bolt(x + math.cos(a) * (r - 0.14), z + math.sin(a) * (r - 0.14), 0.04)
     for side in (-1.0, 1.0):
         box(IRON, (0.09, 0.07, tall - 0.1), (side * (wide * 0.5 - 0.045), -0.02, tall * 0.5), 0.02)
-        # rivets up each side
-        rows = max(2, round((tall - 0.4) / 0.55) + 1)
+        rows = max(2, round((tall - 0.4) / 0.5) + 1)
         for k in range(rows):
             rivet(side * (wide * 0.5 - 0.2), 0.2 + (tall - 0.4) * k / (rows - 1.0), 0.06)
         cyl(BRASS, 0.2, 0.16, (side * (wide * 0.5 - 0.3), thick * 0.5, 0.02), "Z", 16, 0.02)
-    for z in (0.045, tall - 0.045):
-        box(IRON, (wide - 0.1, 0.07, 0.09), (0.0, -0.02, z), 0.02)
-        across = max(2, round((wide - 0.4) / 0.55) + 1)
-        for k in range(1, across - 1):
-            rivet(-wide * 0.5 + 0.2 + (wide - 0.4) * k / (across - 1.0), 0.2 if z < 1.0 else tall - 0.2, 0.06)
+        # a brass corner bracket at each foot
+        prism(BRASS, [(side * wide * 0.5, 0.0), (side * (wide * 0.5 - 0.34), 0.0), (side * wide * 0.5, 0.34)], -0.06, 0.05)
+    box(IRON, (wide - 0.1, 0.07, 0.09), (0.0, -0.02, 0.045), 0.02)
+    across = max(2, round((wide - 0.4) / 0.5) + 1)
+    for k in range(1, across - 1):
+        rivet(-wide * 0.5 + 0.2 + (wide - 0.4) * k / (across - 1.0), 0.2, 0.06)
+
+
+def bolt(x, z, size=0.05, front=0.0):
+    """A six-sided bolt head."""
+    cyl(STEEL, size, size * 0.9, (x, front - size * 0.4, z), "Y", 6)
+
+
+def patch(x, z, wide, tall, turn):
+    """A smaller sheet of iron bolted over the plate, a little askew."""
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(x, -0.02, z), rotation=(0.0, turn, 0.0))
+    obj = keep(IRON)
+    obj.scale = (wide, 0.06, tall)
+    settle(obj)
+    mod = obj.modifiers.new("bevel", "BEVEL")
+    mod.width = 0.015
+    mod.segments = 2
+    bpy.ops.object.modifier_apply(modifier="bevel")
+    for sx in (-1.0, 1.0):
+        for sz in (-1.0, 1.0):
+            px = sx * (wide * 0.5 - 0.06)
+            pz = sz * (tall * 0.5 - 0.06)
+            bolt(x + px * math.cos(turn) + pz * math.sin(turn), z - px * math.sin(turn) + pz * math.cos(turn), 0.035, -0.05)
+
+
+def thin(points, radius=0.045, mat=None):
+    """A thin copper pipe across a face, with a brass union at each end."""
+    pipe(mat or COPPER, points, radius, 4)
+    for at in (points[0], points[-1]):
+        cyl(BRASS, radius * 1.9, radius * 2.6, at, "Y", 10, 0.008)
+
+
+def mini_gauge(x, z, r=0.15):
+    """A small pressure gauge with a fixed needle: furniture."""
+    cyl(BRASS, r + 0.03, 0.1, (x, -0.02, z), "Y", 16, 0.01)
+    torus(BRASS, r, 0.035, (x, -0.07, z), "Y", 16)
+    cyl(PAPER, r - 0.01, 0.02, (x, -0.075, z), "Y", 16)
+    prism(INK, [(x - 0.012, z - 0.02), (x + 0.012, z - 0.02), (x + r * 0.55, z + r * 0.6)], -0.09, 0.008)
 
 
 def side_pipe(x, tall, lean):
@@ -337,21 +385,27 @@ def valve(x, z, r, front=-0.16):
 
 # --- The helm housing: a socket with a rubber boot and a stick; over it the evolution dial,
 # between two electrodes that stand over the housing's top.
-plate(SIDE_WIDE, SIDE_TALL)
-side_pipe(-SIDE_WIDE * 0.5 - 0.02, SIDE_TALL - 0.5, 1.0)
+plate(SIDE_WIDE, SHOULDER, [(BIG_DIAL[0], BIG_DIAL[1], 0.8)])
+side_pipe(-SIDE_WIDE * 0.5 - 0.02, SHOULDER - 0.2, 1.0)
 well(DARK)
 for major, out in ((0.46, -0.07), (0.36, -0.13), (0.27, -0.18)):
     torus(RUBBER, major, 0.085, (0.0, out, WELL_Z), "Y", 24)
 dial(BIG_DIAL[0], BIG_DIAL[1], BIG_DIAL_R, 9, False)
 POSTS = 0.84
 for side in (-1.0, 1.0):
-    cyl(BRASS, 0.09, 1.1, (side * POSTS, -0.14, SIDE_TALL - 0.15), "Z", 16)
-    collar((side * POSTS, -0.14, SIDE_TALL - 0.6), 0.1)
-    collar((side * POSTS, -0.14, SIDE_TALL + 0.02), 0.1)
-    ball(BRASS, 0.1, (side * POSTS, -0.14, SIDE_TALL + 0.44), (1.0, 1.0, 1.0), 12)
+    cyl(BRASS, 0.09, 1.3, (side * POSTS, -0.14, SHOULDER + 0.2), "Z", 16)
+    collar((side * POSTS, -0.14, SHOULDER - 0.32), 0.1)
+    collar((side * POSTS, -0.14, SHOULDER + 0.05), 0.1)
+    collar((side * POSTS, -0.14, SHOULDER + 0.6), 0.09)
+    ball(BRASS, 0.1, (side * POSTS, -0.14, SHOULDER + 0.9), (1.0, 1.0, 1.0), 12)
+    # a cable from the post's foot down to the socket's ring
+    pipe(RUBBER, [(side * POSTS, -0.2, SHOULDER - 0.4), (side * (POSTS + 0.12), -0.2, SHOULDER - 0.62), (side * (POSTS - 0.02), -0.14, SHOULDER - 0.8)], 0.035, 4)
+thin([(-1.0, -0.06, 2.02), (-0.4, -0.06, 1.98), (0.35, -0.06, 2.03), (1.0, -0.06, 1.98)])
+mini_gauge(-0.86, 0.32)
+patch(0.82, 0.34, 0.42, 0.36, 0.12)
 helm = join("Helm")
-marker("SparkA", (-POSTS, -0.14, SIDE_TALL + 0.44), helm)
-marker("SparkB", (POSTS, -0.14, SIDE_TALL + 0.44), helm)
+marker("SparkA", (-POSTS, -0.14, SHOULDER + 0.9), helm)
+marker("SparkB", (POSTS, -0.14, SHOULDER + 0.9), helm)
 needle("Evolve", BIG_DIAL[0], BIG_DIAL[1], BIG_DIAL_R, helm)
 
 # the stick: a shaft out of the boot, a collar, a brass ball
@@ -362,13 +416,16 @@ join("Stick", (0.0, 0.0, WELL_Z), helm)
 
 # --- The engine housing: a plunger in its ring, a slot curving round it with a lever in it, and
 # the speed dial over them.
-plate(SIDE_WIDE, SIDE_TALL)
-side_pipe(SIDE_WIDE * 0.5 + 0.02, SIDE_TALL - 0.5, -1.0)
+plate(SIDE_WIDE, SHOULDER, [(BIG_DIAL[0], BIG_DIAL[1], 0.8)])
+side_pipe(SIDE_WIDE * 0.5 + 0.02, SHOULDER - 0.2, -1.0)
 well(DARK)
 band(BRASS, (0.0, WELL_Z), SLOT_R, 0.15, SLOT_FROM, SLOT_TO, -0.03, 0.06, 28, True)
 band(DARK, (0.0, WELL_Z), SLOT_R, 0.085, SLOT_FROM, SLOT_TO, -0.045, 0.04, 28, True)
 dial(BIG_DIAL[0], BIG_DIAL[1], BIG_DIAL_R, 9, True)
-valve(0.84, SIDE_TALL - 0.36, 0.17)
+valve(0.86, SHOULDER - 0.28, 0.17)
+thin([(0.86, -0.06, SHOULDER - 0.5), (0.99, -0.06, 1.75), (0.99, -0.06, 0.95), (0.99, -0.06, 0.3)])
+mini_gauge(-0.86, 2.22)
+patch(-0.82, 0.32, 0.4, 0.34, -0.1)
 engine = join("Engine")
 needle("Speed", BIG_DIAL[0], BIG_DIAL[1], BIG_DIAL_R, engine)
 
@@ -390,11 +447,14 @@ lever = join("Lever", (0.0, 0.0, WELL_Z), engine)
 marker("Grip", (0.0, -0.75, WELL_Z + SLOT_R), lever)
 
 # --- The instrument housing: the scope, two small dials, two switches, a grille, a valve, a coil.
-plate(GAUGE_WIDE, GAUGE_TALL)
-side_pipe(-GAUGE_WIDE * 0.5 + 0.2, GAUGE_TALL - 0.35, 1.0)
-pipe(BRASS, [(1.5, -0.05, 0.1), (1.5, -0.05, 1.0), (1.5, -0.05, 2.0), (1.5, -0.05, GAUGE_TALL - 0.1)], 0.08)
+plate(GAUGE_WIDE, BODY, [(SCOPE[0], SCOPE[1], 1.0), (SMALL_DIALS["Depth"][0], SMALL_DIALS["Depth"][1], 0.46)])
+thin([(0.4, -0.08, 2.5), (0.58, -0.08, 2.64), (0.74, -0.08, 2.56)])
+thin([(0.42, -0.08, 1.72), (0.58, -0.08, 1.55), (0.72, -0.08, 1.6)])
+patch(1.2, 1.07, 0.4, 0.28, 0.1)
+patch(-1.38, 1.2, 0.36, 0.5, -0.08)
+pipe(BRASS, [(1.5, -0.05, 0.1), (1.5, -0.05, 1.0), (1.5, -0.05, 2.0), (1.5, -0.05, BODY - 0.1)], 0.08)
 collar((1.5, -0.05, 0.3), 0.08)
-collar((1.5, -0.05, GAUGE_TALL - 0.3), 0.08)
+collar((1.5, -0.05, BODY - 0.3), 0.08)
 # a copper coil wound round that pipe
 coil = []
 for k in range(49):
