@@ -41,7 +41,9 @@ const DATA := "res://data/monterey.bin"
 ## "The river shouldnt turn up just extend further east"; the map was widened east for it).
 const SLOUGH := [Vector2(98.0, -40.0), Vector2(108.0, -42.0), Vector2(118.0, -38.0), Vector2(128.0, -42.0), Vector2(138.0, -37.0), Vector2(148.0, -41.0), Vector2(154.0, -39.0)]
 const SLOUGH_HALF := 9.0
-const SLOUGH_DEEP := 5.0
+const SLOUGH_DEEP := 9.0
+## How deep the slough is at its banks (its middle is SLOUGH_DEEP).
+const SLOUGH_BANK := 2.5
 ## Harbours dredged level behind their walls: middle, radius, depth.
 const HARBOURS := [
 	[Vector2(66.0, 70.0), 20.0, 6.0],  # Monterey harbour (east of the wharf, off Del Monte: where the shore faces north)
@@ -161,9 +163,12 @@ static func _shore_at(p: Vector2) -> float:
 static func depth(p: Vector2) -> float:
 	var deep := _sample(_depth, p.x, p.y)
 	var d := _shore_at(p)
-	# The slough's channel.
-	var channel := 1.0 - smoothstep(SLOUGH_HALF - 2.0, SLOUGH_HALF, _line_distance(p, SLOUGH))
-	deep = lerpf(deep, maxf(deep, SLOUGH_DEEP), channel)
+	# The slough's channel: shallow banks, a deeper channel down its middle (the user, 2026-11-18: "The river
+	# should have a deeper channel in the center").
+	var off := _line_distance(p, SLOUGH)
+	var channel := 1.0 - smoothstep(SLOUGH_HALF - 2.0, SLOUGH_HALF, off)
+	var bed := lerpf(SLOUGH_BANK, SLOUGH_DEEP, 1.0 - smoothstep(SLOUGH_HALF * 0.15, SLOUGH_HALF * 0.6, off))
+	deep = lerpf(deep, maxf(deep, bed), channel)
 	# Harbours, dredged level up to their quays.
 	for harbour: Array in HARBOURS:
 		var r: float = harbour[1]
