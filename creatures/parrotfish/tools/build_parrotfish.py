@@ -25,6 +25,13 @@ Everything below is in BODY LENGTHS (the whole fish is 1 long: `s` is how far al
 the tips of the tail; heights are from its middle line), and is multiplied by LENGTH as it is written out. In
 Godot: metres, Y up, X to its left side, its nose at -Z, its origin on its middle line half way along.
 
+THE GAME MODEL (parrotfish_game.glb, added 2026-11-18; `GAME` below): the same fish with its triangles spent where
+they show, after the user's "We should have a twilight princess model to compare to so we can make low poly versions
+while maintaining high quality looks and silhouettes": rings where the outline bends (`game_rings`), points round a
+ring closer at the ridge of the back and the keel of the belly and one exactly on the line of the mouth
+(`ring_angles`), few rows across the fins. It is made in the same run after the full and low models are written
+out, and does not change them. The build also prints an EYE line: the numbers the shader's cartoon eye needs.
+
 What a point is, for the shader: UV2.y the part (0 body, 1 lower jaw, 2 dorsal fin, 3 anal fin, 4 tail, 5 a
 pectoral fin, 6 a pelvic fin, 7 an eye). UV, on the body and jaw: x how far along (s), y how high on its side
 (1 the ridge of the back, 0 the keel of the belly); on a fin: x from its root (0) to its edge (1), y from its
@@ -122,6 +129,9 @@ PELVIC_FIN = {
 # steps are, how much of the fins' points, the jaw (rings, points round its keel, points across its hollow), the eye.
 FULL = {"around": 48, "step": 1.5, "fin": 1.0, "jaw": (22, 24, 10), "eye": (24, 7)}
 LOW = {"around": 12, "step": 5.0, "fin": 0.3, "jaw": (6, 8, 3), "eye": (8, 2)}
+# The game model (Claude's, 2026-11-18): the triangles spent where they show (see game_rings and ring_angles).
+GAME = {"around": 20, "squeeze": 0.45, "tol": 0.0025, "most": 0.08, "head": 0.025, "fin": 0.4, "fin_t": 0.3,
+        "per_spine": 2, "jaw": (8, 12, 3), "eye": (24, 2)}
 
 
 def extras(m, detail):
@@ -314,7 +324,91 @@ class Mesh:
         self.count[name] = self.count.get(name, 0) + 1
 
 
+def game_rings(detail):
+    """The game model's rings: placed where the outline bends (seen from the side and from above), not evenly. From
+    each ring the next goes as far on as a straight line from it keeps within `tol` (body lengths) of the outline's
+    top, bottom, width and middle line, but never more than `most` (`head` ahead of the gill cover, where the mouth
+    and the eye are); there is always a ring at the corners of the mouth and at the jaw's hinge, at `at`, and where the body is highest, lowest, deepest and widest."""
+    tol, most, head = detail["tol"], detail["most"], detail["head"]
+    must = sorted(set([HINGE[0] - CORNER_B, HINGE[0], HINGE[0] + CORNER_C] + list(detail.get("at", ()))))
+    n = 1200
+    xs = [BODY_FROM + (BODY_TO - BODY_FROM) * i / n for i in range(n + 1)]
+    os_ = [outline(x) for x in xs]
+    # (and where it is highest, lowest, deepest and widest, so that the outline from the front is whole)
+    for key in (lambda k: os_[k][0], lambda k: -os_[k][1], lambda k: os_[k][0] - os_[k][1], lambda k: os_[k][2]):
+        must.append(xs[max(range(n + 1), key=key)])
+
+    def strays(i, j):
+        for k in range(i + 1, j):
+            f = (xs[k] - xs[i]) / (xs[j] - xs[i])
+            for q in range(4):
+                if abs(os_[i][q] + (os_[j][q] - os_[i][q]) * f - os_[k][q]) > tol:
+                    return True
+        return False
+
+    stops = sorted(set(min(range(n + 1), key=lambda k: abs(xs[k] - m_)) for m_ in must)) + [n]
+    out = [0]
+    i = 0
+    while i < n:
+        stop = next(k for k in stops if k > i)
+        j = i + 1
+        while j < stop:
+            limit = head if xs[i] < GILL[0] else most
+            nxt = j + 1
+            if xs[nxt] - xs[i] > limit or strays(i, nxt):
+                break
+            j = nxt
+        out.append(j)
+        i = j
+    return [xs[k] for k in out]
+
+
+def ring_angles(s, detail):
+    """The game model's points round a ring: closer together at the ridge of the back and the keel of the belly
+    (where the outline turns most sharply), wider apart across the flat flanks (`squeeze`); still one at the top,
+    the bottom and each side, and on the head one each side exactly on the line of the mouth, so that its edge is
+    clean."""
+    around = detail["around"]
+    k = detail["squeeze"]
+    angles = [c / around * TAU - k * math.sin(2.0 * c / around * TAU) / 2.0 for c in range(around)]
+    if s < HINGE[0] + CORNER_C:
+        # (the same point of every ring on the head, the one nearest the line of the mouth at the hinge, is
+        # moved onto that line, the points above and below it spread evenly to make room: so that the rings'
+        # points line up and no face is twisted)
+        ah = angle_of(HINGE[0], mouth_y(HINGE[0]))
+        cm = min(range(1, around // 2), key=lambda c: abs(angles[c] - ah))
+        am = angle_of(s, mouth_y(s))
+        a0 = angles[cm]
+        half = around // 2
+        for c in range(1, half):
+            if c < cm:
+                a = angles[c] / a0 * am
+            elif c > cm:
+                a = am + (angles[c] - a0) / (math.pi - a0) * (math.pi - am)
+            else:
+                a = am
+            angles[c] = a
+            angles[around - c] = TAU - a
+    return angles
+
+
+def eye_report(name):
+    """The numbers the shader needs to grow the cartoon eye about its own middle: the middle of the eye on the skin
+    (left side), the way the skin faces there, and how far the skin falls away under the eye's rim."""
+    xe, ye, radius = EYE_AT
+    here = on_skin(xe, ye, 1.0)
+    out = skin_normal(xe, ye, 1.0)
+    drops = []
+    for k in range(16):
+        a = k / 16 * TAU
+        drops.append((here - on_skin(xe + math.cos(a) * radius, ye + math.sin(a) * radius, 1.0)).dot(out))
+    print("EYE %s: middle (x, y, s) = (%.4f, %.4f, %.4f), facing (%.4f, %.4f, %.4f), radius %.4f, skin falls %.4f under the rim" % (
+        name, here.x, here.y, here.z + 0.5, out.x, out.y, out.z, radius, sum(drops) / len(drops)))
+
+
 def rings(detail):
+    if "tol" in detail:
+        return game_rings(detail)
     xs = []
     x = BODY_FROM
     for until, step in ((HINGE[0] + 0.04, 0.0035), (0.3, 0.006), (0.74, 0.013), (BODY_TO, 0.006)):
@@ -332,8 +426,9 @@ def body(m, detail):
     grid = []
     for s in rings(detail):
         row = []
+        angles = ring_angles(s, detail) if "squeeze" in detail else None
         for c in range(around):
-            angle = c / around * TAU
+            angle = angles[c] if angles else c / around * TAU
             p, inside = body_point(s, angle)
             row.append(m.add(p, (s, 0.5 + 0.5 * math.cos(angle)), BODY, inside))
         grid.append(row)
@@ -515,11 +610,11 @@ def median_fin(m, part, name, fin, way, detail):
 
     f = detail["fin"]
     if spines:
-        per = 6 if f >= 0.99 else (3 if f > 0.4 else 2)
+        per = detail.get("per_spine") or (6 if f >= 0.99 else (3 if f > 0.4 else 2))
         us = lin(spines * per, 0.0, share)[:-1] + lin(fin["nu"] * f * (1.0 - share), share, 1.0)
     else:
         us = lin(fin["nu"] * f)
-    blade(m, part, name, point, upright, SIDE, fin["thick"], lin(fin["nt"] * f), us,
+    blade(m, part, name, point, upright, SIDE, fin["thick"], lin(fin["nt"] * detail.get("fin_t", f)), us,
           high=fold if way > 0.0 else None)
 
 
@@ -536,7 +631,7 @@ def tail_fin(m, detail):
         return (root + math.cos(a) * length, half * (1.0 - 2.0 * u) + math.sin(a) * length)
 
     f = detail["fin"]
-    blade(m, TAIL, "tail", point, upright, SIDE, TAIL_FIN["thick"], lin(TAIL_FIN["nt"] * f), lin(TAIL_FIN["nu"] * f))
+    blade(m, TAIL, "tail", point, upright, SIDE, TAIL_FIN["thick"], lin(TAIL_FIN["nt"] * detail.get("fin_t", f)), lin(TAIL_FIN["nu"] * f))
 
 
 def paired_fin(m, part, name, fin, sx, detail):
@@ -562,7 +657,7 @@ def paired_fin(m, part, name, fin, sx, detail):
     f = detail["fin"]
     us = lin(fin["nu"] * f) if cut <= 0.0 else lin((rays - 1) * max(2, round(4 * f)))
     blade(m, part, name, point, lambda p: root + e1 * p[0] + e2 * p[1], e1.cross(e2).normalized(), fin["thick"],
-          lin(fin["nt"] * f), us)
+          lin(fin["nt"] * detail.get("fin_t", f)), us)
 
 
 def skin_side(s, y):
@@ -705,6 +800,11 @@ def build(name, folder):
     export_one(full, os.path.join(OUT, name + ".glb"))
     export_one(low, os.path.join(OUT, name + "_lo.glb"))
     low.location.x = LENGTH
+    # the game model (made after the other two are written out, which it does not change)
+    game = make(name + "_game", GAME)
+    export_one(game, os.path.join(OUT, name + "_game.glb"))
+    game.location.x = 2.0 * LENGTH
+    eye_report(name)
     return full, low
 
 

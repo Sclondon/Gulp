@@ -20,7 +20,7 @@ extends Node3D
 ## yourself (for a picture that must loop: frame / frames in a beat). The same names and meanings
 ## as GameCommon's yellowfin tuna and sardine, so they are driven the same way.
 ##
-## The models are creatures/leopard_shark/models/leopard_shark.glb (and _lo), built by
+## The models are creatures/leopard_shark/models/leopard_shark.glb (and _lo, _game), built by
 ## tools/build_leopard_shark.py; leopard_shark.gdshader draws the markings, swims it and works its jaws.
 
 const MODEL := "res://creatures/leopard_shark/models/leopard_shark%s.glb"
@@ -60,6 +60,31 @@ const REACH_SIDE := 0.21
 	set(value):
 		low = value
 		_show()
+## The game model (about a tenth of the full model's triangles, spent where they show: the
+## outline, the eye, the mouth, the fins' edges) in place of the full one; `low` still shows the
+## low model. Each model is loaded only when first shown: with `game` on from the start, the full
+## model is never loaded (so a game's export can leave its .glb out).
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye: 0 the eye as it is, 1 a bigger cartoon eye (a white, an iris, a pupil, a
+## highlight and a lid of its own character). On every model.
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send(&"cartoon_eyes", cartoon_eyes)
+## Where the cartoon eye looks, -1..1 each way: x towards its nose (+) or its tail (-), y up (+) or
+## down (-), in the eye's own plane. Both eyes alike.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value.clamp(Vector2(-1.0, -1.0), Vector2(1.0, 1.0))
+		_send(&"eye_look", eye_look)
+## The eyelids: 0 open, 1 shut (a lid the colour of its skin closes down over the eye).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send(&"blink", blink)
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set it
 ## yourself.
 var phase := 0.0:
@@ -72,12 +97,26 @@ static var _meshes := {}
 var _material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
 
 
 ## The full model's mesh, or the low one's (each one surface, to wear `new_material()`): for
 ## drawing a leopard shark without this node.
 static func mesh_of(low_wanted := false) -> Mesh:
 	return _mesh_at(MODEL % ("_lo" if low_wanted else ""))
+
+
+## The game model's mesh (one surface, to wear `new_material()`), without the importer's
+## automatic LODs (which the shader would bend in straight pieces far off).
+static func game_mesh() -> Mesh:
+	var path := MODEL % "_game"
+	if not _meshes.has(path):
+		var plain := ArrayMesh.new()
+		var mesh := _mesh_at(path)
+		for surface in mesh.get_surface_count():
+			plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+		_meshes[path] = plain
+	return _meshes[path]
 
 
 ## A new material for `mesh_of()`'s meshes. Its shader settings are the game's to set: `phase`
@@ -94,12 +133,13 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
 	_show()
 	_send_phase()
 	_send(&"sway", sway)
 	_send(&"gape", gape)
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 
 
 ## Each frame, for one that is not having its `phase` set for it: moves it on through its beat.
@@ -116,7 +156,7 @@ func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)
 
 
-## Its one material (both models wear it).
+## Its one material (every model wears it).
 func material() -> ShaderMaterial:
 	return _material
 
@@ -131,19 +171,31 @@ func _send_phase() -> void:
 	_send(&"phase", fposmod(phase * tail_beats, 1.0))
 
 
+# (each model is made, and its mesh loaded, only when it is first shown)
 func _show() -> void:
+	if not is_inside_tree():
+		return
+	if low and not _low:
+		_low = _instance_of(mesh_of(true), "LeopardSharkLo")
+	elif not low and game and not _game:
+		_game = _instance_of(game_mesh(), "LeopardSharkGame")
+	elif not low and not game and not _full:
+		_full = _instance_of(mesh_of(false), "LeopardShark")
 	if _full:
-		_full.visible = not low
+		_full.visible = not low and not game
+	if _game:
+		_game.visible = not low and game
+	if _low:
 		_low.visible = low
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of(mesh_wanted: Mesh, named: String) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
+	mesh.mesh = mesh_wanted
 	mesh.material_override = _material
 	# (its tail swings out past where the still model ends, and its jaw drops below it)
 	mesh.extra_cull_margin = 0.25
-	mesh.name = "LeopardSharkLo" if low_wanted else "LeopardShark"
+	mesh.name = named
 	add_child(mesh)
 	return mesh
 

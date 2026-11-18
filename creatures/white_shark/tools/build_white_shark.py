@@ -7,8 +7,9 @@ Run from the game's root:
 It writes creatures/white_shark/models/white_shark.glb (the full model) and white_shark_lo.glb (far off, phones,
 many at once), and the editable creatures/white_shark/tools/white_shark.blend (this folder has a .gdignore). Each
 model is one still mesh with one surface: the shader (white_shark.gdshader) bends it to swim, works its jaws and
-draws every marking. It prints a WINDING line for each model: the check that nothing is inside out.
-
+draws every marking. It prints a WINDING line for each model: the check that nothing is inside out. It also writes
+creatures/white_shark/models/white_shark_game.glb, the game model (2026-11-18: GAME_MESH below; the same curves and
+outlines sampled where they show, at about the weight of a Twilight Princess model).
 The great white shark (Carcharodon carcharias), 4.8 m from the tip of its snout to the tip of its tail, nose
 towards -Z, belly down, its origin at the middle of its length on the line through the snout's tip. Built from the
 species' anatomy; nothing traced or copied:
@@ -122,6 +123,13 @@ TEETH = {
     "upper": {"count": 13, "long": 0.0100, "wide": 0.0074, "back": 0.86, "inset": 0.84},
     "lower": {"count": 11, "long": 0.0085, "wide": 0.0050, "back": 0.80, "inset": 0.74},
 }
+# The game model (added 2026-11-18): how many rings along the body (placed where its outline bends most), how
+# many points round each side above and below its widest line, the jaw's the same, the fins' longest step along
+# their outlines (body lengths; every point of the outlines above is kept), where their rows are from root (0) to
+# edge (1), the tail's step, the eye's rows and points round, the share of the teeth kept, the cheeks' columns and
+# rows.
+GAME_MESH = {"rings": 46, "up": 6, "down": 6, "jaw": (3, 4), "fin_step": 0.02, "fin_rows": (0.0, 0.6, 0.93, 1.0),
+             "tail_step": 0.018, "eye": (5, 28), "teeth": 0.7, "cheek": (8, 2)}
 
 
 def median_fins():
@@ -260,6 +268,59 @@ class Section:
         out = []
         for j in range(half + 1):
             want = whole * j / half
+            i = min(bisect.bisect_right(acc, want) - 1, steps - 1)
+            span = acc[i + 1] - acc[i]
+            t = (want - acc[i]) / span if span > 1e-12 else 0.0
+            out.append((lerp(dense[i][0], dense[i + 1][0], t), lerp(dense[i][1], dense[i + 1][1], t), want))
+        return out, whole
+
+    def outline_at(self, s, marks, between):
+        """For the game model: points down its right side from the top line to the bottom line: at each of
+        `marks` (0 the top, 1 the bottom, or ("widest",) its widest point, or ("h", h) a height on the fish, 0
+        its lowest line to 1 its back), and between each mark and the next `between[k]` more, evenly spaced along
+        the skin: (x, y, how far round from the top), and the whole way."""
+        top, bot, hw, ycf, nt, nb = self.at(s)
+        yc = bot + ycf * (top - bot)
+        dense = []
+        steps = 200
+        for i in range(steps + 1):
+            phi = math.pi * i / steps
+            c, sn = math.cos(phi), max(math.sin(phi), 0.0)
+            if c >= 0.0:
+                dense.append((hw * sn ** (2.0 / nt), yc + (top - yc) * c ** (2.0 / nt)))
+            else:
+                dense.append((hw * sn ** (2.0 / nb), yc - (yc - bot) * (-c) ** (2.0 / nb)))
+        dense[0] = (0.0, top)
+        dense[-1] = (0.0, bot)
+        acc = [0.0]
+        for i in range(steps):
+            acc.append(acc[-1] + math.hypot(dense[i + 1][0] - dense[i][0], dense[i + 1][1] - dense[i][1]))
+        whole = acc[-1]
+        at = []
+        for mark in marks:
+            if isinstance(mark, tuple) and mark[0] == "widest":
+                want = acc[steps // 2]
+            elif isinstance(mark, tuple):
+                low = low_line(s)
+                y = low + mark[1] * (BODY_SKIN.top(s) - low)
+                want = acc[-1]
+                for i in range(steps):
+                    if dense[i][1] >= y >= dense[i + 1][1]:
+                        span = dense[i][1] - dense[i + 1][1]
+                        want = lerp(acc[i], acc[i + 1], (dense[i][1] - y) / span if span > 1e-12 else 0.0)
+                        break
+                want = max(0.02 * whole, min(0.98 * whole, want))
+            else:
+                want = whole * mark
+            at.append(want)
+        wants = []
+        for k in range(len(at) - 1):
+            a, b = at[k], max(at[k + 1], at[k])
+            n = between[k] + 1
+            wants += [lerp(a, b, j / n) for j in range(n)]
+        wants.append(at[-1])
+        out = []
+        for want in wants:
             i = min(bisect.bisect_right(acc, want) - 1, steps - 1)
             span = acc[i + 1] - acc[i]
             t = (want - acc[i]) / span if span > 1e-12 else 0.0
@@ -413,11 +474,16 @@ class Part:
         return out, wrong, counted
 
 
-def skin(part, section, places, half, kind):
-    """Lofts a Section into a Part. `kind` is BODY or JAW."""
+def skin(part, section, places, half, kind, side_of=None):
+    """Lofts a Section into a Part. `kind` is BODY or JAW. `side_of(s)`, for the game model, gives each ring's
+    points down the right side (as Section.outline does) in place of `half` evenly spaced ones."""
     rings = []
     for s in places:
-        side, whole = section.outline(s, half)
+        if side_of:
+            side, whole = side_of(s)
+            half = len(side) - 1
+        else:
+            side, whole = section.outline(s, half)
         top, bot, hw, ycf = section.at(s)[:4]
         yc = bot + ycf * (top - bot)
         ring = []
@@ -467,7 +533,83 @@ def body_places(low):
     return places
 
 
-def eye(low):
+def game_places():
+    """The game model's rings along the body: a few where the mouth and its markings need them, then one at a
+    time into whichever gap's straight lines miss the outline most (the back line, the lowest line, the half
+    width, and the jaw's where it is), or is longest for the swimming to bend smoothly, until there are
+    GAME_MESH["rings"]."""
+    must = {BODY_SKIN.first, BODY_SKIN.last, MOUTH_S, MOUTH_S + 0.004, HINGE_S - 0.012, HINGE_S, HINGE_S + 0.012,
+            HINGE_S + 0.03, JAW_SKIN.last, lerp(MOUTH_S, HINGE_S, CHEEK_FROM)}
+    places = sorted(p for p in must if BODY_SKIN.first <= p <= BODY_SKIN.last)
+    lines = [BODY_SKIN.top, low_line, lambda s: BODY_SKIN.at(s)[2]]
+    jaw_lines = [JAW_SKIN.bot, lambda s: JAW_SKIN.at(s)[2]]
+
+    def miss(a, b):
+        if b - a < 0.002:
+            return 0.0
+        # (each line taken just inside the gap at its ends: the lowest line jumps where the mouth begins)
+        a1, b1 = a + 1e-7, b - 1e-7
+        worst = 0.0
+        for k in range(1, 8):
+            s = lerp(a, b, k / 8.0)
+            for f in lines:
+                worst = max(worst, abs(f(s) - lerp(f(a1), f(b1), k / 8.0)))
+            if JAW_SKIN.first <= a and b <= JAW_SKIN.last:
+                for f in jaw_lines:
+                    worst = max(worst, abs(f(s) - lerp(f(a1), f(b1), k / 8.0)))
+        return max(worst / 0.0004, (b - a) / 0.045)
+
+    while len(places) < GAME_MESH["rings"]:
+        k = max(range(len(places) - 1), key=lambda i: miss(places[i], places[i + 1]))
+        places.insert(k + 1, 0.5 * (places[k] + places[k + 1]))
+    return places
+
+
+_GAME_SPLIT = {}
+
+
+def game_side(section, kind):
+    """For the game model: a function giving a ring's points down the right side: one on the back line, one on
+    the widest line (or, with RIDGES, one on each ridge and either side of it), one on the lowest line, and
+    GAME_MESH's counts spread evenly between them."""
+    if kind == JAW:
+        marks = [0.0, ("widest",), 1.0]
+        between = [GAME_MESH["jaw"][0] - 1, GAME_MESH["jaw"][1] - 1]
+    elif not RIDGES:
+        marks = [0.0, ("widest",), 1.0]
+        between = [GAME_MESH["up"] - 1, GAME_MESH["down"] - 1]
+    else:
+        marks = [0.0]
+        for at, stands, s0, s1 in sorted(RIDGES, reverse=True):
+            marks += [("h", at + 0.045), ("h", at), ("h", at - 0.045)]
+        marks.append(1.0)
+        if "ridges" not in _GAME_SPLIT:
+            # (how many go in each gap, shared out once by the gaps' lengths where the body is widest, so that
+            # every ring has the same in each)
+            s = max((i / 200.0 for i in range(1, 200)), key=lambda q: BODY_SKIN.at(q)[2])
+            free = GAME_MESH["up"] + GAME_MESH["down"] - (len(marks) - 1)
+            side, whole = section.outline_at(s, marks, [0] * (len(marks) - 1))
+            gaps = [side[k + 1][2] - side[k][2] for k in range(len(side) - 1)]
+            # (the ridges' own gaps, a ridge's two sides, get nothing more)
+            open_gaps = [k for k in range(len(gaps)) if k % 3 == 0]
+            share = [0] * len(gaps)
+            room = sum(gaps[k] for k in open_gaps)
+            for _ in range(max(free, 0)):
+                k = max(open_gaps, key=lambda q: gaps[q] / room / (share[q] + 1))
+                share[k] += 1
+            _GAME_SPLIT["ridges"] = share
+        between = _GAME_SPLIT["ridges"]
+    return lambda s: section.outline_at(s, marks, between)
+
+
+def eye_middle():
+    """Where the right eye's dome meets the skin, in metres (Godot axes): the shader's EYE_MID, about which it
+    grows the cartoon eye."""
+    s, y, ball, stands = EYE_AT
+    return body_frame(s, y)[0] * LENGTH
+
+
+def eye(low, game=False):
     """The right eye: a dome set in the side of the head."""
     part = Part("eye")
     s, y, ball, stands = EYE_AT
@@ -478,6 +620,8 @@ def eye(low):
     centre = at - out * (ball - stands)
     rows = 4 if low else 10
     around = 10 if low else 28
+    if game:
+        rows, around = GAME_MESH["eye"]
     rings = []
     colour = (EYE / 20.0, 0.0, 0.0)
     for i in range(rows + 1):
@@ -496,6 +640,35 @@ def eye(low):
     rings.append([part.add(back, (0.5, 0.5), (0.0, 1.0), colour) for k in range(around)])
     part.loft(rings)
     return part
+
+
+def outline_marks(points):
+    """How far along outline_curve(points) (0..1) each of the points is."""
+    pts = [Vector(p) for p in points]
+    n = len(pts)
+    dense = []
+    for i in range(n - 1):
+        p0, p1, p2, p3 = pts[max(i - 1, 0)], pts[i], pts[i + 1], pts[min(i + 2, n - 1)]
+        for k in range(20):
+            t = k / 20.0
+            dense.append(0.5 * ((2.0 * p1) + (p2 - p0) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t * t
+                                + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t ** 3))
+    dense.append(pts[-1])
+    acc = [0.0]
+    for a, b in zip(dense, dense[1:]):
+        acc.append(acc[-1] + (b - a).length)
+    return [acc[20 * i] / acc[-1] for i in range(n)], acc[-1]
+
+
+def game_columns(points, step):
+    """The game model's columns along a fin's outline (0..1): one at every point of the outline, and more
+    between where two points are further apart than `step` (body lengths)."""
+    marks, whole = outline_marks(points)
+    ts = [0.0]
+    for a, b in zip(marks, marks[1:]):
+        n = max(1, math.ceil((b - a) * whole / step - 0.25))
+        ts += [lerp(a, b, k / n) for k in range(1, n + 1)]
+    return ts
 
 
 def outline_curve(points):
@@ -522,18 +695,23 @@ def outline_curve(points):
     return f
 
 
-def fin(name, kind, base0, base1, outline, normal, thick, low, tail=False):
+def fin(name, kind, base0, base1, outline, normal, thick, low, tail=False, game=False):
     """A fin, a thick foil with no rays: its skin runs from its root line (base0 to base1, inside the body) out
     to its outline (a line from base0 round to base1); flat, facing `normal`; `thick` at its root, thinning to
-    nothing at its edge."""
+    nothing at its edge. (The game model's columns: game_columns.)"""
     part = Part(name)
     cols = (14 if tail else 10) if low else (72 if tail else 44)
     rows = 2 if low else 9
+    ts = [i / cols for i in range(cols + 1)]
+    if game:
+        ts = game_columns(outline, GAME_MESH["tail_step" if tail else "fin_step"])
+        cols = len(ts) - 1
+        rows = len(GAME_MESH["fin_rows"]) - 1
     normal = normal.normalized()
     edge = outline_curve(outline)
     left, right = [], []
     for i in range(cols + 1):
-        t = i / cols
+        t = ts[i]
         b, tip = base0.lerp(base1, t), edge(t)
         # (thickest a third of the way from its leading edge, as a wing is; the tail's root the same all along)
         foil = math.sin(math.pi * t) ** 0.5 if tail else min(1.0, 1.9 * t ** 0.5 * (1.0 - t) ** 0.8) ** 0.8
@@ -542,6 +720,10 @@ def fin(name, kind, base0, base1, outline, normal, thick, low, tail=False):
         a, c = [], []
         for j in range(rows + 1):
             r = (j / rows) ** 0.85
+            if game:
+                # (a row close to the edge, so that the edge's rounding stays a thin rim and does not shade
+                # half the fin)
+                r = GAME_MESH["fin_rows"][j]
             th = thick * foil * (1.0 - r) ** 0.75
             mid = b.lerp(tip, r)
             data = ((r, 1.0 - t), (0.0, 1.0), (kind / 20.0, 0.0, 0.0))
@@ -566,7 +748,7 @@ def fin(name, kind, base0, base1, outline, normal, thick, low, tail=False):
     return part
 
 
-def fins(low):
+def fins(low, game=False):
     made = []
     side = Vector((1.0, 0.0, 0.0))
     for name, kind, s0, s1, way, points, thick in median_fins():
@@ -575,9 +757,9 @@ def fins(low):
         b0 = Vector((0.0, line(s0) - way * sunk, s0 - 0.5))
         b1 = Vector((0.0, line(s1) - way * sunk, s1 - 0.5))
         outline = [b0] + [Vector((0.0, line(s0) + way * v, s - 0.5)) for s, v in points] + [b1]
-        made.append(fin(name, kind, b0, b1, outline, side, thick, low))
+        made.append(fin(name, kind, b0, b1, outline, side, thick, low, game=game))
     outline = [Vector((0.0, y, s - 0.5)) for s, y in TAIL_OUTLINE]
-    made.append(fin("tail", TAIL, outline[0], outline[-1], outline, side, TAIL_THICK, low, True))
+    made.append(fin("tail", TAIL, outline[0], outline[-1], outline, side, TAIL_THICK, low, True, game=game))
     for name, kind, s0, s1, h0, h1, out, points, thick in PAIRED:
         def on_body(s, h):
             y = lerp(low_line(s), BODY_SKIN.top(s), h)
@@ -587,12 +769,12 @@ def fins(low):
         out = Vector(out)
         out = (out - along * out.dot(along)).normalized()
         outline = [b0] + [b0 + along * u + out * v for u, v in points] + [b1]
-        one = fin(name, kind, b0, b1, outline, along.cross(out), thick, low)
+        one = fin(name, kind, b0, b1, outline, along.cross(out), thick, low, game=game)
         made += [one, one.mirrored(name + "_left")]
     return made
 
 
-def teeth(low):
+def teeth(low, game=False):
     """The teeth: a row along the upper jaw (in the roof of the mouth) and a row along the lower jaw's lip, each
     a flattened point. With the mouth shut the upper ones are inside the lower jaw and the lower ones inside
     the head."""
@@ -613,6 +795,9 @@ def teeth(low):
             acc.append(acc[-1] + math.hypot(b[0] - a[0], b[1] - a[1]))
         count = max(3, spec["count"] // 3) if low else spec["count"]
         grow = 3.0 if low else 1.0
+        if game:
+            count = max(3, round(spec["count"] * GAME_MESH["teeth"]))
+            grow = 1.3
         for k in range(count):
             want = acc[-1] * (k + 0.5) / count
             i = min(bisect.bisect_right(acc, want) - 1, 199)
@@ -621,7 +806,7 @@ def teeth(low):
             # (smaller towards the corners of the mouth)
             size = 1.0 - 0.55 * (want / acc[-1]) ** 1.6
             long = spec["long"] * size
-            wide = min(spec["wide"] * size * (grow if low else 1.0), 0.96 * acc[-1] / count)
+            wide = min(spec["wide"] * size * (grow if low or game else 1.0), 0.96 * acc[-1] / count)
             goes = smooth(MOUTH_S - 0.03, MOUTH_S + 0.002, s) * smooth(HINGE_S + 0.008, HINGE_S - 0.03, s) if kind == UPPER else 0.0
             for sign in (1.0, -1.0):
                 along = Vector((sign * dx, 0.0, ds)).normalized()
@@ -635,7 +820,7 @@ def teeth(low):
                 colour = (kind / 20.0, goes, 0.0)
                 corners = [root + along * (0.5 * wide), root + outward * (0.17 * wide), root - along * (0.5 * wide),
                            root - outward * (0.17 * wide)]
-                if low:
+                if low or game:
                     corners = [corners[0], corners[1], corners[2]]
                 base = [part.add(p, (0.0, 1.0), (0.0, 1.0), colour) for p in corners]
                 top = part.add(tip, (1.0, 1.0), (0.0, 1.0), colour)
@@ -651,7 +836,7 @@ def upper_goes(s):
     return smooth(MOUTH_S - 0.03, MOUTH_S + 0.002, s) * smooth(HINGE_S + 0.008, HINGE_S - 0.03, s)
 
 
-def cheeks(low):
+def cheeks(low, game=False):
     """The cheeks: a thin fold each side between the roof of the mouth and the lower jaw's edge, from CHEEK_FROM
     back to the hinge. Shut, it is folded away inside the head and the jaw; the shader swings its lower edge down
     with the jaw (UV.x: 0 its top edge, which stays with the head, 1 its lower edge, which goes with the jaw), so
@@ -661,6 +846,8 @@ def cheeks(low):
     s1 = HINGE_S + 0.003
     cols = 5 if low else 22
     rows = 1 if low else 5
+    if game:
+        cols, rows = GAME_MESH["cheek"]
     thick = 0.0012
     outer, inner = [], []
     for i in range(cols + 1):
@@ -690,21 +877,30 @@ def cheeks(low):
     return [part, part.mirrored("cheek_left")]
 
 
-def make(name, low):
+def make(name, low, game=False):
     parts = []
     body = Part("body")
-    skin(body, BODY_SKIN, body_places(low), BODY_MESH["half"][1 if low else 0], BODY)
+    if game:
+        places = game_places()
+        skin(body, BODY_SKIN, places, 0, BODY, game_side(BODY_SKIN, BODY))
+    else:
+        skin(body, BODY_SKIN, body_places(low), BODY_MESH["half"][1 if low else 0], BODY)
     parts.append(body)
     jaw = Part("jaw")
     jaw_rings = 12 if low else 40
-    skin(jaw, JAW_SKIN, [lerp(JAW_SKIN.first, JAW_SKIN.last, (i / jaw_rings) ** 1.25) for i in range(jaw_rings + 1)],
-         5 if low else 14, JAW)
+    if game:
+        # (the jaw's rings where the body's are, so that the lip and the roof of the mouth run together)
+        skin(jaw, JAW_SKIN, [JAW_SKIN.first] + [p for p in places if JAW_SKIN.first < p < JAW_SKIN.last]
+             + [JAW_SKIN.last], 0, JAW, game_side(JAW_SKIN, JAW))
+    else:
+        skin(jaw, JAW_SKIN, [lerp(JAW_SKIN.first, JAW_SKIN.last, (i / jaw_rings) ** 1.25) for i in range(jaw_rings + 1)],
+             5 if low else 14, JAW)
     parts.append(jaw)
-    ball = eye(low)
+    ball = eye(low, game)
     parts += [ball, ball.mirrored("eye_left")]
-    parts += teeth(low)
-    parts += cheeks(low)
-    parts += fins(low)
+    parts += teeth(low, game)
+    parts += cheeks(low, game)
+    parts += fins(low, game)
 
     verts, faces, corners = [], [], []
     told = []
@@ -796,17 +992,17 @@ def render(folder, made):
              ("quarter", (0.7, 0.6, 0.35), (0, 0, 0), 1.1), ("low_quarter", (0.6, 0.6, -0.5), (0, 0, 0), 1.1),
              ("head", (1, 0.15, 0.05), (0, 0.36, 0), 0.4), ("head_under", (0.5, 0.5, -0.7), (0, 0.38, -0.02), 0.4),
              ("tail", (1, -0.2, 0.1), (0, -0.36, 0), 0.5)]
-    for low, obj in ((False, made[0]), (True, made[1])):
+    for prefix, obj in zip(("", "lo_", "game_"), made):
         for other in made:
             other.hide_render = other is not obj
         for view, direction, target, frame in views:
-            if low and view not in ("right", "quarter"):
+            if prefix == "lo_" and view not in ("right", "quarter"):
                 continue
             offset = Vector(direction).normalized() * 10.0 * LENGTH
             camera.data.ortho_scale = frame * LENGTH
             camera.location = Vector(target) * LENGTH + offset
             camera.rotation_euler = (-offset).to_track_quat("-Z", "X" if view in ("top", "under") else "Y").to_euler()
-            scene.render.filepath = os.path.join(folder, "%s%s.png" % ("lo_" if low else "", view))
+            scene.render.filepath = os.path.join(folder, "%s%s.png" % (prefix, view))
             bpy.ops.render.render(write_still=True)
 
 
@@ -820,14 +1016,20 @@ def main():
         NAME, LENGTH, depth * LENGTH, width * LENGTH, HINGE_S, HINGE_Y, MOUTH_S))
     full = make(NAME, False)
     low = make(NAME + "_lo", True)
+    game = make(NAME + "_game", False, True)
+    mid = eye_middle()
+    print("EYE_MID %s: vec3(%.4f, %.4f, %.4f)" % (NAME, mid.x, mid.y, mid.z))
     export_one(full, os.path.join(OUT, NAME + ".glb"))
     export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
+    export_one(game, os.path.join(OUT, NAME + "_game.glb"))
     low.location.x = LENGTH * 0.8
+    game.location.x = -LENGTH * 0.8
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low])
+        render(PREVIEW, [full, low, game])
 
 
 if __name__ == "__main__":

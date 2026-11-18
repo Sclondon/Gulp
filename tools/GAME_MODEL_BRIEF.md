@@ -137,3 +137,26 @@ The user, after the groups had started: "the eyes for most of them should be mor
   are left alone.
 - Check it in pictures: `cartoon_eyes` 0 and 1 close on the head from the side, front and three-quarter, looking each
   way, and blinking; and that with 0 the animal looks exactly as before.
+
+## Added 2026-11-18: gills
+
+The user: "The fish need modeled gills as well, well for relevant fish, so like when it opens its mouth wide you can
+see them".
+
+- For every animal that has gills behind a gill cover or gill slits (bony fish, sharks, the lamprey's holes aside):
+  model the gills inside, on all three models (simplest on the low one): four gill arches a side, each a curved bar
+  with a fringe of deep red filaments behind it and pale gill rakers in front, set in the throat behind the mouth's
+  cavity where they are seen through the wide-open mouth (and, from behind, under a lifted gill cover). They are
+  closed meshes with their own part number, drawn by the same shader (blood red, darker in the shadow of the throat).
+- The throat must be open enough to see them: where the mouth's inside is now a dark wall or a flat dark patch, make
+  it a short tunnel back to the arches.
+- They show with the mouth: at `gape` 0 nothing of them is seen from outside; from about half open they come into
+  view; at 1 they are plain. As the mouth opens the gill covers (where the model has them as a step) may flare a
+  little (`gill_flare`, or with `gape`), and the arches spread slightly.
+- Sharks: the arches inside the mouth as above, and the five gill slits outside as real slits that open a little
+  with the mouth, red showing in them.
+- Not for animals without them: mammals, reptiles, turtles, cephalopods, crustaceans, echinoderms, jellies.
+- Check in pictures: looking straight into the wide-open mouth, from the three-quarter front, and from behind and
+  below at a flared gill cover; and that with the mouth shut the animal looks exactly as before. Rerun the inside-out
+  checks. Say in the README what was added and what the triangle counts are now (stay inside the game budget if you
+  can: the arches are simple).

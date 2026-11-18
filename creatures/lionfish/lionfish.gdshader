@@ -75,6 +75,41 @@ uniform vec3 iris : source_color = vec3(0.62, 0.22, 0.12);
 uniform vec3 iris_ring : source_color = vec3(0.95, 0.7, 0.35);
 
 // ---------------------------------------------------------------------------------------------
+// The cartoon eye (added 2026-11-18; the user: "the eyes for most of them should be more
+// cartoony and personalized"). `cartoon_eyes` 0 is the eye as it was (the default), 1 the
+// cartoon eye: grown about its own middle by `eye_grow`, a white, a coloured iris, a big dark
+// pupil, a highlight that stays put (up and forward), a dark outline, and lids that give it its
+// character. `eye_look` slides the iris and pupil (x towards the nose, y up; -1..1) and `blink`
+// (0 open, 1 shut) closes a lid the colour of the skin about the eye over it (on either eye).
+// ---------------------------------------------------------------------------------------------
+uniform float cartoon_eyes : hint_range(0.0, 1.0) = 0.0;
+uniform vec2 eye_look = vec2(0.0);
+uniform float blink : hint_range(0.0, 1.0) = 0.0;
+// Its character (a haughty, scheming hunter: a heavy red-brown lid slanting down to the front in a scowl over a red iris with a cat slit): how much bigger than life, the white, the iris, the
+// lid (the skin about the eye), how wide the iris is (a share of the eye), the pupil (a share
+// of the iris; its shape: 0 round, 1 an upright slit, 2 a flat bar), where the upper lid's edge
+// sits (1.4 out of sight, 0 half shut), how it slants (more than 0 lower towards the nose: a
+// frown), and the lower lid's edge (-1.4 out of sight).
+uniform float eye_grow = 1.35;
+uniform vec3 sclera : source_color = vec3(0.9600, 0.9000, 0.7800);
+uniform vec3 eye_iris : source_color = vec3(0.9000, 0.2800, 0.1200);
+uniform vec3 lid : source_color = vec3(0.5000, 0.1000, 0.0700);
+uniform float iris_size = 0.58;
+uniform float pupil_size = 0.80;
+uniform int pupil_shape = 1;
+uniform float lid_top = 0.30;
+uniform float lid_slant = 0.45;
+uniform float lid_low = -1.40;
+// As the model is built (the build's EYE line), in body lengths: the eye's middle on the skin of
+// its left side (x, y, how far along), the way the skin faces there, how far the skin falls away
+// under its rim, its radius. The eye grows about a point just out from its middle, so that its
+// rim stays on the skin.
+uniform vec3 eye_mid = vec3(0.0505, 0.0500, 0.1220);
+uniform vec3 eye_facing = vec3(0.9056, 0.3560, -0.2304);
+uniform float eye_sink = 0.0027;
+uniform float eye_radius = 0.0270;
+
+// ---------------------------------------------------------------------------------------------
 // Inside, everything is in body lengths (the fish 1 long, `s` 0 at the tip of its snout to 1 at
 // the edge of its tail), as the build script has it.
 // ---------------------------------------------------------------------------------------------
@@ -153,6 +188,14 @@ void vertex() {
 	vec3 v = VERTEX / LENGTH;
 	vec3 n = NORMAL;
 	rest = v;
+	if (p == 7 && cartoon_eyes > 0.0) {
+		// The cartoon eye grows about a point just out from its middle (its rim stays on the skin).
+		float g = mix(1.0, eye_grow, clamp(cartoon_eyes, 0.0, 1.0));
+		float sg = sign(v.x);
+		vec3 face = vec3(sg * eye_facing.x, eye_facing.y, eye_facing.z);
+		vec3 mid = vec3(sg * eye_mid.x, eye_mid.y, eye_mid.z - 0.5) + face * (g * eye_sink + 0.02 * eye_radius);
+		v = mid + (v - mid) * g;
+	}
 	inside = p <= 1 ? UV2.x : 0.0;
 	float open = clamp(gape, 0.0, 1.0);
 	float fold = 1.0 - clamp(spread, 0.0, 1.0);
@@ -259,6 +302,57 @@ vec3 eye_colour(float r, vec3 tint, vec3 ring) {
 	return mix(c, tint * 0.3, smoothstep(0.86, 1.0, r) * 0.85);
 }
 
+// The eye's own flat: x towards the nose, y up, `r` (0 its middle, 1 its rim) from the middle.
+vec2 eye_flat(float r) {
+	vec2 d = vec2(EYE_AT.x - (rest.z + 0.5), rest.y - EYE_AT.y);
+	return length(d) > 1e-6 ? normalize(d) * r : vec2(0.0);
+}
+
+float pupil_dist(vec2 q) {
+	if (pupil_shape == 1) {
+		return length(q * vec2(3.2, 1.0));
+	} else if (pupil_shape == 2) {
+		return length(q * vec2(1.0, 2.8));
+	}
+	return length(q);
+}
+
+vec3 cartoon_eye(vec2 e, float aa) {
+	vec2 o = clamp(eye_look, vec2(-1.0), vec2(1.0)) * (0.8 - iris_size);
+	vec2 q = (e - o) / iris_size;
+	float ir = length(q);
+	float qa = aa / iris_size;
+	vec3 c = sclera * (1.0 - 0.25 * smoothstep(0.2, 1.0, e.y));
+	vec3 ic = mix(eye_iris * 1.3, eye_iris * 0.75, smoothstep(0.25, 0.85, ir));
+	ic = mix(ic, eye_iris * 0.3, smoothstep(0.8, 1.0, ir));
+	c = mix(c, ic, 1.0 - smoothstep(1.0 - qa, 1.0 + qa, ir));
+	float pa = 2.0 * qa / pupil_size;
+	c = mix(c, vec3(0.01, 0.01, 0.02), 1.0 - smoothstep(1.0 - pa, 1.0 + pa, pupil_dist(q) / pupil_size));
+	c = mix(c, vec3(1.0), 1.0 - smoothstep(0.15 - aa, 0.15 + aa, length(e - vec2(0.24, 0.3))));
+	c = mix(c, vec3(1.0), 0.8 * (1.0 - smoothstep(0.06 - aa, 0.06 + aa, length(e - vec2(-0.12, -0.12)))));
+	return c;
+}
+
+// The eye as drawn (`c`, the eye as it was), turned cartoon by `cartoon_eyes`, lidded by `blink`.
+vec3 eye_finish(vec3 c, float r) {
+	float k = clamp(cartoon_eyes, 0.0, 1.0);
+	vec2 e = eye_flat(r);
+	float aa = fwidth(r) + 0.003;
+	if (k > 0.0) {
+		vec3 t = cartoon_eye(e, aa);
+		t = mix(t, vec3(0.03, 0.025, 0.03), smoothstep(0.86 - aa, 0.88 + aa, r));
+		c = mix(c, t, k);
+	}
+	float b = clamp(blink, 0.0, 1.0);
+	float top = mix(mix(1.4, lid_top, k) - k * (lid_slant * e.x + 0.15 * e.x * e.x), -0.1, b);
+	float low = mix(mix(-1.4, lid_low, k) + k * 0.12 * e.x * e.x, -0.1, b);
+	float ea = fwidth(e.y) + 0.004;
+	float under = max(smoothstep(top - ea, top + ea, e.y), 1.0 - smoothstep(low - ea, low + ea, e.y));
+	c = mix(c, lid * (0.8 + 0.3 * clamp(e.y * 0.5 + 0.5, 0.0, 1.0)), under);
+	float line = max(1.0 - smoothstep(0.04, 0.04 + 2.0 * ea, abs(e.y - top)), 1.0 - smoothstep(0.03, 0.03 + 2.0 * ea, abs(e.y - low)));
+	return mix(c, vec3(0.03, 0.02, 0.02), line * 0.85 * max(k, step(0.001, b)));
+}
+
 void fragment() {
 	int p = int(part + 0.5);
 	vec3 c;
@@ -320,6 +414,7 @@ void fragment() {
 		c = eye_colour(UV.x, iris, iris_ring);
 		// (the dark bar runs down through the eye)
 		c = mix(c, c * 0.35, (1.0 - smoothstep(0.004, 0.008, abs(rest.z + 0.5 - EYE_AT.x))) * 0.6 * step(PUPIL, UV.x));
+		c = eye_finish(c, UV.x);
 		rough = 0.14;
 		spec = 0.6;
 	} else {
