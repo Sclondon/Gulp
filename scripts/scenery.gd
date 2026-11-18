@@ -62,6 +62,8 @@ const MONTEREY := Vector2(66.0, 68.0)
 const SANTA_CRUZ := Vector2(3.0, -123.0)
 ## The outcrop the pirate ship struck, and its island (world).
 const OUTCROP := Vector2(-93.0, -52.0)
+## A second rocky islet, south-south-west of the pirate ship (no seals on it).
+const OUTCROP_SOUTH := Vector2(-74.0, -14.0)
 ## The south kelp forest's landmark: the arch across its main channel (world x, z; BIOMES.md 5.2).
 const ARCH := Vector2(42.4, 48.6)
 ## Where Carmel's pier starts at the shore (world; it runs north, BIOMES.md 5.12).
@@ -567,7 +569,10 @@ func _build_docks() -> void:
 	_boat(site, "Skiff", CARMEL_PIER + Vector2(5.5, 6.0), -0.3)
 	_litter(site, "CrabPot", CARMEL_PIER + Vector2(-3.0, 7.0))
 	_draw_site(site, kit, "Carmel")
-	_build_outcrop(kit)
+	_build_outcrop(kit, OUTCROP, "Outcrop", 0.4, true)
+	# (and a second, smaller and without seals, south-south-west of the ship: the user, 2026-11-18, "lets add
+	# another rocky outcrop island just south south west of the pirate ship to fill in that empty spot")
+	_build_outcrop(kit, OUTCROP_SOUTH, "OutcropSouth", 2.1, false)
 	_paint_shells()
 	kit.free()
 
@@ -577,12 +582,11 @@ func _build_docks() -> void:
 # ship's north-west end, clear of its lane, sea stacks and leaning shards round a low flat rock
 # that stands out of the water, where seals and a sea lion lie hauled out (posed still: the
 # components have no resting pose of their own). Where exactly is Claude's pick.
-func _build_outcrop(kit: Node3D) -> void:
+func _build_outcrop(kit: Node3D, middle: Vector2, label: String, turn_islet: float, seals: bool) -> void:
 	var site := _Site.new()
-	var middle := OUTCROP
 	# The island.
 	var top := Sea.SURFACE + 1.1
-	site.add("Islet", Transform3D(Basis(Vector3.UP, 0.4), Vector3(middle.x, top, middle.y)))
+	site.add("Islet", Transform3D(Basis(Vector3.UP, turn_islet), Vector3(middle.x, top, middle.y)))
 	var y := top - 26.0
 	while y < top:
 		var r := lerpf(5.0, 3.6, clampf((y - (top - 26.0)) / 24.0, 0.0, 1.0))
@@ -619,7 +623,9 @@ func _build_outcrop(kit: Node3D) -> void:
 			var p := where * Vector3(0.35 * 9.0 * s, 9.0 * s, 0.0)
 			Sea.add_rock(Vector4(p.x, p.y, p.z, 1.1 * big * (1.0 - s * 0.7)))
 			_outcrop_spheres.append(Vector4(p.x, p.y, p.z, 1.1 * big * (1.0 - s * 0.7)))
-	_draw_site(site, kit, "Outcrop")
+	_draw_site(site, kit, label)
+	if not seals:
+		return
 	# The seals and a sea lion hauled out on it.
 	for each: Array in [["harbor_seal/harbor_seal", Vector2(0.6, -0.4), 0.3, 0.0], ["harbor_seal/harbor_seal", Vector2(-1.2, 0.9), 2.2, 0.0],
 			["harbor_seal/harbor_seal", Vector2(1.0, 1.6), 4.0, 0.0], ["sea_lion/sea_lion", Vector2(-3.0, -1.6), 1.0, -0.85]]:

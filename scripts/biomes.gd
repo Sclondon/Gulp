@@ -23,6 +23,8 @@ const REEFS := [
 	 "turn": -0.5, "stretch": 0.3, "channels": [], "barrens": []},
 	{"name": "outcrop", "at": Vector2(-93.0, -52.0), "r": 20.0, "depth": [0.0, 26.0], "freq": 0.12, "seed": 23, "above": -0.5, "rise": 0.4,
 	 "turn": 0.0, "stretch": 1.0, "channels": [], "barrens": []},
+	{"name": "outcrop_south", "at": Vector2(-74.0, -14.0), "r": 16.0, "depth": [0.0, 26.0], "freq": 0.12, "seed": 25, "above": -0.5, "rise": 0.4,
+	 "turn": 0.0, "stretch": 1.0, "channels": [], "barrens": []},
 	{"name": "carmel", "at": Vector2(21.2, 130.7), "r": 13.0, "depth": [2.5, 15.0], "freq": 0.1, "seed": 24, "above": -0.25, "rise": 0.4,
 	 "turn": 0.0, "stretch": 0.6, "channels": [], "barrens": []},
 ]
@@ -80,6 +82,17 @@ const TABLES := {
 		{"what": "prop", "pieces": ["reef_slab_a", "reef_slab_b", "reef_slab_c"], "on": [1], "depth": [14.0, 26.0], "slope_max": 0.6, "density": [3.0, 1.0],
 		 "spacing": 3.8, "size": [0.8, 1.2], "lift": -0.35, "tint": Color(0.66, 0.62, 0.58)},
 		# (the outcrop's kelp is a ring of bull kelp, so the ship lies in open sand under light: BIOMES.md 5.6)
+		{"what": "prop", "pieces": ["bull_kelp"], "on": [1], "depth": [3.0, 14.0], "density": [8.0, 2.0], "spacing": 2.0, "to_surface": 8.0},
+		{"what": "prop", "pieces": ["strawberry_anemones", "hydrocoral", "sea_fan_red", "vase_sponge", "green_anemone", "ochre_star"], "on": [1],
+		 "depth": [10.0, 26.0], "density": [4.0, 1.0], "spacing": 1.3, "near_rock": 2.5, "size": [0.9, 1.6], "lift": -0.02},
+		{"what": "seaweed", "kind": 2, "on": [1], "depth": [3.0, 24.0], "density": [18.0, 6.0], "spacing": 0.9, "clump": [2, 5, 1.0], "size": [0.16, 0.28]},
+	]},
+	# (the second islet, south-south-west of the pirate ship: the same growth as the first)
+	"outcrop_south": {"area": [Vector2(-74.0, -14.0), 16.0], "edge": 6.0, "layers": [
+		{"what": "prop", "pieces": ["rock_boulder", "rock_boulder_small", "rock_split"], "on": [1], "depth": [16.0, 26.0], "density": [5.0, 0.5],
+		 "spacing": 2.6, "clump": [1, 3, 2.5], "size": [0.9, 1.6], "lift": -0.25},
+		{"what": "prop", "pieces": ["reef_slab_a", "reef_slab_b", "reef_slab_c"], "on": [1], "depth": [14.0, 26.0], "slope_max": 0.6, "density": [3.0, 1.0],
+		 "spacing": 3.8, "size": [0.8, 1.2], "lift": -0.35, "tint": Color(0.66, 0.62, 0.58)},
 		{"what": "prop", "pieces": ["bull_kelp"], "on": [1], "depth": [3.0, 14.0], "density": [8.0, 2.0], "spacing": 2.0, "to_surface": 8.0},
 		{"what": "prop", "pieces": ["strawberry_anemones", "hydrocoral", "sea_fan_red", "vase_sponge", "green_anemone", "ochre_star"], "on": [1],
 		 "depth": [10.0, 26.0], "density": [4.0, 1.0], "spacing": 1.3, "near_rock": 2.5, "size": [0.9, 1.6], "lift": -0.02},
@@ -149,7 +162,7 @@ const TABLES := {
 const CURRENT := Vector2(0.3, 0.1)
 
 ## The places' order (big things first in each; the tables above).
-const ORDER := ["kelp_south", "kelp_north", "outcrop", "carmel", "grass", "slough", "docks_monterey", "points", "beach", "sand_flats", "canyon_floor", "walls"]
+const ORDER := ["kelp_south", "kelp_north", "outcrop", "outcrop_south", "carmel", "grass", "slough", "docks_monterey", "points", "beach", "sand_flats", "canyon_floor", "walls"]
 ## The whole map's corners for the tables without an area of their own ("points", "walls").
 const WHOLE := [Vector2(-122.0, -160.0), Vector2(122.0, 160.0)]
 

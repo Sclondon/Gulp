@@ -45,6 +45,8 @@ func _initialize() -> void:
 			["pirate_hollow", Sea.PIRATE_AT + Vector3(16.0, 10.0, -18.0), Sea.PIRATE_AT],
 			["seal_rock_above", Vector3(Scenery.OUTCROP.x + 14.0, 45.0, Scenery.OUTCROP.y + 12.0), Vector3(Scenery.OUTCROP.x, 40.5, Scenery.OUTCROP.y)],
 			["seal_rock_below", Vector3(Scenery.OUTCROP.x + 18.0, 30.0, Scenery.OUTCROP.y + 16.0), Vector3(Scenery.OUTCROP.x, 26.0, Scenery.OUTCROP.y)],
+			["outcrop_south_above", Vector3(Scenery.OUTCROP_SOUTH.x + 16.0, 46.0, Scenery.OUTCROP_SOUTH.y + 14.0), Vector3(Scenery.OUTCROP_SOUTH.x, 40.5, Scenery.OUTCROP_SOUTH.y)],
+			["outcrop_south_below", Vector3(Scenery.OUTCROP_SOUTH.x + 20.0, 28.0, Scenery.OUTCROP_SOUTH.y + 16.0), Vector3(Scenery.OUTCROP_SOUTH.x, 24.0, Scenery.OUTCROP_SOUTH.y)],
 			["canyon_head", Vector3(70.0, 28.0, -20.0), Vector3(90.0, 22.0, -37.0)],
 			["kelp_south", Vector3(36.0, 34.0, 40.0), Vector3(44.0, 30.0, 55.0)],
 			["canyon_wall_north", Vector3(40.0, 0.0, -18.0), Vector3(40.0, 5.0, -42.0)],

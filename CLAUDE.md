@@ -432,6 +432,10 @@ choices below are Claude's.
   (`peninsula_source`: inside an ellipse, blended out to 1.4 times it, so the trench, the liner and Monterey's
   docks barely move). What was placed by its coast moved by `peninsula_target`: Carmel's pier, harbour, market,
   white beach and reef, the south kelp and its arch.
+- **A second rocky islet** (2026-11-18, the user: "lets add another rocky outcrop island just south south west of the
+  pirate ship to fill in that empty spot a bit as well"): `Scenery.OUTCROP_SOUTH` (-74, -14), built by the same
+  `_build_outcrop` (now taking its middle, a name, the islet's turn and whether seals lie on it: these have none;
+  Claude's pick) with its own growth (`Biomes` "outcrop_south", a copy of the outcrop's).
 - **The pirate ship moved** (2026-11-18): on the overlay the user's red line ran from the pirate ship to a circle;
   Claude first read it as moving the start; the user: "why havent you moved the pirate ship like I showed in the
   overlay". `Sea.PIRATE_AT` (-65, 19, -42) and its hollow, the seal rock (`Scenery.OUTCROP` (-93, -52), off its west
