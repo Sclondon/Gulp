@@ -346,3 +346,10 @@ a half on a Windows desktop browser. Build the web export from the clean worktre
 - "he should be a gay captain"; "captian should have bushy chest hair and tattoos" (2026-11-18): the captain's
   love in the photographs is a man (DESIGN.md "The photographs"); his figure gets an open shirt, chest hair and
   old sailor's tattoos (concept first, then `tools/build_title_figures.py`).
+- Concept art, the user (2026-11-18): "use the previous concept arts as part of the prompts for new ones for
+  character consistency". So a new picture of a character or thing that already has a concept is asked for IN THE
+  SAME Gemini conversation as its earlier picture, naming that picture as the reference ("the same captain as in the
+  sheet above, changes only: ..."), or with the earlier picture attached. The figures' conversation is
+  gemini.google.com/app/62f2ff6ee62c21f9 (the boy, captain and diver sheet, the boat); the set pieces, sailor boy,
+  diving suits, monsters and creatures are in /app/d2fe19426ff0ebc4. Check a new sheet still has the mask faces (no
+  eyes or mouth): a fresh prompt drew the captain with eyes.
