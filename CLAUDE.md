@@ -671,3 +671,13 @@ Claude's.
   `concept_brother_tpose3_tall.jpg` is that sheet with the legs lengthened by Claude (legs x1.55 below the drawers'
   hem): build him to the tall one. His head, fishing and diving sheets predate the square face. Gemini's prompt box
   moves with the window's height (y 693 or 727 at this size): several "dropped" prompts were clicks that missed it.
+- The user (2026-11-18, about 10:35 AM): "And we need the models for the other characters not just the captain"; (of
+  Claude's leg-stretched sheet) "No make new concept art"; "Older brother needs body hair as well"; "And make gifs of
+  the 3 in their walk / run cycles jumping swimming etc, and in different outfits once they are done". So: never
+  doctor a concept sheet to stand in for a new one (`concept_brother_tpose3_tall.jpg` is retired); the brother's sheet
+  to build from is `tools/art_src/concept_brother_tpose4.jpg` (tall, rugby build, square face, body hair), made in the
+  OTHER Gemini conversation (/app/d2fe19426ff0ebc4), which is not anchored to the captain's squat build. His new head
+  turnaround is owed (limit reached 10:40 AM, resets 1:15 PM), as are the captain's extra views and the younger boy's
+  outfits. Builders: `tools/build_brother.py` -> `models/brother.glb`, `tools/build_boy.py` -> `models/boy.glb` (bare
+  base bodies by the captain's method). OWED once the three are done: animation cycles (walk, run, jump, swim) on
+  their shared bone names, outfits, and GIFs of each for the user.
