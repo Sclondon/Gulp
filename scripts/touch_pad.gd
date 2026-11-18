@@ -18,7 +18,11 @@ extends Control
 ##   left, a rack of vacuum tubes that light one for each time the fish has become something
 ##   bigger, and two knife switches kept for special abilities that do not exist yet.
 ##
-## The pictures (textures/panel/*.png) were generated with ChatGPT's image generation, at the
+## The pictures (textures/panel/*.png) are the second round: the user of the first, "the non
+## interactive parts are a little too busy, and it looks a little too obviopusly ai- lets do
+## another round using the current art as the concept" (2026-11-18), so the first round's two
+## sheets were given back to be redrawn plainer and hand-painted (the first round's pictures are
+## retired in textures/panel/retired_1). They were generated with ChatGPT's image generation, at the
 ## user's request ("What ai image tool would be best for this job? Use rhat"), as three housings
 ## with their moving parts taken out and a sheet of the moving parts, and cut apart by
 ## tools/cut_art.gd; the originals are in tools/art_src. Everything that moves is drawn here over
@@ -36,29 +40,29 @@ const IRON := Color(0.10, 0.12, 0.14)
 ## How solid the housings are drawn (the sea shows through them a little).
 const SEE := 0.86
 ## Each housing's picture: its size, and how many layout units a pixel of it is.
-const HELM_SIZE := Vector2(385.0, 650.0)
-const GAUGE_SIZE := Vector2(727.0, 671.0)
-const ENGINE_SIZE := Vector2(373.0, 639.0)
+const HELM_SIZE := Vector2(383.0, 645.0)
+const GAUGE_SIZE := Vector2(719.0, 680.0)
+const ENGINE_SIZE := Vector2(371.0, 644.0)
 const SIDE_SCALE := 0.6
 const GAUGE_SCALE := 0.5
 ## How much of each side housing's foot hangs off the bottom of the screen (pixels of its picture).
-const HELM_SUNK := 95.0
-const ENGINE_SUNK := 66.0
+const HELM_SUNK := 70.0
+const ENGINE_SUNK := 70.0
 ## Where things are in the helm housing's picture: the socket's middle, and the electrodes' gap.
-const HELM_WELL := Vector2(190.0, 405.0)
-const HELM_SPARK := Vector2(193.0, 72.0)
+const HELM_WELL := Vector2(192.0, 414.0)
+const HELM_SPARK := Vector2(194.0, 78.0)
 ## In the engine housing's picture: the plunger's recess, and the lever's slot as a curve from
 ## dead slow through a bend to full ahead.
-const ENGINE_WELL := Vector2(196.0, 438.0)
-const SLOT := [Vector2(56.0, 286.0), Vector2(96.0, 192.0), Vector2(258.0, 181.0)]
+const ENGINE_WELL := Vector2(193.0, 445.0)
+const SLOT := [Vector2(58.0, 283.0), Vector2(118.0, 200.0), Vector2(258.0, 190.0)]
 ## In the instrument housing's picture: the scope, the three dials, the tubes.
-const SCOPE := Vector2(311.0, 128.0)
-const SCOPE_RADIUS := 90.0
-const DIAL_SPEED := Vector2(107.0, 165.0)
-const DIAL_DEPTH := Vector2(508.0, 160.0)
-const DIAL_BURST := Vector2(640.0, 165.0)
-const TUBE_XS := [146.0, 211.0, 277.0, 343.0, 409.0, 476.0, 542.0, 609.0]
-const TUBE_Y := 338.0
+const SCOPE := Vector2(307.0, 132.0)
+const SCOPE_RADIUS := 92.0
+const DIAL_SPEED := Vector2(105.0, 181.0)
+const DIAL_DEPTH := Vector2(505.0, 177.0)
+const DIAL_BURST := Vector2(640.0, 181.0)
+const TUBE_XS := [143.0, 208.0, 274.0, 341.0, 407.0, 474.0, 540.0, 607.0]
+const TUBE_Y := 342.0
 ## How many tubes the panel has.
 const TUBES := 8
 ## How far the sonar sees (m).
@@ -230,8 +234,10 @@ func _draw_gauges(u: float) -> void:
 	for k in mini(level, TUBES):
 		var where := at + Vector2(TUBE_XS[k], TUBE_Y) * s
 		var flicker := 0.8 + 0.2 * sin(Time.get_ticks_msec() * 0.011 + k * 1.7)
-		draw_circle(where, 42.0 * s, Color(1.0, 0.5, 0.12, 0.2 * flicker))
-		_stamp("tube_lit", where, Vector2(62.0, 141.0) * s, 0.75 + 0.25 * flicker)
+		# (the housing's own dark tube, with a glow and a hot filament drawn in it)
+		draw_circle(where, 44.0 * s, Color(1.0, 0.5, 0.12, 0.22 * flicker))
+		draw_circle(where, 26.0 * s, Color(1.0, 0.6, 0.15, 0.3 * flicker))
+		draw_line(where + Vector2(0.0, -34.0) * s, where + Vector2(0.0, 34.0) * s, Color(1.0, 0.75, 0.3, 0.9 * flicker), 5.0 * s, true)
 	# The sonar: a sweep going round, a ring, and what is about (hunters red, food green).
 	var scope := at + SCOPE * s
 	var r := SCOPE_RADIUS * s
@@ -261,11 +267,11 @@ func _needle(hub: Vector2, value: float, s: float, trembles: bool) -> void:
 	var turn := lerpf(-2.2, 2.2, clampf(value, 0.0, 1.0))
 	if trembles:
 		turn += sin(Time.get_ticks_msec() * 0.03) * 0.015
-	# (the needle's picture, 95 by 332, points straight up, its hub 290 pixels down it)
-	var long := 58.0 * s
-	var wide := long * 95.0 / 290.0
+	# (the needle's picture, 95 by 332, points straight up, 99 by 349, its hub 300 pixels down it)
+	var long := 54.0 * s
+	var wide := long * 99.0 / 300.0
 	draw_set_transform(hub, turn)
-	draw_texture_rect(_picture("needle"), Rect2(Vector2(-wide * 0.5, -long), Vector2(wide, long * 332.0 / 290.0)), false)
+	draw_texture_rect(_picture("needle"), Rect2(Vector2(-wide * 0.5, -long), Vector2(wide, long * 349.0 / 300.0)), false)
 	draw_set_transform(Vector2.ZERO)
 
 
@@ -283,7 +289,7 @@ func _draw_helm(u: float) -> void:
 	draw_line(home, knob, Color(BRASS_DARK, 0.95), 13.0 * u, true)
 	# (the ball's picture: its middle is 125 pixels down a picture 278 by 345)
 	var ball := 150.0 * s
-	draw_texture_rect(_picture("knob"), Rect2(knob - Vector2(ball * 0.5, ball * 125.0 / 278.0), Vector2(ball, ball * 345.0 / 278.0)), false,
+	draw_texture_rect(_picture("knob"), Rect2(knob - Vector2(ball * 0.5, ball * 128.0 / 265.0), Vector2(ball, ball * 340.0 / 265.0)), false,
 			Color(1.0, 1.0, 1.0, 1.0 if _stick_touch != -1 else 0.92))
 
 
@@ -295,14 +301,14 @@ func _draw_engine(u: float) -> void:
 	# The plunger: dim at rest, sunk and glowing while it is held.
 	var well := boost_home()
 	var wide := (222.0 if boost else 232.0) * s
-	_stamp("plunger_lit" if boost else "plunger", well, Vector2(wide, wide * 342.0 / 351.0), 1.0)
+	_stamp("plunger_lit" if boost else "plunger", well, Vector2(wide, wide * 337.0 / 348.0), 1.0)
 	if boost:
 		draw_circle(well, 120.0 * s, Color(1.0, 0.55, 0.15, 0.16))
 	# The lever: its picture's pivot boss (58, 310 in a picture 298 by 371) rides in the slot, the
 	# grip standing up and out of it.
 	var grip := lever_at(throttle)
 	var big := 0.62 * s
-	draw_texture_rect(_picture("lever"), Rect2(grip - Vector2(58.0, 310.0) * big, Vector2(298.0, 371.0) * big), false,
+	draw_texture_rect(_picture("lever"), Rect2(grip - Vector2(55.0, 318.0) * big, Vector2(296.0, 375.0) * big), false,
 			Color(1.0, 1.0, 1.0, 1.0 if _lever_touch != -1 else 0.95))
 
 

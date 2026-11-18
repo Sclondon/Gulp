@@ -48,6 +48,13 @@ TAU = math.tau
 UP = Vector((0.0, 1.0, 0.0))
 
 
+def pick(low, full, lo, game):
+    """The full model's number, the low one's or the game one's (`low` is False, True or "game")."""
+    if low == "game":
+        return game
+    return lo if low else full
+
+
 def to_b(p):
     """Godot's space (Y up, nose at -Z) to Blender's (Z up, nose at +Y)."""
     return Vector((p.x, -p.z, p.y))
@@ -161,6 +168,33 @@ def frames(path, ref=None):
     return made
 
 
+# The game model's tubes have few sides: each is made a little fatter, so that it looks as wide as the round
+# one it stands for, seen from any side (a polygon of `sides` as wide on average as the circle).
+FAT = [lambda sides: 1.0]
+
+
+def game_fat(sides):
+    return math.pi / (sides * math.sin(math.pi / sides))
+
+
+def game_rings(knots, grooves, gap, fine=0.0):
+    """Where the game model's rings go along the body: at every knot of its outline (where its curve
+    turns), at each groove (and `fine` either side of it), and nowhere further apart than `gap`; two
+    closer than a tenth of `gap` are one."""
+    zs = sorted(set(list(knots) + [b + d for b in grooves for d in ((-fine, 0.0, fine) if fine else (0.0,))]))
+    zs = [z for z in zs if knots[0] <= z <= knots[-1]]
+    made = [zs[0]]
+    for z in zs[1:]:
+        start = made[-1]
+        if z - start < gap * 0.1:
+            if z == zs[-1]:
+                made[-1] = z
+            continue
+        n = max(1, math.ceil((z - start) / gap - 1e-9))
+        made += [start + (z - start) * i / n for i in range(1, n)] + [z]
+    return made
+
+
 def tube(m, path, radii, sides, name, flat=1.0, along=None, caps=(True, True), ref=None):
     """A round (or, with `flat`, flattened across `ref`) tube along `path`, `radii` at its points. With
     `along` (from, to), `a` runs from one to the other along its length."""
@@ -171,7 +205,7 @@ def tube(m, path, radii, sides, name, flat=1.0, along=None, caps=(True, True), r
     made = frames(path, ref)
     rings = []
     for (t, u, v), p, r in zip(made, path, radii):
-        r = max(r, 1e-5)
+        r = max(r, 1e-5) * FAT[0](sides)
         rings.append([p + (u * math.cos(TAU * s / sides) + v * (flat * math.sin(TAU * s / sides))) * r for s in range(sides)])
 
     def tags(p, ri, ci):
@@ -231,12 +265,17 @@ def leg(m, part, index, root, heading, reach, knee_high, radius, sides, name, lo
     bend = knee.lerp(tip, 0.5) + d * (0.07 * reach) + UP * (0.03 * reach)
     m.part, m.index, m.root, m.k = part, index, root, knee
     m.a = 0.0
-    if low:
+    if low == "game":
+        # (the game model: the full one's swell, no caps where the ends are hidden)
+        tube(m, [root, root.lerp(knee, 0.5), knee], [radius * 0.95, radius * 1.12, radius * 0.95], sides, name, caps=(False, False))
+    elif low:
         tube(m, [root, knee], [radius, radius * 0.95], sides, name, caps=(False, True))
     else:
         tube(m, [root, root.lerp(knee, 0.5), knee], [radius * 0.95, radius * 1.12, radius * 0.95], sides, name)
     m.a = 1.0
-    if low:
+    if low == "game":
+        tube(m, [knee, knee.lerp(bend, 0.5), bend, tip], [radius * 0.9, radius * 0.95, radius * 0.72, radius * 0.2], sides, name, caps=(True, False))
+    elif low:
         tube(m, [knee, bend, tip], [radius * 0.9, radius * 0.7, radius * 0.2], sides, name, caps=(True, False))
     else:
         tube(m, [knee, knee.lerp(bend, 0.5), bend, bend.lerp(tip, 0.5), tip],
@@ -339,7 +378,7 @@ def finish(name, m, colour):
     # (the glTF writer only writes the colour that is marked for rendering)
     mesh.color_attributes.active_color = colours
     mesh.color_attributes.render_color_index = 0
-    mesh.materials.append(material_of(name.replace("_lo", ""), colour))
+    mesh.materials.append(material_of(name.replace("_lo", "").replace("_game", ""), colour))
     for poly in mesh.polygons:
         poly.use_smooth = True
     mesh.update()
@@ -417,15 +456,20 @@ def build_all(name, make, colour, size, close=()):
     bpy.context.preferences.filepaths.save_version = 0
     full = finish(name, make(False), colour)
     low = finish(name + "_lo", make(True), colour)
+    game = finish(name + "_game", make("game"), colour)
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, name + ".glb"))
     export_one(low, os.path.join(OUT, name + "_lo.glb"))
+    export_one(game, os.path.join(OUT, name + "_game.glb"))
+    # (in the .blend: the full model in the middle, the low one to its left, the game one to its right)
     low.location.x = size
+    game.location.x = -size
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, name + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low], size, close)
+        render(PREVIEW, [full, low, game], size, close)
 
 SHELL, LEG, CLAW, EYE = 0, 1, 2, 3
 # As the shader has it: the box the joints' places are written in; how far out along a leg its knee is.
@@ -459,11 +503,33 @@ def outline(low):
     for i in range(count):
         p0, p1, p2, p3 = loop[(i - 1) % count], loop[i], loop[(i + 1) % count], loop[(i + 2) % count]
         span = i if i < len(half) - 1 else count - 1 - i
-        for s in range(per):
-            t = s / per
+        ts = [s / per for s in range(per)]
+        if low == "game" and span >= len(half) - 3:
+            # (the game model: one point to a span across the flat middle of its back)
+            ts = [0.0]
+        if low == "game" and TEETH_FROM <= span < TEETH_TO:
+            # the game model: a point at the foot and at the tip of each tooth, where the full one has them
+            ts = []
+            for k in range(10):
+                for f in (0.0, 0.1):
+                    tt = (k + f) / 9.0 * (TEETH_TO - TEETH_FROM) - (span - TEETH_FROM)
+                    t = tt if i < len(half) - 1 else 1.0 - tt
+                    if 0.0 <= t < 1.0 - 1e-6:
+                        ts.append(t)
+            ts = sorted(set(round(t, 6) for t in ts))
+        if low == "game" and span == 0:
+            # the game model: a point at the tip and the notch of each small tooth between the eyes
+            ts = []
+            for k in range(5):
+                tt = k * 0.0028 / OUTLINE[1][0]
+                t = tt if i < len(half) - 1 else 1.0 - tt
+                if 0.0 <= t < 1.0 - 1e-6:
+                    ts.append(t)
+            ts = sorted(ts)
+        for t in ts:
             p = catmull(p0, p1, p2, p3, t)
             tooth = 0.0
-            if TEETH_FROM <= span < TEETH_TO and not low:
+            if TEETH_FROM <= span < TEETH_TO and low is not True:
                 # nine teeth: each a rounded saw tooth that leans forward
                 along = (span - TEETH_FROM + (t if i < len(half) - 1 else 1.0 - t)) / (TEETH_TO - TEETH_FROM) * 9.0
                 f = along % 1.0
@@ -475,8 +541,8 @@ def outline(low):
 def shell(m, low):
     edge = outline(low)
     middle = Vector((0.0, 0.004))
-    tops = (0.5, 1.0) if low else (0.035, 0.1, 0.25, 0.42, 0.58, 0.72, 0.84, 0.93, 0.98, 1.0)
-    unders = (0.6,) if low else (0.97, 0.88, 0.7, 0.45, 0.18)
+    tops = pick(low, (0.035, 0.1, 0.25, 0.42, 0.58, 0.72, 0.84, 0.93, 0.98, 1.0), (0.5, 1.0), (0.3, 0.62, 0.86, 0.975, 1.0))
+    unders = pick(low, (0.97, 0.88, 0.7, 0.45, 0.18), (0.6,), (0.94, 0.65))
     rings = []
     info = []
 
@@ -488,7 +554,7 @@ def shell(m, low):
             if top:
                 p += out * (0.0055 * tooth * smooth(0.975, 1.0, rho))
             # the five small teeth between the eyes
-            if abs(x) < 0.0135 and z < 0.0 and not low:
+            if abs(x) < 0.0135 and z < 0.0 and low is not True:
                 p.y -= 0.003 * max(0.0, math.cos(TAU * p.x / 0.0056)) ** 0.7 * smooth(0.85, 1.0, rho)
             if top:
                 y = RIM + DOME * (1.0 - rho * rho) ** 0.55
@@ -524,16 +590,16 @@ def eyes(m, low):
         foot = Vector((sx * 0.0172, RIM + 0.0005, -0.0465))
         head = Vector((sx * 0.0178, RIM + 0.0052, -0.0497))
         m.part, m.index, m.root, m.a = EYE, 0, None, 0.0
-        if not low:
-            tube(m, [foot, head], [0.0019, 0.0017], 8, "eyes", caps=(False, False))
+        if low is not True:
+            tube(m, [foot, head], [0.0019, 0.0017], pick(low, 8, 0, 5), "eyes", caps=(False, False))
         m.a = 1.0
-        ball(m, head, 0.0026, 0.0026, 0.0026, "eyes", lat=3 if low else 6, lon=4 if low else 10)
+        ball(m, head, 0.0026, 0.0026, 0.0026, "eyes", lat=pick(low, 6, 3, 5), lon=pick(low, 10, 4, 12))
     m.a = 0.0
 
 
 def claws(m, low):
     """Each claw at rest: folded in across the front of the shell."""
-    sides = 4 if low else 10
+    sides = pick(low, 10, 4, 5)
     told = None
     for sx in (1.0, -1.0):
         def v(x, y, z):
@@ -551,11 +617,11 @@ def claws(m, low):
         m.index, m.a = 0, 0.0
         tube(m, [shoulder, shoulder.lerp(elbow, 0.5), elbow], [0.0055, 0.0068, 0.006], sides, "claws", caps=(low is False, True))
         tube(m, [elbow, wrist], [0.0062, 0.0066], sides, "claws")
-        ball(m, palm, 0.0078, 0.0115, 0.0165, "claws", lat=4 if low else 9, lon=6 if low else 14, basis=(ex, ey, ez))
+        ball(m, palm, 0.0078, 0.0115, 0.0165, "claws", lat=pick(low, 9, 4, 5), lon=pick(low, 14, 6, 9), basis=(ex, ey, ez))
         # the fixed finger, below; and the finger that opens, above: both curve to meet at their tips
         tip = knuckle + along * 0.026 - ey * 0.002
         low_from = knuckle - ey * 0.0055
-        steps = 2 if low else 7
+        steps = pick(low, 7, 2, 3)
         m.index = 1
         path = [bezier([low_from, low_from + along * 0.013 - ey * 0.004, tip], i / steps) for i in range(steps + 1)]
         tube(m, path, [0.0062 * (1.0 - 0.8 * (i / steps) ** 1.3) for i in range(steps + 1)], sides, "claws", flat=0.8, along=(0.0, 1.0), ref=ey)
@@ -577,14 +643,15 @@ LEGS = [((0.047, 0.0165, -0.013), -30.0, 0.072, 0.046),
 
 
 def make(low):
+    FAT[0] = game_fat if low == "game" else (lambda sides: 1.0)
     m = Mesh()
     shell(m, low)
     eyes(m, low)
     told = claws(m, low)
     for sx in (1.0, -1.0):
         for i, (root, heading, reach, knee_high) in enumerate(LEGS):
-            leg(m, LEG, i, (sx * root[0], root[1], root[2]), heading, reach, knee_high, 0.0052, 3 if low else 8, "legs", low)
-    if not low:
+            leg(m, LEG, i, (sx * root[0], root[1], root[2]), heading, reach, knee_high, 0.0052, pick(low, 8, 3, 3), "legs", low)
+    if low is False:
         shoulder, hinge, ex = told
         print("CLAW the left one's shoulder (%.4f, %.4f, %.4f), its finger's hinge (%.4f, %.4f, %.4f), the hinge's axis (%.3f, %.3f, %.3f)"
               % (tuple(shoulder) + tuple(hinge) + tuple(ex)))

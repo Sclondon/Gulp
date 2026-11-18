@@ -4,8 +4,11 @@ Run from the game's root:
     blender --background --python creatures/horseshoe_crab/tools/build_horseshoe_crab.py
     blender --background --python creatures/horseshoe_crab/tools/build_horseshoe_crab.py -- <preview folder>   # with pictures
 
-Writes creatures/horseshoe_crab/models/horseshoe_crab.glb (the full model) and horseshoe_crab_lo.glb (far off,
-phones), and the editable creatures/horseshoe_crab/tools/horseshoe_crab.blend (this folder has a .gdignore). Each
+Writes creatures/horseshoe_crab/models/horseshoe_crab.glb (the full model), horseshoe_crab_game.glb (the game
+model: few triangles, spent where the eye looks: the shells' outline and the flare of the rim, the eyes, the tail
+spike) and horseshoe_crab_lo.glb (far off, phones), and the editable creatures/horseshoe_crab/tools/horseshoe_crab.blend
+(all three; this folder has a .gdignore). The full and the low model come out as they did before the game model
+was added. Each
 is one still mesh with one surface: the shader (horseshoe_crab.gdshader) draws every marking, walks its legs,
 flaps its book gills, swings its tail spike and bends its rear shell on its hinge. It prints a WINDING line for
 each: the check that nothing is inside out.
@@ -58,6 +61,13 @@ BOX = (Vector((-0.2, 0.0, -0.3)), Vector((0.2, 0.15, 0.3)))
 KNEE_AT = 0.45
 HINGE = Vector((0.0, 0.03, -0.092))
 TAIL_ROOT = Vector((0.0, 0.022, 0.006))
+
+
+def pick(low, full, lo, game):
+    """The full model's number, the low one's or the game one's (`low` is False, True or "game")."""
+    if low == "game":
+        return game
+    return lo if low else full
 
 
 def to_b(p):
@@ -161,10 +171,37 @@ def frames(path, ref=None):
     return made
 
 
+# The game model's tubes have few sides: each is made a little fatter, so that it looks as wide as the round
+# one it stands for, seen from any side (a polygon of `sides` as wide on average as the circle).
+FAT = [lambda sides: 1.0]
+
+
+def game_fat(sides):
+    return math.pi / (sides * math.sin(math.pi / sides))
+
+
+def game_rings(knots, grooves, gap, fine=0.0):
+    """Where the game model's rings go along the body: at every knot of its outline (where its curve
+    turns), at each groove (and `fine` either side of it), and nowhere further apart than `gap`; two
+    closer than a tenth of `gap` are one."""
+    zs = sorted(set(list(knots) + [b + d for b in grooves for d in ((-fine, 0.0, fine) if fine else (0.0,))]))
+    zs = [z for z in zs if knots[0] <= z <= knots[-1]]
+    made = [zs[0]]
+    for z in zs[1:]:
+        start = made[-1]
+        if z - start < gap * 0.1:
+            if z == zs[-1]:
+                made[-1] = z
+            continue
+        n = max(1, math.ceil((z - start) / gap - 1e-9))
+        made += [start + (z - start) * i / n for i in range(1, n)] + [z]
+    return made
+
+
 def tube(m, path, radii, sides, name, caps=(True, True)):
     path = [Vector(p) for p in path]
     made = frames(path)
-    rings = [[p + (u * math.cos(TAU * s / sides) + v * math.sin(TAU * s / sides)) * max(r, 1e-5) for s in range(sides)]
+    rings = [[p + (u * math.cos(TAU * s / sides) + v * math.sin(TAU * s / sides)) * max(r, 1e-5) * FAT[0](sides) for s in range(sides)]
              for (t, u, v), p, r in zip(made, path, radii)]
     loft(m, rings, name,
          cap0=(path[0] - made[0][0] * radii[0] * 0.5) if caps[0] else None,
@@ -272,15 +309,16 @@ def opisthosoma_under(s, p):
     return CLEAR + 0.45 * (opisthosoma_top(s, p) - CLEAR - 0.004)
 
 
-def shield(m, part, outline, middle, top, under, rings, name, under_rings):
-    """A shell: its top built out from `middle` to the outline in `rings` steps, its rim, and its underside."""
+def shield(m, part, outline, middle, top, under, rings, name, under_rings, steps=None, under_steps=None):
+    """A shell: its top built out from `middle` to the outline in `rings` steps, its rim, and its underside.
+    `steps` and `under_steps`, if given, are where (0 the middle to 1 the rim) its rings are instead."""
     m.part, m.index, m.root, m.a = part, 0, None, 0.0
     count = len(outline)
 
-    def grid(levels, height, below):
+    def grid(levels, height, below, given=None):
         rows = []
-        for i in range(1, levels + 1):
-            s = i / levels
+        for i in range(1, (len(given) if given else levels) + 1):
+            s = given[i - 1] if given else i / levels
             row = []
             for q in outline:
                 p = middle + (q - middle) * s
@@ -289,7 +327,7 @@ def shield(m, part, outline, middle, top, under, rings, name, under_rings):
         centre = m.add(Vector((middle.x, height(0.0, middle), middle.z)), Vector((0.0, 0.0, 1.0 if below else 0.0)))
         return rows, centre
 
-    tops, centre = grid(rings, top, False)
+    tops, centre = grid(rings, top, False, steps)
     for c in range(count):
         n = (c + 1) % count
         m.face((centre, tops[0][c], tops[0][n]), UP, name)
@@ -301,7 +339,7 @@ def shield(m, part, outline, middle, top, under, rings, name, under_rings):
             # (up, and out from the middle where it slopes)
             mid = sum(ps, Vector()) * 0.25
             m.face(quad, UP + (mid - Vector((middle.x, mid.y, middle.z))) * 2.0, name)
-    unders, centre_u = grid(under_rings, under, True)
+    unders, centre_u = grid(under_rings, under, True, under_steps)
     for c in range(count):
         n = (c + 1) % count
         m.face((centre_u, unders[0][c], unders[0][n]), -UP, name)
@@ -343,14 +381,19 @@ def surface_height(outline, middle, top, at):
 
 
 def shells(m, low):
-    shield(m, PROSOMA, outline_points(PROSOMA_OUTLINE, 2 if low else 6), PROSOMA_MIDDLE, prosoma_top, prosoma_under,
-           4 if low else 16, "front shell", 2 if low else 7)
+    # (the game model: its rings close together where the dome flares down to the rim, few over the smooth top;
+    # the outline is straight between its points, so fewer points along it lose nothing of it)
+    game = low == "game"
+    shield(m, PROSOMA, outline_points(PROSOMA_OUTLINE, pick(low, 6, 2, 2)), PROSOMA_MIDDLE, prosoma_top, prosoma_under,
+           4 if low else 16, "front shell", 2 if low else 7,
+           (0.22, 0.42, 0.6, 0.75, 0.87, 0.95, 1.0) if game else None, (0.55, 1.0) if game else None)
     m.root = HINGE
     shield(m, OPISTHOSOMA, outline_points(OPISTHOSOMA_OUTLINE, 1 if low else 4), OPISTHOSOMA_MIDDLE, opisthosoma_top,
-           opisthosoma_under, 3 if low else 10, "rear shell", 2 if low else 5)
+           opisthosoma_under, 3 if low else 10, "rear shell", 2 if low else 5,
+           (0.3, 0.6, 0.82, 0.95, 1.0) if game else None, (0.6, 1.0) if game else None)
     # the spines of the rear shell: six along each side edge, a row down its middle
     m.part, m.index = SPINE, 0
-    sides = 3 if low else 6
+    sides = pick(low, 6, 3, 3)
     outline = outline_points(OPISTHOSOMA_OUTLINE, 8)
     for z, long in EDGE_SPINES:
         for sx in (1.0, -1.0):
@@ -360,10 +403,10 @@ def shells(m, low):
             root = Vector((edge.x - sx * 0.003, y, edge.z))
             tip = root + Vector((sx * long * 0.55, -0.002, long * 0.83))
             cone(m, root, tip, 0.0028, sides, "spines")
-    if not low:
+    if low is not True:
         for z in (-0.075, -0.05, -0.025):
             h, s = surface_height(outline, OPISTHOSOMA_MIDDLE, opisthosoma_top, (0.0, z))
-            cone(m, Vector((0.0, h - 0.002, z)), Vector((0.0, h + 0.006, z + 0.004)), 0.0022, 5, "spines")
+            cone(m, Vector((0.0, h - 0.002, z)), Vector((0.0, h + 0.006, z + 0.004)), 0.0022, pick(low, 5, 0, 4), "spines")
     m.root = None
 
 
@@ -385,12 +428,14 @@ def eyes(m, low):
         along = Vector((sx * 0.22, 0.0, 1.0)).normalized()
         out = Vector((sx * 0.8, 0.6, 0.0)).normalized()
         across = out.cross(along).normalized()
-        ellipsoid(m, Vector((x, h - 0.0016, z)), (along, across, out), (0.013, 0.0062, 0.0045), "eyes", 4 if low else 8, 6 if low else 12)
+        ellipsoid(m, Vector((x, h - 0.0016, z)), (along, across, out), (0.013, 0.0062, 0.0045), "eyes", pick(low, 8, 4, 6), pick(low, 12, 6, 14))
+        if sx > 0.0 and low is False:
+            print("EYE the left one's middle (%.4f, %.4f, %.4f), along (%.3f, %.3f, %.3f), out (%.3f, %.3f, %.3f)" % ((x, h - 0.0016, z) + tuple(along) + tuple(out)))
 
 
 def telson(m, low):
     """The tail spike: three-sided with a keel along its top, tapering to a point."""
-    steps = 6 if low else 30
+    steps = pick(low, 30, 6, 12)
     m.part, m.index, m.root = TELSON, 0, TAIL_ROOT
     rings = []
     for i in range(steps + 1):
@@ -433,7 +478,8 @@ def leg(m, index, root, heading, reach, knee_high, radius, sides, low):
     m.part, m.index, m.root, m.k = LEG, index, root, knee
     m.a = 0.0
     if low:
-        tube(m, [root, knee], [radius, radius * 0.95], sides, "legs", caps=(False, True))
+        # (the game model: no cap at the knee on the upper length, the lower one's cap closes it)
+        tube(m, [root, knee], [radius, radius * 0.95], sides, "legs", caps=(False, low != "game"))
     else:
         tube(m, [root, root.lerp(knee, 0.5), knee], [radius * 1.05, radius * 1.1, radius * 0.95], sides, "legs")
     m.a = 1.0
@@ -465,7 +511,7 @@ def gills(m, low):
             across = (u - 0.5) * 2.0
             return hinge + Vector((across * wide * (1.0 - 0.15 * t), -0.004 * t - 0.002 * across * across, 0.020 * t))
 
-        blade(m, "book gills", point, -UP, 0.0016, 2 if low else 4, 2 if low else 8, tags=lambda t, u: (None, t))
+        blade(m, "book gills", point, -UP, 0.0016, pick(low, 4, 2, 2), pick(low, 8, 2, 2), tags=lambda t, u: (None, t))
     m.root = None
 
 
@@ -489,13 +535,14 @@ def legs_clear():
 
 
 def make(low):
+    FAT[0] = game_fat if low == "game" else (lambda sides: 1.0)
     m = Mesh()
     shells(m, low)
     eyes(m, low)
     telson(m, low)
     for sx in (1.0, -1.0):
         for i, (root, heading, reach, knee_high, radius) in enumerate(LEGS):
-            leg(m, i, (sx * root[0], root[1], root[2]), heading, reach, knee_high, radius, 3 if low else 7, low)
+            leg(m, i, (sx * root[0], root[1], root[2]), heading, reach, knee_high, radius, pick(low, 7, 3, 3), low)
     gills(m, low)
     return m
 
@@ -592,15 +639,20 @@ def main():
     bpy.context.preferences.filepaths.save_version = 0
     full = finish("horseshoe_crab", make(False), (0.36, 0.3, 0.18, 1.0))
     low = finish("horseshoe_crab_lo", make(True), (0.36, 0.3, 0.18, 1.0))
+    game = finish("horseshoe_crab_game", make("game"), (0.36, 0.3, 0.18, 1.0))
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, "horseshoe_crab.glb"))
     export_one(low, os.path.join(OUT, "horseshoe_crab_lo.glb"))
+    export_one(game, os.path.join(OUT, "horseshoe_crab_game.glb"))
+    # (in the .blend: the full model in the middle, the low one to its left, the game one to its right)
     low.location.x = 0.35
+    game.location.x = -0.35
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "horseshoe_crab.blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low], 0.56)
+        render(PREVIEW, [full, low, game], 0.56)
 
 
 if __name__ == "__main__":

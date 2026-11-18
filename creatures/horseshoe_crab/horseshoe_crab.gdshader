@@ -47,6 +47,35 @@ uniform vec3 underside : source_color = vec3(0.64, 0.51, 0.32);
 uniform vec3 legs : source_color = vec3(0.52, 0.34, 0.19);
 uniform vec3 eye : source_color = vec3(0.05, 0.04, 0.03);
 
+// Cartoon eyes: 0 its eyes as they are, 1 big glossy eyes with a white, an iris, a pupil, a
+// highlight and a lid (the horseshoe crab's own: ancient and placid, half asleep under heavy level
+// lids, an olive-amber iris round a slit pupil, as old as it is). `eye_look` slides the iris and
+// pupil (x along the eye towards its head, y up; -1..1); `blink` brings a lid the colour of its
+// shell down over each eye (0 open, 1 shut), cartoon or not.
+uniform float cartoon_eyes : hint_range(0.0, 1.0) = 0.0;
+uniform vec2 eye_look = vec2(0.0);
+uniform float blink : hint_range(0.0, 1.0) = 0.0;
+// As the model has it: the middle of the left eye (the right one mirrored), the way along it (back
+// along the side ridge) and its half lengths (along it, across it, out of the shell).
+const vec3 EYE_MIDDLE = vec3(0.0710, 0.0458, -0.1680);
+const vec3 EYE_ALONG = vec3(0.22, 0.0, 1.0);
+const vec3 EYE_SIZE = vec3(0.013, 0.0062, 0.0045);
+// This crab's cartoon eye: the way the left one looks (straight out of the shell); how much bigger
+// it is; its white, its iris; how wide the iris and the pupil are (as the sine of the angle from
+// where it looks, the eye taken as a ball); the pupil's shape (its width and height); where the
+// upper lid rests (1 above the eye, -1 shut) and how it slopes (+ lower towards its head); how far
+// the iris slides at `eye_look` 1.
+const vec3 EYE_GAZE = vec3(0.8, 0.6, 0.0);
+const float EYE_GROW = 1.3;
+const vec3 EYE_WHITE = vec3(0.9, 0.87, 0.74);
+const vec3 EYE_IRIS = vec3(0.5, 0.42, 0.12);
+const float IRIS_SIZE = 0.62;
+const float PUPIL_SIZE = 0.4;
+const vec2 PUPIL_SHAPE = vec2(0.32, 1.0);
+const float LID_REST = 0.12;
+const float LID_SLOPE = 0.0;
+const float LOOK_REACH = 0.3;
+
 varying vec3 rest;
 varying float part;
 varying float index;
@@ -115,6 +144,50 @@ void leg_move(inout vec3 v, inout vec3 n, vec3 joint, vec3 knee, float lower, ve
 	n = turned(turned(n, axis, lift), up, yaw);
 }
 
+// The eye on the side of `p` (at rest): its middle, the way it looks, its up and its across (towards
+// the head).
+void eye_frame(vec3 p, out vec3 mid, out vec3 gaze, out vec3 up, out vec3 across) {
+	float side = p.x >= 0.0 ? 1.0 : -1.0;
+	mid = EYE_MIDDLE * vec3(side, 1.0, 1.0);
+	gaze = normalize(EYE_GAZE * vec3(side, 1.0, 1.0));
+	up = normalize(vec3(0.0, 1.0, 0.0) - gaze * gaze.y);
+	across = normalize(cross(up, gaze)) * side;
+}
+
+// The colour of a point `p` (at rest) of an eye: `plain` as it is, mixed to the cartoon eye by
+// `cartoon_eyes`, the lid (`skin`) over it as `blink` (and, cartooned, `LID_REST`) has it; `lid` is
+// set to how far the lid covers it, `glint` to where the cartoon eye's highlights are (they stay
+// put, up and forward on the eye, when it looks about).
+vec3 eye_colour(vec3 p, vec3 plain, vec3 skin, out float lid, out float glint) {
+	vec3 mid, gaze, up, across;
+	eye_frame(p, mid, gaze, up, across);
+	// (the eye is a long low ellipsoid on the shell: its point taken as on a ball, by its own half lengths)
+	vec3 e = p - mid;
+	vec3 along_eye = normalize(EYE_ALONG * vec3(p.x >= 0.0 ? 1.0 : -1.0, 1.0, 1.0));
+	vec3 over = normalize(cross(gaze, along_eye));
+	vec3 d = normalize(along_eye * (dot(e, along_eye) / EYE_SIZE.x) + over * (dot(e, over) / EYE_SIZE.y) + gaze * (dot(e, gaze) / EYE_SIZE.z));
+	vec2 q = vec2(dot(d, across), dot(d, up));
+	float front = smoothstep(-0.05, 0.1, dot(d, gaze));
+	vec2 at = q - eye_look * LOOK_REACH;
+	float r = length(at);
+	vec3 c = EYE_WHITE;
+	float iris = (1.0 - smoothstep(IRIS_SIZE - 0.03, IRIS_SIZE, r)) * front;
+	c = mix(c, EYE_IRIS * mix(1.2, 0.6, smoothstep(0.0, IRIS_SIZE, r)), iris);
+	c = mix(c, vec3(0.03, 0.02, 0.02), (1.0 - smoothstep(0.015, 0.045, abs(r - IRIS_SIZE))) * front);
+	float pupil = 1.0 - smoothstep(PUPIL_SIZE - 0.03, PUPIL_SIZE, length(at / PUPIL_SHAPE));
+	c = mix(c, vec3(0.01, 0.01, 0.015), pupil * front);
+	c = mix(plain, c, cartoon_eyes);
+	// the upper lid: its edge comes down from above the eye (or from where it rests) to below it
+	float edge = mix(mix(1.08, LID_REST, cartoon_eyes), -1.08, blink) - LID_SLOPE * q.x;
+	lid = smoothstep(edge - 0.02, edge + 0.02, q.y);
+	// (small: this eye is long, and a spot on it is drawn long)
+	glint = smoothstep(0.982, 0.99, dot(d, normalize(gaze + up * min(0.62, LID_REST - 0.28) + across * 0.3)));
+	glint = max(glint, 0.7 * smoothstep(0.991, 0.995, dot(d, normalize(gaze + up * 0.18 + across * 0.52))));
+	c = mix(c, skin, lid);
+	c = mix(c, skin * 0.35, (1.0 - smoothstep(0.02, 0.07, abs(q.y - edge))) * step(edge, 1.0) * max(cartoon_eyes, step(0.001, blink)));
+	return c;
+}
+
 void vertex() {
 	float code = floor(UV2.y + 0.5);
 	part = floor((code + 0.5) / 16.0);
@@ -151,6 +224,11 @@ void vertex() {
 		v = HINGE + turned(v - HINGE, vec3(1.0, 0.0, 0.0), hinge);
 		n = turned(n, vec3(1.0, 0.0, 0.0), hinge);
 	}
+	if (p == 5 && cartoon_eyes > 0.0) {
+		// the cartoon eye: bigger about its own middle
+		vec3 mid = EYE_MIDDLE * vec3(rest.x >= 0.0 ? 1.0 : -1.0, 1.0, 1.0);
+		v = mid + (v - mid) * mix(1.0, EYE_GROW, cartoon_eyes);
+	}
 	VERTEX = v;
 	NORMAL = n;
 }
@@ -161,6 +239,7 @@ void fragment() {
 	vec3 c;
 	float rough = 0.4;
 	float spec = 0.45;
+	vec3 emit = vec3(0.0);
 	float grain = noise2(rest.xz * 600.0);
 	if (p == 0 || p == 1) {
 		if (kk.z > 0.5) {
@@ -206,6 +285,21 @@ void fragment() {
 		c = mix(eye, mottle, 0.4) * (0.8 + 0.4 * step(0.5, hash2(floor(rest.xz * 1500.0))));
 		rough = 0.35;
 		spec = 0.5;
+		{
+			float lid;
+			float shine;
+			c = eye_colour(rest, c, mix(olive, mottle, 0.3), lid, shine);
+			// cartooned: glossy, two bright highlights up and forward on it, and a dark rim so it
+			// reads from far off
+			float open = (1.0 - lid) * cartoon_eyes;
+			c = mix(c, c * 0.15, open * (1.0 - smoothstep(0.12, 0.38, dot(normalize(NORMAL), VIEW))));
+			c = mix(c, vec3(1.0), shine * open);
+			emit = vec3(0.6) * shine * open;
+			rough = mix(rough, 0.12, open);
+			// (a shut lid is shell, not glassy eye)
+			rough = mix(rough, 0.55, lid);
+			spec = mix(spec, 0.35, lid);
+		}
 	} else {
 		// A spine: olive-brown, darker at its point.
 		c = mix(olive, mottle, 0.5) * (0.9 + 0.15 * grain);
@@ -214,4 +308,5 @@ void fragment() {
 	ALBEDO = c;
 	ROUGHNESS = rough;
 	SPECULAR = spec;
+	EMISSION = emit;
 }

@@ -19,7 +19,7 @@ extends Node3D
 ## `step(velocity, delta)` each frame, which moves `phase` on by how far it has walked (so its
 ## feet do not slide) or, off the ground, by `beat`, or set `phase` yourself.
 ##
-## The models are creatures/spot_prawn/models/spot_prawn.glb (and _lo), built by
+## The models are creatures/spot_prawn/models/spot_prawn.glb (and _lo, and _game), built by
 ## tools/build_spot_prawn.py; spot_prawn.gdshader draws the markings and moves it.
 
 const MODEL := "res://creatures/spot_prawn/models/spot_prawn%s.glb"
@@ -68,6 +68,30 @@ const ON_GROUND := 0.65
 	set(value):
 		low = value
 		_show()
+## The game model (about a seventh of the full one's triangles, spent where the eye looks: the
+## outline, the eyes, the rostrum's teeth), shown in place of the full one; `low` still shows the
+## low model. Each model is loaded only when it is first shown: with `game` on, the full model is
+## never loaded.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## 0 its eyes as they are; 1 cartoon eyes (bigger glossy beads with a white, a golden iris, a
+## pupil, a highlight and a lid: see the README).
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send(&"cartoon_eyes", cartoon_eyes)
+## Where its cartoon eyes look, -1..1 each way: x towards its head (+) or its tail, y up or down.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value.clamp(-Vector2.ONE, Vector2.ONE)
+		_send(&"eye_look", eye_look)
+## A blink: 0 open, 1 shut (a lid the colour of its shell comes down over each eye).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send(&"blink", blink)
 ## How far through a beat it is, 0 to 1 (only the fraction counts).
 var phase := 0.0:
 	set(value):
@@ -79,15 +103,33 @@ static var _meshes := {}
 var _material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
 
 
 ## The full model's mesh, or the low one's (each one surface, to wear `new_material()`).
 static func mesh_of(low_wanted := false) -> Mesh:
-	var path := MODEL % ("_lo" if low_wanted else "")
+	return _mesh_at(MODEL % ("_lo" if low_wanted else ""))
+
+
+## The game model's mesh (one surface, to wear `new_material()`), without the importer's automatic
+## LODs (a body bent in the shader would bend in straight pieces far off).
+static func game_mesh() -> Mesh:
+	return _mesh_at(MODEL % "_game", true)
+
+
+## A copy of `mesh` without its automatic LODs.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return plain
+
+
+static func _mesh_at(path: String, plain := false) -> Mesh:
 	if not _meshes.has(path):
 		var made := (load(path) as PackedScene).instantiate()
 		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
-		_meshes[path] = found.mesh
+		_meshes[path] = without_lods(found.mesh) if plain else found.mesh
 		made.free()
 	return _meshes[path]
 
@@ -106,13 +148,14 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
 	_show()
 	_send_phase()
 	_send(&"walk", walk)
 	_send(&"paddle", paddle)
 	_send(&"flick", flick)
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 
 
 ## Each frame. Walking (`walk` not 0): moves `phase` on by how far it has gone forwards or
@@ -135,7 +178,8 @@ func step(velocity: Vector3, delta: float) -> void:
 
 
 ## Sets one of the shader's settings: its colours (`red`, `pale`, `white`), `feel` (how far its
-## antennae swing), or `walk`, `paddle`, `flick` for a game's own material.
+## antennae swing), or `walk`, `paddle`, `flick`, `cartoon_eyes`, `eye_look`, `blink` for a game's
+## own material.
 func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)
 
@@ -155,18 +199,27 @@ func _send_phase() -> void:
 	_send(&"phase", fposmod(phase * steps, 1.0))
 
 
+# Shows the model wanted, making (and loading) it the first time it is wanted.
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if not is_inside_tree():
+		return
+	if low and not _low:
+		_low = _instance_of(mesh_of(true), "SpotPrawnLo")
+	elif not low and game and not _game:
+		_game = _instance_of(game_mesh(), "SpotPrawnGame")
+	elif not low and not game and not _full:
+		_full = _instance_of(mesh_of(false), "SpotPrawn")
+	for shown: MeshInstance3D in [_full, _low, _game]:
+		if shown:
+			shown.visible = shown == (_low if low else (_game if game else _full))
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of(mesh_wanted: Mesh, named: String) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
+	mesh.mesh = mesh_wanted
 	mesh.material_override = _material
 	# (its tail curls under and its antennae swing past where the still model ends)
 	mesh.extra_cull_margin = 0.08
-	mesh.name = "SpotPrawnLo" if low_wanted else "SpotPrawn"
+	mesh.name = named
 	add_child(mesh)
 	return mesh

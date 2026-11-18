@@ -4,8 +4,10 @@ Run from the game's root:
     blender --background --python creatures/spiny_lobster/tools/build_spiny_lobster.py
     blender --background --python creatures/spiny_lobster/tools/build_spiny_lobster.py -- <preview folder>   # with pictures
 
-Writes creatures/spiny_lobster/models/spiny_lobster.glb (the full model) and spiny_lobster_lo.glb (far off,
-phones), and the editable creatures/spiny_lobster/tools/spiny_lobster.blend (this folder has a .gdignore). Each
+Writes creatures/spiny_lobster/models/spiny_lobster.glb (the full model), spiny_lobster_game.glb (the game
+model: few triangles, spent where the eye looks: the outline, the spines, the eyes) and spiny_lobster_lo.glb (far
+off, phones), and the editable creatures/spiny_lobster/tools/spiny_lobster.blend (all three; this folder has a
+.gdignore). The full and the low model come out as they did before the game model was added. Each
 is one still mesh with one surface: the shader (spiny_lobster.gdshader) draws every marking, walks its legs and
 swings its antennae. It prints a WINDING line for each: the check that nothing is inside out.
 
@@ -47,6 +49,13 @@ ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 PREVIEW = ARGS[0] if ARGS else ""
 TAU = math.tau
 UP = Vector((0.0, 1.0, 0.0))
+
+
+def pick(low, full, lo, game):
+    """The full model's number, the low one's or the game one's (`low` is False, True or "game")."""
+    if low == "game":
+        return game
+    return lo if low else full
 
 
 def to_b(p):
@@ -162,6 +171,33 @@ def frames(path, ref=None):
     return made
 
 
+# The game model's tubes have few sides: each is made a little fatter, so that it looks as wide as the round
+# one it stands for, seen from any side (a polygon of `sides` as wide on average as the circle).
+FAT = [lambda sides: 1.0]
+
+
+def game_fat(sides):
+    return math.pi / (sides * math.sin(math.pi / sides))
+
+
+def game_rings(knots, grooves, gap, fine=0.0):
+    """Where the game model's rings go along the body: at every knot of its outline (where its curve
+    turns), at each groove (and `fine` either side of it), and nowhere further apart than `gap`; two
+    closer than a tenth of `gap` are one."""
+    zs = sorted(set(list(knots) + [b + d for b in grooves for d in ((-fine, 0.0, fine) if fine else (0.0,))]))
+    zs = [z for z in zs if knots[0] <= z <= knots[-1]]
+    made = [zs[0]]
+    for z in zs[1:]:
+        start = made[-1]
+        if z - start < gap * 0.1:
+            if z == zs[-1]:
+                made[-1] = z
+            continue
+        n = max(1, math.ceil((z - start) / gap - 1e-9))
+        made += [start + (z - start) * i / n for i in range(1, n)] + [z]
+    return made
+
+
 def tube(m, path, radii, sides, name, flat=1.0, along=None, caps=(True, True), ref=None):
     """A round (or, with `flat`, flattened across `ref`) tube along `path`, `radii` at its points. With
     `along` (from, to), `a` runs from one to the other along its length."""
@@ -172,7 +208,7 @@ def tube(m, path, radii, sides, name, flat=1.0, along=None, caps=(True, True), r
     made = frames(path, ref)
     rings = []
     for (t, u, v), p, r in zip(made, path, radii):
-        r = max(r, 1e-5)
+        r = max(r, 1e-5) * FAT[0](sides)
         rings.append([p + (u * math.cos(TAU * s / sides) + v * (flat * math.sin(TAU * s / sides))) * r for s in range(sides)])
 
     def tags(p, ri, ci):
@@ -233,7 +269,8 @@ def leg(m, part, index, root, heading, reach, knee_high, radius, sides, name, lo
     m.part, m.index, m.root, m.k = part, index, root, knee
     m.a = 0.0
     if low:
-        tube(m, [root, knee], [radius, radius * 0.95], sides, name, caps=(False, True))
+        # (the game model: no cap at the knee on the upper length, the lower one's cap closes it)
+        tube(m, [root, knee], [radius, radius * 0.95], sides, name, caps=(False, low != "game"))
     else:
         tube(m, [root, root.lerp(knee, 0.5), knee], [radius * 0.95, radius * 1.12, radius * 0.95], sides, name)
     m.a = 1.0
@@ -340,7 +377,7 @@ def finish(name, m, colour):
     # (the glTF writer only writes the colour that is marked for rendering)
     mesh.color_attributes.active_color = colours
     mesh.color_attributes.render_color_index = 0
-    mesh.materials.append(material_of(name.replace("_lo", ""), colour))
+    mesh.materials.append(material_of(name.replace("_lo", "").replace("_game", ""), colour))
     for poly in mesh.polygons:
         poly.use_smooth = True
     mesh.update()
@@ -418,15 +455,20 @@ def build_all(name, make, colour, size, close=()):
     bpy.context.preferences.filepaths.save_version = 0
     full = finish(name, make(False), colour)
     low = finish(name + "_lo", make(True), colour)
+    game = finish(name + "_game", make("game"), colour)
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, name + ".glb"))
     export_one(low, os.path.join(OUT, name + "_lo.glb"))
+    export_one(game, os.path.join(OUT, name + "_game.glb"))
+    # (in the .blend: the full model in the middle, the low one to its left, the game one to its right)
     low.location.x = size
+    game.location.x = -size
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, name + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low], size, close)
+        render(PREVIEW, [full, low, game], size, close)
 
 BODY, LEG, EYE, ANTENNA, FAN, SPINE, MOUTH = range(7)
 # As the shader has it: the box the joints' places are written in; how far out along a leg its knee is.
@@ -528,6 +570,12 @@ def surface(z, angle):
 
 
 def body(m, low):
+    if low == "game":
+        # rings where the outline turns, at each plate's edge and either side of it, few along the smooth
+        # stretches; fourteen round, the ridge, the keel and the widest on points
+        m.part, m.index, m.root, m.a = BODY, 0, None, 0.0
+        section_loft(m, game_rings(_XS, SEGMENTS + (GROOVE,), 0.03, 0.003), section, 14, "body")
+        return
     step = 0.012 if low else 0.006
     zs = []
     z = BODY_FROM
@@ -544,14 +592,14 @@ def spines(m, low):
     """The horns over the eyes, rows of forward-pointing spines on the carapace, a spine at the lower edge
     of each plate of the abdomen."""
     m.part, m.index, m.root = SPINE, 0, None
-    sides = 4 if low else 7
+    sides = pick(low, 7, 4, 4)
     for sx in (1.0, -1.0):
         # the horns: big, curving forward and up over the eyes
         foot = Vector((sx * 0.024, 0.148, -0.262))
         path = [foot, Vector((sx * 0.028, 0.163, -0.282)), Vector((sx * 0.031, 0.181, -0.300))]
         m.a = 0.0
         tube(m, path, [0.013, 0.008, 0.0015], sides + 2, "spines", along=(0.0, 1.0), caps=(False, True))
-        if low:
+        if low is True:
             continue
         # the carapace: rows of spines, more at the front and down the sides
         for z in (-0.245, -0.225, -0.205, -0.18, -0.125, -0.1, -0.075, -0.05):
@@ -577,9 +625,9 @@ def eyes(m, low):
         foot = Vector((sx * 0.016, 0.128, -0.262))
         head = Vector((sx * 0.028, 0.136, -0.286))
         m.part, m.index, m.root, m.a = EYE, 0, None, 0.0
-        tube(m, [foot, head], [0.0075, 0.0068], 5 if low else 10, "eyes", caps=(False, False))
+        tube(m, [foot, head], [0.0075, 0.0068], pick(low, 10, 5, 6), "eyes", caps=(False, False))
         m.a = 1.0
-        ball(m, head + Vector((sx * 0.002, 0.0, -0.003)), 0.0095, 0.0095, 0.0095, "eyes", lat=3 if low else 8, lon=5 if low else 12)
+        ball(m, head + Vector((sx * 0.002, 0.0, -0.003)), 0.0095, 0.0095, 0.0095, "eyes", lat=pick(low, 8, 3, 6), lon=pick(low, 12, 5, 14))
     m.a = 0.0
 
 
@@ -626,13 +674,17 @@ def antennae(m, low):
             return 0.011 * (1.0 - (s - 0.2) / 0.8) ** 1.2 + 0.0012
 
         ss = [i / steps for i in range(steps + 1)]
+        if low == "game":
+            # (close together along the thick base, where it narrows fast, few along the whip)
+            ss = [0.0, 0.03, 0.07, 0.11, 0.15, 0.2, 0.25, 0.31, 0.38, 0.46, 0.54, 0.62, 0.7, 0.78, 0.86, 0.93, 1.0]
         path = [at(s) for s in ss]
         m.part, m.index, m.root = ANTENNA, 0, base
-        tube(m, path, [radius(s) for s in ss], 5 if low else 7, "antennae", along=(0.0, 1.0), caps=(False, True))
-        if not low:
+        tube(m, path, [radius(s) for s in ss], pick(low, 7, 5, 5), "antennae", along=(0.0, 1.0), caps=(False, True))
+        if low is not True:
             # spines along the base and, smaller, up the whip
             count = 34
-            for k in range(count):
+            # (the game model: every other one)
+            for k in range(0, count, pick(low, 1, 1, 2)):
                 s = 0.02 + 0.5 * (k / count) ** 1.4
                 p = at(s)
                 ahead = (at(s + 0.01) - p).normalized()
@@ -642,21 +694,23 @@ def antennae(m, low):
                 r = radius(s)
                 size = 0.012 if s < 0.2 else 0.006 * (1.0 - s)
                 m.a = s
-                spine(m, p + out * (r * 0.6), p + out * (r + size) + ahead * size * 0.8, size * 0.4 + 0.001, 5, "antennae")
+                spine(m, p + out * (r * 0.6), p + out * (r + size) + ahead * size * 0.8, size * 0.4 + 0.001, pick(low, 5, 0, 3), "antennae")
         # the antennule: a slender stalk forward, then two short whips
         base = v(0.011, 0.084, -0.278)
         m.index, m.root = 1, base
         stalk = [base, v(0.015, 0.094, -0.33), v(0.02, 0.102, -0.375)]
-        tube(m, stalk, [0.0045, 0.0038, 0.003], 4 if low else 7, "antennae", along=(0.0, 0.4))
-        if not low:
+        tube(m, stalk, [0.0045, 0.0038, 0.003], pick(low, 7, 4, 5), "antennae", along=(0.0, 0.4))
+        if low is not True:
+            n = pick(low, 10, 0, 4)
             for lean, rise in ((1.0, 0.012), (0.3, -0.006)):
-                whip = [bezier([stalk[-1], v(0.026 + 0.01 * lean, 0.105 + rise * 0.5, -0.41), v(0.04 + 0.03 * lean, 0.108 + rise, -0.45)], i / 10) for i in range(11)]
-                tube(m, whip, [0.0024 * (1.0 - 0.6 * i / 10) for i in range(11)], 5, "antennae", along=(0.4, 0.7))
+                whip = [bezier([stalk[-1], v(0.026 + 0.01 * lean, 0.105 + rise * 0.5, -0.41), v(0.04 + 0.03 * lean, 0.108 + rise, -0.45)], i / n) for i in range(n + 1)]
+                tube(m, whip, [0.0024 * (1.0 - 0.6 * i / n) for i in range(n + 1)], pick(low, 5, 0, 3), "antennae", along=(0.4, 0.7))
         # a mouthpart: leg-like, reaching forward under the head
-        if not low:
+        if low is not True:
             m.part, m.index, m.root = MOUTH, 0, None
-            path = [bezier([v(0.016, 0.062, -0.23), v(0.03, 0.045, -0.29), v(0.028, 0.055, -0.33)], i / 10) for i in range(11)]
-            tube(m, path, [0.006 * (1.0 - 0.5 * i / 10) for i in range(11)], 6, "mouthparts", along=(0.0, 1.0))
+            n = pick(low, 10, 0, 4)
+            path = [bezier([v(0.016, 0.062, -0.23), v(0.03, 0.045, -0.29), v(0.028, 0.055, -0.33)], i / n) for i in range(n + 1)]
+            tube(m, path, [0.006 * (1.0 - 0.5 * i / n) for i in range(n + 1)], pick(low, 6, 0, 4), "mouthparts", along=(0.0, 1.0))
     m.a = 0.0
     m.root = None
 
@@ -672,8 +726,8 @@ LEGS = [((0.034, 0.072, -0.205), -38.0, 0.120, 0.128, 0.0080),
 
 def tail_fan(m, low):
     """The telson and two pairs of paddles either side of it: broad, their rear edges soft and rounded."""
-    nt = 3 if low else 12
-    nu = 3 if low else 8
+    nt = pick(low, 12, 3, 6)
+    nu = pick(low, 8, 3, 2)
     up = Vector((0.0, 1.0, 0.0))
     m.part, m.root = FAN, None
     m.index = 0
@@ -700,6 +754,7 @@ def tail_fan(m, low):
 
 
 def make(low):
+    FAT[0] = game_fat if low == "game" else (lambda sides: 1.0)
     m = Mesh()
     body(m, low)
     spines(m, low)
@@ -707,7 +762,7 @@ def make(low):
     antennae(m, low)
     for sx in (1.0, -1.0):
         for i, (root, heading, reach, knee_high, radius) in enumerate(LEGS):
-            leg(m, LEG, i, (sx * root[0], root[1], root[2]), heading, reach, knee_high, radius, 3 if low else 8, "legs", low)
+            leg(m, LEG, i, (sx * root[0], root[1], root[2]), heading, reach, knee_high, radius, pick(low, 8, 3, 4), "legs", low)
     tail_fan(m, low)
     return m
 

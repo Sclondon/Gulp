@@ -4,8 +4,10 @@ Run from the game's root:
     blender --background --python creatures/spot_prawn/tools/build_spot_prawn.py
     blender --background --python creatures/spot_prawn/tools/build_spot_prawn.py -- <preview folder>   # with pictures
 
-Writes creatures/spot_prawn/models/spot_prawn.glb (the full model) and spot_prawn_lo.glb (far off, phones), and
-the editable creatures/spot_prawn/tools/spot_prawn.blend (this folder has a .gdignore). Each is one still mesh
+Writes creatures/spot_prawn/models/spot_prawn.glb (the full model), spot_prawn_game.glb (the game model: few
+triangles, spent where the eye looks: the outline, the eyes, the rostrum's teeth) and spot_prawn_lo.glb (far off,
+phones), and the editable creatures/spot_prawn/tools/spot_prawn.blend (all three; this folder has a .gdignore).
+The full and the low model come out as they did before the game model was added. Each is one still mesh
 with one surface: the shader (spot_prawn.gdshader) draws every marking, walks its legs, beats its swimmerets
 and curls its tail under (`flick`). It prints a WINDING line for each: the check that nothing is inside out.
 
@@ -49,6 +51,13 @@ ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 PREVIEW = ARGS[0] if ARGS else ""
 TAU = math.tau
 UP = Vector((0.0, 1.0, 0.0))
+
+
+def pick(low, full, lo, game):
+    """The full model's number, the low one's or the game one's (`low` is False, True or "game")."""
+    if low == "game":
+        return game
+    return lo if low else full
 
 
 def to_b(p):
@@ -164,6 +173,15 @@ def frames(path, ref=None):
     return made
 
 
+# The game model's tubes have few sides: each is made a little fatter, so that it looks as wide as the round
+# one it stands for, seen from any side (a polygon of `sides` as wide on average as the circle).
+FAT = [lambda sides: 1.0]
+
+
+def game_fat(sides):
+    return math.pi / (sides * math.sin(math.pi / sides))
+
+
 def tube(m, path, radii, sides, name, flat=1.0, along=None, caps=(True, True), ref=None):
     """A round (or, with `flat`, flattened across `ref`) tube along `path`, `radii` at its points. With
     `along` (from, to), `a` runs from one to the other along its length."""
@@ -174,7 +192,7 @@ def tube(m, path, radii, sides, name, flat=1.0, along=None, caps=(True, True), r
     made = frames(path, ref)
     rings = []
     for (t, u, v), p, r in zip(made, path, radii):
-        r = max(r, 1e-5)
+        r = max(r, 1e-5) * FAT[0](sides)
         rings.append([p + (u * math.cos(TAU * s / sides) + v * (flat * math.sin(TAU * s / sides))) * r for s in range(sides)])
 
     def tags(p, ri, ci):
@@ -233,7 +251,8 @@ def leg(m, part, index, root, heading, reach, knee_high, radius, sides, name, lo
     m.part, m.index, m.root, m.k = part, index, root, knee
     m.a = 0.0
     if low:
-        tube(m, [root, knee], [radius, radius * 0.95], sides, name, caps=(False, True))
+        # (the game model: no cap at the knee on the upper length, the lower one's cap closes it)
+        tube(m, [root, knee], [radius, radius * 0.95], sides, name, caps=(False, low != "game"))
     else:
         tube(m, [root, root.lerp(knee, 0.5), knee], [radius * 0.95, radius * 1.12, radius * 0.95], sides, name)
     m.a = 1.0
@@ -248,16 +267,19 @@ def leg(m, part, index, root, heading, reach, knee_high, radius, sides, name, lo
     return knee, tip
 
 
-def blade(m, name, point, facing, thick, nt, nu, tags=None):
+def blade(m, name, point, facing, thick, nt, nu, tags=None, ts=None):
     """A thin closed blade (a fin, a tail fan's paddle, a swimmeret): `point(t, u)` is a place in the
     model (t 0 at its root to 1 at its tip, u 0 at its leading edge to 1 at its trailing edge),
     `facing` the way one of its two skins faces. It is `thick` at its root, a foil across (nothing at
-    either edge), thinning towards its tip. `tags(t, u)` gives a point's (k, a)."""
+    either edge), thinning towards its tip. `tags(t, u)` gives a point's (k, a). `ts`, if given, are
+    the places along it of its rows (instead of `nt` even steps)."""
     facing = Vector(facing).normalized()
+    if ts:
+        nt = len(ts) - 1
     for side in (1.0, -1.0):
         grid = []
         for ti in range(nt + 1):
-            t = ti / nt
+            t = ts[ti] if ts else ti / nt
             row = []
             for ui in range(nu + 1):
                 u = ui / nu
@@ -340,7 +362,7 @@ def finish(name, m, colour):
     # (the glTF writer only writes the colour that is marked for rendering)
     mesh.color_attributes.active_color = colours
     mesh.color_attributes.render_color_index = 0
-    mesh.materials.append(material_of(name.replace("_lo", ""), colour))
+    mesh.materials.append(material_of(name.replace("_lo", "").replace("_game", ""), colour))
     for poly in mesh.polygons:
         poly.use_smooth = True
     mesh.update()
@@ -418,15 +440,20 @@ def build_all(name, make, colour, size, close=()):
     bpy.context.preferences.filepaths.save_version = 0
     full = finish(name, make(False), colour)
     low = finish(name + "_lo", make(True), colour)
+    game = finish(name + "_game", make("game"), colour)
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, name + ".glb"))
     export_one(low, os.path.join(OUT, name + "_lo.glb"))
+    export_one(game, os.path.join(OUT, name + "_game.glb"))
+    # (in the .blend: the full model in the middle, the low one to its left, the game one to its right)
     low.location.x = size
+    game.location.x = -size
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, name + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low], size, close)
+        render(PREVIEW, [full, low, game], size, close)
 
 BODY, LEG, SWIM, EYE, ANTENNA, SCALE, FAN, ROSTRUM, MOUTH = range(9)
 # As the shader has it: the box the joints' places are written in; how far out along a leg its knee is.
@@ -506,7 +533,32 @@ def section(z):
     return cy, max(up * squeeze, 0.0003), max(down * squeeze, 0.0003), max(wide * squeeze, 0.0003), power
 
 
+def game_rings(knots, grooves, gap, fine=0.0):
+    """Where the game model's rings go along the body: at every knot of its outline (where its curve
+    turns), either side of and at each groove (`fine` out from it), and nowhere further apart than
+    `gap`; two closer than a tenth of `gap` are one."""
+    zs = sorted(set(list(knots) + [b + d for b in grooves for d in ((-fine, 0.0, fine) if fine else (0.0,))]))
+    zs = [z for z in zs if knots[0] <= z <= knots[-1]]
+    made = [zs[0]]
+    for z in zs[1:]:
+        start = made[-1]
+        if z - start < gap * 0.1:
+            if z == zs[-1]:
+                made[-1] = z
+            continue
+        n = max(1, math.ceil((z - start) / gap - 1e-9))
+        made += [start + (z - start) * i / n for i in range(1, n)] + [z]
+    return made
+
+
 def body(m, low):
+    m.part, m.index, m.root, m.a = BODY, 0, None, 0.0
+    if low == "game":
+        # rings where the outline turns (the head's taper, the hump, the tail's end) and at each groove,
+        # few along the smooth plates; twelve round, the ridge, the keel and the widest on points
+        zs = game_rings(_XS, SEGMENTS, 0.008)
+        section_loft(m, zs, section, 12, "body")
+        return
     step = 0.004 if low else 0.0015
     zs = []
     z = BODY_FROM
@@ -516,7 +568,6 @@ def body(m, low):
         near = min(abs(z - b) for b in SEGMENTS)
         z += step * (0.6 if near < 0.003 and not low else 1.0)
     zs.append(BODY_TO)
-    m.part, m.index, m.root, m.a = BODY, 0, None, 0.0
     section_loft(m, zs, section, 10 if low else 28, "body")
 
 
@@ -525,22 +576,37 @@ def rostrum(m, low):
     root = Vector((0.0, 0.0425, -0.050))
     tip_z = -0.100
     nt = 8 if low else 48
+    # the teeth along its top and beneath: how many to its length (the game model's are fewer, as big)
+    top_teeth, under_teeth = pick(low, (16.0, 22.0), (0.0, 0.0), (7.0, 9.0))
+    ts = None
+    if low == "game":
+        # a row at the foot, the point and the shoulder of every tooth, and a few more towards the tip
+        ts = set([0.0, 0.72, 0.8, 1.0])
+        for n, start, end in ((top_teeth, 0.0, 0.74), (under_teeth, 0.6, 0.96)):
+            i = math.floor(start * n)
+            while i / n < end:
+                for f in (0.0, 0.08):
+                    t = (i + f) / n
+                    if start <= t <= end:
+                        ts.add(round(t, 5))
+                i += 1
+        ts = sorted(ts)
 
     def point(t, u):
         z = root.z + (tip_z - root.z) * t
         # its upper edge: dipping a little, then turned up at the end
         top = root.y + 0.001 - 0.006 * math.sin(math.pi * 0.8 * t) + 0.0045 * t ** 3
         high = 0.0055 * (1.0 - t) ** 0.8 + 0.0004
-        if not low:
+        if low is not True:
             # the teeth: a row along its top for most of its length, a few beneath near its tip
-            f = (t * 16.0) % 1.0
+            f = (t * top_teeth) % 1.0
             top += 0.0011 * (1.0 - f) ** 2 * smooth(0.0, 0.08, f) * (1.0 - smooth(0.6, 0.75, t))
-            g = (t * 22.0) % 1.0
+            g = (t * under_teeth) % 1.0
             high += 0.0008 * (1.0 - g) ** 2 * smooth(0.0, 0.1, g) * smooth(0.62, 0.7, t) * (1.0 - smooth(0.9, 0.96, t)) * (1.0 if u > 0.5 else 0.0)
         return Vector((0.0, top - high * u, z))
 
     m.part, m.index, m.root = ROSTRUM, 0, None
-    blade(m, "rostrum", point, Vector((1.0, 0.0, 0.0)), 0.0013, nt, 2 if low else 4, tags=lambda t, u: (None, t))
+    blade(m, "rostrum", point, Vector((1.0, 0.0, 0.0)), 0.0013, nt, pick(low, 4, 2, 2), tags=lambda t, u: (None, t), ts=ts)
     m.a = 0.0
 
 
@@ -562,9 +628,9 @@ def eyes(m, low):
         foot = Vector((sx * 0.004, 0.0365, -0.0555))
         head = Vector((sx * 0.0085, 0.0375, -0.0615))
         m.part, m.index, m.root, m.a = EYE, 0, None, 0.0
-        tube(m, [foot, head], [0.0022, 0.0021], 4 if low else 10, "eyes", caps=(False, False))
+        tube(m, [foot, head], [0.0022, 0.0021], pick(low, 10, 4, 4), "eyes", caps=(False, False))
         m.a = 1.0
-        ball(m, head + Vector((sx * 0.0008, 0.0, -0.0008)), 0.0034, 0.0034, 0.0034, "eyes", lat=3 if low else 8, lon=5 if low else 12)
+        ball(m, head + Vector((sx * 0.0008, 0.0, -0.0008)), 0.0034, 0.0034, 0.0034, "eyes", lat=pick(low, 8, 3, 6), lon=pick(low, 12, 5, 14))
     m.a = 0.0
 
 
@@ -576,19 +642,24 @@ def feelers(m, low):
         # the long antenna: forward and out, then sweeping out and back past the tail
         base = v(0.0045, 0.028, -0.059)
         guide = [base, v(0.010, 0.032, -0.085), v(0.028, 0.040, -0.095), v(0.048, 0.042, -0.070), v(0.062, 0.038, 0.000), v(0.072, 0.032, 0.100), v(0.078, 0.028, 0.200)]
-        steps = 10 if low else 70
-        path = [through(guide, i / steps) for i in range(steps + 1)]
+        steps = pick(low, 70, 10, 12)
+        # (the game model: its points close together round the bend at its front, few along its long sweep back)
+        ts = pick(low, None, None, (0.0, 0.06, 0.12, 0.18, 0.24, 0.3, 0.36, 0.43, 0.5, 0.62, 0.75, 0.87, 1.0))
+        ts = ts or [i / steps for i in range(steps + 1)]
+        path = [through(guide, t) for t in ts]
         m.part, m.index, m.root = ANTENNA, 0, base
-        tube(m, path, [0.0009 * (1.0 - 0.75 * i / steps) for i in range(steps + 1)], 3 if low else 5, "antennae", along=(0.0, 1.0), caps=(False, True))
+        radii = [0.0009 * (1.0 - 0.75 * t) for t in ts] if low == "game" else [0.0009 * (1.0 - 0.75 * i / steps) for i in range(steps + 1)]
+        tube(m, path, radii, pick(low, 5, 3, 3), "antennae", along=(0.0, 1.0), caps=(False, True))
         # the antennule: a short stalk forward, then two short whips
         base = v(0.0025, 0.0335, -0.058)
         m.index, m.root = 1, base
         stalk = [base, v(0.004, 0.035, -0.072), v(0.0055, 0.036, -0.08)]
-        tube(m, stalk, [0.0011, 0.0009, 0.0007], 3 if low else 6, "antennae", along=(0.0, 0.3))
-        if not low:
+        tube(m, stalk, [0.0011, 0.0009, 0.0007], pick(low, 6, 3, 3), "antennae", along=(0.0, 0.3))
+        if low is not True:
+            n = pick(low, 12, 0, 1)
             for lean, rise in ((1.0, 0.004), (0.4, -0.002)):
-                whip = [bezier([stalk[-1], v(0.006 + 0.004 * lean, 0.037 + rise * 0.5, -0.092), v(0.012 + 0.012 * lean, 0.038 + rise, -0.104)], i / 12) for i in range(13)]
-                tube(m, whip, [0.0005 * (1.0 - 0.7 * i / 12) for i in range(13)], 4, "antennae", along=(0.3, 0.6))
+                whip = [bezier([stalk[-1], v(0.006 + 0.004 * lean, 0.037 + rise * 0.5, -0.092), v(0.012 + 0.012 * lean, 0.038 + rise, -0.104)], i / n) for i in range(n + 1)]
+                tube(m, whip, [0.0005 * (1.0 - 0.7 * i / n) for i in range(n + 1)], pick(low, 4, 0, 3), "antennae", along=(0.3, 0.6))
         # the antennal scale: a flat blade lying forward from the antenna's base
         m.part, m.index, m.root = SCALE, 0, None
         scale_root = v(0.0065, 0.0285, -0.060)
@@ -598,12 +669,13 @@ def feelers(m, low):
             wide = 0.0045 * math.sin(math.pi * min(1.0, 0.15 + 0.85 * t)) ** 0.6 * (1.0 - 0.6 * t) + 0.0004
             return scale_root + Vector((sx * (0.0025 * t + wide * (u - 0.3)), 0.002 * t - 0.001 * u, z - scale_root.z))
 
-        blade(m, "scales", scale_point, Vector((0.0, 1.0, 0.0)), 0.0007, 3 if low else 10, 2 if low else 5, tags=lambda t, u: (None, t))
+        blade(m, "scales", scale_point, Vector((0.0, 1.0, 0.0)), 0.0007, pick(low, 10, 3, 3), pick(low, 5, 2, 1), tags=lambda t, u: (None, t))
         # a mouthpart: leg-like, reaching forward under the head
-        if not low:
+        if low is not True:
             m.part, m.index, m.root = MOUTH, 0, None
-            path = [bezier([v(0.004, 0.021, -0.046), v(0.007, 0.016, -0.066), v(0.006, 0.020, -0.084)], i / 10) for i in range(11)]
-            tube(m, path, [0.0010 * (1.0 - 0.6 * i / 10) for i in range(11)], 5, "mouthparts", along=(0.0, 1.0))
+            n = pick(low, 10, 0, 2)
+            path = [bezier([v(0.004, 0.021, -0.046), v(0.007, 0.016, -0.066), v(0.006, 0.020, -0.084)], i / n) for i in range(n + 1)]
+            tube(m, path, [0.0010 * (1.0 - 0.6 * i / n) for i in range(n + 1)], pick(low, 5, 0, 3), "mouthparts", along=(0.0, 1.0))
     m.a = 0.0
 
 
@@ -630,14 +702,14 @@ def swimmerets(m, low):
                 # hanging down and a little back, its two branches as one paddle
                 return root + Vector((sx * (0.0012 * t + 0.0008 * (u - 0.5)), -long * t, -0.0015 * t + 0.0042 * (u - 0.4) * (1.0 - 0.5 * t)))
 
-            blade(m, "swimmerets", point, Vector((sx * 0.15, 0.0, -1.0)), 0.0006, 2 if low else 7, 1 if low else 3, tags=lambda t, u: (None, t))
+            blade(m, "swimmerets", point, Vector((sx * 0.15, 0.0, -1.0)), 0.0006, pick(low, 7, 2, 2), pick(low, 3, 1, 1), tags=lambda t, u: (None, t))
     m.root = None
 
 
 def tail_fan(m, low):
     """The telson (narrow, pointed) and two pairs of paddles either side of it."""
-    nt = 3 if low else 12
-    nu = 2 if low else 6
+    nt = pick(low, 12, 3, 4)
+    nu = pick(low, 6, 2, 2)
     up = Vector((0.0, 1.0, 0.0))
     m.part, m.root = FAN, None
     m.index = 0
@@ -664,6 +736,7 @@ def tail_fan(m, low):
 
 
 def make(low):
+    FAT[0] = game_fat if low == "game" else (lambda sides: 1.0)
     m = Mesh()
     body(m, low)
     rostrum(m, low)
@@ -671,7 +744,7 @@ def make(low):
     feelers(m, low)
     for sx in (1.0, -1.0):
         for i, (root, heading, reach, knee_high, radius) in enumerate(LEGS):
-            leg(m, LEG, i, (sx * root[0], root[1], root[2]), heading, reach, knee_high, radius, 3 if low else 6, "legs", low)
+            leg(m, LEG, i, (sx * root[0], root[1], root[2]), heading, reach, knee_high, radius, pick(low, 6, 3, 3), "legs", low)
     swimmerets(m, low)
     tail_fan(m, low)
     return m

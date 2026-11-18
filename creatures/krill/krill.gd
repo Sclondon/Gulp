@@ -20,7 +20,7 @@ extends Node3D
 ## For a swarm of hundreds, do not make hundreds of these nodes: draw `Krill.school_mesh()` with
 ## one MultiMesh (GameCommon's Flock takes it as its `custom_mesh`).
 ##
-## The models are creatures/krill/models/krill.glb (and _lo, and _school), built by
+## The models are creatures/krill/models/krill.glb (and _lo, _game and _school), built by
 ## tools/build_krill.py; krill.gdshader draws the markings and moves it.
 
 const MODEL := "res://creatures/krill/models/krill%s.glb"
@@ -57,6 +57,30 @@ const BASKET_DEPTH := 0.0064
 	set(value):
 		low = value
 		_show()
+## The game model (far fewer triangles than the full one, spent where the eye looks: the
+## outline, its big eyes, its basket), shown in place of the full one; `low` still shows the low
+## model. Each model is loaded only when it is first shown: with `game` on, the full model is never
+## loaded.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## 0 its eyes as they are; 1 cartoon eyes (huge glossy black beads, a thin ring of deep blue round
+## a great round pupil, wide awake and wondering: see the README).
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send(&"cartoon_eyes", cartoon_eyes)
+## Where its cartoon eyes look, -1..1 each way: x across each eye towards its head (+), y up.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value.clamp(-Vector2.ONE, Vector2.ONE)
+		_send(&"eye_look", eye_look)
+## A blink: 0 open, 1 shut (a lid the colour of its shell comes down over each eye).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send(&"blink", blink)
 ## How far through a beat it is, 0 to 1 (only the fraction counts).
 var phase := 0.0:
 	set(value):
@@ -68,11 +92,26 @@ static var _meshes := {}
 var _material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
 
 
 ## The full model's mesh, or the low one's (each one surface, to wear `new_material()`).
 static func mesh_of(low_wanted := false) -> Mesh:
 	return _mesh_at(MODEL % ("_lo" if low_wanted else ""))
+
+
+## The game model's mesh (one surface, to wear `new_material()`), without the importer's automatic
+## LODs (a body bent in the shader would bend in straight pieces far off).
+static func game_mesh() -> Mesh:
+	return _mesh_at(MODEL % "_game", true)
+
+
+## A copy of `mesh` without its automatic LODs.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return plain
 
 
 ## The school model's mesh: 51 triangles, the same size and the same way round as the others
@@ -99,9 +138,10 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
 	_show()
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 	_send(&"phase", phase)
 	_send(&"strokes", float(strokes))
 	_send(&"sway", sway)
@@ -117,7 +157,8 @@ func step(_velocity: Vector3, delta: float) -> void:
 
 ## Sets one of the shader's settings: `pump` (how far its basket opens and closes), `feel` (how far
 ## its antennae swing), its colours (`pink`, `deep`, `red`), `spots_show`, `glassy` (how bright the
-## rim is where light glances off it), or `sway`, `curl` for a game's own material.
+## rim is where light glances off it), or `sway`, `curl`,
+## `cartoon_eyes`, `eye_look`, `blink` for a game's own material.
 func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)
 
@@ -132,27 +173,36 @@ func _send(setting: StringName, value: Variant) -> void:
 		_material.set_shader_parameter(setting, value)
 
 
+# Shows the model wanted, making (and loading) it the first time it is wanted.
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if not is_inside_tree():
+		return
+	if low and not _low:
+		_low = _instance_of(mesh_of(true), "KrillLo")
+	elif not low and game and not _game:
+		_game = _instance_of(game_mesh(), "KrillGame")
+	elif not low and not game and not _full:
+		_full = _instance_of(mesh_of(false), "Krill")
+	for shown: MeshInstance3D in [_full, _low, _game]:
+		if shown:
+			shown.visible = shown == (_low if low else (_game if game else _full))
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+func _instance_of(mesh_wanted: Mesh, named: String) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
+	mesh.mesh = mesh_wanted
 	mesh.material_override = _material
 	# (its tail curls under and its limbs swing past where the still model ends)
 	mesh.extra_cull_margin = 0.012
-	mesh.name = "KrillLo" if low_wanted else "Krill"
+	mesh.name = named
 	add_child(mesh)
 	return mesh
 
 
-static func _mesh_at(path: String) -> Mesh:
+static func _mesh_at(path: String, plain := false) -> Mesh:
 	if not _meshes.has(path):
 		var made := (load(path) as PackedScene).instantiate()
 		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
-		_meshes[path] = found.mesh
+		_meshes[path] = without_lods(found.mesh) if plain else found.mesh
 		made.free()
 	return _meshes[path]
