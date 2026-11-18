@@ -77,9 +77,9 @@ func _initialize() -> void:
 			_shots.append([h[0] + ("_lit" if lit else "_unlit"), h[1], at, 0.52, lit])
 	# His left hand close, lit: its back, its palm (from between him and it), the thumb's side (from in front) and
 	# fingertips-on (from below). (Blender's (0.57, -0.06, 0.66) is the game's (0.57, 0.66, 0.06).)
-	var hand_at := Vector3(0.56, 0.67, 0.05)
-	for h in [["hand_back", Vector3(1, 0, 0.35)], ["hand_palm", Vector3(-1, 0, -0.1)], ["hand_thumb", Vector3(0.1, 0, 1)], ["hand_tips", Vector3(0.15, -1, 0.1)]]:
-		_shots.append([h[0], (h[1] as Vector3).normalized(), hand_at, 0.24, true, 0.12])
+	var hand_at := Vector3(0.6, 0.6, 0.05)
+	for h in [["hand_back", Vector3(1, 0, 0.35)], ["hand_palm", Vector3(-1, 0, -0.1)], ["hand_thumb", Vector3(0.1, 0, 1)], ["hand_tips", Vector3(0.15, -1, 0.1)], ["hand_rear", Vector3(0.1, 0, -1)]]:
+		_shots.append([h[0], (h[1] as Vector3).normalized(), hand_at, 0.32, true, 0.12])
 	# (seventh round) His bare head, the cap hidden: front, three-quarter, his left side, the back and from above.
 	for h in [["bare_front", Vector3(0, 0, 1)], ["bare_three_quarter", Vector3(-0.62, 0, 0.78)], ["bare_side", Vector3(1, 0, 0)], ["bare_back", Vector3(0, 0, -1)], ["bare_qback", Vector3(0.75, 0, -0.66)], ["bare_above", Vector3(0, 1, 0.12)]]:
 		_shots.append([h[0], (h[1] as Vector3).normalized(), Vector3(0, 1.44, 0.06), 0.5, true, 5.0, true])

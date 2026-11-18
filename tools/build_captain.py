@@ -1106,6 +1106,8 @@ def bridge_uneven(M, a, b, part, axis):
 def hand(M, wrist_ring, side, W, L, joints, pose="relaxed"):
     """His hand on the wrist ring: hand_local's hand, its back facing out and a little forward (36 degrees round from
     straight out), joined to the forearm's last ring by a zipper of triangles."""
+    if HAND_FIT:
+        return place_base_hand(M, wrist_ring, side, W, L, joints)
     sfx = "_l" if side > 0 else "_r"
     part = "hand" + sfx
     X = Vector((1, 0, 0))
@@ -1141,6 +1143,852 @@ def hand(M, wrist_ring, side, W, L, joints, pose="relaxed"):
     joints["thumb_back%s" % sfx] = np.array(mirror_x(Wv * info["thumb_back"][1] + Tv * info["thumb_back"][2] + Lv * info["thumb_back"][0], side))
     joints["hand_frame%s" % sfx] = tuple(np.array(mirror_x(v, side)) for v in (Tv, Wv, Lv))
     joints["knuckles%s" % sfx] = Vector(world(np.mean([Pl[i] for i in info["rings"][-1][:9]], axis=0)))
+
+
+# ------------------------------------------------------------------------------------------------------------------
+# Thirteenth round (the user: "his hands still seem poor quality compared to like twilight princess hands", "Captains
+# current hands also seem too small"): his hand is Blender Studio's `Hand - Stylized` (CC0) fitted STRAIGHT to the hands
+# sheet, not to the lofted hand, by the method that worked for the older brother (tools/build_brother.py: base_hand_fit,
+# pose_hand, place_base_hand; ported here, that file left alone). The sheet's back, palm and thumb-side views are first
+# stood upright side by side in one working picture (fingers up; the back view with the thumb to the right; the palm
+# view mirrored, so one projection serves both; the thumb-side view with the back of the hand to the right). The hand
+# is worked on in its own frame: a across toward the thumb, b out of its back, l along from the wrist; on him (a, b, l)
+# is hand()'s (Wd, Tb, L). Fitted flat in the sheet's own pose, painted from the sheet in that pose, then posed by
+# turning the digits about their joints.
+HAND_FIT = "--loft-hand" not in ARGS
+HANDS_SHEET = os.path.join(ART, "concept_captain_hands.jpg")
+HAND_SX = HAND_PX                  # metres a pixel of the hands sheet (its wrist to middle fingertip, 20.3 cm)
+HAND_LEN = 0.203
+HAND_LOOP_L = 0.012                # the hand's open loop stands this far beyond the wrist ring
+HAND_UNSUBDIV = 2
+HAND_TOP = 80                      # each view's top row in the working picture
+# each view: its box in the sheet (columns, rows), quarter turns (numpy's rot90: + counter-clockwise), mirrored, and the
+# column it is put at in the working picture
+HAND_VIEW_BOX = {"back": ((150, 110, 1060, 780), 1, False, 50), "palm": ((1150, 70, 1820, 860), 0, True, 800),
+                 "thumb": ((1850, 230, 2700, 620), -1, False, 1550)}
+HAND_COLS = {"back": (50, 720), "palm": (800, 1470), "thumb": (1550, 1940)}
+HAND_ROWS = (70, 650)              # rows fitted and compared (the wrist's crease is about row 700)
+HAND_POSE_RELAXED = {"curl": (0.22, 0.3, 0.22), "together": 0.85, "thumb_in": 0.45, "thumb_fwd": 0.5, "thumb_curl": 0.2}
+HAND_POSE_THUMBVIEW = {"curl": (0.12, 0.08, 0.06), "together": 0.0, "thumb_in": 0.0, "thumb_fwd": 0.0, "thumb_curl": 0.1}
+HAND_THUMB_FAT = (1.12, 1.3)       # the thumb fuller round its line: its back half, its palm half
+HAND_WRIST_EASE = (0.75, 0.35)    # how far the forearm's last ring and the one before it are drawn to the hand's wrist
+HB = {}
+
+
+def _grow(mk, n):
+    for _ in range(n):
+        mk = mk | np.roll(mk, 1, 0) | np.roll(mk, -1, 0) | np.roll(mk, 1, 1) | np.roll(mk, -1, 1)
+    return mk
+
+
+def _shrink(mk, n):
+    for _ in range(n):
+        mk = mk & np.roll(mk, 1, 0) & np.roll(mk, -1, 0) & np.roll(mk, 1, 1) & np.roll(mk, -1, 1)
+    return mk
+
+
+def _fill_holes(mk):
+    reach = np.zeros_like(mk)
+    reach[0], reach[-1], reach[:, 0], reach[:, -1] = ~mk[0], ~mk[-1], ~mk[:, 0], ~mk[:, -1]
+    free = ~mk
+    for _ in range(4000):
+        n = reach | ((np.roll(reach, 1, 0) | np.roll(reach, -1, 0) | np.roll(reach, 1, 1) | np.roll(reach, -1, 1)) & free)
+        if (n == reach).all():
+            break
+        reach = n
+    return ~reach
+
+
+def hand_sheet():
+    """The working picture (HB["pix"], HB["mask"]): the hands sheet's back, palm and thumb-side views stood upright;
+    HB["tip"] the back view's middle fingertip; HB["ink"] the anchor tattoo's pixels (left out of the paint: tattoos
+    are a separate movable overlay)."""
+    if "pix" in HB:
+        return
+    raw = load_picture(HANDS_SHEET)
+    bg = np.median(np.concatenate([raw[:40, :40].reshape(-1, 3), raw[-40:, -40:].reshape(-1, 3)]), 0)
+    d = np.abs(raw - bg).max(-1)
+    m = d > 0.07
+    lines = np.where((np.abs(raw[:, 20:80] - bg).max(-1) > 0.025).mean(1) > 0.7)[0]
+    for r in lines:
+        m[max(r - 2, 0):r + 3] = d[max(r - 2, 0):r + 3] > 0.16
+    H, W = 1040, 2000
+    pix = np.ones((H, W, 3), np.float32) * bg
+    mask = np.zeros((H, W), bool)
+    for name, ((x0, y0, x1, y1), k, flip, c0) in HAND_VIEW_BOX.items():
+        sub = _fill_holes(_grow(_shrink(m[y0:y1, x0:x1], 2), 2))
+        p = raw[y0:y1, x0:x1]
+        if flip:
+            sub, p = sub[:, ::-1], p[:, ::-1]
+        sub, p = np.rot90(sub, k), np.rot90(p, k)
+        top = int(np.where(sub.any(1))[0][0])
+        r0 = HAND_TOP - top
+        h_, w_ = sub.shape
+        rs, re_ = max(r0, 0), min(r0 + h_, H)
+        pix[rs:re_, c0:c0 + w_] = p[rs - r0:re_ - r0]
+        mask[rs:re_, c0:c0 + w_] = sub[rs - r0:re_ - r0]
+    lum = pix.mean(-1)
+    ink = mask & ((pix[..., 0] - pix[..., 2]) < 0.035) & (lum < 0.5)
+    ink = _grow(ink, 5) & mask
+    c0, c1 = HAND_COLS["back"]
+    rows = np.where(mask[:, c0:c1].any(1))[0]
+    cols = np.where(mask[rows[0]:rows[0] + 4, c0:c1].any(0))[0]
+    HB.update(pix=pix, mask=mask, ink=ink, tip=(float(cols.mean() + c0), float(rows[0])))
+    if OUT:
+        os.makedirs(OUT, exist_ok=True)
+        show = pix * 0.6
+        show[mask] = show[mask] * 0.6 + np.array((0.4, 0.05, 0.05))
+        show[ink] = (0.1, 0.9, 0.2)
+        save_rgb(os.path.join(OUT, "hand_sheet.png"), show)
+    print("CAPTAIN hands sheet stood upright: tip %s, ink %d px" % (HB["tip"], int(ink.sum())))
+
+
+def load_base_hand():
+    """`Hand - Stylized` from the bundle, un-subdivided HAND_UNSUBDIV times: its points (the bundle's frame) and faces."""
+    want = "Hand-Stylized"
+    with bpy.data.libraries.load(BUNDLE, link=False) as (src, dst):
+        dst.objects = [n for n in src.objects if n.replace(" ", "") == want]
+    o = dst.objects[0]
+    bpy.context.scene.collection.objects.link(o)
+    o.modifiers.clear()
+    if o.data.shape_keys:
+        for k in o.data.shape_keys.key_blocks:
+            k.value = 0.0
+    m = o.modifiers.new("un", "DECIMATE")
+    m.decimate_type = "UNSUBDIV"
+    m.iterations = HAND_UNSUBDIV
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    ev = o.evaluated_get(dg)
+    me = ev.to_mesh()
+    P = np.array([tuple(v.co) for v in me.vertices], float)
+    faces = [list(p.vertices) for p in me.polygons]
+    ev.to_mesh_clear()
+    bpy.data.objects.remove(o, do_unlink=True)
+    return P, faces
+
+
+def sheet_fingers():
+    """The back view's digits as chains of runs followed down from their tips: each one's tip (column, row), its
+    middle line's direction toward the tip (in the picture), its median width (pixels) and the row it joins the palm.
+    In order little, ring, middle, index, thumb."""
+    m = HB["mask"]
+    c0, c1 = HAND_COLS["back"]
+    chains = []
+    for r in range(70, 570):
+        runs = runs_of(m[r], c0, c1, 4)
+        claimed = {}
+        for ci, ch in enumerate(chains):
+            if ch["end"] is not None:
+                continue
+            last = ch["pts"][-1]
+            hit = [k for k, (a, b) in enumerate(runs) if a - 3 <= last[0] <= b + 3]
+            if not hit:
+                ch["end"] = r
+                continue
+            claimed.setdefault(hit[0], []).append(ci)
+        for k, (a, b) in enumerate(runs):
+            owners = claimed.get(k, [])
+            if len(owners) > 1:
+                for ci in owners:
+                    chains[ci]["end"] = r
+            elif len(owners) == 1:
+                chains[owners[0]]["pts"].append(((a + b + 1) / 2.0, r, b + 1 - a))
+            else:
+                chains.append({"top": r, "pts": [((a + b + 1) / 2.0, r, b + 1 - a)], "end": None})
+    chains = [c for c in chains if len(c["pts"]) > 37]
+    out = []
+    for c in chains:
+        pts = np.array(c["pts"])
+        use = pts[15:-8] if len(pts) > 37 else pts
+        k, _ = np.polyfit(use[:, 1], use[:, 0], 1)
+        d = np.array((-k, -1.0))
+        d /= np.linalg.norm(d)
+        out.append({"tip": (float(pts[0, 0]), float(c["top"])), "dir": d, "width": float(np.median(use[:, 2])),
+                    "join": int(c["end"] or 570), "col": float(pts[:, 0].mean())})
+    fingers = sorted([c for c in out if c["tip"][1] < 300], key=lambda c: c["col"])
+    thumb = [c for c in out if c["tip"][1] >= 300]
+    print("CAPTAIN sheet digits: %s" % json.dumps([(round(c["tip"][0]), round(c["tip"][1]), round(c["width"]), c["join"], [round(v, 2) for v in c["dir"]]) for c in fingers + thumb]))
+    if len(fingers) != 4 or not thumb:
+        raise RuntimeError("the hands sheet's back view did not give four fingers and a thumb")
+    return fingers + [max(thumb, key=lambda c: c["col"])]
+
+
+def to_back_view(C):
+    t = HB["tip_mid"]
+    return np.stack([HB["tip"][0] + (C[:, 0] - t[0]) / HAND_SX, HB["tip"][1] - (C[:, 2] - t[2]) / HAND_SX], 1)
+
+
+def from_back_view(c, r):
+    t = HB["tip_mid"]
+    return np.array((t[0] + (c - HB["tip"][0]) * HAND_SX, 0.0, t[2] - (r - HB["tip"][1]) * HAND_SX))
+
+
+def rot_about(points, pivot, axis, angle, weight):
+    R = np.array(Matrix.Rotation(angle, 3, Vector(axis)))
+    Q = (points - pivot) @ R.T + pivot
+    return points * (1 - weight[:, None]) + Q * weight[:, None]
+
+
+def digit_axis(C, ids):
+    Q = C[ids]
+    c = Q.mean(0)
+    _, _, vt = np.linalg.svd(Q - c)
+    d = vt[0]
+    if d[2] < 0:
+        d = -d
+    return c, d
+
+
+def base_hand_fit():
+    """The base hand in its own frame fitted to the sheet's back view in the sheet's pose (HB: C, flat, faces,
+    label, J, loop); then its back, palm and thumb-side silhouettes compared."""
+    if "flat" in HB:
+        return
+    hand_sheet()
+    P, faces = load_base_hand()
+    C = np.stack([P[:, 0], -P[:, 1], -P[:, 2]], 1)
+    keep = [k for k, f in enumerate(faces) if C[f, 2].min() > 0.006]
+    used = sorted({v for k in keep for v in faces[k]})
+    remap = {v: i for i, v in enumerate(used)}
+    C = C[used]
+    faces = [[remap[v] for v in faces[k]] for k in keep]
+    loop = max(loops_of(faces), key=len)
+    print("CAPTAIN base hand: %d points, %d faces, %d triangles; wrist loop %d" % (len(C), len(faces), sum(len(f) - 2 for f in faces), len(loop)))
+    adj = {}
+    for f in faces:
+        for i in range(len(f)):
+            a, b = f[i], f[(i + 1) % len(f)]
+            adj.setdefault(a, set()).add(b)
+            adj.setdefault(b, set()).add(a)
+    far = set(np.where(C[:, 2] > 0.145)[0].tolist())
+    comps = []
+    while far:
+        s = far.pop()
+        st, comp = [s], [s]
+        while st:
+            v = st.pop()
+            for w in adj.get(v, ()):
+                if w in far:
+                    far.remove(w)
+                    st.append(w)
+                    comp.append(w)
+        comps.append(comp)
+    comps = sorted([c for c in comps if len(c) > 8], key=lambda c: C[c, 0].mean())
+    if len(comps) != 4:
+        raise RuntimeError("base hand: %d fingers found" % len(comps))
+    label = np.array([""] * len(C), dtype=object)
+    names = ("little", "ring", "middle", "index")
+    axes = {}
+    for n, comp in zip(names, comps):
+        label[comp] = n
+        axes[n] = digit_axis(C, comp)
+    thumb = ((C[:, 0] > 0.05) | ((C[:, 0] > 0.04) & (C[:, 1] < -0.012))) & (C[:, 2] > 0.03) & (C[:, 2] < 0.15) & (label == "")
+    label[thumb] = "thumb"
+    for v in np.where((label == "") & (C[:, 2] > 0.112))[0]:
+        best = None
+        for n in names:
+            c, d = axes[n]
+            t = (C[v, 2] - c[2]) / d[2]
+            a = c[0] + d[0] * t
+            if best is None or abs(C[v, 0] - a) < best[0]:
+                best = (abs(C[v, 0] - a), n)
+        label[v] = best[1]
+    # (the triangle budget, 300 to 450 a hand: one ring of each finger taken out, the one between its middle and end
+    # joints' rings, third from the tip; each of its points merged into its neighbour toward the palm)
+    C, faces, label, loop = drop_finger_rings(C, faces, label, loop, names)
+    C, faces, label, loop = drop_finger_rings(C, faces, label, loop, ("thumb",), nth=2)
+    axes = {n: digit_axis(C, np.where(label == n)[0]) for n in names}
+    axes["thumb"] = digit_axis(C, np.where((label == "thumb") & (C[:, 2] > 0.06))[0])
+    print("CAPTAIN base hand labels: %s; %d triangles" % ({n: int((label == n).sum()) for n in names + ("thumb", "")}, sum(len(f) - 2 for f in faces)))
+    J = {}
+    for n in names + ("thumb",):
+        ids = np.where(label == n)[0]
+        c, d = axes[n]
+        s = (C[ids] - c) @ d
+        tip = c + d * s.max()
+        if n == "thumb":
+            root = c + d * s.min()
+            ln = s.max() - s.min()
+            J[n] = [root, root + d * ln * 0.42, root + d * ln * 0.74, tip]
+        else:
+            t = (0.122 - c[2]) / d[2]
+            k = c + d * t
+            ln = float(np.dot(tip - k, d))
+            J[n] = [k, k + d * ln * 0.45, k + d * ln * 0.76, tip]
+    # 1. scaled to the sheet: l from the loop to the middle tip, a by the palm's width at the knuckles, b by the wrist
+    digits = sheet_fingers()
+    l_loop = float(C[loop, 2].mean())
+    sl = (HAND_LEN - HAND_LOOP_L) / (J["middle"][3][2] - l_loop)
+    webs = sorted(d["join"] for d in digits[:4])
+    r_k = webs[1] + 27
+    run = run_near(HB["mask"], r_k, HB["tip"][0], *HAND_COLS["back"])
+    palm_s = (run[1] + 1 - run[0]) * HAND_SX
+    band = (np.abs(C[:, 2] - J["middle"][0][2]) < 0.008) & (label != "thumb")
+    sa = palm_s / float(C[band, 0].max() - C[band, 0].min())
+    tc0, tc1 = HAND_COLS["thumb"]
+    rr = run_near(HB["mask"], 636, (tc0 + tc1) / 2, tc0, tc1)
+    wrist_s = (rr[1] + 1 - rr[0]) * HAND_SX if rr else 0.05
+    sb = wrist_s / float(C[loop, 1].max() - C[loop, 1].min())
+    sb = float(np.clip(sb, 0.8 * min(sa, sl), 1.25 * max(sa, sl)))
+    o = np.array((0.0, 0.0, l_loop))
+    S3 = np.array((sa, sb, sl))
+    C = (C - o) * S3 + np.array((0.0, 0.0, HAND_LOOP_L))
+    J = {n: [(p - o) * S3 + np.array((0.0, 0.0, HAND_LOOP_L)) for p in js] for n, js in J.items()}
+    print("CAPTAIN hand scaled: across %.3f, back %.3f, along %.3f (sheet palm %.1f cm at row %d, wrist %.1f cm)" % (sa, sb, sl, palm_s * 100, r_k, wrist_s * 100))
+    HB["tip_mid"] = J["middle"][3].copy()
+    # 2. each digit turned (in the hand's plane) at its drawn tip and sized to its drawn width
+    for n, dg in zip(names + ("thumb",), digits):
+        ids = np.where(label == n)[0]
+        piv = J[n][0]
+        dm = J[n][3] - piv
+        dm_len = float(np.linalg.norm(dm))
+        dm /= dm_len
+        tip_s = from_back_view(*dg["tip"])
+        ds = (tip_s - piv) * np.array((1.0, 0.0, 1.0))
+        want = float(np.linalg.norm(ds))
+        ds /= want
+        a0 = math.atan2(dm[0], dm[2])
+        a1 = math.atan2(ds[0], ds[2])
+        s_all = (C - piv) @ dm
+        w = np.zeros(len(C))
+        w[ids] = smooth01(-0.014, 0.006, s_all[ids])
+        C = rot_about(C, piv, (0.0, 1.0, 0.0), a1 - a0, w)
+        J[n] = [J[n][0]] + [rot_about(np.array([p]), piv, (0.0, 1.0, 0.0), a1 - a0, np.ones(1))[0] for p in J[n][1:]]
+        k = want / dm_len
+        s = (C - piv) @ ds
+        grow = np.where(s > 0, s * (k - 1.0), 0.0) * w
+        C = C + ds[None, :] * grow[:, None]
+        J[n] = [J[n][0]] + [p + ds * max(float(np.dot(p - piv, ds)), 0) * (k - 1.0) for p in J[n][1:]]
+        across = np.array((ds[2], 0.0, -ds[0]))
+        near = ids[np.abs(((C[ids] - piv) @ ds) - 0.5 * want) < 0.012]
+        have = float(((C[near] - piv) @ across).max() - ((C[near] - piv) @ across).min()) if len(near) > 2 else 0.0
+        want_w = dg["width"] * HAND_SX * abs(float(dg["dir"][1]))
+        if have > 0.005:
+            g = float(np.clip(want_w / have, 0.75, 1.5))
+            ax_c = (C - piv) @ across
+            cen = float(((C[near] - piv) @ across).mean())
+            C = C + across[None, :] * ((ax_c - cen) * (g - 1.0) * w)[:, None]
+            # (and as thick as wide by the same share: his fingers are round sausages, not flat)
+            bb = C[:, 1] - float(C[near, 1].mean())
+            C[:, 1] = C[:, 1] + bb * (g - 1.0) * w * 0.8
+        if n == "thumb":
+            # (his thumb a heavy one, the thenar's pad with it: fuller round its own line, most toward the palm)
+            c_, d_ = digit_axis(C, ids)
+            r_ = (C[ids] - c_) - np.outer((C[ids] - c_) @ d_, d_)
+            fat = np.where(r_[:, 1] < 0, HAND_THUMB_FAT[1], HAND_THUMB_FAT[0])
+            C[ids] = C[ids] + r_ * (fat - 1.0)[:, None] * w[ids][:, None]
+        print("CAPTAIN hand %s: turned %.1f degrees, length times %.2f" % (n, math.degrees(a1 - a0), k))
+    HB.update(C=C, faces=faces, label=label, J=J, loop=loop)
+    # 3. the back view's outline: outline points moved onto the sheet's, the rest following
+    for _ in range(12):
+        hand_outline_round()
+    HB["flat"] = HB["C"].copy()
+    # 4. (the brother's hand was 5 cm off in its thumb-side view) the thumb-side view's pose found by trying, then the
+    # hand's thickness pulled onto that view's outline (the back of the hand and the palm, front to back only)
+    hand_thumb_fit()
+    hand_silhouettes()
+
+
+def thumb_view_points(C, shift=(0.0, 0.0)):
+    c0, c1 = HAND_COLS["thumb"]
+    t = HB["tip_mid"]
+    b0 = float(HB["flat"][HB["loop"], 1].mean())
+    return np.stack([(c0 + c1) / 2.0 + (C[:, 1] - b0) / HAND_SX + shift[0], HB["tip"][1] - (C[:, 2] - t[2]) / HAND_SX + shift[1]], 1)
+
+
+def thumb_target():
+    c0, c1 = HAND_COLS["thumb"]
+    r0, r1 = HAND_ROWS
+    T = np.zeros_like(HB["mask"])
+    T[r0:r1, c0:c1] = HB["mask"][r0:r1, c0:c1]
+    return T
+
+
+def _iou(P2, tris, T):
+    zb, _ = raster(P2, np.zeros(len(P2)), tris, T.shape)
+    m = np.isfinite(zb)
+    r0, r1 = HAND_ROWS
+    m[:r0] = False
+    m[r1:] = False
+    return float((m & T).sum()) / max(float((m | T).sum()), 1.0)
+
+
+def hand_thumb_fit():
+    """The thumb-side view: its shift and pose (finger curl, the thumb's swing and curl) by trying, kept as
+    HAND_POSE_THUMBVIEW; then the back and palm surfaces moved front to back onto its outline."""
+    tris = hand_tris_of(HB["faces"])
+    T = thumb_target()
+    C0, _ = pose_hand(HB["flat"], HB["J"], HB["label"], HAND_POSE_THUMBVIEW)
+    best = (-1, (0, 0))
+    for dx in range(-120, 121, 8):
+        for dy in range(-30, 31, 10):
+            s = _iou(thumb_view_points(C0, (dx, dy)), tris, T)
+            if s > best[0]:
+                best = (s, (dx, dy))
+    shift = best[1]
+    pose = dict(HAND_POSE_THUMBVIEW)
+    for it in range(2):
+        for key, vals in (("thumb_fwd", (-0.3, 0.0, 0.3, 0.6, 0.9, 1.2)), ("thumb_in", (-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3)),
+                          ("thumb_curl", (0.0, 0.15, 0.3, 0.5)), ("curl", ((-0.1, 0, 0), (0, 0, 0), (0.12, 0.08, 0.06), (0.25, 0.12, 0.08)))):
+            scores = []
+            for v_ in vals:
+                p = dict(pose)
+                p[key] = v_
+                C, _ = pose_hand(HB["flat"], HB["J"], HB["label"], p)
+                scores.append(_iou(thumb_view_points(C, shift), tris, T))
+            pose[key] = vals[int(np.argmax(scores))]
+        C, _ = pose_hand(HB["flat"], HB["J"], HB["label"], pose)
+        best = (-1, shift)
+        for dx in range(shift[0] - 16, shift[0] + 17, 4):
+            for dy in range(shift[1] - 12, shift[1] + 13, 4):
+                s = _iou(thumb_view_points(C, (dx, dy)), tris, T)
+                if s > best[0]:
+                    best = (s, (dx, dy))
+        shift = best[1]
+    HAND_POSE_THUMBVIEW.update(pose)
+    print("CAPTAIN thumb-side view: pose %s, shift %s, overlap %.3f" % (json.dumps(pose), shift, best[0]))
+    # the thickness: points facing front or back (not the thumb's) moved along b onto the view's outline
+    lab = HB["label"]
+    E = edges_of(HB["faces"])
+    deg = np.bincount(E.ravel(), minlength=len(lab)).astype(float)
+    loopset = list(HB["loop"])
+    h, w = T.shape
+    for rnd in range(8):
+        C, _ = pose_hand(HB["flat"], HB["J"], HB["label"], HAND_POSE_THUMBVIEW)
+        P2 = thumb_view_points(C, shift)
+        zb, _ = raster(P2, -C[:, 0], tris, T.shape)
+        R = np.isfinite(zb)
+        N = normals_of(C, tris)
+        move = np.zeros(len(C))
+        has = np.zeros(len(C), bool)
+        for v in range(len(C)):
+            if abs(N[v, 1]) < 0.55 or not (HAND_ROWS[0] + 15 < P2[v, 1] < HAND_ROWS[1] - 5):
+                continue
+            sgn = 1.0 if N[v, 1] > 0 else -1.0
+            p = P2[v]
+            q = p + np.array((sgn * 2.0, 0.0))
+            if not (0 <= int(q[0]) < w) or R[int(q[1]), int(q[0])]:
+                continue
+            inside = T[int(p[1]), int(p[0])]
+            dist = None
+            for k in range(1, 60):
+                cc = int(p[0] + sgn * k) if inside else int(p[0] - sgn * k)
+                hit = T[int(p[1]), min(max(cc, 0), w - 1)]
+                if (inside and not hit) or (not inside and hit):
+                    dist = (k - 0.5) if inside else -(k - 0.5)
+                    break
+            if dist is None:
+                continue
+            move[v] = sgn * dist * HAND_SX
+            has[v] = True
+        D = move.copy()
+        Wt = has * 3.0
+        for _ in range(20):
+            acc = np.zeros_like(D)
+            np.add.at(acc, E[:, 0], D[E[:, 1]])
+            np.add.at(acc, E[:, 1], D[E[:, 0]])
+            D = (Wt * move + acc) / np.maximum(Wt + deg, 1e-9)
+            D[loopset] = 0.0
+        HB["flat"][:, 1] += D * 0.6
+    HB["C"] = HB["flat"].copy()
+
+
+def drop_finger_rings(C, faces, label, loop, names, nth=3):
+    """Each finger's ring `nth` from its tip collapsed onto the next ring toward the palm (rings walked from the tip's
+    cap by neighbours); gives the compacted points, faces, labels and wrist loop."""
+    adj = {}
+    for f in faces:
+        for i in range(len(f)):
+            a, b = f[i], f[(i + 1) % len(f)]
+            adj.setdefault(a, set()).add(b)
+            adj.setdefault(b, set()).add(a)
+    merge = {}
+    for n in names:
+        ids = set(np.where(label == n)[0].tolist())
+        cap = max((f for f in faces if all(v in ids for v in f)), key=lambda f: C[f, 2].mean())
+        rings = [set(cap)]
+        prev = set()
+        while len(rings) <= nth + 1:
+            nxt = set()
+            for v in rings[-1]:
+                nxt |= adj[v]
+            nxt -= rings[-1] | prev
+            prev = rings[-1]
+            rings.append(nxt)
+        a, b = rings[nth], rings[nth + 1]
+        if len(a) != len(b) or len(a) < 3:
+            print("CAPTAIN finger %s: rings %s, none taken out" % (n, [len(r) for r in rings]))
+            continue
+        for v in a:
+            w = [u for u in adj[v] if u in b]
+            if len(w) == 1:
+                merge[v] = w[0]
+    out = []
+    for f in faces:
+        g = [merge.get(v, v) for v in f]
+        h = []
+        for v in g:
+            if v not in h:
+                h.append(v)
+        if len(h) >= 3:
+            out.append(h)
+    used = sorted({v for f in out for v in f})
+    remap = {v: i for i, v in enumerate(used)}
+    return (C[used], [[remap[v] for v in f] for f in out], label[used], [remap[merge.get(v, v)] for v in loop])
+
+
+def hand_tris_of(faces):
+    out = []
+    for f in faces:
+        for i in range(1, len(f) - 1):
+            out.append((f[0], f[i], f[i + 1]))
+    return out
+
+
+def hand_outline_round():
+    C, faces = HB["C"], HB["faces"]
+    tris = hand_tris_of(faces)
+    P2 = to_back_view(C)
+    T = np.zeros_like(HB["mask"])
+    c0, c1 = HAND_COLS["back"]
+    r0, r1 = HAND_ROWS
+    T[r0:r1, c0:c1] = HB["mask"][r0:r1, c0:c1]
+    zb, _ = raster(P2, -C[:, 1], tris, T.shape)
+    R = np.isfinite(zb)
+    N = normals_of(C, tris)
+    d2 = np.stack([N[:, 0], -N[:, 2]], 1)
+    L = np.linalg.norm(d2, axis=1)
+    move = np.zeros_like(C)
+    has = np.zeros(len(C), bool)
+    h, w = T.shape
+    loopset = set(HB["loop"])
+    for v in range(len(C)):
+        if v in loopset or L[v] < 0.5 or not (r0 + 15 < P2[v, 1] < r1 - 5):
+            continue
+        p = P2[v]
+        dirn = d2[v] / L[v]
+        q = p + dirn * 2.0
+        if not (0 <= int(q[1]) < h and 0 <= int(q[0]) < w) or R[int(q[1]), int(q[0])]:
+            continue
+        dist = None
+        inside = T[int(p[1]), int(p[0])]
+        for k in range(1, 87):
+            qq = p + dirn * k if inside else p - dirn * k
+            hit = T[min(max(int(qq[1]), 0), h - 1), min(max(int(qq[0]), 0), w - 1)]
+            if (inside and not hit) or (not inside and hit):
+                dist = (k - 0.5) if inside else -(k - 0.5)
+                break
+        if dist is None:
+            continue
+        move[v] = np.array((dirn[0], 0.0, -dirn[1])) * dist * HAND_SX
+        has[v] = True
+    E = edges_of(faces)
+    D = move.copy()
+    Wt = has * 3.0
+    deg = np.bincount(E.ravel(), minlength=len(C)).astype(float)
+    for _ in range(20):
+        acc = np.zeros_like(D)
+        np.add.at(acc, E[:, 0], D[E[:, 1]])
+        np.add.at(acc, E[:, 1], D[E[:, 0]])
+        D = (Wt[:, None] * move + acc) / np.maximum(Wt + deg, 1e-9)[:, None]
+        D[list(loopset)] = 0.0
+    HB["C"] = C + D * 0.7
+    return int(has.sum())
+
+
+def pose_hand(C, J, label, pose):
+    """The hand in a pose: the fingers drawn together toward the middle finger and curled at each joint toward the
+    palm; the thumb swung in front of the palm and curled. Each digit turned about its joints with smooth weights
+    (no warping). Gives (points, joints)."""
+    C = C.copy()
+    J = {n: [p.copy() for p in js] for n, js in J.items()}
+    up = np.array((0.0, 1.0, 0.0))
+    mid_d = J["middle"][3] - J["middle"][0]
+    mid_d /= np.linalg.norm(mid_d)
+    for n in ("little", "ring", "middle", "index", "thumb"):
+        ids = np.where(label == n)[0]
+        js = J[n]
+        d = js[3] - js[0]
+        d /= np.linalg.norm(d)
+        if n == "thumb":
+            s = (C[ids] - js[0]) @ d
+            w = smooth01(-0.01, 0.01, s)
+            for ax, ang in ((up, -pose["thumb_in"]), (mid_d, pose["thumb_fwd"])):
+                k_ = 1 if ax is mid_d else 0
+                test = rot_about(np.array([js[3]]), js[0], ax, 0.1, np.ones(1))[0]
+                ang = -abs(ang) if (test[k_] - js[3][k_]) > 0 else abs(ang)
+                C[ids] = rot_about(C[ids], js[0], ax, ang, w)
+                js = [js[0]] + [rot_about(np.array([p]), js[0], ax, ang, np.ones(1))[0] for p in js[1:]]
+            curls = (pose["thumb_curl"],) * 2
+            joints_k = (1, 2)
+        else:
+            if pose["together"]:
+                ang = -math.atan2(np.cross(d, mid_d)[1], np.dot(d, mid_d)) * pose["together"]
+                s = (C[ids] - js[0]) @ d
+                w = smooth01(-0.012, 0.004, s)
+                C[ids] = rot_about(C[ids], js[0], up, -ang, w)
+                js = [js[0]] + [rot_about(np.array([p]), js[0], up, -ang, np.ones(1))[0] for p in js[1:]]
+            curls = pose["curl"]
+            joints_k = (0, 1, 2)
+        for k, ang in reversed(list(zip(joints_k, curls))):
+            d = js[3] - js[k]
+            d /= np.linalg.norm(d)
+            ax = np.cross(d, up)
+            ax /= max(np.linalg.norm(ax), 1e-9)
+            test = rot_about(np.array([js[3]]), js[k], ax, 0.1, np.ones(1))[0]
+            if test[1] > js[3][1]:
+                ax = -ax
+            s = (C[ids] - js[k]) @ d
+            w = smooth01(-0.004, 0.004, s) if k else smooth01(-0.012, 0.004, s)
+            C[ids] = rot_about(C[ids], js[k], ax, ang, w)
+            js = js[:k + 1] + [rot_about(np.array([p]), js[k], ax, ang, np.ones(1))[0] for p in js[k + 1:]]
+        J[n] = js
+    return C, J
+
+
+def hand_gaps(model, target, rows, scale):
+    """The worst and the 99th-percentile distance (cm) between the two outlines, both ways, over the rows given."""
+    keep = np.zeros(model.shape[0], bool)
+    keep[rows[0] + 3:rows[1] - 3] = True
+    mo = outline_of(model) & keep[:, None]
+    to = outline_of(target) & keep[:, None]
+    out = []
+    for a, b in ((mo, to), (to, mo)):
+        by, bx = np.where(b)
+        if not len(by):
+            return 0.0, 0.0
+        kd = kdtree.KDTree(len(by))
+        for i in range(len(by)):
+            kd.insert((float(bx[i]), float(by[i]), 0.0), i)
+        kd.balance()
+        ay, ax = np.where(a)
+        out.append(np.array([kd.find((float(ax[i]), float(ay[i]), 0.0))[2] for i in range(len(ay))]))
+    d = np.concatenate(out)
+    return float(d.max()) * scale * 100, float(np.percentile(d, 99)) * scale * 100
+
+
+def hand_silhouettes():
+    """The fitted hand's back, palm and thumb-side silhouettes against the sheet's (the thumb side in the sheet's own
+    bend): difference pictures (to --out) and the worst gaps; also keeps where each view lands (HB["views"])."""
+    res = {}
+    HB["views"] = {}
+    tris = hand_tris_of(HB["faces"])
+    r0, r1 = HAND_ROWS
+    for v, pose in (("back", None), ("palm", None), ("thumb", HAND_POSE_THUMBVIEW)):
+        c0, c1 = HAND_COLS[v]
+        C = HB["flat"]
+        if pose:
+            C, _ = pose_hand(C, HB["J"], HB["label"], pose)
+        u = {"back": C[:, 0], "palm": -C[:, 0], "thumb": C[:, 1]}[v]
+        dep = {"back": -C[:, 1], "palm": C[:, 1], "thumb": -C[:, 0]}[v]
+        t = HB["tip_mid"]
+        if v == "back":
+            P2 = to_back_view(C)
+        else:
+            P2 = np.stack([(c0 + c1) / 2.0 + (u - u[np.argmax(C[:, 2])]) / HAND_SX, HB["tip"][1] - (C[:, 2] - t[2]) / HAND_SX], 1)
+        target = np.zeros_like(HB["mask"])
+        target[r0:r1, c0:c1] = HB["mask"][r0:r1, c0:c1]
+        zb, _ = raster(P2, dep, tris, target.shape)
+        full = np.isfinite(zb)
+        mc, tc_ = full[r0:r1, c0:c1], target[r0:r1, c0:c1]
+
+        def score(dx, dy):
+            s = np.roll(np.roll(mc, dy, 0), dx, 1)
+            return float((s & tc_).sum()) / max(float((s | tc_).sum()), 1.0)
+        best = (score(0, 0), 0, 0)
+        if v != "back":
+            for dx in range(-200, 201, 6):
+                for dy in range(-30, 31, 6):
+                    sc_ = score(dx, dy)
+                    if sc_ > best[0]:
+                        best = (sc_, dx, dy)
+            b0 = best
+            for dx in range(b0[1] - 6, b0[1] + 7, 2):
+                for dy in range(b0[2] - 6, b0[2] + 7, 2):
+                    sc_ = score(dx, dy)
+                    if sc_ > best[0]:
+                        best = (sc_, dx, dy)
+        mm = np.zeros_like(full)
+        sm = np.roll(np.roll(mc, best[2], 0), best[1], 1)
+        if best[2] > 0:
+            sm[:best[2]] = False          # (rows rolled round from the bottom)
+        elif best[2] < 0:
+            sm[best[2]:] = False
+        mm[r0:r1, c0:c1] = sm
+        HB["views"][v] = (float(P2[0, 0] + best[1] - u[0] / HAND_SX), float(P2[0, 1] + best[2] + C[0, 2] / HAND_SX))
+        g = hand_gaps(mm, target, HAND_ROWS, HAND_SX)
+        res[v] = (round(g[0], 2), round(g[1], 2), round(best[0], 3))
+        if OUT:
+            os.makedirs(OUT, exist_ok=True)
+            box = (c0, r0 - 10, c1, r1 + 10)
+            m_, t_ = mm[box[1]:box[3], box[0]:box[2]], target[box[1]:box[3], box[0]:box[2]]
+            img = np.ones(m_.shape + (3,)) * 0.97 * 0.75 + HB["pix"][box[1]:box[3], box[0]:box[2]] * 0.25
+            img[m_ & t_] = (0.62, 0.62, 0.64)
+            img[m_ & ~t_] = (0.92, 0.15, 0.12)
+            img[t_ & ~m_] = (0.05, 0.75, 0.9)
+            save_rgb(os.path.join(OUT, "handdiff_%s.png" % v), img)
+    print("CAPTAIN hand silhouettes (worst cm, 99%% cm, overlap): %s" % json.dumps(res))
+    return res
+
+
+def place_base_hand(M, wrist_ring, side, W, L, joints):
+    """The fitted hand, relaxed, on the arm's end (its frame as hand()'s), its open loop joined to the wrist ring."""
+    base_hand_fit()
+    sfx = "_l" if side > 0 else "_r"
+    X = Vector((1, 0, 0))
+    F = Vector((0, -1, 0))
+    A = (X - L * L.x).normalized()
+    tw = math.radians(36.0)
+    Tb = A * math.cos(tw) + F * math.sin(tw)
+    Wd = -A * math.sin(tw) + F * math.cos(tw)
+    C, J = pose_hand(HB["flat"], HB["J"], HB["label"], HAND_POSE_RELAXED)
+    Wv, Tv, Lv, Ov = np.array(Wd), np.array(Tb), np.array(L), np.array(W)
+
+    def body(Q):
+        Q = np.atleast_2d(Q)
+        R = Ov + Q[:, :1] * Wv + Q[:, 1:2] * Tv + Q[:, 2:3] * Lv
+        R[:, 0] *= side
+        return R
+    B = body(C)
+    lab = HB["label"]
+    base = len(M.P)
+    ids = [M.add(p, "hand" + sfx + ("_" + lab[k] if lab[k] else "")) for k, p in enumerate(B)]
+    hf = []
+    for f in HB["faces"]:
+        labs = [lab[v] for v in f]
+        fl = max(set(labs), key=labs.count)
+        M.face([ids[v] for v in f], "hand" + sfx + ("_" + fl if fl else ""))
+        hf.append(len(M.faces) - 1)
+    f0 = len(M.faces)
+    # (the zipper to the forearm: both loops in order of their angle round the wrist, merged)
+    Wm = np.array(mirror_x(W, side))
+    Wd_m, Tb_m = np.array(mirror_x(Wd, side)), np.array(mirror_x(Tb, side))
+    Pm_ = np.array(M.P)
+    # (the forearm's last two rings drawn toward the hand's loop, so no cuff stands round the wrist: each point's
+    # distance from the wrist's middle, round the arm, eased toward the loop's at the same angle)
+    hl = [ids[v] for v in HB["loop"]]
+    hc = Pm_[hl].mean(0)
+    ha = np.arctan2((Pm_[hl] - hc) @ Wd_m, (Pm_[hl] - hc) @ Tb_m)
+    hr_ = np.linalg.norm((Pm_[hl] - hc) - np.outer((Pm_[hl] - hc) @ np.array(mirror_x(Lv, side)), np.array(mirror_x(Lv, side))), axis=1)
+    o_ = np.argsort(ha)
+    ha, hr_ = ha[o_], hr_[o_]
+    rings_ = M.tag["arm_rings" + sfx]
+    for ring, share in ((rings_[-1], HAND_WRIST_EASE[0]), (rings_[-2], HAND_WRIST_EASE[1])):
+        rc = Pm_[ring].mean(0)
+        for v in ring:
+            d = Pm_[v] - rc
+            th = math.atan2(float(d @ Wd_m), float(d @ Tb_m))
+            want = float(np.interp(th, np.concatenate([ha - math.tau, ha, ha + math.tau]), np.concatenate([hr_, hr_, hr_])))
+            have = float(np.linalg.norm(d))
+            k = 1.0 + share * (want / max(have, 1e-6) - 1.0)
+            M.P[v] = rc + d * k
+            Pm_[v] = M.P[v]
+    seqs = []
+    for lp in (list(wrist_ring), [ids[v] for v in HB["loop"]]):
+        a_ = np.mod(np.arctan2((Pm_[lp] - Wm) @ Wd_m, (Pm_[lp] - Wm) @ Tb_m), math.tau)
+        o_ = np.argsort(a_)
+        seqs.append(([lp[i] for i in o_], a_[o_]))
+    (A_, a_), (B_, b_) = seqs
+    na, nb_ = len(A_), len(B_)
+    ae = np.append(a_, a_[0] + math.tau)
+    be = np.append(b_, b_[0] + math.tau)
+    i = j = 0
+    while i < na or j < nb_:
+        if j >= nb_ or (i < na and ae[i + 1] <= be[j + 1]):
+            M.face([A_[i % na], A_[(i + 1) % na], B_[j % nb_]], "hand" + sfx)
+            i += 1
+        else:
+            M.face([A_[i % na], B_[(j + 1) % nb_], B_[j % nb_]], "hand" + sfx)
+            j += 1
+    M.tag["wrist_faces" + sfx] = list(range(f0, len(M.faces)))
+    M.tag["hand_faces" + sfx] = hf
+    M.tag["hand_range" + sfx] = (base, len(M.P))
+    M.tag["hand_flat" + sfx] = {ids[k]: HB["flat"][k] for k in range(len(ids))}
+    for n in ("little", "ring", "middle", "index", "thumb"):
+        joints[n + sfx] = [Vector(p) for p in body(np.array(J[n]))]
+    tb_thumb = np.cross(J["thumb"][3] - J["thumb"][0], np.array((0.0, 0.0, 1.0)))
+    joints["thumb_back" + sfx] = body(np.array([tb_thumb]))[0] - body(np.zeros((1, 3)))[0]
+    joints["hand_frame" + sfx] = tuple(np.array(mirror_x(v, side)) for v in (Tb, Wd, L))
+    joints["knuckles" + sfx] = Vector(body(np.array([J["middle"][0]]))[0])
+
+
+def paint_hands(M, face_uv, rgb, hit, fid, pos, good, tex_fam, joints):
+    """The hands painted from their own sheet's back and palm views (the brother's method): each hand texel found on
+    the hand as fitted flat in the sheet's pose (M.tag["hand_flat_*"]) takes the sheet's colour where that view sees
+    it squarely; the anchor tattoo's pixels are left out and filled from round them (tattoos are a movable overlay);
+    then brought to the forearm's tone, fading into it over the first few centimetres from the wrist."""
+    P = np.array(M.P)
+    Palt = P.copy()
+    inflat = np.zeros(len(P), bool)
+    for sfx in ("_l", "_r"):
+        flat = M.tag["hand_flat" + sfx]
+        ids = np.array(list(flat))
+        Palt[ids] = np.array([flat[i] for i in ids])
+        inflat[ids] = True
+    Nalt = normals_of(Palt, M.tris())
+    sign = {}
+    for sfx in ("_l", "_r"):
+        ids = np.array(list(M.tag["hand_flat" + sfx]))
+        c = Palt[ids].mean(0)
+        sign[sfx] = 1.0 if float(((Palt[ids] - c) * Nalt[ids]).sum()) > 0 else -1.0
+    posf, nrmf, _, _ = texel_geometry(M, face_uv, "skin", Palt, Nalt)
+    parts = np.array(list(M.fpart) + ["none"])[fid].astype(str)
+    wristf = np.array([p.startswith("hand") and not all(inflat[v] for v in f) for f, p in zip(M.faces, M.fpart)] + [False])
+    wrist = hit & wristf[fid]
+    hands = hit & np.char.startswith(parts, "hand") & ~wrist
+    nb = nrmf[..., 1] * np.where(np.char.startswith(parts, "hand_l"), sign["_l"], sign["_r"])
+    mask = _shrink(HB["mask"], 3) & ~HB["ink"]
+    acc = np.zeros_like(rgb)
+    wsum = np.zeros(rgb.shape[:2])
+    for v, s_ in (("back", 1.0), ("palm", -1.0)):
+        col0, row0 = HB["views"][v]
+        col = col0 + posf[..., 0] * s_ / HAND_SX
+        row = row0 - posf[..., 2] / HAND_SX
+        c = np.clip(col.astype(int), 0, mask.shape[1] - 1)
+        r = np.clip(row.astype(int), 0, mask.shape[0] - 1)
+        ok = hands & mask[r, c] & (row < HAND_ROWS[1] + 45) & (row > 60)
+        w = np.where(ok, np.clip(s_ * nb, 0, 1) ** 2 + 1e-3, 0.0)
+        acc += HB["pix"][r, c] * w[..., None]
+        wsum += w
+    seen = hands & (wsum > 0.02)
+    col_ = acc / np.maximum(wsum, 1e-6)[..., None]
+    filled = fill_out(np.where(seen[..., None], col_, rgb), seen | ~hands, 60)
+    soft = blur(filled, 2)
+    filled = np.where(seen[..., None], filled, soft)
+    # the forearm's tone just above the wrist
+    W_ = np.array(joints["wrist_l"], float)
+    L_ = np.array(joints["hand_frame_l"][2], float)
+    near_w = np.zeros(hit.shape, bool)
+    for s in (1.0, -1.0):
+        Wm = W_ * np.array((s, 1.0, 1.0))
+        Lm = L_ * np.array((s, 1.0, 1.0))
+        near_w |= hit & good & (tex_fam == "arm") & (np.linalg.norm(pos - (Wm - Lm * 0.05), axis=-1) < 0.05)
+    base_c = np.median(rgb[near_w], axis=0) if near_w.any() else np.median(rgb[hit & (tex_fam == "arm")], axis=0)
+    near = seen & (posf[..., 2] < 0.07) & (nb > 0.3)
+    ref = np.median(filled[near], axis=0) if near.any() else np.median(filled[seen], axis=0)
+    gain = np.clip(base_c / np.maximum(ref, 1e-3), 0.7, 1.4)
+    out = rgb.copy()
+    k = smooth01(HAND_LOOP_L, HAND_LOOP_L + 0.035, posf[..., 2])[..., None]
+    out[hands] = np.clip((filled * gain * k + base_c * (1 - k))[hands], 0, 1)
+    out[wrist] = base_c
+    print("CAPTAIN hands painted from their sheet: %d texels (%d seen), tone times %s" % (int(hands.sum()), int(seen.sum()), np.round(gain, 3)))
+    return out
+
+
+def round_uvs(M, faces, centre, across, back, along):
+    """UVs round an axis: u the angle times the mean radius, v along it."""
+    P = np.array(M.P)
+    ids = sorted({v for fi in faces for v in M.faces[fi]})
+    rad = float(np.mean([np.linalg.norm((P[v] - centre) - along * np.dot(P[v] - centre, along)) for v in ids]))
+    out = {}
+    for fi in faces:
+        Q = P[M.faces[fi]] - centre
+        th = np.arctan2(Q @ across, Q @ back)
+        if th.max() - th.min() > math.pi:
+            th = np.where(th < 0, th + math.tau, th)
+        out[fi] = [(float(t) * rad, float(np.dot(q, along))) for t, q in zip(th, Q)]
+    return out
 
 
 def leg(M, sh, T, rings, crotch, side, joints):
@@ -2665,6 +3513,34 @@ def plan_uvs(M, T, H, joints):
         sole = [fi for fi, p in enumerate(M.fpart) if p == "foot" + sfx and len(M.faces[fi]) == 3]
         islands["sole" + sfx] = planar_uvs(M, sole, np.array((1.0, 0, 0)), np.array((0, -1.0, 0)))
         hand_faces = [fi for fi, p in enumerate(M.fpart) if p == "hand" + sfx]
+        if M.tag.get("hand_flat" + sfx):
+            # (thirteenth round, as the brother's: laid out as the hands sheet's back and palm views see the hand flat,
+            # each face by which way it faces in the flat pose; the bundle's own hand UVs overlap between back and
+            # palm, and a projection painted through them came out scrambled; the thumb its own pair of islands)
+            flat = M.tag["hand_flat" + sfx]
+            hf = M.tag["hand_faces" + sfx]
+            ids = np.array(list(flat))
+            Fp = np.zeros((len(M.P), 3))
+            Fp[ids] = np.array([flat[i] for i in ids])
+            cen = Fp[ids].mean(0)
+            out = sum(float(np.dot(face_normal(Fp, M.faces[fi]), Fp[M.faces[fi]].mean(0) - cen)) for fi in hf)
+            sgn = 1.0 if out > 0 else -1.0
+            back = {fi: [(float(Fp[v][0]), float(Fp[v][2])) for v in M.faces[fi]] for fi in hf if sgn * face_normal(Fp, M.faces[fi])[1] >= 0}
+            palm = {fi: [(-float(Fp[v][0]), float(Fp[v][2])) for v in M.faces[fi]] for fi in hf if fi not in back}
+            th = {fi for fi in hf if M.fpart[fi].endswith("_thumb")}
+            for name, isl, share in (("handback", back, 2.6), ("handpalm", palm, 2.0)):
+                islands[name + sfx] = {fi: uv for fi, uv in isl.items() if fi not in th}
+                islands[name + "thumb" + sfx] = {fi: uv for fi, uv in isl.items() if fi in th}
+                ISLANDS[name + sfx] = ("skin", share)
+                ISLANDS[name + "thumb" + sfx] = ("skin", share)
+            Tb, Wd, L = (np.array(v, float) for v in joints["hand_frame" + sfx])
+            Wj = np.array(mirror_x(joints["wrist_l"], 1 if sfx == "_l" else -1), float)
+            islands["wrist" + sfx] = round_uvs(M, M.tag["wrist_faces" + sfx], Wj, Wd, Tb, L)
+            ISLANDS["wrist" + sfx] = ("skin", 1.0)
+            ef = [fi for fi, p in enumerate(M.fpart) if p == "ear" + sfx]
+            s = 1.0 if sfx == "_l" else -1.0
+            islands["ear" + sfx] = planar_uvs(M, ef, np.array((0, s, 0.0)), np.array((0, 0, 1.0)))
+            continue
         if M.tag.get("hand_uv"):
             # (twelfth round: the base hand keeps its own UV map, one island a hand; the zipper to the forearm takes
             # its wrist's UVs)
@@ -4189,8 +5065,62 @@ def finish_base_head(Hm, face_uv, sh):
     relax(H2, frozen2, 0.1, 1)
     head_fit_stage(H2, sh, frozen2, 2, 10, mir2)
     H2.P = [p for p in mirror_even(H2.P, mir2)]
+    dome_fill(H2, sh, frozen2, mir2)
     unfold(H2, frozen2, mir2)
     return H2, uv2
+
+
+DOME_ROWS = (190, 560)       # bare-sheet rows of the skull filled out to the side view's back outline
+DOME_SMOOTH = 470            # above this row the dome's facets smoothed (Taubin: keeps its size)
+DOME_STRETCH = 0.0          # off: the side view's back outline read 5 to 11 cm behind the model's at rows 320 to 550 in the fit's own frame (not believed: the comparison shows 1 to 3 cm); see the report
+
+
+def dome_fill(Hm, sh, frozen, mir):
+    """Thirteenth round (the back of his skull stood about 3 cm short at the top-back in the side view, and the dome
+    showed flat facets): row by row, the back half of the head stretched back until its back-most point stands on the
+    side view's back outline (the stretch growing from nothing at the head's middle to all of it at the back); then
+    the dome's points smoothed."""
+    P = np.array(Hm.P)
+    c0, c1 = BARE_SPAN["side"]
+    P2, _ = project("bare_side", P)
+    back_w = world_dir("bare_side", np.array([[1.0, 0.0]]))[0]
+    s_ = 1.0 if float(back_w @ np.array((0.0, 1.0, 0.0))) > 0 else -1.0
+    back_w = back_w * s_
+    yc = float(np.median(P[:, 1]))
+    moved = []
+    for r in range(DOME_ROWS[0], DOME_ROWS[1], 10):
+        band = (np.abs(P2[:, 1] - r) < 8) & (P[:, 1] > yc)
+        if band.sum() < 3:
+            continue
+        run = run_near(sh.bare_mask, r, BARE_MID["side"], c0, c1)
+        if not run:
+            continue
+        want = float(run[1] + 1 if s_ > 0 else run[0])
+        have = float(P2[band, 0].max() if s_ > 0 else P2[band, 0].min())
+        moved.append((r, (want - have) * s_))
+    if not moved:
+        return
+    rr = np.array([m[0] for m in moved], float)
+    dd = np.clip(np.array([m[1] for m in moved], float), -10.0, 45.0)
+    d_px = np.interp(P2[:, 1], rr, dd, left=0.0, right=0.0)
+    ymax = float(P[:, 1].max())
+    share = np.clip((P[:, 1] - yc) / max(ymax - yc, 1e-6), 0.0, 1.0) ** 1.3
+    share[frozen] = 0.0
+    P += np.outer(d_px * share * BS * DOME_STRETCH, back_w)
+    # the dome smoothed (Taubin's two steps)
+    rw = bare_row(P[:, 2])
+    sel = (rw < DOME_SMOOTH) & ~frozen
+    E = edges_of(Hm.faces)
+    for _ in range(4):
+        for lam in (0.5, -0.53):
+            acc = np.zeros_like(P)
+            np.add.at(acc, E[:, 0], P[E[:, 1]])
+            np.add.at(acc, E[:, 1], P[E[:, 0]])
+            deg = np.bincount(E.ravel(), minlength=len(P)).astype(float)
+            avg = acc / np.maximum(deg, 1)[:, None]
+            P[sel] += lam * (avg[sel] - P[sel])
+    Hm.P = [p for p in mirror_even(P, mir)]
+    print("CAPTAIN dome filled: back outline gaps (row, px) %s" % [(int(r), round(float(d), 1)) for r, d in moved])
 
 
 def unfold(Hm, frozen, mir, rounds=12):
@@ -4318,12 +5248,25 @@ def transplant_head(M, T, face_uv, weights, under, sh):
     return R, new_uv, W, under2
 
 
+CAP_DROP = (0.016, 0.008)     # metres the band's bottom ring and the next are lowered at the back (none at the front)
+
+
 def cap_clear(Cm, R):
     """The cap's outside kept clear of the new head (it was fitted to the lofted one): every point of its rings pushed
     out along the way from the head's middle at its height until it stands 6 mm off the head's surface there."""
     b0, n = R.tag["base_head"]
     H = np.array(R.P[b0:b0 + n])
     P = np.array(Cm.P, float)
+    # (thirteenth round: the band's bottom edge cut straight across his head; a cap sits lower at the back and the
+    # sides than over the brow: the band's two bottom rings dropped by angle round the head, none at the front)
+    rings_ = Cm.tag["rings"]
+    zs = [float(np.mean([P[v][2] for v in r])) for r in rings_]
+    order = np.argsort(zs)
+    cen = np.mean([P[v] for v in rings_[order[0]]], axis=0)
+    for k, drop in zip(order[:2], CAP_DROP):
+        for v in rings_[k]:
+            th = math.atan2(P[v][0] - cen[0], -(P[v][1] - cen[1]))
+            P[v][2] -= drop * (1.0 - math.cos(th)) / 2.0
     pushed = 0
     for ring in Cm.tag["rings"]:
         for v in ring:
@@ -4398,7 +5341,8 @@ def main():
         print("CAPTAIN fit round %d: %d points on the outline moved, most %.1f cm; %s" % (rnd, moved, most * 100, json.dumps(stats)))
     smooth_armpits(M)
     sculpt_body(M)
-    smooth_hands(M, rounds=1)
+    if not HAND_FIT:
+        smooth_hands(M, rounds=1)
     finish(M, T, joints, sh)
 
 
@@ -5315,7 +6259,9 @@ def paint_skin(M, face_uv, sh, tris_all, Pc, no_arms_c, reject, joints=None):
     # palm a little warmer; soft shade over each joint on the back (no drawn lines); the fingers' sides toward their
     # neighbours darker, most near the palm; a clean pale nail on each fingertip's back; the knuckles' tops lighter.
     hands = hit & (tex_fam == "hand")
-    if hands.any() and joints is not None:
+    if HAND_FIT and "views" in HB:
+        rgb = paint_hands(M, face_uv, rgb, hit, fid, pos, good, tex_fam, joints)
+    elif hands.any() and joints is not None:
         fparts = np.array(list(M.fpart) + ["none"])[fid].astype(str)
         for sfx in ("_l", "_r"):
             Tb, Wd, L = (np.array(v, float) for v in joints["hand_frame" + sfx])
@@ -5402,6 +6348,9 @@ def paint_head(M, face_uv, sh):
         cols = np.clip(q2[:, 0].astype(int), 0, mask.shape[1] - 1)
         rows = np.clip(q2[:, 1].astype(int), 0, mask.shape[0] - 1)
         seen = (qd <= zb[rows, cols] + 0.008) & mask[rows, cols] & (facing > 0.05) & hit.ravel() & ~gold[rows, cols]
+        # (thirteenth round: the under-jaw, which faces down, is seen by no view squarely; it smeared the front view's
+        # chin down into the neck: left to be filled from round it)
+        seen &= ~((Nn[:, 2] < -0.55) & (Q[:, 2] < bare_z(880)))
         if view == "bare_back":
             # (tenth round: the back view ends at row 700; below it in the same columns is the from-below view, whose
             # face had been painted onto the back of his neck)
@@ -5426,8 +6375,13 @@ def paint_head(M, face_uv, sh):
     hairish = good & headish & (sat < 0.09) & (lum > 0.46) & (rb < 720) & (nrm[..., 1] > -0.35)
     rs = np.random.default_rng(5)
     speck = rs.random(rgb.shape[:2])
-    rgb[hairish] = rgb[hairish] * 0.4 + skin_ref * 0.6
-    rgb[hairish & (speck > 0.6)] *= 0.94
+    # (thirteenth round: the fringe toned by mixing smeared into grey streaks across the back of his head: now left
+    # out and filled from the skin round it, with a faint stubble on top)
+    good &= ~hairish
+    rgb = fill_out(rgb, good, 200)
+    rgb[hairish] = rgb[hairish] * 0.85 + skin_ref * 0.15
+    rgb[hairish & (speck > 0.7)] *= 0.95
+    good |= hairish
     print("CAPTAIN paint face (bare sheet): %d texels of fringe toned to stubble; skin %s" % (int(hairish.sum()), np.round(skin_ref, 3)))
     rgb = fill_out(rgb, good, 200)
     soft = blur(rgb, 3)
