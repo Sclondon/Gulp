@@ -460,3 +460,8 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   the fishing mode is played as the older brother (rod from the boat), so his outfit sheet includes fishing rigs
   (oilskin bib and braces, waders, a gansey, a hot-day rig) beside his diver's dress; he tends the boy's air pump on
   the title as now.
+- CORRECTION (the user, 2026-11-18): "no the older brohter is the walkerin the diving suitt bruh". The OLDER brother
+  (19, dark curly hair; the diver on the title) walks the sea floor in the diving suit AND does the fishing; the
+  younger boy (13, blond) is only the fish. Claude had written the younger boy as the diver, from the user's earlier
+  "diving as the boy". `tools/art_src/concept_diving_suits.jpg` shows the suits on the younger boy: redo them on the
+  older brother. DESIGN.md has a "Who does what" section.

@@ -15,9 +15,20 @@ Written 2026-11-18 by Claude at the user's word. Everything not quoted is Claude
   a squid"; the title ("a old timey franketstein computer hooked up to a helmet on the boys head- the controls for the
   pc are the controls for the game"); "Nick of Time ... is part of the inspiration".
 
+## Who does what (the user, 2026-11-18)
+
+"the diver is the older brother to the vr kid"; "the older brother is a budding handsom curly dark haired sailor about
+19, the younger boy 13 and eager and fresh blonde, captain is their gay grandpa"; "the older brother is the one who
+does the regular fishing"; "no the older brohter is the walkerin the diving suitt bruh". So: the YOUNGER boy is only
+the fish, through the machine and its helmet. The OLDER brother is the diver who walks the sea floor (photographs,
+chests, finds) and the one who fishes with rod and line. The captain, their grandfather, sails the boat. Where the
+text below, written earlier, says "the boy" dives or walks, read the older brother. (The user's earlier words, "the
+boy should also have a diving suit" and "when you are diving as the boy", were said before this was settled.)
+
 ## The idea in one paragraph
 
-A boy, a sea captain and an old diver work a shrimp boat over Monterey Bay, looking for the boy's lost treasure.
+A boy, his older brother and their grandfather, a sea captain, work a shrimp boat over Monterey Bay, looking for a
+lost treasure.
 The boat's machine puts the boy's mind into a fish. As a fish he eats and grows (the game as it is), and when he
 swims back to the boat's net the fish he has become is hauled aboard and sold: the bigger and rarer, the more money.
 Money buys gear. Better gear lets the machine reach deeper, lets the boat anchor further out, and gives the boy a
@@ -37,13 +48,13 @@ ruins, and finds the pieces of the treasure. Between times there is a rod over t
    place in the evolution tree.
 4. **The shop** (the chart table). A few things, each with a few steps, bought in any order:
    - *Amplifier*: how deep the fish can go: 15 m, 30 m, 50 m, 100 m.
-   - *Air hose and suit*: how deep the boy can walk: canvas suit 10 m, hard-hat 25 m, armoured 50 m, the deep suit 100 m.
+   - *Air hose and suit*: how deep the older brother can walk: canvas suit 10 m, hard-hat 25 m, armoured 50 m, the deep suit 100 m.
    - *Engine and anchor chain*: where the boat can anchor: the bay's north (start), the docks, the kelp and the pirate
      ship, the liner off Point Lobos, the canyon over Atlantis.
    - *Tools*: a lamp (dark places and night), a crowbar (plain chests), a brass key ring (locked chests), a winch
      (heavy things).
    - *Tackle*: a better rod and line, for the fishing.
-5. **A dive.** The boat anchors; the boy goes down the shot line in the suit and walks the floor (slow, heavy,
+5. **A dive.** The boat anchors; the older brother goes down the shot line in the suit and walks the floor (slow, heavy,
    bubbles, a hose trailing up to the boat that sets how far he can go; air is not a timer, the hose is the limit).
    He can open chests, pick up what is on the floor, and is in danger from what hunts there (he can hide, and tug the
    line to be hauled up). What he brings up is sold or kept.
@@ -100,7 +111,7 @@ evolution tree on a green tube screen, the sale scale, the shop at the chart tab
 1. Money, worth of kinds, the net and the sale, the signal's depth limit, the shop with the amplifier, saving. A plain
    but working screen for each.
 2. The brass screens (pause, tree, sale, shop, cards) and the hub on deck.
-3. The diving suit: concept, model on the boy, walking, the hose, chests, the first two treasure pieces.
+3. The diving suit: concept, model on the older brother, walking, the hose, chests, the first two treasure pieces.
 4. Gifts and abilities.
 5. Fishing from the boat.
 6. The remaining treasure pieces, anchorages and tools.
