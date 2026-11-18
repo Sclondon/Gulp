@@ -383,6 +383,39 @@ def valve(x, z, r, front=-0.16):
     ball(BRASS, r * 0.26, (x, front - 0.03, z), (1.0, 0.7, 1.0), 10)
 
 
+def ring_points(middle, radius, a0, a1, y, count=7):
+    """Points on an arc in the face's plane (degrees), for a pipe that hugs a round head."""
+    out = []
+    for k in range(count):
+        a = math.radians(a0 + (a1 - a0) * k / (count - 1.0))
+        out.append((middle[0] + math.cos(a) * radius, y, middle[1] + math.sin(a) * radius))
+    return out
+
+
+def outline(inner):
+    """Pipes and wires that shape a side housing's outline (the user: "Still not enough pipes /
+    wires shaping the ui outline"): a pipe over its arched head, loops standing off its inner
+    side (`inner` 1: its right, -1: its left), wires drooping from the head."""
+    half = SIDE_WIDE * 0.5
+    over = ring_points(BIG_DIAL, 0.95, 212.0, -32.0, 0.14, 9)
+    pipe(BRASS, over, 0.075)
+    for k in (2, 4, 6):
+        ball(BRASS, 0.115, over[k], (1.0, 1.0, 1.0), 10)
+    # a fat loop off the inner side, low down, with a valve on it
+    pipe(BRASS, [(inner * (half - 0.15), 0.14, 1.62), (inner * (half + 0.22), 0.14, 1.55), (inner * (half + 0.33), 0.14, 1.15),
+                 (inner * (half + 0.33), 0.14, 0.55), (inner * (half + 0.2), 0.14, 0.18), (inner * (half - 0.15), 0.14, 0.14)], 0.095)
+    collar((inner * (half + 0.33), 0.14, 0.85), 0.095)
+    valve(inner * (half + 0.33), 1.2, 0.15, -0.02)
+    # a thin copper loop over it
+    pipe(COPPER, [(inner * (half - 0.1), 0.1, 2.3), (inner * (half + 0.2), 0.1, 2.22), (inner * (half + 0.24), 0.1, 1.95), (inner * (half - 0.1), 0.1, 1.82)], 0.05, 4)
+    # wires from the head's crown, drooping down outside the inner shoulder and the outer one
+    for way, reach in ((inner, 1.0), (-inner, 0.8)):
+        pipe(RUBBER, [(way * 0.25, -0.04, BIG_DIAL[1] + 0.72), (way * 0.8 * reach, -0.08, BIG_DIAL[1] + 0.98), (way * (half + 0.18) * reach, 0.0, BIG_DIAL[1] + 0.5),
+                      (way * (half + 0.12) * reach, 0.1, SHOULDER + 0.05), (way * (half - 0.12), 0.1, SHOULDER - 0.2)], 0.04, 5)
+    cyl(BRASS, 0.09, 0.12, (inner * 0.25, -0.06, BIG_DIAL[1] + 0.72), "Y", 10, 0.01)
+    cyl(BRASS, 0.09, 0.12, (-inner * 0.25, -0.06, BIG_DIAL[1] + 0.72), "Y", 10, 0.01)
+
+
 # --- The helm housing: a socket with a rubber boot and a stick; over it the evolution dial,
 # between two electrodes that stand over the housing's top.
 plate(SIDE_WIDE, SHOULDER, [(BIG_DIAL[0], BIG_DIAL[1], 0.8)])
@@ -403,6 +436,7 @@ for side in (-1.0, 1.0):
 thin([(-1.0, -0.06, 2.02), (-0.4, -0.06, 1.98), (0.35, -0.06, 2.03), (1.0, -0.06, 1.98)])
 mini_gauge(-0.86, 0.32)
 patch(0.82, 0.34, 0.42, 0.36, 0.12)
+outline(1.0)
 helm = join("Helm")
 marker("SparkA", (-POSTS, -0.14, SHOULDER + 0.9), helm)
 marker("SparkB", (POSTS, -0.14, SHOULDER + 0.9), helm)
@@ -426,6 +460,7 @@ valve(0.86, SHOULDER - 0.28, 0.17)
 thin([(0.86, -0.06, SHOULDER - 0.5), (0.99, -0.06, 1.75), (0.99, -0.06, 0.95), (0.99, -0.06, 0.3)])
 mini_gauge(-0.86, 2.22)
 patch(-0.82, 0.32, 0.4, 0.34, -0.1)
+outline(-1.0)
 engine = join("Engine")
 needle("Speed", BIG_DIAL[0], BIG_DIAL[1], BIG_DIAL_R, engine)
 
@@ -486,6 +521,20 @@ for k in range(5):
     half = math.sqrt(max(0.0, 0.25 * 0.25 - (z - 0.56) ** 2))
     box(BRASS, (half * 2.0, 0.03, 0.03), (0.9, -0.06, z), 0.0)
 valve(0.32, 0.56, 0.2)
+# pipes and wires that shape its outline: one over the scope's head and down both sides, a second
+# over the small dial's head, cables slung between the heads, an aerial
+half = GAUGE_WIDE * 0.5
+pipe(BRASS, [(-half - 0.08, 0.2, 0.15), (-half - 0.08, 0.2, 1.3)] + ring_points(SCOPE, 1.12, 172.0, 28.0, 0.2, 7)
+     + [(0.75, 0.2, 2.9), (SMALL_DIALS["Depth"][0], 0.2, SMALL_DIALS["Depth"][1] + 0.58), (half + 0.02, 0.2, 2.5), (half + 0.1, 0.2, 1.9), (half + 0.1, 0.2, 0.15)], 0.08)
+for at in ((-half - 0.08, 0.2, 0.7), (half + 0.1, 0.2, 1.2), (half + 0.1, 0.2, 0.5)):
+    collar(at, 0.08)
+pipe(COPPER, [(-half + 0.1, 0.12, 2.2), (-half - 0.22, 0.12, 2.1), (-half - 0.26, 0.12, 1.75), (-half + 0.1, 0.12, 1.6)], 0.05, 4)
+pipe(RUBBER, [(SCOPE[0] - 0.2, -0.04, SCOPE[1] + 0.9), (0.1, -0.1, SCOPE[1] + 1.28), (0.7, -0.08, SCOPE[1] + 1.02), (SMALL_DIALS["Depth"][0], -0.04, SMALL_DIALS["Depth"][1] + 0.4)], 0.04, 5)
+pipe(RUBBER, [(SCOPE[0] + 0.5, -0.04, SCOPE[1] + 0.8), (0.55, -0.1, SCOPE[1] + 0.82), (SMALL_DIALS["Depth"][0] + 0.3, -0.04, SMALL_DIALS["Depth"][1] + 0.3)], 0.03, 5)
+pipe(RUBBER, [(SCOPE[0] - 0.6, -0.04, SCOPE[1] + 0.75), (-1.3, -0.08, SCOPE[1] + 1.05), (-half - 0.25, 0.05, SCOPE[1] + 0.3), (-half - 0.05, 0.12, BODY - 0.5)], 0.04, 5)
+cyl(STEEL, 0.03, 0.9, (1.32, 0.1, 3.2), "Z", 6)
+ball(BRASS, 0.07, (1.32, 0.1, 3.66), (1.0, 1.0, 1.0), 8)
+cyl(BRASS, 0.07, 0.12, (1.32, 0.1, 2.82), "Z", 8, 0.01)
 gauges = join("Gauges")
 marker("Scope", (SCOPE[0], -0.12, SCOPE[1]), gauges)
 marker("ScopeEdge", (SCOPE[0] + SCOPE_R, -0.12, SCOPE[1]), gauges)
