@@ -448,3 +448,7 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
 - Landed: the sailor boy (`models/title_boy.glb`, hair in GameCommon ink-figure's `hair_ink.gdshader`, copied to
   `shaders/ink/`); the captain's open and closed outfits on his OLD too-tall body (`TitleFigures.wear`), to be redone
   on the T-pose body; the submarine and remoras in the sea (`creatures/submarine`, `creatures/remora`).
+- "and the foliage needs a smart realistic distrbtion, do research on kelp forests and othe under sea biomes and make
+  good game design \"levels\" out of them as we've described them so far" (the user, 2026-11-18): research and a level
+  design for every place is being written to `tools/BIOMES.md` (phase one: no game files changed); building it
+  (a rule-based placer in place of `scripts/scenery.gd`'s scattering, new kit pieces) follows the performance pass.
