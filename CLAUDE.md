@@ -425,3 +425,26 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   is still owed as `tools/art_src/concept_captain_tpose.jpg`; ask for it in the figures conversation. Clicking a
   download button on a picture that failed to appear opened Google's upgrade page instead: check the picture is
   there first.
+
+### Asked in the small hours of 2026-11-18 (the user's words) and where each stands
+
+- "no we need the tpose" (the captain is built from his T-pose sheet, not the other sheets); "do it once the reset
+  lifts". "yes do a performance pass and then push everything" (the pass: `tools/PERF.md`, a builder; then the push).
+- "you should create a writing room agent to fill in the plot based on what you know of my art projects and the
+  pictuers should be \"in game\" sepia"; "there should be other plots written up too, and tother things to find on the
+  sea floor (not just pics other treasure)": `STORY.md`, being written. The photographs are staged scenes captured by
+  the game's own camera and toned sepia, not generated pictures.
+- The family: "the diver is the older brother to the vr kid"; "the older brother is a budding handsom curly dark
+  haired sailor about 19, the younger boy 13 and eager and fresh blonde, captain is their gay grandpa".
+- "the fish markets should be at monteray, santa cruz, and carmel": the sale belongs at three markets (stage one sells
+  at the boat's net: to be changed; Carmel is by the liner at the south).
+- "the boy and older brother need oufit concepts and tposes etc"; "maybe try a pass with faces although it would need
+  to by twilight princess style maybe": concept sheets owed for both brothers (outfits, T-pose base bodies) and one
+  trial sheet of the three with Twilight Princess-style faces. Not started (image limit).
+- "also do a quality pass on clipping adn hit boxes"; "and make sure things have textures that fit our art style": a
+  quality pass owed after the performance pass (which is changing the collision grid): every model checked for
+  clipping, every swimmer-stopping shape against what is seen, and every surface's paint against the baked brass and
+  painted look of the panel, the wrecks and the creatures (the boat and its figures are still plain materials).
+- Landed: the sailor boy (`models/title_boy.glb`, hair in GameCommon ink-figure's `hair_ink.gdshader`, copied to
+  `shaders/ink/`); the captain's open and closed outfits on his OLD too-tall body (`TitleFigures.wear`), to be redone
+  on the T-pose body; the submarine and remoras in the sea (`creatures/submarine`, `creatures/remora`).

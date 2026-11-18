@@ -87,6 +87,14 @@ static func look_about(figure: Node3D) -> void:
 		(figure as Idle).looking = false
 
 
+## Which of his outfits the captain wears (the user, 2026-11-18: "the captain should have the outfit from teh first
+## concept as well to switch into"): "open" (his coat open over a striped undershirt; the default) or "closed" (the
+## navy gansey). Each outfit is meshes named <name>__<outfit> in his model; this shows one set and hides the others.
+static func wear(figure: Node3D, outfit: String) -> void:
+	for mesh: MeshInstance3D in figure.find_children("*__*", "MeshInstance3D", true, false):
+		mesh.visible = String(mesh.name).get_slice("__", 1) == outfit
+
+
 ## The plain standing idle instead of the figure's task (`work(figure)` puts him back to it).
 static func stand(figure: Node3D) -> void:
 	if figure is Idle:
@@ -126,19 +134,66 @@ static func _make(path: String, kind: Kind, size: float) -> Node3D:
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		# (the importer's automatic LODs bend a skinned body in straight pieces; seen close, never wanted)
 		mesh.lod_bias = 64.0
-		# (the adults carry a soft tint in their vertex colours: ribs, stains, tarnish; multiplied into each colour)
-		if kind != Kind.BOY:
-			for s in mesh.mesh.get_surface_count():
-				var material := mesh.mesh.surface_get_material(s) as BaseMaterial3D
-				if material:
-					material.vertex_color_use_as_albedo = true
+		# (all three carry a soft tint in their vertex colours: ribs, stains, tarnish, wear; multiplied into each colour)
+		for s in mesh.mesh.get_surface_count():
+			var material := mesh.mesh.surface_get_material(s) as BaseMaterial3D
+			if material:
+				material.vertex_color_use_as_albedo = true
 	var mount := BoneAttachment3D.new()
 	mount.name = "HeadMount"
 	mount.bone_name = "head"
 	figure.skeleton.add_child(mount)
 	figure.head_mount = mount
+	# (hair drawn by the hair shader: the boy's, and the captain's chest; tools/TITLE_FIGURES.md)
+	for hair_name: String in HAIR_COLOURS:
+		var hair := model.find_child(hair_name, true, false) as MeshInstance3D
+		if hair:
+			hair.set_surface_override_material(0, _hair_material(hair_name))
+	# (the boy's crown of hair is its own mesh, which a helmet on his head would crush: hidden while anything is
+	# on the mount)
+	var crown := model.find_child("boy_hairtop", true, false) as Node3D
+	if crown:
+		mount.child_entered_tree.connect(func(_on: Node) -> void: crown.visible = false)
+		mount.child_exiting_tree.connect(func(_off: Node) -> void: crown.visible = mount.get_child_count() > 1)
+	if kind == Kind.CAPTAIN:
+		wear(figure, "open")
 	figure.seed_time = float(kind) * 2.3
 	return figure
+
+
+## Hair as the user's figures have theirs (the user, 2026-11-18: "sthe boys hair should use our hair shader to recreate
+## that look"): GameCommon ink-figure's hair_ink shader (shaders/ink/, copied unchanged). It reads UV along each lock
+## and UV2 in metres, which the build script gives these meshes. Their colours: albedo, pale, ink, flicks.
+const HAIR_SHADER := "res://shaders/ink/hair_ink.gdshader"
+const HAIR_COLOURS := {
+	"boy_hair": [Color(0.74, 0.61, 0.4), Color(0.93, 0.84, 0.64), Color(0.3, 0.2, 0.11), Color(0.98, 0.93, 0.8)],
+	"boy_hairtop": [Color(0.74, 0.61, 0.4), Color(0.93, 0.84, 0.64), Color(0.3, 0.2, 0.11), Color(0.98, 0.93, 0.8)],
+	"captain_chesthair__open": [Color(0.42, 0.4, 0.37), Color(0.62, 0.6, 0.57), Color(0.2, 0.19, 0.18), Color(0.95, 0.95, 0.93)],
+}
+static var _hair := {}
+
+
+static func _hair_material(hair_name: String) -> ShaderMaterial:
+	if not _hair.has(hair_name):
+		var made := ShaderMaterial.new()
+		made.shader = load(HAIR_SHADER)
+		var colours: Array = HAIR_COLOURS[hair_name]
+		made.set_shader_parameter(&"albedo", colours[0])
+		made.set_shader_parameter(&"pale", colours[1])
+		made.set_shader_parameter(&"ink", colours[2])
+		made.set_shader_parameter(&"flicks", colours[3])
+		made.set_shader_parameter(&"metres", 1.0)
+		# (finer, fainter strand lines and softer ink than the shader's inked-print defaults: painted, not inked)
+		made.set_shader_parameter(&"strand_gap", 0.0014)
+		made.set_shader_parameter(&"lit_lines", 0.05)
+		made.set_shader_parameter(&"shadow_lines", 0.3)
+		made.set_shader_parameter(&"wrap", 0.4)
+		made.set_shader_parameter(&"shadow_fill", 0.4)
+		made.set_shader_parameter(&"root_ink", 0.12)
+		made.set_shader_parameter(&"gap_ink", 0.18)
+		made.set_shader_parameter(&"flick_gain", 0.4)
+		_hair[hair_name] = made
+	return _hair[hair_name]
 
 
 ## A figure at work (or standing about): poses its skeleton every frame.
