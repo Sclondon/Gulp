@@ -63,6 +63,29 @@ const BILL := 0.3
 	set(value):
 		low = value
 		_show()
+## The game model (about 3,900 triangles, spent where they show: the outline, the eye, the mouth, the
+## fins' edges), shown in place of the full one; `low` still shows the low model. With it true the full model
+## is never loaded (each model is loaded when it is first shown), so a game's export can leave the full .glb out.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye: 0 the eye as it is (the default), 1 bigger, white, a coloured iris and big pupil, a
+## highlight, a dark outline, and this animal's own lid (see the shader's top for its character).
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = value
+		_send(&"cartoon_eyes", value)
+## Where its eyes look, -1..1 each way: x forward (towards its snout), y up.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		_send(&"eye_look", value)
+## 0 open, 1 shut: its eyes squash flat and, with `cartoon_eyes`, a lid comes down over them.
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = value
+		_send(&"blink", value)
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set
 ## it yourself.
 var phase := 0.0:
@@ -71,8 +94,9 @@ var phase := 0.0:
 		_send_phase()
 
 var _material: ShaderMaterial
-var _full: MeshInstance3D
-var _low: MeshInstance3D
+# (the models shown so far, by suffix: each is loaded when it is first shown)
+var _shown := {}
+var _ready_done := false
 
 
 func _init() -> void:
@@ -81,10 +105,12 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _mesh_of("")
-	_low = _mesh_of("_lo")
+	_ready_done = true
 	_show()
 	_send_phase()
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 	_send(&"sway", sway)
 	_send(&"sail", sail)
 	_send(&"gape", gape)
@@ -107,9 +133,27 @@ func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)
 
 
-## Its one material (both models wear it).
+## Its one material (every model wears it).
 func material() -> ShaderMaterial:
 	return _material
+
+
+## The game model's mesh by itself (without the importer's thinned LODs, which would bend in straight
+## pieces far off), for a game that draws meshes itself: give it the node's material or `new_material()`.
+static func game_mesh() -> Mesh:
+	var made := (load(MODEL % "_game") as PackedScene).instantiate()
+	var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+	var mesh := without_lods(found.mesh)
+	made.free()
+	return mesh
+
+
+## A copy of `mesh` without its LODs.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return plain
 
 
 func _send(setting: StringName, value: Variant) -> void:
@@ -123,9 +167,13 @@ func _send_phase() -> void:
 
 
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if not _ready_done:
+		return
+	var want := "_lo" if low else ("_game" if game else "")
+	if not _shown.has(want):
+		_shown[want] = _mesh_of(want)
+	for suffix: String in _shown:
+		(_shown[suffix] as MeshInstance3D).visible = suffix == want
 
 
 func _mesh_of(suffix: String) -> MeshInstance3D:
@@ -133,7 +181,7 @@ func _mesh_of(suffix: String) -> MeshInstance3D:
 	var made := scene.instantiate()
 	var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = found.mesh
+	mesh.mesh = without_lods(found.mesh) if suffix == "_game" else found.mesh
 	mesh.material_override = _material
 	# (its tail swings out past where the still model ends)
 	mesh.extra_cull_margin = 0.4

@@ -8,6 +8,9 @@ Writes creatures/swordfish/models/swordfish.glb (the full model, for close pictu
 off, phones), and the editable creatures/swordfish/tools/swordfish.blend (this folder has a .gdignore). Each
 model is one still mesh with one surface: the shader (swordfish.gdshader) draws every marking and swims it.
 It prints a WINDING line: the check that nothing is inside out.
+It also writes models/swordfish_game.glb, the game model (about a tenth to a fifteenth of the full
+model, at the weight of a Twilight Princess figure: see "The game model" further down), and the .blend holds
+all three.
 
 An adult swordfish (Xiphias gladius), 3 m from the tip of its sword to the tips of its tail, built from the
 species (no picture was given, traced or copied):
@@ -299,11 +302,14 @@ def rings(low):
 
 def body(m, low):
     around = 24 if low else 80
+    angles = [c / around * TAU for c in range(around)]
+    if GAME:
+        angles = game_angles()
+        around = len(angles)
     grid = []
-    for xm in rings(low):
+    for xm in (game_rings() if GAME else rings(low)):
         row = []
-        for c in range(around):
-            angle = c / around * TAU
+        for angle in angles:
             p, inside = body_skin(xm, angle)
             row.append(m.add(p, (xm / LENGTH, high_of(p)), BODY, inside))
         grid.append(row)
@@ -329,6 +335,8 @@ def jaw(m, low):
     behind the mouth's corner."""
     around = 16 if low else 48
     count = 12 if low else 46
+    if GAME:
+        around, count = GAME_JAW
     grid = []
     xs = [JAW_FROM + 0.003 + (JAW_TO - JAW_FROM - 0.003) * (i / count) for i in range(count + 1)]
     for xm in xs:
@@ -359,6 +367,8 @@ def eye(m, sx, low):
     """A low dome lying on the skin of the head."""
     spokes = 12 if low else 40
     steps = 3 if low else 12
+    if GAME:
+        spokes, steps = GAME_EYE
     xe, ye = EYE_AT
 
     def on_skin(xm, y):
@@ -367,7 +377,10 @@ def eye(m, sx, low):
         return body_point(xm, sx * math.acos(c))
 
     here = on_skin(xe, ye)
-    out = (on_skin(xe + 0.004, ye) - on_skin(xe - 0.004, ye)).cross(on_skin(xe, ye + 0.004) - on_skin(xe, ye - 0.004))
+    if sx > 0.0:
+        # (as the shader has it, for the cartoon eye: where the middle of the eye lies on the skin)
+        print("EYE_MIDDLE (%.4f, %.4f, %.4f)" % (here.x, here.y, here.z))
+    out =(on_skin(xe + 0.004, ye) - on_skin(xe - 0.004, ye)).cross(on_skin(xe, ye + 0.004) - on_skin(xe, ye - 0.004))
     out.normalize()
     if out.x * sx < 0.0:
         out = -out
@@ -393,7 +406,10 @@ def blade(m, part, name, point, place, facing, thick, nt, nu):
     """A fin: a thin closed blade. `point(t, u)` is a place in the fin's own flat (t 0 at its root to 1 at
     its tip, u 0 at its leading edge to 1 at its trailing edge), `place` puts that in the model, `facing`
     is the way one of its two skins faces. It is `thick` at its root, a foil across (nothing at either
-    edge), thinning to nothing at its tip."""
+    edge), thinning to nothing at its tip. (For the game model, `blade_game` places its points instead.)"""
+    if GAME:
+        blade_game(m, part, name, point, place, facing, thick)
+        return
     for side in (1.0, -1.0):
         grid = []
         for ti in range(nt + 1):
@@ -492,7 +508,156 @@ def fins(m, low):
             print("PECTORAL root=(%.4f, %.4f, %.4f) facing=(%.4f, %.4f, %.4f)" % (root.x, root.y, root.z, facing.x, facing.y, facing.z))
 
 
-def make(name, low):
+# The game model's settings: how far an edge may stray from its curve (metres), along the body and round it;
+# inside a fin, how many times GAME_TOL; the longest step between a fin's rows (t); rings always kept (the
+# sword's root, the jaw's tip, the mouth's corner, its back end); the lower jaw's points round it and its rings;
+# the eye's spokes and rings (24 or more, so that it stays round). GAME_GAP: the longest step between rings
+# along the body (shorter where it bends).
+GAME_TOL = 0.0024
+GAME_TOL_AROUND = 0.0018
+GAME_FLANK = 5.0
+GAME_FIN_GAP = 0.34
+GAME_KEEP_RINGS = (SWORD, JAW_FROM, 1.0, MOUTH_CORNER, 1.30, 1.34)
+GAME_JAW = (16, 14)
+GAME_EYE = (32, 3)
+
+
+def GAME_GAP(x):
+    return 0.07 if x > 1.9 else 0.14
+
+
+# ---- The game model (added 2026-11-18) ------------------------------------------------------------------------
+# A third model at the weight of a Twilight Princess figure (the user, 2026-11-18: "We should have a twilight
+# princess model to compare to so we can make low poly versions while maintaining high quality looks and
+# silhouettes"). It is built from the same curves and profiles as the full model, not thinned from it: each
+# outline (the body's rings, its cross-section, every fin's edges, the sail's scalloped top) keeps only the
+# points it needs to stay within GAME_TOL of the curve it stands for, so the points crowd where the shape turns
+# (the bill, the head, the tail wrist, the fins' tips, the scallops) and spread out across smooth flanks and
+# inside the fins. While it is built GAME is true; the full and low models come out exactly as before.
+GAME = False
+
+
+def dp_keep(n, err, tol, keep=()):
+    """Of points 0..n-1 (in order along a curve), the ones to keep so that `err(i, j, k)` (how far point k strays
+    from the straight edge between kept points i and j) stays under `tol`: the first, the last, `keep`, and as
+    few more as that takes (Douglas and Peucker)."""
+    kept = sorted({0, n - 1, *keep})
+    out = set(kept)
+    stack = list(zip(kept, kept[1:]))
+    while stack:
+        i, j = stack.pop()
+        if j - i < 2:
+            continue
+        worst, at = 0.0, -1
+        for k in range(i + 1, j):
+            e = err(i, j, k)
+            if e > worst:
+                worst, at = e, k
+        if worst > tol:
+            out.add(at)
+            stack += [(i, at), (at, j)]
+    return sorted(out)
+
+
+def _seg_dist(p, a, b):
+    ab = b - a
+    length = ab.length_squared
+    if length < 1e-18:
+        return (p - a).length
+    t = max(0.0, min(1.0, (p - a).dot(ab) / length))
+    return (p - (a + ab * t)).length
+
+
+def curves_err(curves):
+    """`err` for dp_keep over several curves sampled at the same parameters: the worst of them."""
+    return lambda i, j, k: max(_seg_dist(c[k], c[i], c[j]) for c in curves)
+
+
+def fill_gaps(xs, longest):
+    """`xs` with points put in wherever two are further apart than `longest(x)`."""
+    out = [xs[0]]
+    for b in xs[1:]:
+        a = out[-1]
+        n = math.ceil((b - a) / longest((a + b) * 0.5) - 1e-9)
+        for i in range(1, n):
+            out.append(a + (b - a) * i / n)
+        out.append(b)
+    return out
+
+
+def game_rings():
+    """Where the game model's rings stand along the body: of the full model's, those that keep the skin (at nine
+    angles round it: the ridge of the back, the belly, the widest line and between) within GAME_TOL, and no two
+    further apart than GAME_GAP allows (the body must still bend smoothly when it swims)."""
+    xs = rings(False)
+    angles = [math.pi * k / 8 for k in range(9)]
+    curves = [[body_point(x, a) for x in xs] for a in angles]
+    keep = [min(range(len(xs)), key=lambda i: abs(xs[i] - x)) for x in GAME_KEEP_RINGS]
+    picked = [xs[i] for i in dp_keep(len(xs), curves_err(curves), GAME_TOL, keep)]
+    out = fill_gaps(picked, GAME_GAP)
+    print("GAME rings %d" % len(out))
+    return out
+
+
+def game_angles():
+    """The game model's points round the body (radians from the ridge of the back by its left side, then back
+    by its right): those of 96 a half turn that keep the cross-section within GAME_TOL at every station along
+    the body, the quarter turns always kept, the two sides the same."""
+    fine = [math.pi * k / 96 for k in range(97)]
+    stations = [BODY_FROM + (BODY_TO - BODY_FROM) * (k + 0.5) / 40 for k in range(40)]
+    curves = [[body_point(x, a) for a in fine] for x in stations]
+    half = [fine[i] for i in dp_keep(len(fine), curves_err(curves), GAME_TOL_AROUND, (48,))]
+    print("GAME round %d" % (2 * len(half) - 2))
+    return half + [TAU - a for a in reversed(half[1:-1])]
+
+
+def _zip_rows(m, a, ua, b, ub, out, name):
+    """Triangles between two rows of a fin that need not have as many points (each row's `u` rising 0 to 1)."""
+    i = j = 0
+    while i < len(a) - 1 or j < len(b) - 1:
+        if j == len(b) - 1 or (i < len(a) - 1 and ua[i + 1] <= ub[j + 1]):
+            m.face((a[i], a[i + 1], b[j]), out, name)
+            i += 1
+        else:
+            m.face((a[i], b[j + 1], b[j]), out, name)
+            j += 1
+
+
+def blade_game(m, part, name, point, place, facing, thick, high=None):
+    """`blade` for the game model: the same fin, a thin closed blade, with its rows (t) where its leading and
+    trailing edges need them and each row's points (u) where that row's curve needs them: the outer row (the
+    fin's free edge: a sail's scallops) to GAME_TOL, the rows inside it to GAME_FLANK times that. The middle of
+    each row is always kept, so the blade keeps a little thickness."""
+    fine_t = [k / 96 for k in range(97)]
+    edges = [[place(point(t, u)) for t in fine_t] for u in (0.0, 1.0)]
+    ts = [fine_t[i] for i in dp_keep(len(fine_t), curves_err(edges), GAME_TOL)]
+    ts = fill_gaps(ts, lambda t: GAME_FIN_GAP)
+    fine_u = [k / 480 for k in range(481)]
+    rows = []
+    for t in ts:
+        tol = GAME_TOL if t == ts[-1] else GAME_TOL * GAME_FLANK
+        curve = [place(point(t, u)) for u in fine_u]
+        rows.append([fine_u[i] for i in dp_keep(len(fine_u), curves_err([curve]), tol, (240,))])
+    for side in (1.0, -1.0):
+        grid = []
+        for t, us in zip(ts, rows):
+            row = []
+            for u in us:
+                foil = 2.6 * math.sqrt(u) * (1.0 - u)
+                swell = thick * (1.0 - t) ** 0.7 * foil
+                p = place(point(t, u)) + facing * (side * swell * 0.5)
+                if high:
+                    row.append(m.add(p, (t, u), part, high(t, u)))
+                else:
+                    row.append(m.add(p, (t, u), part))
+            grid.append(row)
+        for r in range(len(ts) - 1):
+            _zip_rows(m, grid[r], rows[r], grid[r + 1], rows[r + 1], facing * side, name)
+
+
+def make(name, low, game=False):
+    global GAME
+    GAME = game
     m = Mesh()
     body(m, low)
     jaw(m, low)
@@ -525,6 +690,7 @@ def make(name, low):
     tris = sum(len(p.vertices) - 2 for p in mesh.polygons)
     print("BUILT %s verts=%d tris=%d" % (name, len(mesh.vertices), tris))
     winding(name, mesh, m)
+    GAME = False
     return obj
 
 
@@ -594,12 +760,16 @@ def main():
     bpy.context.preferences.filepaths.save_version = 0
     full = make("swordfish", False)
     low = make("swordfish_lo", True)
+    game = make("swordfish_game", False, True)
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, "swordfish.glb"))
     export_one(low, os.path.join(OUT, "swordfish_lo.glb"))
+    export_one(game, os.path.join(OUT, "swordfish_game.glb"))
     low.location.x = 3.0
+    game.location.x = -3.0
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "swordfish.blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
         render(PREVIEW, [full, low])

@@ -35,6 +35,70 @@ uniform float phase = 0.0;
 uniform float curl = 0.0;
 // How far its mouth is open: 0 shut, 1 wide open, as when it bites. Set by Swordfish.
 uniform float gape : hint_range(0.0, 1.0) = 0.0;
+
+// The cartoon eye (added 2026-11-18; the user: "the eyes for most of them should be more cartoony and
+// personalized"). 0 the eye as it was (the default: nothing changes), 1 the cartoon eye: bigger, a clean white,
+// a coloured iris, a big dark pupil, a highlight that stays put, a dark outline, and this animal's own lid. Its
+// character: a deep diver's huge night eye: mostly iris, deep blue-green, a great round pupil, under a heavy brow that slopes down hard towards the sword, and a lower lid pushed up: gruff and stern.
+uniform float cartoon_eyes : hint_range(0.0, 1.0) = 0.0;
+// Where the pupil and iris look, -1..1 each way in the eye's own plane: x forward (towards the snout), y up.
+uniform vec2 eye_look = vec2(0.0);
+// 0 open, 1 shut: the eye squashes flat (a fish has no lids) and, on the cartoon eye, a lid the colour of the
+// skin comes down over it.
+uniform float blink : hint_range(0.0, 1.0) = 0.0;
+uniform vec3 eye_iris : source_color = vec3(0.15, 0.5, 0.62);
+uniform vec3 eye_white : source_color = vec3(0.88, 0.9, 0.88);
+// As the model is built: where the middle of the left eye lies on the skin (the build script prints it as
+// EYE_MIDDLE; the right eye is its mirror), and the eye's radius. Then this animal's eye: how much bigger the
+// cartoon eye is, its iris's and its pupil's size (shares of the eye's radius; the pupil's along and up), where
+// its upper lid's edge rests (-1 the bottom of the eye, 1 the top; above 1 no lid) and how that slopes (more than
+// 0 higher towards the snout), where its lower lid rests (below -1 none).
+const vec3 EYE_MIDDLE = vec3(0.1008, 0.0400, -0.2950);
+const float EYE_R = 0.05;
+const float EYE_GROW = 1.5;
+const float EYE_IRIS = 0.72;
+const vec2 EYE_PUPIL = vec2(0.42, 0.42);
+const float EYE_LID = 0.32;
+const float EYE_SLANT = -0.45;
+const float EYE_LOWER = -0.82;
+
+// (the eye's dome made bigger about its middle on the skin, and squashed as it blinks)
+void eye_vertex(inout vec3 v) {
+	vec3 mid = vec3(sign(v.x) * EYE_MIDDLE.x, EYE_MIDDLE.y, EYE_MIDDLE.z);
+	vec3 o = (v - mid) * mix(1.0, EYE_GROW, clamp(cartoon_eyes, 0.0, 1.0));
+	o.y *= 1.0 - 0.6 * clamp(blink, 0.0, 1.0);
+	v = mid + o;
+}
+
+// The cartoon eye at a point of the still model's eye: its colour, and how much of it is lid (for roughness).
+vec4 cartoon_eye(vec3 p, vec3 skin) {
+	vec2 e = vec2(EYE_MIDDLE.z - p.z, p.y - EYE_MIDDLE.y) / EYE_R;
+	float r = length(e);
+	vec2 q = e - clamp(eye_look, vec2(-1.0), vec2(1.0)) * (0.92 - EYE_IRIS) * 0.9;
+	float iris_at = length(q) / EYE_IRIS;
+	float pupil_at = length(q / EYE_PUPIL);
+	vec3 c = eye_white * (1.0 - 0.12 * smoothstep(0.5, 0.9, r));
+	vec3 ring = eye_iris * (0.6 + 0.55 * smoothstep(1.0, 0.35, iris_at));
+	c = mix(c, ring, 1.0 - smoothstep(0.94, 1.0, iris_at));
+	c = mix(c, eye_iris * 0.25, smoothstep(0.8, 0.95, iris_at) * (1.0 - smoothstep(0.95, 1.0, iris_at)));
+	c = mix(c, vec3(0.008, 0.008, 0.012), 1.0 - smoothstep(0.9, 1.0, pupil_at));
+	// (the highlights stay put, up and forward, wherever it looks)
+	float shine = 1.0 - smoothstep(0.1, 0.14, length(e - vec2(0.2, 0.15)));
+	shine = max(shine, 0.8 * (1.0 - smoothstep(0.05, 0.08, length(e - vec2(-0.12, -0.22)))));
+	c = mix(c, vec3(1.0), shine);
+	// the dark outline
+	c = mix(c, vec3(0.01, 0.01, 0.015), smoothstep(0.8, 0.86, r));
+	// the lids: the upper comes down as it blinks, its edge a dark line
+	float b = clamp(blink, 0.0, 1.0);
+	float edge = mix(EYE_LID + EYE_SLANT * e.x, -1.05, b);
+	float lower = EYE_LOWER;
+	float lid = max(smoothstep(edge - 0.025, edge + 0.025, e.y), 1.0 - smoothstep(lower - 0.025, lower + 0.025, e.y));
+	float line = (1.0 - smoothstep(0.05, 0.1, abs(e.y - edge))) * step(edge, 1.0);
+	line = max(line, (1.0 - smoothstep(0.05, 0.1, abs(e.y - lower))) * step(-1.0, lower));
+	c = mix(c, skin, lid);
+	c = mix(c, vec3(0.01, 0.01, 0.015), line * 0.85 * step(r, 0.9));
+	return vec4(c, lid);
+}
 // How widely it beats, for 1 as a swordfish cruising (its tail tips swing about 0.29 m either way).
 uniform float sway = 1.0;
 // How long the wave along its body is, in body lengths (the body: lower jaw to tail).
@@ -100,6 +164,9 @@ void vertex() {
 	rest = VERTEX;
 	rest_normal = NORMAL;
 	vec3 v = VERTEX;
+	if (part > 5.5) {
+		eye_vertex(v);
+	}
 	vec3 n = NORMAL;
 	if (part > 2.5 && part < 3.5) {
 		// The lower jaw swings down about its hinge, all of it as one stiff piece.
@@ -204,6 +271,12 @@ void fragment() {
 		c = mix(c, back, smoothstep(0.88, 1.0, r) * 0.9);
 		rough = 0.12;
 		spec = 0.6;
+		if (cartoon_eyes > 0.0) {
+			vec4 toon = cartoon_eye(rest, mix(back, bronze, 0.6));
+			c = mix(c, toon.rgb, cartoon_eyes);
+			rough = mix(rough, mix(0.1, 0.5, toon.a), cartoon_eyes);
+			spec = mix(spec, mix(0.7, 0.4, toon.a), cartoon_eyes);
+		}
 	}
 	ALBEDO = c;
 	ROUGHNESS = rough;
