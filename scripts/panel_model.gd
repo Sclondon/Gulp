@@ -228,6 +228,11 @@ func boost_home() -> Vector2:
 
 ## A named place on the screen: "SparkA", "SparkB" (the electrodes' tips), "Length" (on the growth
 ## dial's face, under its hub), "Scope", "ScopeEdge", "Pause" (the pause button).
+## Whether the model has a marker of that name.
+func has(named: String) -> bool:
+	return _points.has(named)
+
+
 func point(named: String) -> Vector2:
 	var housing := gauges
 	if named.begins_with("Spark") or named == "Length":

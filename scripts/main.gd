@@ -563,6 +563,14 @@ func _sound_out() -> void:
 					elif each.hunts and Life.can_eat(each.length, player.length) and player.length >= each.length * Life.TOO_SMALL:
 						seen.append(Vector3(off.dot(right), off.dot(ahead), 1.0 + Sonar.high(off.y)))
 	pad.blips = seen
+	# (the alarm: how near the nearest thing after the fish is, from 12 lengths of the fish, and
+	# no less than 5 m, down to upon it)
+	var near := INF
+	if player.alive:
+		for threat: Array in life.threats():
+			near = minf(near, (threat[0] as Vector3).distance_to(player.global_position))
+	var from := maxf(5.0, player.length * 12.0)
+	pad.alarm = clampf(1.0 - near / from, 0.0, 1.0) if near < from else 0.0
 	# (and the parts of the sea, as landmarks)
 	var marks := []
 	if player.alive:

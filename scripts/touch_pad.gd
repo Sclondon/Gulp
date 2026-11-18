@@ -65,6 +65,9 @@ var blips: Array[Vector3] = []
 ## The landmarks the sonar points to: each [its name in Sonar.LANDMARKS, where it is from the fish
 ## (x to its right, y ahead, metres)].
 var landmarks: Array = []
+## How near a hunter that is after the fish has come (0 none near, 1 upon it): the alarm lamp on
+## the scope's head flashes, faster the nearer.
+var alarm := 0.0
 ## The game is paused: a veil over the sea and an arrow to go on.
 var paused := false
 
@@ -214,6 +217,15 @@ func _draw() -> void:
 	sonar.landmarks = landmarks
 	sonar.heading = heading
 	sonar.visible = not paused
+	# The alarm lamp: lit red in flashes while a hunter is close.
+	if alarm > 0.02 and not paused and model.has("Alarm"):
+		var lamp := model.point("Alarm")
+		var wide := absf(model.point("AlarmEdge").x - lamp.x)
+		var flash := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.001 * lerpf(7.0, 22.0, alarm))
+		flash = smoothstep(0.35, 0.65, flash)
+		for k in 5:
+			draw_circle(lamp, wide * (1.0 + k * 0.9), Color(1.0, 0.16, 0.08, flash * (0.75 if k == 0 else 0.22 / k)))
+		draw_circle(lamp - Vector2(wide, wide) * 0.3, wide * 0.3, Color(1.0, 0.85, 0.7, flash * 0.7))
 	# The fish's length, written on the growth dial's face.
 	var high := int(maxf(model.scale_of("Length") * 0.17, 9.0))
 	var long := "%.2f m" % length

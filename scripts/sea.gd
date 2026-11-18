@@ -294,6 +294,11 @@ func _look() -> void:
 	_sun.light_color = lit
 	_sun.light_energy = lerpf(0.6, 1.5, day) + 0.45 * glow * (1.0 - day)
 	var water := Color(0.008, 0.042, 0.11).lerp(Color(0.012, 0.07, 0.17), day).lerp(Color(0.05, 0.06, 0.13), glow * 0.35)
+	# (near the top the water is a green-blue, as coastal water is and as the concept pictures
+	# are; it goes to the deep blue by about 35 m down. Claude's pick, 2026-11-18)
+	var eye := get_viewport().get_camera_3d()
+	var down_far := clampf((SURFACE - eye.global_position.y) / 35.0, 0.0, 1.0) if eye else 0.5
+	water = (Color(0.02, 0.2, 0.22) * lerpf(0.45, 1.0, day)).lerp(water, smoothstep(0.0, 1.0, down_far))
 	if above:
 		var sky := Day.sky_colour()
 		_env.background_color = sky
@@ -303,8 +308,8 @@ func _look() -> void:
 	else:
 		_env.background_color = water
 		_env.fog_light_color = water
-		_env.fog_density = 0.04
-		_env.ambient_light_color = Color(0.22, 0.34, 0.62).lerp(Color(0.3, 0.5, 0.8), day).lerp(Color(0.42, 0.42, 0.62), glow * 0.3)
+		_env.fog_density = lerpf(0.03, 0.04, down_far)
+		_env.ambient_light_color = Color(0.22, 0.34, 0.62).lerp(Color(0.3, 0.5, 0.8), day).lerp(Color(0.42, 0.42, 0.62), glow * 0.3).lerp(Color(0.5, 0.72, 0.7) * lerpf(0.6, 1.0, day), 0.6 * (1.0 - down_far))
 	# (the surface overhead dims at night; seen from under it, it is the brightest thing there is)
 	var dim := lerpf(0.5, 1.0, maxf(day, glow * 0.7))
 	_water.set_shader_parameter(&"deep", Color(0.02, 0.1, 0.28) * dim)

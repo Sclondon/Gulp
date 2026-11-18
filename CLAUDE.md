@@ -332,3 +332,14 @@ a half on a Windows desktop browser. Build the web export from the clean worktre
 - Another idea in the same breath ("and there could also be a regular fishing mode rather than only the odell down
   under"): fishing from the boat with a rod as a second way to play, feeding the same sell-for-money loop. GameCommon
   has a `fishing` component to start from. Nothing built; ask before building.
+- "ther eshould be mermaids, kelpies/ hippocampus, old ones fish spawn creatues of the deep, skeleton ghost whales
+  and other ghost fish", "and spinosaurus", and (with a picture of a signed drawing: a shaggy brown-furred beast
+  standing upright with a caiman's head, clawed scaly hands and feet and a broad scaly tail) "and whatever this is":
+  not started; concept first. The last is someone's artwork: make our own furry crocodile-headed river beast in that
+  spirit, never a copy of the drawing.
+- "the control ui also needs an alarm that starts flashing when a chasing fish gets close": done (a red lamp on the
+  scope's head in `build_panel.py`, markers Alarm/AlarmEdge; `TouchPad.alarm`, set in `Main._sound_out`). The antenna
+  is shorter. The water is green-blue near the top and deep blue by 35 m down (`Sea._look`, Claude's pick).
+- "yes make the design and implement it" (the treasure mode above, 2026-11-18): the design is `DESIGN.md`.
+- The Wayside Interactive logo for the loading screen is in `C:\Projects\scareathon\trailer\wayside-logo\out`
+  (`png/WaysideInteractive_mark.png`, `_seal.png`, `_stacked.png`, and the animated sequences as mp4).

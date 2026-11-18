@@ -713,11 +713,24 @@ run(BRASS, [(depth[0] + 0.46, 0.18, depth[1] + 0.2), (half + 0.05, 0.18, depth[1
 collar((half + 0.07, 0.18, 0.6), 0.08)
 run(RUBBER, [(SCOPE[0] + 0.1, -0.02, SCOPE[1] + SCOPE_R + 0.22), (0.3, -0.12, SCOPE[1] + SCOPE_R + 0.3), (depth[0] - 0.2, -0.02, depth[1] + 0.42)], 0.04, ("Y", "Y"), 4)
 flange((depth[0] + 0.25, 0.16, depth[1] + 0.42), 0.05, "Z")
-cyl(STEEL, 0.03, 0.9, (depth[0] + 0.25, 0.16, depth[1] + 0.87), "Z", 6)
-ball(BRASS, 0.07, (depth[0] + 0.25, 0.16, depth[1] + 1.34))
+# (the user, 2026-11-18: "the little antenna on the control panel needs to be a bit shorter")
+cyl(STEEL, 0.03, 0.42, (depth[0] + 0.25, 0.16, depth[1] + 0.63), "Z", 6)
+ball(BRASS, 0.07, (depth[0] + 0.25, 0.16, depth[1] + 0.87))
+# the alarm lamp on the scope's head (the user: "the control ui also needs an alarm that starts
+# flashing when a chasing fish gets close"): a red glass dome in a brass cage on a collar; the
+# game lights it (TouchPad draws the flash over the marker Alarm)
+ALARM = (SCOPE[0], SCOPE[1] + SCOPE_R + 0.5)
+cyl(BRASS, 0.17, 0.12, (ALARM[0], 0.1, ALARM[1]), "Z", 10)
+cyl(STEEL, 0.13, 0.05, (ALARM[0], 0.1, ALARM[1] + 0.08), "Z", 10)
+ball(RED, 0.15, (ALARM[0], 0.1, ALARM[1] + 0.16), (1.0, 1.0, 1.15), 10)
+for a in (0.0, 90.0):
+    torus(BRASS, 0.16, 0.018, (ALARM[0], 0.1, ALARM[1] + 0.16), "X" if a == 0.0 else "Y", 10)
+ball(BRASS, 0.04, (ALARM[0], 0.1, ALARM[1] + 0.36))
 gauges = join("Gauges")
 marker("Scope", (SCOPE[0], -0.12, SCOPE[1]), gauges)
 marker("ScopeEdge", (SCOPE[0] + SCOPE_R, -0.12, SCOPE[1]), gauges)
+marker("Alarm", (ALARM[0], -0.06, ALARM[1] + 0.16), gauges)
+marker("AlarmEdge", (ALARM[0] + 0.15, -0.06, ALARM[1] + 0.16), gauges)
 needle("Depth", depth[0], depth[1], SMALL_DIAL_R, gauges)
 needle("Burst", burst[0], burst[1], SMALL_DIAL_R, gauges)
 
