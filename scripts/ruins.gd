@@ -1,31 +1,36 @@
 class_name Ruins
 extends Node3D
-## The drowned precinct of Atlantis (the user, 2026-11-18: "another location should be atlanits
-## ruins"; laid out after the concept art tools/art_src/concept_atlantis.jpg; tools/RUINS.md): a
-## processional way to a carved gate, a round temple with its dome broken open, a colossal hollow
-## head and a hand fallen before it, a colonnade behind, a stepped pyramid with a chamber, a pillar
-## with a glowing crystal, carved frieze blocks and drums strewn about. One model
-## (models/atlantis_ruins.glb, built by tools/build_ruins.py) in six parts, drawn with one shader
-## (shaders/ruins.gdshader) as three materials: the stone, the statue (its own picture) and what
-## glows.
+## The drowned precinct of Atlantis, built into the walls of the Monterey Canyon (tools/RUINS.md). The
+## user (2026-11-18): "another location should be atlanits ruins"; then "atlantis shouldn't just be a
+## giant crater"; then "The Atlantis ruines area shouldnt just be a big open flat area, it should be built
+## into the trench sides". Laid out after the concept art tools/art_src/concept_atlantis_canyon.png (the
+## buildings' look from concept_atlantis.jpg): a round temple with its broken dome on the north rim,
+## jutting over the drop on its own crag; a colonnade on a terrace built out from the north wall, a
+## rock-cut temple front behind it; a stone arch bridge across the canyon to a landing on the south wall
+## with the pillar of the glowing crystal; a stepped pyramid half into the south wall on its own
+## terrace; rock-cut fronts low in both walls; stairs down the walls; the colossal fallen head and hand
+## of the sea queen on the canyon floor; carved blocks, drums and jars spilled about.
 ##
-## Its origin is the middle of the precinct, y = 0 on the sea bed (everything reaches a metre or two
-## below that, so it sits on uneven ground); the processional way runs along +Z, so a visitor comes
-## in from +Z swimming towards -Z (the gate is at x -18, the temple in the middle, the pyramid at
-## x 26, the pillar at x 38). About 64 m by 66 m, 21 m high at the crystal.
+## Where each building stands is ONE table, data/ruins_layout.json (Bay.RUINS_LAYOUT): the model's build
+## (tools/build_atlantis_canyon.py) places the buildings from it, Bay cuts the ledges under them from it,
+## and this reads it for the routes and the places kept clear of plants. One model
+## (models/atlantis_canyon.glb), a part a building, drawn with one shader (shaders/ruins.gdshader) as
+## three materials: the stone, the statue (its own picture) and what glows.
 ##
-## Place it BEFORE adding it: `Ruins.new()`, position, rotation.y, then add_child. On `_ready` its
-## collision spheres go to `Sea.add_rock` (where it stands then), sea life is grown at its reef
-## spots (GameCommon's sea floor props, as Scenery grows the reef), and each part hides itself
-## beyond the sea's sight. `fish_spots()` and `lanterns()` give places in the world for the game to
-## use. `routes()` are the swim routes that must stay open (tests/ruins_view.gd -- --check).
+## Its origin is the table's `origin` at `origin_depth` (Sea.RUINS_AT must be the same place), with no
+## turn: its own x, z are the world's less the origin's, its own y the world's less the origin's.
+##
+## Place it BEFORE adding it: `Ruins.new()`, position, then add_child. On `_ready` its collision spheres
+## go to `Sea.add_rock`, sea life is grown at its reef spots, and each part hides itself beyond the sea's
+## sight. `fish_spots()` and `lanterns()` give places in the world; `routes()` the swim routes that must
+## stay open (tests/ruins_view.gd -- --check); `covers(at)` whether a place is kept clear for it.
 
-const MODEL := "res://models/atlantis_ruins.glb"
-const ATLAS := "res://textures/ruins_atlas.png"
-const STATUE_ATLAS := "res://textures/ruins_atlas_statue.png"
+const MODEL := "res://models/atlantis_canyon.glb"
+const ATLAS := "res://textures/ruins_canyon_atlas.png"
+const STATUE_ATLAS := "res://textures/ruins_canyon_statue.png"
 const SHADER := "res://shaders/ruins.gdshader"
 ## Collision spheres added over what the build's own fitting left open (its own space: x, y, z, radius).
-const EXTRA := "res://models/ruins_extra.json"
+const EXTRA := "res://models/ruins_canyon_extra.json"
 const PROPS := "res://scenery/sea_floor_props/sea_floor_props.gd"
 ## Beyond this (from a part's middle, plus its own size) the water hides it, as Scenery's plants.
 const SEEN := 60.0
@@ -38,6 +43,8 @@ const LIFE_FULL := 1300
 ## The materials of the model that are the statue's (its own picture) and what glows.
 const STATUE_PAINTS: PackedStringArray = ["statue", "relief", "face"]
 const GLOW_PART := "RuinsGlow"
+## How far her head lies sunk below her ledge (tools/build_atlantis_canyon.py QUEEN_SINK).
+const QUEEN_SINK := -0.8
 
 ## How bright the crystal and the inlays glow.
 @export var glow := 1.0:
@@ -61,6 +68,10 @@ var _fish := PackedVector3Array()
 var _lanterns := PackedVector3Array()
 var _rocks: Array[Vector4] = []
 var _rng := RandomNumberGenerator.new()
+
+static var _layout := {}
+# (what `covers` tries: [middle (world x, z), heading, half size or (radius, -1)])
+static var _covered: Array = []
 
 
 func _ready() -> void:
@@ -92,7 +103,7 @@ func _ready() -> void:
 		gone.append(node)
 	for node in gone:
 		node.free()
-	# (and the extra ones over what the build's fitting left open, its thin paving slabs above all:
+	# (and the extra ones over what the build's fitting left open, thin slabs above all:
 	# tests/setpiece_hits.gd --fit-ruins makes them, which leaves them out itself with --no-ruins-extra)
 	if FileAccess.file_exists(EXTRA) and not OS.get_cmdline_user_args().has("--no-ruins-extra"):
 		var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(EXTRA))
@@ -106,8 +117,7 @@ func _ready() -> void:
 		_grow(reef)
 
 
-## Places where fish could gather (in the world): the way, the court, round the temple, over the
-## dome, in the colonnade, round the pillar, over the pyramid and in its chamber, in the field.
+## Places where fish could gather (in the world).
 func fish_spots() -> PackedVector3Array:
 	var out := PackedVector3Array()
 	for at in _fish:
@@ -115,8 +125,8 @@ func fish_spots() -> PackedVector3Array:
 	return out
 
 
-## Where a light could hang (in the world): in the pyramid's chamber, under the dome, in the gate,
-## at the crystal, in the colonnade, inside her hollow head.
+## Where a light could hang (in the world): in the pyramid's chamber, under the dome, in the gate, at
+## the crystal, in the colonnade, inside her hollow head, in the rock-cut fronts' chambers.
 func lanterns() -> PackedVector3Array:
 	var out := PackedVector3Array()
 	for at in _lanterns:
@@ -129,34 +139,126 @@ func rocks() -> Array[Vector4]:
 	return _rocks
 
 
+## The table (data/ruins_layout.json), read once.
+static func layout() -> Dictionary:
+	if _layout.is_empty():
+		var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(Bay.RUINS_LAYOUT))
+		if data is Dictionary:
+			_layout = data
+	return _layout
+
+
+## Where the ruins' own origin is in the world (Sea.RUINS_AT must agree: the check says).
+static func origin() -> Vector3:
+	var data := layout()
+	return Vector3(float(data.origin[0]), Sea.SURFACE - float(data.origin_depth), float(data.origin[1]))
+
+
+## A building's own frame in the ruins' own space: its front +Z, y = 0 at its depth.
+static func frame(building: String) -> Transform3D:
+	var b: Dictionary = layout().buildings[building]
+	var o := origin()
+	var at := Vector3(float(b.at[0]) - o.x, Sea.SURFACE - float(b.depth) - o.y, float(b.at[1]) - o.z)
+	return Transform3D(Basis(Vector3.UP, float(b.heading)), at)
+
+
+## A stair's points in the ruins' own space.
+static func stair(name: String) -> PackedVector3Array:
+	var o := origin()
+	var out := PackedVector3Array()
+	for p: Array in layout().stairs[name].points:
+		out.append(Vector3(float(p[0]) - o.x, Sea.SURFACE - float(p[1]) - o.y, float(p[2]) - o.z))
+	return out
+
+
+## Whether a place (world x, z) is kept clear for the ruins (no plants or floor pieces): on any
+## building's ledge or terrace, before a rock-cut front, under the bridge, on a stair, `margin` more.
+static func covers(at: Vector2, margin := 2.0) -> bool:
+	if _covered.is_empty():
+		var data := layout()
+		for name: String in data.buildings:
+			var b: Dictionary = data.buildings[name]
+			var h := float(b.heading)
+			var middle := Vector2(float(b.at[0]), float(b.at[1]))
+			var areas := []
+			for l: Dictionary in b.get("ledges", []):
+				areas.append([Vector2(float(l.at[0]), float(l.at[1])), Vector2(float(l.radius), -1.0) if l.has("radius") else Vector2(float(l.size[0]), float(l.size[1])) * 0.5])
+			if b.has("terrace"):
+				areas.append([Vector2(float(b.terrace.at[0]), float(b.terrace.at[1])), Vector2(float(b.terrace.size[0]), float(b.terrace.size[1])) * 0.5])
+			if b.has("facade"):
+				areas.append([Vector2(0.0, 1.0), Vector2(float(b.facade[0]) * 0.5 + 1.0, 2.0)])
+			if b.has("span"):
+				areas.append([Vector2.ZERO, Vector2(2.6, float(b.span[0]))])
+			for area: Array in areas:
+				var off: Vector2 = area[0]
+				_covered.append([middle + Vector2(off.x * cos(h) + off.y * sin(h), -off.x * sin(h) + off.y * cos(h)), h, area[1]])
+		for ledge: Array in Bay.ruins_ledges():
+			if float(ledge[5]) != 0.0 or (ledge[2] as Vector2).y > 0.0:
+				_covered.append([ledge[0], ledge[1], ledge[2]])
+	for area: Array in _covered:
+		var d: Vector2 = at - area[0]
+		var h: float = area[1]
+		var local := Vector2(d.x * cos(h) - d.y * sin(h), d.x * sin(h) + d.y * cos(h))
+		var half: Vector2 = area[2]
+		if half.y < 0.0:
+			if local.length() < half.x + margin:
+				return true
+		elif absf(local.x) < half.x + margin and absf(local.y) < half.y + margin:
+			return true
+	return false
+
+
 ## The swim routes that must stay open, in its own space: name -> [points, room]. `room` is the
 ## clearance a swimmer keeps (Player: 0.3 of its length), so a route open at room 0.9 takes a fish
-## about 3 m long. The test walks each, every 0.4 m, through `Sea.clear_of_rocks`.
+## about 3 m long. The test walks each, every 0.4 m, through `Sea.clear_of_rocks`, and checks it
+## stays above the floor.
 static func routes() -> Dictionary:
-	# (the same places as tools/build_ruins.py: GATE_X/Z, TX/TZ, HEAD_AT, STOA_*, PX/PZ, CH, SH, DOOR_X)
-	var temple := Transform3D(Basis.IDENTITY, Vector3(-2.0, 0.0, -6.0)) * Transform3D(Basis(Vector3(0, 0, 1), 0.015), Vector3.ZERO) \
-			* Transform3D(Basis(Vector3(1, 0, 0), -0.01), Vector3.ZERO)
-	var head := Transform3D(Basis.IDENTITY, Vector3(5.2, 0.0, 9.8)) * Transform3D(Basis(Vector3(0, 1, 0), 0.25), Vector3.ZERO) \
-			* Transform3D(Basis(Vector3(1, 0, 0), 1.0 - PI * 0.5), Vector3.ZERO)
+	# (the same places as tools/build_atlantis_canyon.py builds them in each building's own frame)
+	var temple := frame("Temple") * Transform3D(Basis(Vector3(0, 0, 1), 0.015), Vector3.ZERO) * Transform3D(Basis(Vector3(1, 0, 0), -0.01), Vector3.ZERO)
+	var head := frame("Queen") * Transform3D(Basis.IDENTITY, Vector3(0.0, QUEEN_SINK, 0.0)) * Transform3D(Basis(Vector3(0, 1, 0), 0.25), Vector3.ZERO) * Transform3D(Basis(Vector3(1, 0, 0), 1.0 - PI * 0.5), Vector3.ZERO)
+	var gate := frame("Gate")
+	var stoa := frame("Colonnade")
+	var pyramid := frame("Pyramid")
+	var bridge := frame("Bridge")
+	var span: Array = layout().buildings.Bridge.span
+	# (round the temple outside its columns, on its open side, over the drop)
 	var ring := PackedVector3Array()
-	for k in 49:
-		ring.append(temple * Vector3(sin(TAU * k / 48.0) * 9.2, 3.0, cos(TAU * k / 48.0) * 9.2))
+	for k in 25:
+		var a := PI * 0.5 + PI * k / 24.0
+		ring.append(temple * Vector3(sin(a) * 9.2, 3.0, cos(a) * 9.2))
 	var out := {
-		"way and gate": [PackedVector3Array([Vector3(-18.0, 2.2, 36.0), Vector3(-18.0, 2.2, 20.0), Vector3(-18.0, 2.5, 10.0), Vector3(-6.0, 3.0, 6.0)]), 0.9],
+		"way and gate": [PackedVector3Array([gate * Vector3(0.0, 2.2, 18.0), gate * Vector3(0.0, 2.2, 6.0), gate * Vector3(0.0, 2.5, 0.0), gate * Vector3(0.0, 3.0, -3.0)]), 0.9],
 		"round the temple": [ring, 0.9],
 		"between its columns and out of the dome": [PackedVector3Array([temple * Vector3(0.0, 3.5, 11.0), temple * Vector3(0.0, 3.5, 7.4),
 				temple * Vector3(0.0, 4.0, 0.0), temple * Vector3(0.0, 9.5, 0.5), temple * Vector3(2.4, 13.6, 4.4), temple * Vector3(4.0, 18.0, 7.0)]), 0.9],
-		"through her head, temple to temple": [PackedVector3Array([head * Vector3(-5.5, 3.6, -0.4), head * Vector3(5.5, 3.6, -0.4)]), 0.9],
+		"through her head, temple to temple": [PackedVector3Array([head * Vector3(-4.8, 3.6, -0.4), head * Vector3(4.8, 3.6, -0.4)]), 0.9],
 		"into her mouth": [PackedVector3Array([head * Vector3(0.0, 2.12, 5.0), head * Vector3(0.0, 2.12, 1.2), head * Vector3(0.0, 3.0, -0.6)]), 0.1],
-		"colonnade aisle": [PackedVector3Array([Vector3(-3.0, 2.8, -24.0), Vector3(22.0, 2.8, -24.0)]), 0.9],
-		"pyramid door, chamber, shaft, high door": [PackedVector3Array([Vector3(29.8, 1.6, 8.0), Vector3(29.8, 1.6, -6.0), Vector3(28.2, 2.2, -6.0),
-				Vector3(26.0, 2.2, -6.0), Vector3(26.0, 10.15, -6.0), Vector3(26.0, 10.15, 1.0), Vector3(26.0, 10.6, 5.0)]), 0.9],
+		"colonnade aisle": [PackedVector3Array([stoa * Vector3(-7.0, 2.8, -0.2), stoa * Vector3(6.5, 2.8, -0.2)]), 0.9],
+		"pyramid door, chamber, shaft, high door": [PackedVector3Array([pyramid * Vector3(3.8, 1.6, 12.5), pyramid * Vector3(3.8, 1.6, 0.0), pyramid * Vector3(2.2, 2.2, 0.0),
+				pyramid * Vector3(0.0, 2.2, 0.0), pyramid * Vector3(0.0, 10.15, 0.0), pyramid * Vector3(0.0, 10.15, 7.0), pyramid * Vector3(0.0, 10.6, 11.0)]), 0.9],
+		"over the bridge": [PackedVector3Array([bridge * Vector3(0.0, 2.0, -float(span[0]) + 3.0), bridge * Vector3(0.0, 2.0, float(span[0]) - 1.0)]), 0.9],
+		"under the bridge, along the trench": [PackedVector3Array([bridge * Vector3(-5.0, -float(span[2]) + 4.0, 0.0), bridge * Vector3(5.0, -float(span[2]) + 4.0, 0.0)]), 0.9],
 	}
-	var weave := {}
-	for k in 5:
-		var x := 0.6 + 3.6 * k + 1.8
-		weave["colonnade gap %d" % k] = [PackedVector3Array([Vector3(x, 2.6, -17.0), Vector3(x, 2.6, -24.0)]), 0.9]
-	out.merge(weave)
+	for name: String in ["FacadeNorth", "FacadeSouth", "FacadeTomb"]:
+		var f := frame(name)
+		out["into the doorway of " + name] = [PackedVector3Array([f * Vector3(0.0, 2.4, 4.0), f * Vector3(0.0, 2.4, -4.5)]), 0.6]
+	for name: String in layout().stairs:
+		var points := stair(name)
+		var over := PackedVector3Array()
+		var width := float(layout().stairs[name].width)
+		for i in points.size():
+			# (a flight going down off a landing at a turn starts at the landing's edge, as the build
+			# makes it: the swimmer stays over the landing till there)
+			if i > 1 and absf(points[i].y - points[i - 1].y) >= 0.05 and absf(points[i - 1].y - points[i - 2].y) < 0.05:
+				var before := Vector3(points[i - 1].x - points[i - 2].x, 0.0, points[i - 1].z - points[i - 2].z).normalized()
+				var along := Vector3(points[i].x - points[i - 1].x, 0.0, points[i].z - points[i - 1].z).normalized()
+				if absf(before.dot(along)) < 0.7:
+					over.append(points[i - 1] + along * (width * 0.5 + 0.9) + Vector3(0.0, 2.8, 0.0))
+			over.append(points[i] + Vector3(0.0, 2.8, 0.0))
+		out["down " + name] = [over, 0.9]
+	for k in 4:
+		var x := -6.4 + 3.2 * k + 1.6
+		out["colonnade gap %d" % k] = [PackedVector3Array([stoa * Vector3(x, 2.6, 6.5), stoa * Vector3(x, 2.6, 0.0)]), 0.9]
 	return out
 
 
@@ -189,7 +291,9 @@ func _dress(part: MeshInstance3D) -> void:
 			paint = _statue
 		part.set_surface_override_material(i, paint)
 	part.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	part.visibility_range_end = SEEN + mesh.get_aabb().size.length() * 0.5
+	var box := mesh.get_aabb()
+	# (measured from the part's own origin: its box may lie well off it)
+	part.visibility_range_end = SEEN + box.get_center().length() + box.size.length() * 0.5
 
 
 # Sea life on the stones: at each reef spot one to three pieces of the kit, standing on the stone

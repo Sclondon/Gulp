@@ -8,7 +8,7 @@ extends SceneTree
 ##   godot --headless --path . --audio-driver Dummy -s res://tests/camera_clear.gd
 
 const PLACES := {
-	"liner": Vector3(-40.0, 0.0, 129.6), "pirate": Vector3(-80.0, 0.0, -12.8), "ruins": Vector3(-75.2, 0.0, 73.6),
+	"liner": Vector3(-40.0, 0.0, 129.6), "pirate": Vector3(-80.0, 0.0, -12.8), "ruins": Vector3(-66.0, 0.0, 50.0),
 	"kelp": Vector3(53.0, 0.0, 42.0), "docks": Vector3(35.2, 0.0, 78.4),
 }
 const SIZES := [0.25, 1.7, 7.5]

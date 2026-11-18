@@ -1,0 +1,21 @@
+{
+	"about": "Atlantis built into the stepped walls of the Monterey Canyon's deep south-western basin (tools/RUINS.md). The one table of where each building of the ruins stands, read by tools/build_atlantis_canyon.py (the model), by Bay (the ledges cut into the walls under them) and by Ruins (routes, kept-clear areas). World metres: x east, z south; depth in metres below the surface (40). The Ruins node stands at origin (x, z) and origin_depth; a building's own frame: its front is +Z, turned by heading (as Godot's rotation.y), y = 0 at its depth. A ledge: a rectangle (or a circle of radius) in the building's own frame, at its depth, `cut` (only lowers the floor to it), `fill` (only raises it) or `both` (levels it), blended out over `blend` metres, `above` metres over the building's depth if given (a fill behind a rock-cut front makes the cliff its rock is buried in). A terrace: the masonry block a building stands on, down to the floor. A facade: a rock-cut front (width, height, how far its rock runs back into the wall). A span: a bridge (half its length, its arch's radius, how far below the deck the arch springs). A stair: points (world x, depth, z), a flight between two of different depth, a landing between two at the same depth; each gets a ledge under its steps (its `mode`, as a building ledge's). After a change: godot -s res://tools/ruins_ground.gd, then the build, then tests/ruins_view.gd -- --check.",
+	"origin": [-62.0, 50.0],
+	"origin_depth": 82.0,
+	"buildings": {
+		"Gate": {"at": [-64.0, 23.0], "depth": 26.0, "heading": 3.14159, "ledges": [{"at": [0.0, 7.0], "size": [12.0, 24.0], "blend": 3.0, "mode": "both"}]},
+		"Temple": {"at": [-80.0, 27.0], "depth": 26.5, "heading": 0.2, "ledges": [{"at": [0.0, 0.0], "radius": 11.0, "blend": 3.0, "mode": "cut"}]},
+		"Colonnade": {"at": [-79.0, 43.5], "depth": 54.0, "heading": 0.0, "terrace": {"at": [0.0, 0.0], "size": [16.0, 6.0]}, "ledges": [{"at": [0.0, 0.0], "size": [18.0, 8.0], "blend": 2.5, "mode": "both"}]},
+		"FacadeNorth": {"at": [-79.0, 40.5], "depth": 54.0, "heading": 0.0, "facade": [9.0, 10.0, 10.0], "ledges": [{"at": [0.0, -6.25], "size": [15.0, 9.5], "blend": 3.0, "mode": "fill", "above": 11.5}, {"at": [0.0, -2.0], "size": [5.0, 9.0], "blend": 1.5, "mode": "cut"}, {"at": [0.0, 3.0], "size": [11.0, 6.0], "blend": 1.0, "mode": "both"}]},
+		"Bridge": {"at": [-48.0, 30.0], "depth": 40.0, "heading": 1.5708, "span": [12.0, 8.0, 10.0]},
+		"Landing": {"at": [-34.0, 30.0], "depth": 40.0, "heading": -1.5708, "terrace": {"at": [0.0, 0.0], "size": [12.0, 5.0]}, "ledges": [{"at": [0.0, 0.0], "size": [14.0, 7.0], "blend": 2.5, "mode": "both"}]},
+		"Pyramid": {"at": [-51.4, 57.5], "depth": 68.0, "heading": -1.5708, "terrace": {"at": [0.0, 1.85], "size": [21.0, 22.7]}, "ledges": [{"at": [0.0, 5.25], "size": [23.0, 20.5], "blend": 3.0, "mode": "both"}]},
+		"Queen": {"at": [-85.0, 66.0], "depth": 96.0, "heading": 3.53, "ledges": [{"at": [0.0, 0.0], "radius": 7.5, "blend": 3.0, "mode": "both"}]},
+		"FacadeSouth": {"at": [-68.0, 69.5], "depth": 70.0, "heading": 3.14159, "facade": [10.0, 9.0, 9.0], "ledges": [{"at": [0.0, -5.75], "size": [16.0, 8.5], "blend": 3.0, "mode": "fill", "above": 10.5}, {"at": [0.0, -2.0], "size": [5.0, 9.0], "blend": 1.5, "mode": "cut"}, {"at": [0.0, 3.0], "size": [12.0, 6.0], "blend": 1.0, "mode": "both"}]},
+		"FacadeTomb": {"at": [-76.0, 56.0], "depth": 82.0, "heading": 0.0, "facade": [9.0, 9.0, 9.0], "ledges": [{"at": [0.0, -5.75], "size": [15.0, 8.5], "blend": 3.0, "mode": "fill", "above": 10.5}, {"at": [0.0, -2.6], "size": [4.0, 7.2], "blend": 0.8, "mode": "cut"}, {"at": [0.0, 1.75], "size": [11.0, 3.5], "blend": 1.0, "mode": "both"}]}
+	},
+	"stairs": {
+		"StairRim": {"width": 4.0, "mode": "both", "points": [[-62.5, 26.5, 27.8], [-65.5, 39.8, 37.5], [-58.0, 39.8, 39.0], [-58.0, 39.8, 43.0], [-72.5, 53.8, 44.0]]},
+		"StairEast": {"width": 4.0, "mode": "both", "points": [[-38.0, 40.2, 35.0], [-38.0, 40.2, 45.0], [-49.0, 54.2, 45.0]]}
+	}
+}

@@ -508,7 +508,7 @@ func _others(liner: Node, pirate: Node, ruins: Node) -> void:
 	_piece("other: the rest of the rocks (piles, floats, boats, outcrop, mangroves, giants) against all drawn", drawn + kit_drawn, rest, [], 30)
 
 
-# --- Atlantis' extra spheres (models/ruins_extra.json): its build fits spheres only to pieces thick enough
+# --- Atlantis' extra spheres (models/ruins_canyon_extra.json; models/ruins_extra.json was the first, flat Atlantis', retired): its build fits spheres only to pieces thick enough
 # for them, so its thin paving slabs over the falling floor and many tops were open to a fish passing through.
 # Run with the extra ones left out (`--no-ruins-extra`, read by Ruins), it adds, greediest first, a sphere of
 # FIT_R a little inside each part of the drawn surface still more than FIT_GAP from every rock, kept out of
@@ -573,7 +573,7 @@ func _fit_ruins(ruins: Node3D) -> void:
 	for s: Vector4 in made:
 		var m := back * Vector3(s.x, s.y, s.z)
 		out.append([snappedf(m.x, 0.001), snappedf(m.y, 0.001), snappedf(m.z, 0.001), snappedf(s.w / grow, 0.001)])
-	var f := FileAccess.open("res://models/ruins_extra.json", FileAccess.WRITE)
+	var f := FileAccess.open(Ruins.EXTRA, FileAccess.WRITE)
 	f.store_string(JSON.stringify({"about": "Atlantis' extra collision spheres (its own space: x, y, z, radius), made by tests/setpiece_hits.gd --fit-ruins over the surface its build's spheres left open; read by Ruins", "spheres": out}))
 	f.close()
-	print("FIT ruins: %d open samples, %d extra spheres written to models/ruins_extra.json" % [open.size(), made.size()])
+	print("FIT ruins: %d open samples, %d extra spheres written to %s" % [open.size(), made.size(), Ruins.EXTRA])

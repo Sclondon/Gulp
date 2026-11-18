@@ -8,8 +8,8 @@ extends Node3D
 ##
 ## It is a small Monterey Bay (see `ZONES`, scripts/bay.gd and tools/MONTEREY.md): beaches all
 ## round the shore, two kelp forests, docks at Monterey and Santa Cruz, Elkhorn Slough, sand off
-## Santa Cruz, the canyon winding out from Moss Landing into a deep basin with Atlantis at its
-## lower end, a pirate ship on its rim, sea grass and a sunken liner off the peninsula and Carmel,
+## Santa Cruz, the canyon winding out from Moss Landing into a deep basin with Atlantis built into
+## its stepped walls, a pirate ship on its rim, sea grass and a sunken liner off the peninsula and Carmel,
 ## and to the west the shelf's edge, where the floor drops away into the open ocean.
 ## `ground` is the floor's height everywhere; `keep_in` holds a swimmer in the water and
 ## `clear_of_rocks` out of the rocks (each a sphere); `place` finds somewhere in a zone.
@@ -44,8 +44,9 @@ const ZONES := {
 	"docks": {"at": Vector2(66.0, 68.0), "radius": 16.0, "also": [[Vector2(3.0, -123.0), 12.0]]},
 	"sand": {"at": Vector2(-20.0, -80.0), "radius": 22.0, "region": "dunes"},
 	"pirate": {"at": Vector2(-65.0, -42.0), "radius": 18.0},
+	# (before the trench: Atlantis is in it)
+	"ruins": {"at": Vector2(-64.0, 48.0), "radius": 28.0},
 	"trench": {"at": Vector2(30.0, -36.0), "radius": 45.0, "deeper": 45.0},
-	"ruins": {"at": Vector2(-53.0, 26.0), "radius": 30.0},
 	"grass": {"at": Vector2(-56.0, 2.0), "radius": 12.0, "region": "grass"},
 	"crags": {"at": Vector2(-82.0, -40.0), "radius": 16.0, "region": "crags"},
 	"reef": {"at": Vector2(-37.0, 126.0), "radius": 24.0},
@@ -58,11 +59,12 @@ const ZONES := {
 ## canyon open under its middle down to about 90 m. Found by tools/bay_probe.gd --span.
 const WRECK_AT := Vector3(-37.0, 14.0, 126.0)
 const WRECK_HEADING := 0.0
-## Atlantis (scripts/ruins.gd, another agent's): the middle of its terrace on the bottom, and its
-## turn (its front, the node's -Z, faces north-east, up the canyon). In the canyon's deep basin, 93 m down, on
-## its flattest ground, at the floor's own depth (not a raised terrace: "atlantis shouldn't just be a giant crater").
-const RUINS_AT := Vector3(-53.0, -53.0, 26.0)
-const RUINS_HEADING := -0.93
+## Atlantis (scripts/ruins.gd): its own origin, in the canyon's deep south-western basin, on its 82 m tread; its
+## buildings stand on ledges in the stepped walls round the basin ("it should be built into the trench sides";
+## "the ruins need to be way further out in the deepest part of the trench", the user, 2026-11-18).
+## The same place as data/ruins_layout.json's origin (the ruins check says if they disagree); not turned.
+const RUINS_AT := Vector3(-62.0, -42.0, 50.0)
+const RUINS_HEADING := 0.0
 ## The pirate ship (scripts/pirate_wreck.gd, another agent's): the middle of its sandy hollow, and
 ## its turn (its length along the node's own Z). On the open shelf south-west of where it first lay, where the
 ## user circled it on the chart (2026-11-18: "why havent you moved the pirate ship like I showed in the overlay").

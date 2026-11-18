@@ -240,7 +240,7 @@ static func in_lane(at: Vector2, middle: Vector3, heading: float, size: Vector2,
 # Whether a place is kept clear for a wreck or Atlantis.
 func _kept_clear(at: Vector2, margin := 2.0) -> bool:
 	return in_lane(at, Sea.WRECK_AT, Sea.WRECK_HEADING, WRECK_LANE, margin) or in_lane(at, Sea.PIRATE_AT, Sea.PIRATE_HEADING, PIRATE_LANE, margin) \
-			or at.distance_to(Vector2(Sea.RUINS_AT.x, Sea.RUINS_AT.z)) < float(Bay.RUINS_TERRACE[2]) * Bay.K
+			or (ResourceLoader.exists(RUINS) and bool((load(RUINS) as GDScript).call(&"covers", at, margin)))
 
 
 # The places' plants and floor pieces by rule (scripts/biomes.gd, tools/BIOMES.md): the kelp
