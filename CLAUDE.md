@@ -364,3 +364,6 @@ a half on a Windows desktop browser. Build the web export from the clean worktre
   fish). The two smaller logo copies in textures/loading (`_small`, `_116`) are retired.
 - "yes the arena should still be part of the fish control aspect" (the user, 2026-11-18): the online arena stays,
   inside the fish runs of DESIGN.md.
+- "the captain should have the outfit from teh first concept as well to switch into" (the user, 2026-11-18): two
+  outfits on the captain (the first sheet's closed coat, and the open coat with chest hair and tattoos), switchable in
+  `scripts/title_figures.gd`; nothing in the game switches it yet.
