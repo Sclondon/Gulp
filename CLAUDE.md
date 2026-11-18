@@ -490,3 +490,7 @@ stage 2 rebuilds them in brass, so each is its own script with a small interface
   princess"; told it could reach that standard by a painted face texture projected from the concept, and offered a
   test on one head: "lets try it". The captain's rebuild includes a painted-face head beside the mask-with-slits head
   (`concept_faces_trial.jpg`); the brothers wait on the user's verdict.
+- How a figure is checked against its modelling sheet (the user, 2026-11-18): "make sure to overly the model onto the
+  tpose until it looks right". Render the model orthographically in the sheet's pose and scale and lay it half-clear
+  (and as an outline) over each view of the sheet; fix and repeat until the silhouettes agree. This is the standard
+  for the captain and for the brothers after him.
