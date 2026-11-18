@@ -414,8 +414,15 @@ choices below are Claude's.
   its ends on the two rims 33 m down, the canyon open under its middle to 60 to 70 m (`tools/bay_probe.gd --span=`
   found it: the rims within 0.3 m of each other). The ends rest on two small seats, `Bay.WRECK_SHELF` (north) and
   `WRECK_SEAT_SOUTH`, whose 7th item makes a shelf fill only (never dig), level under what rests on it.
-- **The trench as the user drew it** (2026-11-18, red lines over the overhead chart: "The trench area needs to be
-  skinner, just showing roughish boundaries"; kept as `tools/art_src/user_trench_lines.png`). `tools/trench_mask.gd`
+- **Skinnier canyons** (2026-11-18, current). The user drew rough lines over the overhead chart ("The trench area
+  needs to be skinner, just showing roughish boundaries"), and the first try traced them (below); then: "I didnt want
+  it to be based exactly on my rough drawing just meant trench needs to be skinnier". So the bake now keeps the real
+  canyons' courses and narrows them: no widening (`WIDEN` 0, was 2), and below `NARROW_FROM` (24 m) the first `LIFT`
+  (14) metres of every wall are lifted to the shelf, the rest stretched back down to 106 m (`_narrow`): the gentle
+  upper walls become shelf, the canyons narrow, steep cuts. The drawn mask is off (`USE_TRENCH_MASK`), its files kept.
+  The liner re-seated over the narrower Carmel Canyon: (4, 122), heading 0.26, ends on the rims 20 m down, about 50 m
+  of water under its middle.
+- (Superseded) **The trench as the user drew it** (red lines kept as `tools/art_src/user_trench_lines.png`). `tools/trench_mask.gd`
   turns the lines into `data/trench_mask.png` (1 m a pixel): it joins their loose ends to the shore or the map's edge
   (`CLOSE`, Claude's reading), fills the deep water from `SEEDS` (the canyon, the Soquel branch the user drew, the open
   west, the deep south-west, the Carmel Canyon) and keeps it out of the slough. `tools/bake_bay.gd` then raises the

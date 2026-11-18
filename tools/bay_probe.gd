@@ -114,7 +114,7 @@ func _fit(v: PackedStringArray) -> void:
 # `--span=x0,z0,x1,z1,step,length,rest`: a long thing laid across a canyon like a bridge. For each
 # point and heading (every 7.5 degrees): the floor under its two ends (the shallowest within `rest`
 # metres of each end, along it) and under its middle third (the shallowest there). Kept when both ends
-# rest on ground at most 6 m apart in depth, 20 to 55 m down, and the middle is at least 15 m deeper
+# rest on ground at most 6 m apart in depth, 12 to 55 m down, and the middle is at least 15 m deeper
 # than the ends; the best (ends most alike, middle deepest) first.
 func _span(v: PackedStringArray) -> void:
 	var half := float(v[5]) * 0.5
@@ -144,7 +144,7 @@ func _span(v: PackedStringArray) -> void:
 				var e0: float = ends[0]
 				var e1: float = ends[1]
 				var top := maxf(e0, e1)
-				if absf(e0 - e1) <= 6.0 and minf(e0, e1) >= 20.0 and top <= 55.0 and under >= top + 15.0 \
+				if absf(e0 - e1) <= 6.0 and minf(e0, e1) >= 12.0 and top <= 55.0 and under >= top + 15.0 \
 						and Bay.shore_distance(mid + along * half) > 3.0 and Bay.shore_distance(mid - along * half) > 3.0:
 					found.append([absf(e0 - e1) - (under - top) * 0.2, mid, turn, e0, e1, under])
 			x += float(v[4])

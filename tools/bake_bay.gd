@@ -24,7 +24,8 @@ const EAST := 122.0
 const NORTH := -160.0
 const SOUTH := 160.0
 const CELL := 1.0
-const WIDEN := 2.0
+## (was 2: the canyons were widened; the user, later: "trench needs to be skinnier")
+const WIDEN := 0.0
 ## Within EASE_BEACH of the shore the floor goes down to EASE_BEACH_DEEP; beyond, no steeper than
 ## EASE_SLOPE (m down a m out).
 const EASE_BEACH := 14.0
@@ -33,7 +34,15 @@ const EASE_SLOPE := 0.6
 ## The easing is whole within the first of these from the shore (m) and gone by the second.
 const EASE_NEAR := Vector2(25.0, 40.0)
 const OUT := "res://data/monterey.bin"
-## The user's trench (see _trench).
+## Skinnier canyons (see _narrow): below NARROW_FROM metres, the first LIFT metres of each wall are lifted
+## to NARROW_FROM, and what is deeper is stretched back down to DEEPEST, so a canyon keeps its course and
+## its floor but its gentle upper walls become shelf.
+const NARROW_FROM := 24.0
+const LIFT := 14.0
+const DEEPEST := 106.0
+## The user's drawn trench (see _trench): not used. The user: "I didnt want it to be based exactly on my
+## rough drawing just meant trench needs to be skinnier". Kept, off.
+const USE_TRENCH_MASK := false
 const TRENCH := "res://data/trench_mask.png"
 const SHELF := 26.0
 const SHELF_EASE := 5.0
@@ -126,7 +135,10 @@ func _initialize() -> void:
 	# ovals once the depths were squeezed), wet points only, so the shore stays where it is.
 	for blur_pass in BLUR_PASSES:
 		wide = _blur(wide, cols, rows, BLUR)
-	wide = _trench(wide, cols, rows)
+	if USE_TRENCH_MASK:
+		wide = _trench(wide, cols, rows)
+	else:
+		wide = _narrow(wide)
 	var shore := _shore_distance(wide, cols, rows)
 	# The near shore eased.
 	# (only near the shore, EASE_NEAR; and a canyon that drops far below the eased slope keeps its
@@ -163,6 +175,17 @@ func _initialize() -> void:
 			var r := clampi(int(round((p.y - NORTH) / CELL)), 0, rows - 1)
 			print("PLACE %s: (%.1f, %.1f) depth %.1f, shore %.1f" % [name, p.x, p.y, wide[r * cols + c], shore[r * cols + c]])
 	quit()
+
+
+# Skinnier canyons: the real floor's canyons, their upper walls lifted to the shelf (see NARROW_FROM).
+func _narrow(src: PackedFloat32Array) -> PackedFloat32Array:
+	var out := src.duplicate()
+	var stretch := (DEEPEST - NARROW_FROM) / (DEEPEST - NARROW_FROM - LIFT)
+	for i in src.size():
+		var over := src[i] - NARROW_FROM
+		if over > 0.0:
+			out[i] = NARROW_FROM + maxf(over - LIFT, 0.0) * stretch
+	return out
 
 
 # The trench where the user drew it (data/trench_mask.png, tools/trench_mask.gd: "The trench area needs to
