@@ -14,6 +14,7 @@ const GRASS := "res://plants/sea_grass/sea_grass_bed.gd"
 const PROPS := "res://scenery/sea_floor_props/sea_floor_props.gd"
 const EELS := "res://creatures/garden_eel/garden_eel_colony.gd"
 const ANEMONE := "res://creatures/clownfish/clownfish_anemone.gd"
+const MANGROVE := "res://plants/mangrove/mangrove_stand.gd"
 ## How many kelp plants, tufts of grass and garden eels.
 const KELPS := 150
 const TUFTS := 2600
@@ -53,6 +54,8 @@ func _ready() -> void:
 		_plant_eels()
 	if ResourceLoader.exists(ANEMONE):
 		_plant_anemones()
+	if ResourceLoader.exists(MANGROVE):
+		_plant_mangroves()
 
 
 func _process(delta: float) -> void:
@@ -245,6 +248,32 @@ func _plant_anemones() -> void:
 		add_child(home)
 		home.global_position = Vector3(at.x, Sea.ground(at.x, at.y) - 0.02, at.y)
 		home.scale = Vector3.ONE * _rng.randf_range(1.2, 2.0)
+
+
+# The mangroves: along both banks of the river's mouth, their roots down through the surface into
+# the mud, with gaps to thread between. Their root tangles stop a swimmer.
+func _plant_mangroves() -> void:
+	var river: Vector2 = Sea.ZONES.river.at
+	var places := PackedVector3Array()
+	var turns := PackedFloat32Array()
+	var sizes := PackedFloat32Array()
+	var kinds := PackedInt32Array()
+	var x := -149.0
+	while x < -101.0:
+		for side: float in [-1.0, 1.0]:
+			var z := river.y + 6.0 * sin(x * 0.05) + side * _rng.randf_range(13.5, 17.0)
+			places.append(Vector3(x + _rng.randf_range(-1.0, 1.0), Sea.SURFACE, z))
+			turns.append(_rng.randf() * TAU)
+			sizes.append(_rng.randf_range(0.8, 1.15))
+			kinds.append(_rng.randi() % 6)
+		x += _rng.randf_range(3.5, 5.5)
+	var stand: Node3D = (load(MANGROVE) as GDScript).new()
+	stand.set(&"far", SEEN)
+	stand.set(&"near", 14.0)
+	add_child(stand)
+	stand.call(&"plant", places, turns, sizes, kinds)
+	for sphere: Vector4 in stand.call(&"spheres"):
+		Sea.add_rock(sphere)
 
 
 # The garden eels: a few loose patches of them in the open sand, each in its burrow.
