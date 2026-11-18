@@ -4,7 +4,7 @@ Run from the game's root:
     blender --background --python creatures/gar/tools/build_gar.py
     blender --background --python creatures/gar/tools/build_gar.py -- <preview folder>   # with pictures
 
-Writes creatures/gar/models/gar.glb (the full model) and gar_lo.glb (far off, phones), and the editable
+Writes creatures/gar/models/gar.glb (the full model), gar_game.glb (the game model, see GAME) and gar_lo.glb (far off, phones), and the editable
 creatures/gar/tools/gar.blend (this folder has a .gdignore). Each model is one still mesh with one surface: the
 shader (gar.gdshader) draws every marking (the diamond scales too), swims it, snaps its head sideways and opens
 its beak. It prints a WINDING line: the check that nothing is inside out.
@@ -126,6 +126,12 @@ PELVIC_FIN = {
 # a tooth's sides (0 none) and one tooth in how many.
 FULL = {"around": 56, "step": 1.0, "fin": 1.0, "jaw": (70, 22, 8), "eye": (20, 6), "tooth": 5, "teeth_every": 1}
 LOW = {"around": 14, "step": 4.0, "fin": 0.3, "jaw": (14, 8, 3), "eye": (8, 2), "tooth": 3, "teeth_every": 3}
+# The game model (Twilight Princess weight, 1,800 to 3,000 triangles for a fish this long): its rings put by the
+# outline's bends (`tol`, body lengths; no further apart than `head` ahead of the end of the jaw, `step` behind
+# it, see game_rings), the fins' points from root to edge (`fin_t`) and along it (`fin_u`), a round eye, and
+# half the needle teeth, three-sided.
+GAME = {"around": 16, "tol": 0.0015, "head": 0.018, "step": 0.04, "fin": 0.5, "fin_t": 0.2, "fin_u": 0.5,
+        "jaw": (12, 8, 4), "eye": (24, 2), "tooth": 3, "teeth_every": 2}
 # How much of the fish's length the pictures from the front and of the head take in.
 FRONT_FRAME = 0.25
 HEAD_FRAME = 0.4
@@ -311,6 +317,8 @@ class Mesh:
 
 
 def rings(detail):
+    if "tol" in detail:
+        return game_rings(detail)
     xs = []
     x = BODY_FROM
     for until, step in RINGS:
@@ -323,22 +331,77 @@ def rings(detail):
     return xs
 
 
+def ring_angles(s, around):
+    """The angles round the body of a ring's points. (Ahead of the corner of the mouth one point of each
+    ring, on each side, is on the lip exactly.)"""
+    lip = round(0.29 * around)
+    hs = HINGE[0]
+    at_lip = lip / around * TAU
+    if s < hs + CORNER_C:
+        at_lip += (angle_of(s, mouth_y(s)) - at_lip) * (1.0 - smooth(hs - CORNER_B, hs + CORNER_C, s))
+    angles = []
+    for c in range(around):
+        k = min(c, around - c)
+        angle = at_lip * k / lip if k <= lip else at_lip + (math.pi - at_lip) * (k - lip) / (around / 2 - lip)
+        if c > around / 2:
+            angle = TAU - angle
+        angles.append(angle)
+    return angles
+
+
+def game_rings(detail):
+    """The game model's rings: few where the body runs straight, close where its outline bends. From the
+    snout back, each ring is put as far on as it can go while every point of the rings it skips (sampled
+    finely, with all its points round) lies within `tol` (body lengths) of the straight line between the two,
+    and no further than `head` apart ahead of the end of the jaw or `step` apart behind it. The jaw's hinge,
+    the corner of the mouth, the eye's front and back and the gill cover's rearmost reach always get a ring."""
+    around = detail["around"]
+    tol = detail["tol"]
+    head_to = HINGE[0] + CORNER_C + 0.03
+    must = [HINGE[0] - CORNER_B, HINGE[0], HINGE[0] + CORNER_C, EYE_AT[0] - EYE_AT[2], EYE_AT[0] + EYE_AT[2],
+            GILL[0], BODY_TO]
+    n = 900
+    fine = sorted(set([BODY_FROM + (BODY_TO - BODY_FROM) * i / n for i in range(n + 1)] +
+                      [x for x in must if BODY_FROM < x <= BODY_TO]))
+    cache = {}
+
+    def ring_at(s):
+        if s not in cache:
+            cache[s] = [body_point(s, a)[0] for a in ring_angles(s, around)]
+        return cache[s]
+
+    def straight(i, j):
+        a, b = ring_at(fine[i]), ring_at(fine[j])
+        for k in range(i + 1, j):
+            t = (fine[k] - fine[i]) / (fine[j] - fine[i])
+            for p, pa, pb in zip(ring_at(fine[k]), a, b):
+                q = pa.lerp(pb, t)
+                if math.hypot(p.x - q.x, p.y - q.y) > tol:
+                    return False
+        return True
+
+    xs = [fine[0]]
+    i = 0
+    while i < len(fine) - 1:
+        j = i + 1
+        while j + 1 < len(fine):
+            if any(abs(fine[j] - x) < 1e-12 for x in must):
+                break
+            limit = detail["head"] if fine[i] < head_to else detail["step"]
+            if fine[j + 1] - fine[i] > limit or not straight(i, j + 1):
+                break
+            j += 1
+        xs.append(fine[j])
+        i = j
+    return xs
+
+
 def body(m, detail):
     around = detail["around"]
     grid = []
-    # (ahead of the corner of the mouth one point of each ring, on each side, is on the lip exactly)
-    lip = round(0.29 * around)
-    hs = HINGE[0]
     for s in rings(detail):
         row = []
-        at_lip = lip / around * TAU
-        if s < hs + CORNER_C:
-            at_lip += (angle_of(s, mouth_y(s)) - at_lip) * (1.0 - smooth(hs - CORNER_B, hs + CORNER_C, s))
-        for c in range(around):
-            k = min(c, around - c)
-            angle = at_lip * k / lip if k <= lip else at_lip + (math.pi - at_lip) * (k - lip) / (around / 2 - lip)
-            if c > around / 2:
-                angle = TAU - angle
+        for angle in ring_angles(s, around):
             p, inside = body_point(s, angle)
             row.append(m.add(p, (s, 0.5 + 0.5 * math.cos(angle)), BODY, inside))
         grid.append(row)
@@ -476,6 +539,9 @@ def teeth(m, detail):
                 m.face((ring[i], ring[(i + 1) % sides], point), (p0 + p1) * 0.5 - base, "teeth")
 
 
+EYE_SHADER = []
+
+
 def eye(m, sx, detail):
     """A low dome lying on the skin of the head."""
     spokes, steps = detail["eye"]
@@ -490,6 +556,11 @@ def eye(m, sx, detail):
     out.normalize()
     if out.x * sx < 0.0:
         out = -out
+    if sx > 0.0:
+        # (for the shader's cartoon eye, which grows the dome about the skin's point under its middle: that
+        # point, the way the eye looks, and how far its rim lies below the flat touching the skin there)
+        rim = [on_skin(xe + math.cos(a) * radius, ye + math.sin(a) * radius) for a in (i / 16 * TAU for i in range(16))]
+        EYE_SHADER[:] = [here, out, sum(((here - p).dot(out) for p in rim)) / len(rim)]
     middle = m.add(here + out * (EYE_BULGE * radius * 1.1), (0.0, 0.0), EYE)
     last = None
     for k in range(1, steps + 1):
@@ -570,16 +641,16 @@ def median_fin(m, part, name, fin, way, detail):
         keep = 1.0 if share >= 1.0 else (1.0 - smooth(share - 0.08, share + 0.06, u))
         return (sink + math.cos(math.radians(lean(u))) * high(u)) * t * keep
 
-    f = detail["fin"]
+    f = detail.get("fin_u", detail["fin"])
     if spines:
-        per = 6 if f >= 0.99 else (4 if f > 0.4 else 2)
+        per = detail.get("spine_per") or (6 if f >= 0.99 else (4 if f > 0.4 else 2))
         if share >= 1.0:
             us = lin(spines * per)
         else:
             us = lin(spines * per, 0.0, share)[:-1] + lin(fin["nu"] * f * (1.0 - share), share, 1.0)
     else:
         us = lin(fin["nu"] * f)
-    blade(m, part, name, point, upright, SIDE, fin["thick"], lin(fin["nt"] * f), us,
+    blade(m, part, name, point, upright, SIDE, fin["thick"], lin(fin["nt"] * detail.get("fin_t", detail["fin"])), us,
           high=fold if (spines and part == DORSAL) else None)
 
 
@@ -598,7 +669,8 @@ def tail_fin(m, detail):
         return (root + math.cos(a) * length, rise + half * (1.0 - 2.0 * u) + math.sin(a) * length)
 
     f = detail["fin"]
-    blade(m, TAIL, "tail", point, upright, SIDE, TAIL_FIN["thick"], lin(TAIL_FIN["nt"] * f), lin(TAIL_FIN["nu"] * f))
+    blade(m, TAIL, "tail", point, upright, SIDE, TAIL_FIN["thick"], lin(TAIL_FIN["nt"] * detail.get("fin_t", f)),
+          lin(TAIL_FIN["nu"] * detail.get("fin_u", f)))
 
 
 def paired_fin(m, part, name, fin, sx, detail):
@@ -617,7 +689,7 @@ def paired_fin(m, part, name, fin, sx, detail):
 
     f = detail["fin"]
     blade(m, part, name, point, lambda p: root + e1 * p[0] + e2 * p[1], e1.cross(e2).normalized(), fin["thick"],
-          lin(fin["nt"] * f), lin(fin["nu"] * f))
+          lin(fin["nt"] * detail.get("fin_t", f)), lin(fin["nu"] * detail.get("fin_u", f)))
 
 
 def skin_side(s, y):
@@ -675,6 +747,9 @@ def make(name, detail):
         print("REACH %s (m): x %.3f..%.3f  y %.3f..%.3f  z %.3f..%.3f" % ((name,) + box[0] + box[1] + box[2]))
         print("SHADER %s: pectoral root (x, y, s) = (%.4f, %.4f, %.4f); hinge (s, y) = (%.4f, %.4f)" % (
             name, pectoral["at"][0], pectoral["at"][1], pectoral["at"][2], HINGE[0], HINGE[1]))
+        here, out, sink = EYE_SHADER
+        print("SHADER %s: eye on the skin (x, y, s) = (%.4f, %.4f, %.4f); its way out = (%.4f, %.4f, %.4f); rim sink = %.5f" % (
+            name, here.x, here.y, here.z + 0.5, out.x, out.y, out.z, sink))
     return obj
 
 
@@ -723,17 +798,17 @@ def render(folder, made):
              ("front", (0, 1, 0), (0, 0, 0), FRONT_FRAME), ("back", (0, -1, 0), (0, 0, 0), FRONT_FRAME),
              ("top", (0.001, 0, 1), (0, 0, 0), 1.15), ("under", (0.001, 0, -1), (0, 0, 0), 1.15),
              ("head", (0.8, 0.5, 0.2), (0, head_y, 0), HEAD_FRAME), ("tail", (0.7, -0.6, 0.3), (0, -0.36, 0), 0.5)]
-    for low, obj in ((False, made[0]), (True, made[1])):
+    for prefix, obj in (("", made[0]), ("lo_", made[1]), ("game_", made[2])):
         for other in made:
             other.hide_render = other is not obj
         for view, direction, target, frame in views:
-            if low and view not in ("left", "head"):
+            if prefix and view not in ("left", "top", "head"):
                 continue
             offset = Vector(direction).normalized() * 40.0
             camera.data.ortho_scale = frame * g
             camera.location = Vector(target) * g + offset
             camera.rotation_euler = (-offset).to_track_quat("-Z", "Y" if abs(direction[2]) < 0.9 else "X").to_euler()
-            scene.render.filepath = os.path.join(folder, "%s%s.png" % ("lo_" if low else "", view))
+            scene.render.filepath = os.path.join(folder, "%s%s.png" % (prefix, view))
             bpy.ops.render.render(write_still=True)
 
 
@@ -742,15 +817,19 @@ def main():
     bpy.context.preferences.filepaths.save_version = 0
     full = make(NAME, FULL)
     low = make(NAME + "_lo", LOW)
+    game = make(NAME + "_game", GAME)
     os.makedirs(OUT, exist_ok=True)
     export_one(full, os.path.join(OUT, NAME + ".glb"))
     export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
+    export_one(game, os.path.join(OUT, NAME + "_game.glb"))
     low.location.x = LENGTH
+    game.location.x = -LENGTH
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low])
+        render(PREVIEW, [full, low, game])
 
 
 if __name__ == "__main__":

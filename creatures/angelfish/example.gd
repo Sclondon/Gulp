@@ -30,16 +30,21 @@ func _ready() -> void:
 	floor.mesh = plane
 	floor.position.y = -0.4
 	add_child(floor)
+	# (`-- --game` on the command line: the game models, with cartoon eyes)
+	var game := "--game" in OS.get_cmdline_user_args()
 	swimmer = Angelfish.new()
+	swimmer.game = game
+	swimmer.cartoon_eyes = 1.0 if game else 0.0
 	add_child(swimmer)
 	holder = Angelfish.new()
 	holder.type = Angelfish.Type.QUEEN
+	holder.game = game
 	add_child(holder)
 	holder.position = Vector3(-0.25, 0.0, 0.0)
 	# (side on to the camera, nose to the left)
 	holder.rotation.y = PI * 0.5
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = Angelfish.mesh_of(Angelfish.Type.FRENCH, true)
+	mesh.mesh = Angelfish.game_mesh(Angelfish.Type.FRENCH) if game else Angelfish.mesh_of(Angelfish.Type.FRENCH, true)
 	bare = Angelfish.new_material(Angelfish.Type.FRENCH)
 	mesh.material_override = bare
 	mesh.extra_cull_margin = Angelfish.LENGTH * 0.3

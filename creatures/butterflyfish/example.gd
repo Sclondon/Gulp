@@ -30,7 +30,11 @@ func _ready() -> void:
 	floor.mesh = plane
 	floor.position.y = -0.25
 	add_child(floor)
+	# (`-- --game` on the command line: the game models, with cartoon eyes)
+	var game := "--game" in OS.get_cmdline_user_args()
 	swimmer = Butterflyfish.new()
+	swimmer.game = game
+	swimmer.cartoon_eyes = 1.0 if game else 0.0
 	add_child(swimmer)
 	var row := [
 		Butterflyfish.Type.RACCOON, Butterflyfish.Type.COPPERBAND, Butterflyfish.Type.LONGNOSE,
@@ -41,6 +45,7 @@ func _ready() -> void:
 		if i < 2:
 			var holder := Butterflyfish.new()
 			holder.type = row[i]
+			holder.game = game
 			add_child(holder)
 			holder.position = at
 			# (side on to the camera, nose to the left)
@@ -48,7 +53,7 @@ func _ready() -> void:
 			holders.append(holder)
 		else:
 			var mesh := MeshInstance3D.new()
-			mesh.mesh = Butterflyfish.mesh_of(row[i], true)
+			mesh.mesh = Butterflyfish.game_mesh(row[i]) if game else Butterflyfish.mesh_of(row[i], true)
 			var material := Butterflyfish.new_material(row[i])
 			mesh.material_override = material
 			mesh.extra_cull_margin = Butterflyfish.LENGTH * 0.3

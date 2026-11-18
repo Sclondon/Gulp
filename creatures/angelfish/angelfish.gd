@@ -37,8 +37,12 @@ extends Node3D
 ## How it looks and moves only: whatever moves it puts it where it is and turns it the way
 ## it goes. `scale` it for a bigger or smaller one. No sound.
 ##
-## The models are creatures/angelfish/models/angelfish_<type>.glb (and _lo), built by
-## tools/build_angelfish.py; its shader is angelfish.gdshader.
+## Three models of each type: the full one, the game one (`game`: a sixth of the triangles,
+## the same outline) and the low one (`low`). `cartoon_eyes`, `eye_look` and `blink` give it a
+## cartoon eye of its type's own character.
+##
+## The models are creatures/angelfish/models/angelfish_<type>.glb (and _game, _lo), built
+## by tools/build_angelfish.py; its shader is angelfish.gdshader.
 
 enum Type { EMPEROR, QUEEN, FRENCH }
 
@@ -65,18 +69,35 @@ const REACH := {
 }
 ## What each type sets in the shader: which markings, and the places on its model the shader
 ## needs (as its model is built: the build script prints them).
+## `eye_skin` is where the eye sits on the skin (x out, y up, how far along; the build script's
+## SHAPE line); the rest is each type's cartoon eye (`cartoon_eyes`), its character: how much
+## bigger than life (`eye_size`), the iris's colour and width (of the eye; the rest is white),
+## the pupil's width (of the iris) and shape (0 round, 1 a bar across, 2 an upright slit, 3 a
+## keyhole), where the upper lid rests (`lid`, in eye radii up from its middle: 1 or more none
+## of it shows, 0 half shut) and how it slants (`lid_tilt`: more than 0 higher at the nose),
+## and where the lower lid rests (-1 or less none of it shows). The characters: the emperor
+## stern and regal behind its mask (a gold eye, a keyhole pupil, a frowning lid slanting down
+## to the nose); the queen cool and proud (an electric-blue eye, an upright slit of a pupil,
+## the lid a little lowered); the French bright and cheeky (a big yellow-ringed eye, a big
+## round pupil, no upper lid, a smiling lower lid).
 const TYPES := {
 	Type.EMPEROR: {
 		"kind": 0, "hinge_s": 0.036, "hinge_y": -0.033, "eye_at": Vector2(0.115, 0.058),
-		"pec_root": Vector3(0.0705, -0.0675, 0.265),
+		"pec_root": Vector3(0.0705, -0.0675, 0.265), "eye_skin": Vector3(0.0521, 0.058, 0.115),
+		"eye_size": 1.6, "iris": Color(0.95, 0.72, 0.18), "iris_size": 0.6, "pupil_size": 0.55,
+		"pupil_shape": 3, "lid": 0.42, "lid_tilt": -0.4, "lower_lid": -1.2,
 	},
 	Type.QUEEN: {
 		"kind": 1, "hinge_s": 0.034, "hinge_y": -0.033, "eye_at": Vector2(0.115, 0.056),
-		"pec_root": Vector3(0.0703, -0.0675, 0.265),
+		"pec_root": Vector3(0.0703, -0.0675, 0.265), "eye_skin": Vector3(0.0524, 0.056, 0.115),
+		"eye_size": 1.6, "iris": Color(0.15, 0.55, 0.98), "iris_size": 0.6, "pupil_size": 0.7,
+		"pupil_shape": 2, "lid": 0.5, "lid_tilt": 0.1, "lower_lid": -0.85,
 	},
 	Type.FRENCH: {
 		"kind": 2, "hinge_s": 0.036, "hinge_y": -0.033, "eye_at": Vector2(0.115, 0.064),
-		"pec_root": Vector3(0.0713, -0.0675, 0.265),
+		"pec_root": Vector3(0.0713, -0.0675, 0.265), "eye_skin": Vector3(0.0517, 0.064, 0.115),
+		"eye_size": 1.8, "iris": Color(1.0, 0.8, 0.08), "iris_size": 0.66, "pupil_size": 0.66,
+		"pupil_shape": 0, "lid": 1.3, "lid_tilt": 0.0, "lower_lid": -0.72,
 	},
 }
 
@@ -119,11 +140,35 @@ static var _meshes := {}
 		_send(&"gape", gape)
 ## The speed (m/s, at scale 1) at which `step` has its tail swinging its widest.
 @export var top_speed := 1.2
-## The low model (far off, phones, many at once) in place of the full one.
+## The low model (far off, phones, many at once) in place of the full one (or the game one).
 @export var low := false:
 	set(value):
 		low = value
 		_show()
+## The game model (about 1,700 triangles, built to keep the full model's outline) in place of
+## the full one (about 9,650). With `game` on, the full model is never loaded: each model is
+## loaded only when it is first shown. `low` still shows the low model.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye (0 the eye as it is; 1 bigger, a white with a coloured iris, a big pupil, a
+## highlight, a dark outline and a lid that gives each type its own character).
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = clampf(value, 0.0, 1.0)
+		_send(&"cartoon_eyes", cartoon_eyes)
+## Where the cartoon eyes look (-1..1 each way): x towards the nose (+) or the tail (-), y up
+## (+) or down (-). Both eyes look the same way.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value.clamp(Vector2(-1.0, -1.0), Vector2(1.0, 1.0))
+		_send(&"eye_look", eye_look)
+## The cartoon eyes' lids: 0 open, 1 shut (the lid comes down and the eye squashes).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = clampf(value, 0.0, 1.0)
+		_send(&"blink", blink)
 ## How far through a beat it is, 0 to 1. `step` moves it on; or set it yourself.
 var phase := 0.0:
 	set(value):
@@ -133,6 +178,7 @@ var phase := 0.0:
 var _material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
 var _effort := 0.25
 
 
@@ -146,6 +192,27 @@ static func mesh_of(type_wanted := Type.EMPEROR, low_wanted := false) -> Mesh:
 		_meshes[path] = found.mesh
 		made.free()
 	return _meshes[path]
+
+
+## A type's game model (about 1,700 triangles, the full model's outline), for a game that
+## keeps its own MeshInstance3Ds: loaded once and kept, without the importer's automatic LODs
+## (thinned meshes bend in straight pieces in the shader). Loading it never loads the full one.
+static func game_mesh(type_wanted := Type.EMPEROR) -> Mesh:
+	var path := MODEL % [NAMES[type_wanted], "_game"]
+	if not _meshes.has(path):
+		var made := (load(path) as PackedScene).instantiate()
+		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+		_meshes[path] = without_lods(found.mesh)
+		made.free()
+	return _meshes[path]
+
+
+## A mesh with the same surfaces and none of the importer's LODs.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return plain
 
 
 ## A new material for a type's mesh, with that type's markings. Its shader settings are the
@@ -168,8 +235,11 @@ func _init() -> void:
 func _ready() -> void:
 	_full = _instance_of("Fish")
 	_low = _instance_of("Fish_lo")
-	_fit()
+	_game = _instance_of("Fish_game")
 	_show()
+	_send(&"cartoon_eyes", cartoon_eyes)
+	_send(&"eye_look", eye_look)
+	_send(&"blink", blink)
 	_send(&"tail_beats", float(tail_beats))
 	_send(&"strokes", float(strokes))
 	_send(&"sway", _effort)
@@ -219,15 +289,17 @@ func _dress() -> void:
 
 
 func _fit() -> void:
-	if _full:
-		_full.mesh = mesh_of(type, false)
-		_low.mesh = mesh_of(type, true)
+	_show()
 
 
+# Only the model shown is given its mesh, so a model never shown is never loaded.
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if not _full:
+		return
+	var shown := _low if low else (_game if game else _full)
+	for each: MeshInstance3D in [_full, _low, _game]:
+		each.visible = each == shown
+	shown.mesh = mesh_of(type, true) if low else (game_mesh(type) if game else mesh_of(type, false))
 
 
 func _instance_of(called: String) -> MeshInstance3D:

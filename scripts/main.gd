@@ -278,6 +278,8 @@ func _process(delta: float) -> void:
 	camera.fov = 72.0 if size.y > size.x else 60.0
 	hud.danger = lerpf(hud.danger, 1.0 if (life.hunters > 0 or (arena and arena.hunters() > 0)) and player.alive else 0.0, 1.0 - exp(-6.0 * delta))
 	pad.stamina = player.stamina
+	pad.speed = lerpf(pad.speed, player.velocity.length() / (Fish.pace(player.length) * 1.15 * Player.BOOST), 1.0 - exp(-8.0 * delta)) if player.alive else 0.0
+	pad.level = player.stage
 	if over:
 		_over_for += delta
 		if bot and _over_for > 1.0:

@@ -166,6 +166,146 @@ prism(lever_handle, BRASS_WORN, [(-0.62, 0.05), (0.0, 0.065), (0.0, -0.065), (-0
 disc(lever_handle, IRON, 0.25, 0.05, (0, 0, 0.03), 0.01)
 ball(lever_handle, BRASS, 0.2, (0, 0, 0.12))
 
+# --- The panel the controls sit in: rusted iron and mad-science fittings (the user, 2026-11-18:
+# "an old rusted and e gad frankenstein technology aesthetic").
+def rusted(name, base, rust, pits):
+    made = bpy.data.materials.new(name)
+    made.use_nodes = True
+    tree = made.node_tree
+    shader = next(n for n in tree.nodes if n.type == "BSDF_PRINCIPLED")
+    place = tree.nodes.new("ShaderNodeTexCoord")
+    big = tree.nodes.new("ShaderNodeTexNoise")
+    big.inputs["Scale"].default_value = 3.0
+    big.inputs["Detail"].default_value = 9.0
+    big.inputs["Roughness"].default_value = 0.65
+    fine = tree.nodes.new("ShaderNodeTexNoise")
+    fine.inputs["Scale"].default_value = 26.0
+    fine.inputs["Detail"].default_value = 6.0
+    tree.links.new(place.outputs["Object"], big.inputs["Vector"])
+    tree.links.new(place.outputs["Object"], fine.inputs["Vector"])
+    ramp = tree.nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.elements[0].position = 0.38
+    ramp.color_ramp.elements[0].color = (*base, 1.0)
+    ramp.color_ramp.elements[1].position = 0.62
+    ramp.color_ramp.elements[1].color = (*rust, 1.0)
+    mid = ramp.color_ramp.elements.new(0.5)
+    mid.color = (rust[0] * 0.45, rust[1] * 0.4, rust[2] * 0.4, 1.0)
+    tree.links.new(big.outputs["Fac"], ramp.inputs["Fac"])
+    tree.links.new(ramp.outputs["Color"], shader.inputs["Base Color"])
+    rough = tree.nodes.new("ShaderNodeMapRange")
+    rough.inputs["To Min"].default_value = 0.45
+    rough.inputs["To Max"].default_value = 0.95
+    tree.links.new(big.outputs["Fac"], rough.inputs["Value"])
+    tree.links.new(rough.outputs["Result"], shader.inputs["Roughness"])
+    metal = tree.nodes.new("ShaderNodeMapRange")
+    metal.inputs["To Min"].default_value = 0.9
+    metal.inputs["To Max"].default_value = 0.0
+    tree.links.new(big.outputs["Fac"], metal.inputs["Value"])
+    tree.links.new(metal.outputs["Result"], shader.inputs["Metallic"])
+    bump = tree.nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = pits
+    tree.links.new(fine.outputs["Fac"], bump.inputs["Height"])
+    tree.links.new(bump.outputs["Normal"], shader.inputs["Normal"])
+    return made
+
+
+RUST = rusted("rust", (0.07, 0.075, 0.08), (0.34, 0.13, 0.04), 0.5)
+COPPER = material("copper", (0.72, 0.30, 0.16), 1.0, 0.38)
+BAKELITE = material("bakelite", (0.03, 0.015, 0.01), 0.0, 0.3)
+PAPER = material("paper", (0.62, 0.55, 0.38), 0.0, 0.8)
+INK = material("ink", (0.03, 0.02, 0.015), 0.0, 0.7)
+
+
+def glass(name, colour, glow=0.0):
+    made = bpy.data.materials.new(name)
+    made.use_nodes = True
+    shader = next(n for n in made.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    shader.inputs["Base Color"].default_value = (*colour, 1.0)
+    shader.inputs["Roughness"].default_value = 0.08
+    shader.inputs["Alpha"].default_value = 0.45
+    if glow > 0.0:
+        shader.inputs["Emission Color"].default_value = (*colour, 1.0)
+        shader.inputs["Emission Strength"].default_value = glow
+    return made
+
+
+GLASS_CLEAR = glass("glass", (0.75, 0.85, 0.8))
+GLASS_LIT = glass("glass_lit", (1.0, 0.55, 0.15), 6.0)
+EMBER = material("ember", (1.0, 0.45, 0.1), 0.0, 0.5)
+
+# A square of rusted plate, to fill the panel's shape with (it tiles well enough: it is all blotches).
+rust_plate = collection("rust_plate")
+bpy.ops.mesh.primitive_plane_add(size=4.0, location=(0, 0, 0))
+put(bpy.context.object, rust_plate, RUST)
+
+# A rivet, for the panel's edges.
+rivet = collection("rivet")
+ball(rivet, RUST, 0.09, (0, 0, 0.0), 0.55)
+torus(rivet, IRON, 0.1, 0.012, (0, 0, -0.01))
+
+# The speed gauge's face: a brass bezel, yellowed paper, ticks from dead slow round to flat out,
+# a red stretch at the top end. (The needle is drawn by the pad.)
+gauge = collection("gauge_face")
+disc(gauge, RUST, 0.62, 0.05, (0, 0, -0.04))
+torus(gauge, BRASS_WORN, 0.56, 0.06, (0, 0, 0.0), 0.8)
+disc(gauge, PAPER, 0.5, 0.02, (0, 0, -0.01))
+GAUGE_FROM = math.radians(225.0)
+GAUGE_TO = math.radians(-45.0)
+for k in range(21):
+    a = GAUGE_FROM + (GAUGE_TO - GAUGE_FROM) * k / 20.0
+    way = Vector((math.cos(a), math.sin(a)))
+    side = Vector((-way.y, way.x))
+    long = 0.11 if k % 5 == 0 else 0.055
+    wide = 0.012 if k % 5 == 0 else 0.006
+    near = way * (0.46 - long)
+    far = way * 0.46
+    prism(gauge, RED if k >= 17 else INK, [tuple(near + side * wide), tuple(far + side * wide), tuple(far - side * wide), tuple(near - side * wide)], 0.01, 0.005)
+ball(gauge, BRASS_WORN, 0.06, (0, 0, 0.0), 0.6)
+rivets(gauge, 4, 0.56, 0.04, 0.03, 0.5)
+
+# A vacuum tube, dark and lit: one for each time the fish has become something bigger.
+def tube(into, lit):
+    disc(into, BAKELITE, 0.16, 0.1, (0, -0.3, 0.0), 0.02)
+    disc(into, BRASS_WORN, 0.13, 0.04, (0, -0.22, 0.0), 0.01)
+    # the envelope, lying along Y as seen from above: a capsule
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.14, segments=32, ring_count=16, location=(0, 0.0, 0.0))
+    body = bpy.context.object
+    body.scale = (1.0, 1.9, 1.0)
+    put(body, into, GLASS_LIT if lit else GLASS_CLEAR)
+    # the works inside: a plate and a filament
+    disc(into, IRON, 0.05, 0.3, (0, 0.0, 0.0)).rotation_euler = (math.pi * 0.5, 0, 0)
+    if lit:
+        disc(into, EMBER, 0.02, 0.26, (0, 0.0, 0.03)).rotation_euler = (math.pi * 0.5, 0, 0)
+    ball(into, BRASS_WORN, 0.03, (0, 0.27, 0.0))
+
+
+tube_off = collection("tube_off")
+tube(tube_off, False)
+tube_on = collection("tube_on")
+tube(tube_on, True)
+
+# Two electrodes for sparks to climb (a Jacob's ladder): copper rods on porcelain feet, splaying out.
+electrodes = collection("electrodes")
+for side in (-1.0, 1.0):
+    disc(electrodes, PAPER, 0.09, 0.1, (side * 0.12, -0.42, 0.0), 0.02)
+    disc(electrodes, BAKELITE, 0.06, 0.06, (side * 0.12, -0.36, 0.0), 0.01)
+    rod = prism(electrodes, COPPER, [(side * 0.105, -0.38), (side * 0.135, -0.38), (side * 0.36, 0.44), (side * 0.33, 0.44)], 0.03, 0.03)
+    ball(electrodes, COPPER, 0.035, (side * 0.345, 0.45, 0.015))
+
+# A coil of copper wire on a bakelite bobbin, for the panel's corner.
+coil = collection("coil")
+disc(coil, BAKELITE, 0.3, 0.06, (0, 0, -0.02), 0.01)
+for k in range(7):
+    torus(coil, COPPER, 0.25 - 0.027 * k, 0.014, (0, 0, 0.02))
+ball(coil, BRASS_WORN, 0.06, (0, 0, 0.03), 0.7)
+
+# A socket bolted shut: where a special ability's switch will go.
+socket = collection("socket")
+disc(socket, RUST, 0.36, 0.05, (0, 0, -0.03), 0.01)
+disc(socket, IRON, 0.27, 0.04, (0, 0, 0.0), 0.01)
+rivets(socket, 6, 0.3, 0.03, 0.035, 0.0)
+prism(socket, RUST, [(-0.2, -0.03), (0.2, -0.03), (0.2, 0.03), (-0.2, 0.03)], 0.03, 0.045)
+
 # --- Light and camera: brass needs something to reflect.
 world = bpy.data.worlds.new("world")
 world.use_nodes = True
@@ -207,6 +347,14 @@ SHOTS = [
     ("burst_cap", burst_cap, 256, 1.3),
     ("lever_arc", lever_arc, 1024, 4.2),
     ("lever_handle", lever_handle, 512, 2.0),
+    ("rust_plate", rust_plate, 512, 4.0),
+    ("rivet", rivet, 64, 0.26),
+    ("gauge_face", gauge, 512, 1.3),
+    ("tube_off", tube_off, 256, 0.9),
+    ("tube_on", tube_on, 256, 0.9),
+    ("electrodes", electrodes, 256, 1.1),
+    ("coil", coil, 256, 0.7),
+    ("socket", socket, 256, 0.8),
 ]
 everything = [shot[1] for shot in SHOTS]
 for name, shown, pixels, wide in SHOTS:

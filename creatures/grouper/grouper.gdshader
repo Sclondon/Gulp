@@ -45,6 +45,22 @@ const float WAVE = 1.0;
 // the maxillae swing down (radians).
 const float PROTRUDE = 0.018;
 const float MAXILLA_SWING = 0.2;
+// The right eye where it stands on the skin (metres) and the way out of the skin there: the build
+// script's EYE line (the left eye is its mirror picture).
+const vec3 EYE_AT = vec3(0.0579, 0.0456, -0.4800);
+const vec3 EYE_OUT = vec3(0.8089, 0.4872, -0.3291);
+// THE CARTOON EYE (`cartoon_eyes`), the grouper's own: a sleepy, heavy half lid over a big
+// golden eye, its pupil drawn out forward into a keyhole (as a grouper's is, a little). How much
+// bigger than life; the iris's and the pupil's sizes (of the eye's face, 0.6 its rim); how far the
+// upper lid comes down at rest (of the eye), how it slopes (+ higher at the front); the lower lid.
+const float EYE_BIG = 1.6;
+const float IRIS_R = 0.36;
+const float PUPIL_R = 0.17;
+const float KEYHOLE = 0.11;
+const float LID_REST = 0.44;
+const float LID_SLANT = -0.08;
+const float LOWER_LID = 0.06;
+const vec3 SCLERA = vec3(0.86, 0.84, 0.74);
 
 // How far through a beat it is (0..1), and how many times in a beat its tail beats, it breathes
 // and its pectoral fins scull (whole numbers).
@@ -70,6 +86,13 @@ uniform float scull = 1.0;
 // own colour so that it stands out (0 none).
 uniform float flash = 0.0;
 uniform float rim = 0.0;
+// The eyes: `cartoon_eyes` 0 as in life, 1 the cartoon eye (bigger, a white, an iris, a big pupil,
+// a highlight, an outline and its own lids); `eye_look` slides the iris and pupil (x + towards the
+// nose, y + up, -1..1); `blink` 0 open to 1 shut (a lid the colour of the skin comes down).
+uniform float cartoon_eyes = 0.0;
+uniform vec2 eye_look = vec2(0.0);
+uniform float blink = 0.0;
+uniform vec3 iris : source_color = vec3(0.72, 0.55, 0.16);
 
 // The colours.
 // Greenish brown, darker on the back and paler on the belly, mottled pale, with darker oval
@@ -215,6 +238,19 @@ void vertex() {
 		swing(v, n, front, -MAXILLA_SWING * open);
 		v.z -= push;
 		v.y -= 0.3 * push;
+	} else if (part == 2.0) {
+		// An eye: the cartoon eye is bigger, spread across the skin more than it stands out of it.
+		if (cartoon_eyes > 0.0) {
+			float big = mix(1.0, EYE_BIG, cartoon_eyes);
+			float big_out = sqrt(big);
+			vec3 at = vec3(side_is * EYE_AT.x, EYE_AT.y, EYE_AT.z);
+			vec3 o = vec3(side_is * EYE_OUT.x, EYE_OUT.y, EYE_OUT.z);
+			vec3 d = v - at;
+			float d_out = dot(d, o);
+			v = at + (d - o * d_out) * big + o * d_out * big_out;
+			float n_out = dot(n, o);
+			n = (n - o * n_out) / big + o * n_out / big_out;
+		}
 	} else if (part == 0.0) {
 		// The upper lip and snout push forward; the gill covers lift at their rear edges, a little
 		// after the mouth opens, and stand out as it opens wide.
@@ -283,6 +319,36 @@ vec3 skin(float s, float h, vec2 p) {
 }
 
 
+// The cartoon eye at a place on its face `e` (x up, y towards the nose; its rim at about 0.6):
+// the white, the iris and pupil slid by `eye_look`, a highlight that stays put, a dark outline;
+// outside that (where the bigger eye stands out of a curving head) the skin's colour `around`.
+vec3 cartoon_eye(vec2 e, vec3 around) {
+	float r = length(e);
+	float aa = max(fwidth(r), 0.004);
+	vec2 look = clamp(eye_look, vec2(-1.0), vec2(1.0)).yx * vec2(0.15, 0.17);
+	vec2 q = e - look;
+	float ri = length(q);
+	vec3 c = SCLERA * mix(1.0, 0.82, smoothstep(0.25, 0.56, r));
+	vec3 ir = mix(iris * 1.15, iris * 0.55, smoothstep(0.1, IRIS_R, ri));
+	ir *= 1.0 + 0.12 * sin(atan(q.x, q.y) * 14.0) * smoothstep(PUPIL_R, IRIS_R, ri);
+	c = mix(c, ir, 1.0 - smoothstep(IRIS_R - aa, IRIS_R + aa, ri));
+	c = mix(c, iris * 0.25, smoothstep(IRIS_R - 0.05, IRIS_R, ri) * (1.0 - smoothstep(IRIS_R, IRIS_R + aa, ri)));
+	// (the pupil, drawn out forward into a keyhole where KEYHOLE is more than 0)
+	float pupil = ri - PUPIL_R;
+	if (KEYHOLE > 0.0) {
+		pupil = min(pupil, length((q - vec2(-0.02, PUPIL_R * 0.9)) * vec2(1.0, 0.8)) - KEYHOLE);
+	}
+	c = mix(c, vec3(0.01), 1.0 - smoothstep(-aa, aa, pupil));
+	// (the highlight, up and forward, where the light is: it does not follow the look)
+	float glint = length(e - vec2(0.2, 0.13));
+	c = mix(c, vec3(1.0), 1.0 - smoothstep(0.075 - aa, 0.075 + aa, glint));
+	c = mix(c, vec3(0.9), 1.0 - smoothstep(0.03 - aa, 0.03 + aa, length(e - vec2(0.05, 0.25))));
+	// (the outline)
+	c = mix(c, vec3(0.02, 0.02, 0.015), smoothstep(0.54 - aa, 0.565 + aa, r));
+	return mix(c, around, smoothstep(0.6 - aa, 0.62 + aa, r));
+}
+
+
 vec3 fin_colour(float which, float r, float ty) {
 	if (which > 7.5) {
 		// the pelvic and pectoral fins: the body's colour, darker to the edge
@@ -346,8 +412,20 @@ void fragment() {
 		float r = length(on_eye);
 		c = mix(eye_ring, eye_ring * 0.4, smoothstep(0.45, 0.62, r));
 		c = mix(c, eye_ring * 0.5, smoothstep(0.64, 0.74, r));
-		c = mix(c, vec3(0.01), 1.0 - smoothstep(0.34, 0.38, r));
-		rough = 0.06;
+		c = mix(c, vec3(0.01), 1.0 - smoothstep(0.34, 0.38, length(on_eye - eye_look.yx * 0.12)));
+		vec3 skin_there = mix(side, back, 0.55);
+		if (cartoon_eyes > 0.0) {
+			c = mix(c, cartoon_eye(on_eye, mix(side, skin_there, smoothstep(-0.4, 0.4, on_eye.x))), cartoon_eyes);
+		}
+		// The lids: at rest only the cartoon eye's; `blink` brings the upper one down over it.
+		float aa = max(fwidth(on_eye.x), 0.004);
+		float lid = mix(mix(1.1, 0.62 - 1.24 * LID_REST + LID_SLANT * on_eye.y, cartoon_eyes), -0.7, blink);
+		float lower = mix(-1.1, -0.62 + 1.24 * LOWER_LID * (1.0 - blink), cartoon_eyes);
+		float covered = max(smoothstep(lid - aa, lid + aa, on_eye.x), 1.0 - smoothstep(lower - aa, lower + aa, on_eye.x));
+		vec3 lid_colour = mix(skin_there, skin_there * 0.3, smoothstep(0.07, 0.0, abs(on_eye.x - lid)) * smoothstep(lid - 0.07, lid, on_eye.x));
+		lid_colour = mix(lid_colour, skin_there * 0.4, smoothstep(0.06, 0.0, abs(on_eye.x - lower)) * (1.0 - step(lower, on_eye.x)) * step(0.001, LOWER_LID * cartoon_eyes));
+		c = mix(c, lid_colour, covered);
+		rough = mix(0.06, 0.45, covered);
 		glint = 0.0;
 	} else if (part < 3.5) {
 		// A maxilla: the head's colour, darker along its lower edge.

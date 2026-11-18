@@ -21,14 +21,15 @@ extends Node3D
 ## `step(velocity, delta)` each frame, which moves `phase` on by delta / beat (and swims harder
 ## the faster it is going), or set `phase` yourself (for a picture that must loop).
 ##
-## A game that keeps its own MeshInstance3Ds needs no KelpBass node: `KelpBass.mesh_of(low)` is the
-## mesh and `KelpBass.new_material()` a material for it, whose shader settings (phase, sway,
+## A game that keeps its own MeshInstance3Ds needs no KelpBass node: `KelpBass.mesh_of(low)` (or
+## `KelpBass.game_mesh()`) is the mesh and `KelpBass.new_material()` a material for it, whose shader settings (phase, sway,
 ## tail_beats, breaths, sculls, gape, curl, scull, flash, rim, the colours) the game sets itself.
 ##
-## The models are creatures/kelp_bass/models/kelp_bass.glb (and _lo), built by
+## The models are creatures/kelp_bass/models/kelp_bass.glb (and _lo, _game), built by
 ## tools/build_kelp_bass.py; kelp_bass.gdshader draws its markings and moves it.
 
 const MODEL := "res://creatures/kelp_bass/models/kelp_bass%s.glb"
+const GAME_MODEL := "res://creatures/kelp_bass/models/kelp_bass_game.glb"
 const SHADER := preload("res://creatures/kelp_bass/kelp_bass.gdshader")
 ## As the model is built (tools/build_kelp_bass.py): from the tip of its lower jaw to the tip of its
 ## tail, and how deep and how wide its body is at its deepest, fins left out (metres, at scale 1).
@@ -73,6 +74,29 @@ static var _meshes := {}
 	set(value):
 		low = value
 		_show()
+## The game model (Twilight Princess weight: a few thousand triangles, spent on the outline, the
+## eye and the mouth; the same shader and settings) in place of the full one; `low` still shows
+## the low model. With `game` on the full model is never loaded, so a web export may leave it out.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
+## The cartoon eye: 0 as in life, 1 bigger, a white, a big pupil, its own lids (the kelp bass's
+## is a keen little hunter's: bright amber, wide awake, a fierce brow).
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = value
+		_send(&"cartoon_eyes", value)
+## Where its eyes look: x + towards its nose, y + up (-1..1).
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		_send(&"eye_look", value)
+## 0 its eyes open, 1 shut (a lid the colour of its skin comes down over them).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = value
+		_send(&"blink", value)
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set it
 ## yourself.
 var phase := 0.0:
@@ -83,6 +107,7 @@ var phase := 0.0:
 var _material: ShaderMaterial
 var _full: MeshInstance3D
 var _low: MeshInstance3D
+var _game: MeshInstance3D
 var _effort := 0.3
 
 
@@ -96,6 +121,20 @@ static func mesh_of(low_wanted := false) -> Mesh:
 		_meshes[path] = found.mesh
 		made.free()
 	return _meshes[path]
+
+
+## The game model's mesh (loaded once and kept), without the thinner levels of detail Godot's
+## importer makes: bent in the shader, they would bend in straight pieces far off.
+static func game_mesh() -> Mesh:
+	if not _meshes.has(GAME_MODEL):
+		var made := (load(GAME_MODEL) as PackedScene).instantiate()
+		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+		var plain := ArrayMesh.new()
+		for surface in found.mesh.get_surface_count():
+			plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, found.mesh.surface_get_arrays(surface))
+		_meshes[GAME_MODEL] = plain
+		made.free()
+	return _meshes[GAME_MODEL]
 
 
 ## A new material for its mesh. Its shader settings are the game's to set (the top of the shader
@@ -112,11 +151,9 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of("KelpBass", false)
-	_low = _instance_of("KelpBass_lo", true)
 	_show()
-	for setting: StringName in [&"tail_beats", &"breaths", &"sculls"]:
-		_send(setting, float(get(setting)))
+	for setting: StringName in [&"tail_beats", &"breaths", &"sculls", &"cartoon_eyes", &"eye_look", &"blink"]:
+		_send(setting, get(setting) if get(setting) is Vector2 else float(get(setting)))
 	_send(&"sway", _effort)
 	_send(&"gape", gape)
 	_send(&"phase", phase)
@@ -134,7 +171,7 @@ func step(velocity: Vector3, delta: float) -> void:
 	_send(&"sway", _effort)
 
 
-## Sets one of the shader's settings: a colour (back, side, belly, pale, fin_dark, fin_tail, fin_paired, mouth, eye_ring), an amount
+## Sets one of the shader's settings: a colour (back, side, belly, pale, fin_dark, fin_tail, fin_paired, mouth, eye_ring, iris), an amount
 ## (blotch_amount, mottle, scales, sheen), how it moves (curl, gape_breath, gill_flare, scull), or
 ## a game's effects (flash, rim).
 func set_shader_parameter(setting: StringName, value: Variant) -> void:
@@ -152,14 +189,26 @@ func _send(setting: StringName, value: Variant) -> void:
 
 
 func _show() -> void:
+	if not is_node_ready():
+		return
+	# (each model is loaded and put in only when it is first shown)
+	if low and not _low:
+		_low = _instance_of("KelpBass_lo", mesh_of(true))
+	elif not low and game and not _game:
+		_game = _instance_of("KelpBass_game", game_mesh())
+	elif not low and not game and not _full:
+		_full = _instance_of("KelpBass", mesh_of(false))
 	if _full:
-		_full.visible = not low
+		_full.visible = not low and not game
+	if _low:
 		_low.visible = low
+	if _game:
+		_game.visible = not low and game
 
 
-func _instance_of(called: String, low_wanted: bool) -> MeshInstance3D:
+func _instance_of(called: String, model: Mesh) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
+	mesh.mesh = model
 	mesh.material_override = _material
 	# (its tail swings, and its mouth opens, out past the still model's box)
 	mesh.extra_cull_margin = LENGTH * 0.25

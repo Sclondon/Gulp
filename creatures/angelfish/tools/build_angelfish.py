@@ -141,10 +141,66 @@ TYPES = {
 }
 NAMES = list(TYPES)
 WANTED = [name for name in ARGS[1:] if name in NAMES] or NAMES
+# The game model's numbers: rings along the body and points down each side of a ring; places across the soft
+# rays of the dorsal and anal fins (the spines keep a place at each point and dip); places across the tail.
+GAME_BODY_RINGS = 24
+GAME_HALF = 6
+GAME_SOFT = (8, 6)
+GAME_TAIL = 8
+
+
+# True while the GAME model is being built (see `make`): fewer points, put where they shape the outline.
+GAME = False
 
 
 def to_b(p):
     return Vector((p.x, -p.z, p.y))
+
+
+def spread(lines_at, a, b, n, forced=(), even=0.35):
+    """n + 1 places from a to b (a and b among them) for the game model, closer together where the lines
+    `lines_at(t)` gives (a list of (x, y) points, one on each line) bend: each stretch of a line is worth
+    sqrt(how far it turns x how long it is) (so that a chord strays about as far from the curve everywhere),
+    and `even` of the whole is spread evenly. Each place in `forced` replaces the nearest place."""
+    m = 800
+    ts = [a + (b - a) * i / m for i in range(m + 1)]
+    pts = [lines_at(t) for t in ts]
+    w = [0.0] * m
+    for k in range(len(pts[0])):
+        seg = [(pts[i + 1][k][0] - pts[i][k][0], pts[i + 1][k][1] - pts[i][k][1]) for i in range(m)]
+        lens = [math.hypot(*d) for d in seg]
+        for i in range(1, m):
+            if lens[i] > 1e-12 and lens[i - 1] > 1e-12:
+                c = (seg[i][0] * seg[i - 1][0] + seg[i][1] * seg[i - 1][1]) / (lens[i] * lens[i - 1])
+                turn = math.acos(max(-1.0, min(1.0, c)))
+                w[i] += math.sqrt(turn * 0.5 * (lens[i] + lens[i - 1]))
+    total = sum(w)
+    share = (even * total / m) if total > 0.0 else 1.0
+    w = [x + share for x in w]
+    acc = [0.0]
+    for x in w:
+        acc.append(acc[-1] + x)
+    out = [a]
+    for j in range(1, n):
+        want = acc[-1] * j / n
+        i = min(bisect.bisect_right(acc, want) - 1, m - 1)
+        f = (want - acc[i]) / max(acc[i + 1] - acc[i], 1e-12)
+        out.append(ts[i] + (ts[i + 1] - ts[i]) * f)
+    out.append(b)
+    fixed = {0, len(out) - 1}
+    for f in forced:
+        if not a < f < b:
+            continue
+        free = [j for j in range(len(out)) if j not in fixed]
+        if free:
+            j = min(free, key=lambda j: abs(out[j] - f))
+            out[j] = f
+            fixed.add(j)
+        else:
+            out.append(f)
+        out.sort()
+        fixed = {j for j, x in enumerate(out) if x in forced or j in (0, len(out) - 1)}
+    return sorted(set(out))
 
 
 def smooth(a, b, x):
@@ -235,6 +291,31 @@ class Section:
             acc.append(acc[-1] + math.hypot(dense[i + 1][0] - dense[i][0], dense[i + 1][1] - dense[i][1]))
         whole = acc[-1]
         out = []
+        if GAME:
+            # (the game model: the points closer together where the ring bends, at the sharp back and belly,
+            # fewer down the flat side; each still told its true distance round from the top)
+            worth = [0.0]
+            for i in range(steps):
+                turn = 0.0
+                if 0 < i:
+                    ax, ay = dense[i][0] - dense[i - 1][0], dense[i][1] - dense[i - 1][1]
+                    bx, by = dense[i + 1][0] - dense[i][0], dense[i + 1][1] - dense[i][1]
+                    la, lb = math.hypot(ax, ay), math.hypot(bx, by)
+                    if la > 1e-12 and lb > 1e-12:
+                        turn = math.acos(max(-1.0, min(1.0, (ax * bx + ay * by) / (la * lb))))
+                worth.append(math.sqrt(turn * (acc[i + 1] - acc[i])))
+            bend = sum(worth)
+            total = [0.0]
+            for i in range(steps):
+                total.append(total[-1] + worth[i + 1] + 0.5 * bend * (acc[i + 1] - acc[i]) / max(whole, 1e-12))
+            for j in range(half + 1):
+                want = total[-1] * j / half
+                i = min(bisect.bisect_right(total, want) - 1, steps - 1)
+                span = total[i + 1] - total[i]
+                t = (want - total[i]) / span if span > 1e-12 else 0.0
+                out.append((lerp(dense[i][0], dense[i + 1][0], t), lerp(dense[i][1], dense[i + 1][1], t),
+                            lerp(acc[i], acc[i + 1], t)))
+            return out, whole
         for j in range(half + 1):
             want = whole * j / half
             i = min(bisect.bisect_right(acc, want) - 1, steps - 1)
@@ -253,6 +334,7 @@ HINGE_Y = 0.0
 GILL_S = 0.0
 EYE_AT = (0.0, 0.0)
 PEC_ROOT = Vector((0.0, 0.0, 0.0))
+EYE_SKIN = Vector((0.0, 0.0, 0.0))
 
 
 def use(name):
@@ -461,6 +543,15 @@ def skin(part, section, places, half, kind):
 
 
 def body_places(low):
+    if GAME:
+        # (rings where the outline bends, seen from the side and from above; and at the mouth's hinge, the eye
+        # and the gill cover's edge)
+        hs, gs, es = HINGE_S, GILL_S, EYE_AT[0]
+        ball = P["eye"][2]
+        return spread(lambda s: [(s, BODY_SKIN.top(s)), (s, BODY_SKIN.bot(s)), (s, P["sil_hw"](s))],
+                      0.0, BODY_SKIN.last, GAME_BODY_RINGS,
+                      (hs - 0.006, hs + 0.008, hs + 0.022, es - ball * 0.6, es + ball * 0.6,
+                       gs - 0.03, gs - 0.012, gs + 0.004))
     head = 6 if low else 24
     rest = 10 if low else 44
     behind = GILL_S + 0.014
@@ -471,16 +562,19 @@ def body_places(low):
 
 def eye(low):
     """The right eye: a dome set in the side of the head."""
+    global EYE_SKIN
     part = Part("eye")
     at, out, up = body_frame(*EYE_AT)
+    # (where the eye sits on the skin: the shader grows a cartoon eye about this point)
+    EYE_SKIN = at.copy()
     along = up.cross(out).normalized()
     ball, stands, shown = P["eye"][2:]
     # (the dome goes on under the skin: what shows is `shown` of how far across it is made)
     seen = math.sqrt(1.0 - (1.0 - stands / ball) ** 2)
     reach = math.asin(min(seen / shown, 0.999))
     centre = at - out * (ball - stands)
-    rows = 2 if low else 6
-    around = 6 if low else 18
+    rows = 2 if (low or GAME) else 6
+    around = 24 if GAME else (6 if low else 18)
     rings = []
     for i in range(rows + 1):
         a = reach * i / rows
@@ -506,8 +600,8 @@ def cheek_spine(low):
     """The spine at the lower corner of the cheek (the angelfishes' mark), lying back along the gill cover."""
     part = Part("spine")
     s0, y0, long = P["spine"]
-    stations = 3 if low else 8
-    around = 4 if low else 8
+    stations = 3 if low else (4 if GAME else 8)
+    around = 4 if low else (6 if GAME else 8)
     rings = []
     for i in range(stations + 1):
         u = i / stations
@@ -532,15 +626,17 @@ def cheek_spine(low):
     return part
 
 
-def fin(name, kind, rays, base, direction, length, normal, thick, cols, rows, ridges):
+def fin(name, kind, rays, base, direction, length, normal, thick, cols, rows, ridges, ts=None):
     """A fin: `rays` rays fanned from the line `base(t)` (t 0 its leading edge to 1 its trailing edge), each
     going the way `direction(t)` for `length(t)`; flat, facing `normal`; `thick` at its root; `cols` strips
-    across it and `rows` along its rays."""
+    across it and `rows` along its rays (or, for the game model, strips between the places `ts`)."""
     part = Part(name)
     normal = normal.normalized()
     left, right = [], []
+    if ts is not None:
+        cols = len(ts) - 1
     for i in range(cols + 1):
-        t = i / cols
+        t = ts[i] if ts is not None else i / cols
         b, d, long = base(t), direction(t).normalized(), length(t)
         ridge = 0.5 + 0.5 * math.cos(TAU * (t * rays - 0.5)) if (rays > 1 and ridges) else 0.0
         edge = min(1.0, t / 0.06) ** 0.5 * min(1.0, (1.0 - t) / 0.1) ** 0.5
@@ -597,6 +693,14 @@ def clearance(part, root, swing):
     return least if least < 1e8 else float("inf")
 
 
+def edge_places(base, direction, length, a, b, n, forced=()):
+    """The game model's places across a fin, from t = a to b: closer where its edge bends, seen from the side."""
+    def tip(t):
+        p = base(t) + direction(t).normalized() * length(t)
+        return [(p.z, p.y)]
+    return spread(tip, a, b, n, forced)
+
+
 def middle_fin(name, kind, spec, up, low, low_cols):
     """The dorsal fin (up 1) or the anal fin (up -1)."""
     s0, s1, rays, spines, notch = spec["s0"], spec["s1"], spec["rays"], spec["spines"], spec["notch"]
@@ -611,10 +715,21 @@ def middle_fin(name, kind, spec, up, low, low_cols):
             # (each spine a point, the skin dipping between)
             out *= 1.0 - notch * (0.5 - 0.5 * math.cos(TAU * k))
         return out
+
+    def base(t):
+        return Vector((0.0, line(lerp(s0, s1, t)) - up * 0.01, lerp(s0, s1, t) - 0.5))
+
+    def direction(t):
+        return Vector((0.0, up * math.sin(math.radians(angle(t))), math.cos(math.radians(angle(t)))))
+    if GAME:
+        # (the spines as the full model has them, a place at each point and each dip; the soft rays fewer, closer
+        # where the edge bends)
+        ts = [k / (2.0 * rays) for k in range(2 * spines)]
+        ts += edge_places(base, direction, length, spines / rays, 1.0,
+                          GAME_SOFT[0 if up > 0 else 1])
+        return fin(name, kind, rays, base, direction, length, Vector((1.0, 0.0, 0.0)), 0.009, 0, 2, False, ts)
     return fin(
-        name, kind, rays,
-        lambda t: Vector((0.0, line(lerp(s0, s1, t)) - up * 0.01, lerp(s0, s1, t) - 0.5)),
-        lambda t: Vector((0.0, up * math.sin(math.radians(angle(t))), math.cos(math.radians(angle(t))))),
+        name, kind, rays, base, direction,
         length, Vector((1.0, 0.0, 0.0)), 0.009, low_cols if low else rays * 2, 2 if low else 6, not low)
 
 
@@ -636,7 +751,7 @@ def fins(low):
             "filament", FILAMENT, 3,
             lambda t: Vector((0.0, BODY_SKIN.top(lerp(f0, f1, t)) - 0.01, lerp(f0, f1, t) - 0.5)),
             lambda t: way, f_length, Vector((1.0, 0.0, 0.0)), 0.014 if pointed < 0.5 else 0.011,
-            2 if low else 6, 3 if low else 12, False))
+            (2 if pointed < 0.5 else 4) if GAME else (2 if low else 6), 5 if GAME else (3 if low else 12), False))
     # The tail: small, square-ended or a little rounded.
     t_s, t_spread, t_round = P["tail"]
 
@@ -647,10 +762,15 @@ def fins(low):
         a = abs(2.0 * t - 1.0)
         reach = (0.5 - tail_base(t).z) / math.cos(math.radians(t_spread * a))
         return reach * (1.0 - t_round * a * a - 0.05 * smooth(0.8, 1.0, a) - max(-t_round, 0.0) * 2.0 * (1.0 - a * a))
-    made.append(fin(
-        "tail", TAIL, 17, tail_base,
-        lambda t: Vector((0.0, math.sin(math.radians(t_spread * (1.0 - 2.0 * t))), math.cos(math.radians(t_spread * (1.0 - 2.0 * t))))),
-        tail_long, Vector((1.0, 0.0, 0.0)), 0.016, 6 if low else 34, 2 if low else 6, not low))
+    def tail_way(t):
+        return Vector((0.0, math.sin(math.radians(t_spread * (1.0 - 2.0 * t))), math.cos(math.radians(t_spread * (1.0 - 2.0 * t)))))
+    if GAME:
+        made.append(fin("tail", TAIL, 17, tail_base, tail_way, tail_long, Vector((1.0, 0.0, 0.0)), 0.016, 0, 3, False,
+                        edge_places(tail_base, tail_way, tail_long, 0.0, 1.0, GAME_TAIL)))
+    else:
+        made.append(fin(
+            "tail", TAIL, 17, tail_base, tail_way,
+            tail_long, Vector((1.0, 0.0, 0.0)), 0.016, 6 if low else 34, 2 if low else 6, not low))
 
     # The paired fins, the right one of each (the left is its mirror picture).
     def on_body(s, y, sunk=0.003):
@@ -662,7 +782,7 @@ def fins(low):
     pelvic = fin(
         "pelvic", PELVIC, 6, lambda t: p0.lerp(p1, t), lambda t: turn(d0, d1, t),
         lambda t: pv_long * (1.0 - 0.6 * t ** 0.9) * (0.9 + 0.1 * smooth(0.0, 0.16, t)),
-        d0.cross(d1), 0.008, 2 if low else 12, 2 if low else 5, not low)
+        d0.cross(d1), 0.008, 3 if GAME else (2 if low else 12), 2 if (low or GAME) else 5, not (low or GAME))
     made += [pelvic, pelvic.mirrored("pelvic_left", flip_side)]
     # The pectoral fins: what it rows with. Rounded paddles, held out from the body.
     pc_y, pc_long = P["pectoral"]
@@ -671,24 +791,35 @@ def fins(low):
     pectoral = fin(
         "pectoral", PECTORAL, 14, lambda t: q0.lerp(q1, t), lambda t: turn(e0, e1, t),
         lambda t: pc_long * (0.62 + 0.38 * math.sin(math.pi * (0.12 + 0.6 * t)) ** 0.8) * (1.0 - 0.3 * t ** 2),
-        e0.cross(e1), 0.007, 3 if low else 28, 2 if low else 6, not low)
+        e0.cross(e1), 0.007, 6 if GAME else (3 if low else 28), 3 if GAME else (2 if low else 6), not (low or GAME))
     made += [pectoral, pectoral.mirrored("pectoral_left", flip_side)]
     PEC_ROOT = (q0 + q1) * 0.5
     if not low:
         print("CLEARANCE %s pectoral fin to body, at the inward end of its stroke: %.1f mm" % (
-            P["name"], clearance(pectoral, PEC_ROOT, 0.3)))
+            P["name"] + (" (game)" if GAME else ""), clearance(pectoral, PEC_ROOT, 0.3)))
     return made
 
 
-def make(name, low):
+def make(name, low, game=False):
+    """One model: the full one, the low one, or (`game`) the game model, of Twilight Princess weight: the points
+    spent where they shape the outline, the eye, the mouth and the fins' edges, few across the flat sides."""
+    global GAME
+    GAME = game
     parts = []
     body = Part("body")
-    skin(body, BODY_SKIN, body_places(low), 4 if low else 13, BODY)
+    skin(body, BODY_SKIN, body_places(low), GAME_HALF if game else (4 if low else 13), BODY)
     parts.append(body)
     jaw = Part("jaw")
-    jaw_rings = 4 if low else 12
-    skin(jaw, JAW_SKIN, [lerp(JAW_SKIN.first, JAW_SKIN.last, (i / jaw_rings) ** 1.25) for i in range(jaw_rings + 1)],
-         2 if low else 6, JAW)
+    if game:
+        # (rings at the jaw's tip, either side of its hinge and where it runs back into the throat, which is
+        # where the shader bends it)
+        hs, first, last = HINGE_S, JAW_SKIN.first, JAW_SKIN.last
+        jaw_places = [first, lerp(first, hs - 0.008, 0.45), hs - 0.008, hs, hs + 0.012, hs + 0.03, last]
+        skin(jaw, JAW_SKIN, [s for s in jaw_places if first <= s <= last], 4, JAW)
+    else:
+        jaw_rings = 4 if low else 12
+        skin(jaw, JAW_SKIN, [lerp(JAW_SKIN.first, JAW_SKIN.last, (i / jaw_rings) ** 1.25) for i in range(jaw_rings + 1)],
+             2 if low else 6, JAW)
     parts.append(jaw)
     ball = eye(low)
     parts += [ball, ball.mirrored("eye_left", lambda d: d)]
@@ -808,12 +939,19 @@ def main():
         name = "%s_%s" % (FAMILY, kind)
         full = make(name, False)
         low = make(name + "_lo", True)
-        print("SHAPE %s: %s pec_root=(%.4f, %.4f, %.4f)" % (kind, P["told"], PEC_ROOT.x, PEC_ROOT.y, PEC_ROOT.z + 0.5))
-        export_one(full, os.path.join(OUT, name + ".glb"))
-        export_one(low, os.path.join(OUT, name + "_lo.glb"))
+        game = make(name + "_game", False, True)
+        print("SHAPE %s: %s pec_root=(%.4f, %.4f, %.4f) eye_skin=(%.4f, %.4f, %.4f)" % (
+            kind, P["told"], PEC_ROOT.x, PEC_ROOT.y, PEC_ROOT.z + 0.5, EYE_SKIN.x, EYE_SKIN.y, EYE_SKIN.z + 0.5))
+        if "--game-only" not in ARGS:
+            export_one(full, os.path.join(OUT, name + ".glb"))
+            export_one(low, os.path.join(OUT, name + "_lo.glb"))
+        export_one(game, os.path.join(OUT, name + "_game.glb"))
+        # (in the .blend: the full model, the low one beside it, the game model on its other side)
         low.location.x = LENGTH
+        game.location.x = -LENGTH
         bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, name + ".blend"))
         low.location.x = 0.0
+        game.location.x = 0.0
         if PREVIEW:
             folder = os.path.join(PREVIEW, kind)
             os.makedirs(folder, exist_ok=True)

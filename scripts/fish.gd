@@ -175,6 +175,9 @@ func _wear(look: Node3D, long: float, front := -1.0, curls := true) -> void:
 	# model is then never loaded)
 	if &"game" in look:
 		look.set(&"game", true)
+	# (and its cartoon eye, where it has one)
+	if &"cartoon_eyes" in look:
+		look.set(&"cartoon_eyes", 1.0)
 	look.position = Vector3(0.0, 0.0, _front - _long * 0.5)
 	_body.add_child(look)
 	# (Godot's importer makes coarser stand-ins for far off; a body bent in its shader then bends

@@ -3,13 +3,17 @@
 Run from the game's root (or from anywhere: it writes beside itself):
     blender --background --factory-startup --python creatures/grouper/tools/build_grouper.py
     blender --background --factory-startup --python creatures/grouper/tools/build_grouper.py -- <preview folder>
+    blender --background --factory-startup --python creatures/grouper/tools/build_grouper.py -- --game-only [<preview folder>]
 
-It writes creatures/grouper/models/grouper.glb (the full model) and grouper_lo.glb (far off, phones, many of
-them), and the editable creatures/grouper/tools/grouper.blend holding both (this folder has a .gdignore). Each
+It writes creatures/grouper/models/grouper.glb (the full model), grouper_lo.glb (far off, phones, many of
+them) and grouper_game.glb (the game model: Twilight Princess weight, its triangles spent on the outline, the eye
+and the mouth; built from the same lines with fewer, better placed rings and points), and the editable
+creatures/grouper/tools/grouper.blend holding all three (this folder has a .gdignore). Each
 model is one still mesh with one surface: the shader (grouper.gdshader) bends it to swim, works its mouth and
-fins, and draws every marking. It prints a WINDING line for each model (the check that nothing is inside out), a
-SHAPE line (the numbers the shader and the script share) and CLEARANCE lines (the paired fins against the body).
-With a preview folder it also renders both models from every side.
+fins, and draws every marking. It prints a WINDING line for each model (the check that nothing is inside out),
+SHAPE and EYE lines (the numbers the shader and the script share) and CLEARANCE lines (the paired fins against the body).
+With a preview folder it also renders the models from every side. --game-only exports the game model alone,
+leaving the full and low .glb files as they are (they come out the same either way).
 
 The broomtail grouper (Mycteroperca xenarcha) of the eastern Pacific reefs: a robust grouper about 1.2 m long,
 a big thick-lipped mouth with the lower jaw standing forward, one long dorsal (spiny then soft), and a square
@@ -61,6 +65,9 @@ from mathutils.bvhtree import BVHTree
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "..", "models")
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+# (--game-only: export the game model alone, leaving the full and low .glb files as they are)
+ONLY_GAME = "--game-only" in ARGS
+ARGS = [a for a in ARGS if a != "--game-only"]
 PREVIEW = ARGS[0] if ARGS else ""
 TAU = math.tau
 BODY, JAW, EYE, MAXILLA, SPINY, SOFT, TAIL, ANAL, PELVIC, PECTORAL, MEMBRANE = range(11)
@@ -103,11 +110,26 @@ SP = {
     "pectoral": (0.312, 0.14, 17, 0.33),
     "detail": 0.95,
 }
+# THE GAME MODEL (grouper_game.glb): Twilight Princess weight for its length (1,800 to 3,000 triangles at 1.2 m),
+# spent where the outline, the eye and the mouth are. Body: rings ahead of the gills, rings behind, points down each
+# side (the widest point always one of them); jaw: rings, points down each side; the mouth's side skins: stations,
+# rows; maxillae: stations, around; eyes: rows, around (enough to stay round as a cartoon eye); the fins: rows out
+# along the rays, and points along each fin's edge per ray (2 where the edge is cut in between the rays).
+GAME = {
+    "body": (16, 12, 10), "jaw": (13, 5), "membrane": (6, 3), "maxilla": (8, 6), "eye": (3, 24), "fin_rows": {"pectoral": 2},
+    "per_ray": {"dorsal_spiny": 2, "dorsal_soft": 0.75, "tail": 2, "anal": 0.7, "pelvic": 1, "pectoral": 0.7},
+}
 
 HINGE_S, HINGE_Y = SP["hinge"]
 GILL_S = SP["gill_s"]
 GAPE_MAX = SP["gape_max"]
 JAW_TIP = SP["chin"][0][0]
+GAME_LEVEL = "game"
+
+
+def by(low, full, lo, game):
+    """A number for the model being made: `low` is False (the full model), True (the low one) or GAME_LEVEL."""
+    return game if low == GAME_LEVEL else (lo if low else full)
 
 
 def to_b(p):
@@ -181,9 +203,10 @@ class Section:
         u = max(0.0, min(1.0, u))
         return hw * (1.0 - u ** n) ** (1.0 / n)
 
-    def outline(self, s, half):
+    def outline(self, s, half, split=False):
         """half + 1 points down its right side from the top line to the bottom line, evenly spaced along the
-        skin: (x, y, how far round from the top)."""
+        skin: (x, y, how far round from the top). `split`: evenly above and below its widest point, which is
+        always one of them (the game model's few points keep its outline from above)."""
         top, bot, hw, ycf, nt, nb = self.at(s)
         yc = bot + ycf * (top - bot)
         dense = []
@@ -202,8 +225,12 @@ class Section:
             acc.append(acc[-1] + math.hypot(dense[i + 1][0] - dense[i][0], dense[i + 1][1] - dense[i][1]))
         whole = acc[-1]
         out = []
+        widest = acc[steps // 2]
+        upper = max(2, min(half - 2, round(half * widest / whole))) if whole > 1e-12 else half // 2
         for j in range(half + 1):
             want = whole * j / half
+            if split:
+                want = widest * j / upper if j <= upper else lerp(widest, whole, (j - upper) / (half - upper))
             i = min(bisect.bisect_right(acc, want) - 1, steps - 1)
             span = acc[i + 1] - acc[i]
             t = (want - acc[i]) / span if span > 1e-12 else 0.0
@@ -414,11 +441,11 @@ def same(d):
     return d
 
 
-def skin(part, section, places, half, kind):
+def skin(part, section, places, half, kind, split=False):
     """Lofts a Section into a Part. `kind` is BODY or JAW (the jaw is swung open as it is made)."""
     rings = []
     for s in places:
-        side, whole = section.outline(s, half)
+        side, whole = section.outline(s, half, split)
         top, bot = section.top(s), section.bot(s)
         ring = []
         ends = s <= section.first or s >= section.last
@@ -447,12 +474,15 @@ def skin(part, section, places, half, kind):
 
 def body_places(low):
     k = SP["detail"]
-    head = 18 if low else int(72 * k)
-    rest = 24 if low else int(84 * k)
+    head = by(low, int(72 * k), 18, GAME["body"][0])
+    rest = by(low, int(84 * k), 24, GAME["body"][1])
     behind = GILL_S + 0.014
     first = BODY_SKIN.first
     places = [first + (behind - first) * (i / head) ** 1.35 for i in range(head)]
     places += [lerp(behind, BODY_SKIN.last, i / rest) for i in range(rest + 1)]
+    if low == GAME_LEVEL:
+        # (the game model: a ring each side of the gill cover's step, so that its edge stays a step)
+        places = sorted(places + [GILL_S - 0.006, GILL_S + 0.006])
     return places
 
 
@@ -461,8 +491,8 @@ def membrane(low):
     mouth is wide open (the jaw's lip swung GAPE_MAX about the hinge) and bulged out a little: it makes the open
     mouth a tube. A thin closed solid; its inner face is the mouth's inside."""
     part = Part("membrane")
-    stations = 6 if low else 22
-    rows = 3 if low else 8
+    stations = by(low, 22, 6, GAME["membrane"][0])
+    rows = by(low, 8, 3, GAME["membrane"][1])
     s0 = lerp(JAW_TIP, HINGE_S, SP["mouth_front"])
     s1 = HINGE_S - 0.004
     rings = []
@@ -490,8 +520,8 @@ def maxilla(low):
     """The plate along the upper lip of the right side, from near the snout back past the jaw's hinge, broad at
     its rear end (built with the mouth shut)."""
     part = Part("maxilla")
-    stations = 8 if low else 26
-    around = 6 if low else 12
+    stations = by(low, 26, 8, GAME["maxilla"][0])
+    around = by(low, 12, 6, GAME["maxilla"][1])
     s_from, s_to, high_front, high_rear = SP["maxilla"]
     front = None
     rings = []
@@ -530,8 +560,8 @@ def eye(low):
     seen = math.sqrt(1.0 - (1.0 - stands / ball) ** 2)
     reach = math.asin(min(seen / shown, 0.999))
     centre = at - out * (ball - stands)
-    rows = 4 if low else 10
-    around = 10 if low else 32
+    rows = by(low, 10, 4, GAME["eye"][0])
+    around = by(low, 32, 10, GAME["eye"][1])
     rings = []
     for i in range(rows + 1):
         a = reach * i / rows
@@ -557,9 +587,9 @@ def fin(name, kind, rays, base, direction, length, normal, thick, low, paired=Fa
     """A fin: `rays` rays fanned from the line `base(t)` (t 0 its leading edge to 1 its trailing edge), each
     going the way `direction(t)` for `length(t)`; flat, facing `normal`; `thick` at its root."""
     part = Part(name)
-    per_ray = 1 if low else per_ray
-    rows = 3 if low else 12
-    cols = max(rays * per_ray, 6)
+    per_ray = by(low, per_ray, 1, GAME["per_ray"].get(name, 1))
+    rows = by(low, 12, 3, GAME["fin_rows"].get(name, 1))
+    cols = max(int(round(rays * per_ray)), 6)
     normal = normal.normalized()
     left, right = [], []
     for i in range(cols + 1):
@@ -635,7 +665,7 @@ def fins(low):
     # The spiny first dorsal: stout spines, the skin between them cut in at the edge.
     s0, s1, count, profile, a0, a1 = SP["spiny"]
     tall = curve(profile)
-    cut = 0.0 if low else SP["spiny_cut"]
+    cut = by(low, SP["spiny_cut"], 0.0, SP["spiny_cut"])
     made.append(fin(
         "dorsal_spiny", SPINY, count,
         lambda t: Vector((0.0, BODY_SKIN.top(lerp(s0, s1, t)) - 0.008, lerp(s0, s1, t) - 0.5)),
@@ -658,7 +688,7 @@ def fins(low):
         long = lerp(t_mid, t_long, a ** t_power)
         if a > 0.9:
             long *= 1.0 - 0.1 * ((a - 0.9) / 0.1) ** 2
-        if ragged > 0.0 and not low:
+        if ragged > 0.0 and low in (False, GAME_LEVEL):
             # (each ray's tip stands out past the skin between the rays: a ragged edge)
             long *= 1.0 + ragged * (abs(((t * t_rays) % 1.0) - 0.5) * 2.0 - 0.5) * (-1.0)
         return long
@@ -706,12 +736,12 @@ def make(name, low):
     parts = []
     body = Part("body")
     k = SP["detail"]
-    skin(body, BODY_SKIN, body_places(low), 9 if low else int(28 * k), BODY)
+    skin(body, BODY_SKIN, body_places(low), by(low, int(28 * k), 9, GAME["body"][2]), BODY, low == GAME_LEVEL)
     parts.append(body)
     jaw = Part("jaw")
-    jaw_rings = 14 if low else 44
+    jaw_rings = by(low, 44, 14, GAME["jaw"][0])
     skin(jaw, JAW_SKIN, [lerp(JAW_SKIN.first, JAW_SKIN.last, (i / jaw_rings) ** 1.15) for i in range(jaw_rings + 1)],
-         5 if low else 14, JAW)
+         by(low, 14, 5, GAME["jaw"][1]), JAW)
     parts.append(jaw)
     side = membrane(low)
     parts += [side, side.mirrored("membrane_left", flip_side)]
@@ -811,17 +841,17 @@ def render(folder, made):
              ("quarter", (0.7, 0.6, 0.35), (0, 0, 0), 1.1), ("low_quarter", (0.6, 0.6, -0.5), (0, 0, 0), 1.1),
              ("head", (1, 0.15, 0.05), (0, 0.33, -0.02), 0.5), ("head_front", (0.45, 1, -0.1), (0, 0.38, -0.03), 0.42),
              ("tail", (1, -0.2, 0.1), (0, -0.36, 0), 0.5)]
-    for low, obj in ((False, made[0]), (True, made[1])):
+    for low, obj in ((False, made[0]), (True, made[1]), (GAME_LEVEL, made[2])):
         for other in made:
             other.hide_render = other is not obj
         for view, direction, target, frame in views:
-            if low and view not in ("right", "quarter", "head"):
+            if low is True and view not in ("right", "quarter", "head"):
                 continue
             offset = Vector(direction).normalized() * 10.0 * LENGTH
             camera.data.ortho_scale = frame * LENGTH
             camera.location = Vector(target) * LENGTH + offset
             camera.rotation_euler = (-offset).to_track_quat("-Z", "X" if view in ("top", "under") else "Y").to_euler()
-            scene.render.filepath = os.path.join(folder, "%s%s.png" % ("lo_" if low else "", view))
+            scene.render.filepath = os.path.join(folder, "%s%s.png" % (by(low, "", "lo_", "game_"), view))
             bpy.ops.render.render(write_still=True)
 
 
@@ -833,16 +863,24 @@ def main():
         NAME, LENGTH, HINGE_S, HINGE_Y, GILL_S, GAPE_MAX,
         max(BODY_SKIN.top(i / 200.0) - BODY_SKIN.bot(i / 200.0) for i in range(40, 140)),
         2.0 * max(BODY_SKIN.at(i / 200.0)[2] for i in range(40, 140))))
+    at, out, _up = body_frame(SP["eye"][0], SP["eye"][1])
+    print("EYE %s: EYE_AT=(%.4f, %.4f, %.4f) EYE_OUT=(%.4f, %.4f, %.4f) (the right eye where it stands on the skin, "
+          "metres, Godot space; the way out of the skin there)" % ((NAME,) + tuple(at * LENGTH) + tuple(out)))
     full = make(NAME, False)
     low = make(NAME + "_lo", True)
-    export_one(full, os.path.join(OUT, NAME + ".glb"))
-    export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
+    game = make(NAME + "_game", GAME_LEVEL)
+    if not ONLY_GAME:
+        export_one(full, os.path.join(OUT, NAME + ".glb"))
+        export_one(low, os.path.join(OUT, NAME + "_lo.glb"))
+    export_one(game, os.path.join(OUT, NAME + "_game.glb"))
     low.location.x = LENGTH * 0.6
+    game.location.x = -LENGTH * 0.6
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME + ".blend"))
     low.location.x = 0.0
+    game.location.x = 0.0
     if PREVIEW:
         os.makedirs(PREVIEW, exist_ok=True)
-        render(PREVIEW, [full, low])
+        render(PREVIEW, [full, low, game])
 
 
 if __name__ == "__main__":

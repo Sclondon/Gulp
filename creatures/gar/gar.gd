@@ -25,7 +25,8 @@ extends Node3D
 ## its hinge under the eye with its teeth, the upper half lifts a little, and the needle teeth of
 ## both jaws and the dark inside show; shut, each jaw's teeth are hidden inside the other).
 ##
-## The model is creatures/gar/models/gar.glb (and _lo), built by tools/build_gar.py;
+## The models are creatures/gar/models/gar.glb (the full one), gar_game.glb (the game model,
+## at Twilight Princess weight) and gar_lo.glb (far off), built by tools/build_gar.py;
 ## gar.gdshader draws its markings and moves it (no bones).
 
 const MODEL := "res://creatures/gar/models/gar%s.glb"
@@ -66,10 +67,34 @@ const WIDTH := 0.104
 		snap = value
 		_send(&"snap", value)
 ## The low model (about a fourteenth of the triangles), for far off or for many of them.
+## The game model (a tenth or so of the full model's triangles, spent on its outline, eye, mouth
+## and fin edges: the same look and the same settings), in place of the full one. With `game` on
+## the full model is never loaded (each model is loaded only when first shown), so a game's web
+## export can leave the full .glb out. `low` still wins over it.
+@export var game := false:
+	set(value):
+		game = value
+		_show()
 @export var low := false:
 	set(value):
 		low = value
 		_show()
+## The cartoon eye: 0 the eye as it is, 1 bigger, with a white, an iris, a big pupil, a shine,
+## a dark outline and lids of its own character (Gulp sets 1). See the README.
+@export_range(0.0, 1.0) var cartoon_eyes := 0.0:
+	set(value):
+		cartoon_eyes = value
+		_send(&"cartoon_eyes", value)
+## Where the cartoon eye looks, -1..1 each way: x more than 0 forward (towards its snout), y up.
+@export var eye_look := Vector2.ZERO:
+	set(value):
+		eye_look = value
+		_send(&"eye_look", value)
+## A blink: 0 open, 1 shut (the eye squashes flat; the cartoon eye's lid comes down over it).
+@export_range(0.0, 1.0) var blink := 0.0:
+	set(value):
+		blink = value
+		_send(&"blink", value)
 ## How far through a beat it is, 0 to 1 (only the fraction counts). `step` moves it on; or set
 ## it yourself.
 var phase := 0.0:
@@ -80,8 +105,8 @@ var phase := 0.0:
 static var _meshes := {}
 
 var _material: ShaderMaterial
-var _full: MeshInstance3D
-var _low: MeshInstance3D
+# (the full, low and game models' nodes, each made when first shown)
+var _models: Array[MeshInstance3D] = [null, null, null]
 
 
 ## The full model's mesh, or the low one's (each one surface, to wear `new_material()`): for
@@ -94,6 +119,26 @@ static func mesh_of(low_wanted := false) -> Mesh:
 		_meshes[path] = found.mesh
 		made.free()
 	return _meshes[path]
+
+
+## The game model's mesh (one surface, to wear `new_material()`; without the importer's LOD meshes,
+## which would bend in straight pieces far off): for drawing one without this node.
+static func game_mesh() -> Mesh:
+	var path := MODEL % "_game"
+	if not _meshes.has(path):
+		var made := (load(path) as PackedScene).instantiate()
+		var found: MeshInstance3D = made.find_children("*", "MeshInstance3D", true, false)[0]
+		_meshes[path] = without_lods(found.mesh)
+		made.free()
+	return _meshes[path]
+
+
+## `mesh` again without its LOD meshes.
+static func without_lods(mesh: Mesh) -> ArrayMesh:
+	var plain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		plain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(surface))
+	return plain
 
 
 ## A new material for `mesh_of()`'s meshes. Its shader settings are the game's to set: `phase`
@@ -110,11 +155,9 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_full = _instance_of(false)
-	_low = _instance_of(true)
-	_show()
+	_pick()
 	_send_phase()
-	for setting: StringName in [&"sway", &"scull", &"gape", &"snap"]:
+	for setting: StringName in [&"cartoon_eyes", &"eye_look", &"blink", &"sway", &"scull", &"gape", &"snap"]:
 		_send(setting, get(setting))
 
 
@@ -134,7 +177,7 @@ func set_shader_parameter(setting: StringName, value: Variant) -> void:
 	_material.set_shader_parameter(setting, value)
 
 
-## Its one material (both models wear it).
+## Its one material (all three models wear it).
 func material() -> ShaderMaterial:
 	return _material
 
@@ -150,17 +193,26 @@ func _send_phase() -> void:
 
 
 func _show() -> void:
-	if _full:
-		_full.visible = not low
-		_low.visible = low
+	if is_node_ready():
+		_pick()
 
 
-func _instance_of(low_wanted: bool) -> MeshInstance3D:
+# (shows the model wanted, making its node the first time)
+func _pick() -> void:
+	var which := 1 if low else (2 if game else 0)
+	if _models[which] == null:
+		_models[which] = _instance_of(which)
+	for i in _models.size():
+		if _models[i]:
+			_models[i].visible = i == which
+
+
+func _instance_of(which: int) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()
-	mesh.mesh = mesh_of(low_wanted)
+	mesh.mesh = game_mesh() if which == 2 else mesh_of(which == 1)
 	mesh.material_override = _material
 	# (its tail and fins swing out past where the still model ends, and its head snaps sideways)
 	mesh.extra_cull_margin = LENGTH * 0.3
-	mesh.name = "GarLo" if low_wanted else "Gar"
+	mesh.name = ["Gar", "GarLo", "GarGame"][which]
 	add_child(mesh)
 	return mesh

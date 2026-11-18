@@ -62,6 +62,27 @@ uniform vec3 mouth : source_color = vec3(0.16, 0.05, 0.06);
 uniform float sheen = 0.2;
 uniform float ray_lines = 1.0;
 
+// The cartoon eye: 0 the eye as it is built, 1 bigger, a white with a coloured iris, a big pupil,
+// a highlight that stays put, a dark outline and lids. `eye_look`: where both eyes look (-1..1: x
+// towards the nose, y up). `blink`: 0 open, 1 shut (the lids meet and the eye squashes).
+uniform float cartoon_eyes : hint_range(0.0, 1.0) = 0.0;
+uniform vec2 eye_look = vec2(0.0);
+uniform float blink : hint_range(0.0, 1.0) = 0.0;
+// Each type's cartoon eye (Angelfish.TYPES): where the eye sits on the skin (x out, y up, how
+// far along; body lengths), how much bigger than life, the iris's colour and width (of the eye),
+// the pupil's width (of the iris) and shape (0 round, 1 a bar across, 2 an upright slit, 3 a
+// keyhole), where the upper lid rests (eye radii up from the middle; 1 or more: none shows) and
+// how it slants (more than 0: higher at the nose), and where the lower lid rests.
+uniform vec3 eye_skin = vec3(0.0393, 0.04, 0.132);
+uniform float eye_size = 1.7;
+uniform vec3 iris : source_color = vec3(0.95, 0.6, 0.12);
+uniform float iris_size = 0.6;
+uniform float pupil_size = 0.6;
+uniform int pupil_shape = 0;
+uniform float lid = 0.8;
+uniform float lid_tilt = 0.0;
+uniform float lower_lid = -1.2;
+
 varying vec3 rest;
 varying float part;
 varying float inside;
@@ -110,7 +131,13 @@ void vertex() {
 	float tail = phase * TAU * tail_beats;
 	float stroke = phase * TAU * strokes;
 	float wave = tail - TAU * clamp(s, 0.0, 1.05) / WAVE;
-	if (part == 1.0 || part == 0.0) {
+	if (part == 2.0 && cartoon_eyes > 0.0) {
+		// The cartoon eye: grown about where it sits on the skin, and squashed as it blinks.
+		vec3 at = vec3(eye_skin.x * side_is, eye_skin.y, eye_skin.z - 0.5) * LENGTH;
+		vec3 d = v - at;
+		d.y *= 1.0 - 0.45 * blink * cartoon_eyes;
+		v = at + d * mix(1.0, eye_size, cartoon_eyes);
+	} else if (part == 1.0 || part == 0.0) {
 		// The lower jaw swings down about its hinge (the throat behind it stays); the upper snout
 		// lifts a little.
 		float a = part == 1.0
@@ -203,6 +230,54 @@ float scale_rim(vec2 q, float cell, float wide) {
 	float edge = band(d - 0.6 + 0.5 * wide, 0.5 * wide, 0.04) * smoothstep(-0.3, 0.0, f.x);
 	float fine = 1.0 - smoothstep(0.25, 0.7, (fwidth(q.x) + fwidth(q.y)) / cell);
 	return mix(0.9 * wide, edge, fine);
+}
+
+
+// The cartoon eye at a point of the eye's dome (`uv` its UV), in skin of colour `skin`. On the
+// dome, e is (towards the nose, up) in seen radii of the eye: 1 where the eye meets the skin.
+vec3 cartoon_eye(vec2 uv, vec3 skin) {
+	vec2 on_eye = uv * 2.0 - 1.0;
+	vec2 e = vec2(on_eye.y, on_eye.x) / 0.644;
+	float er = length(e);
+	vec3 white = vec3(0.97, 0.96, 0.92);
+	vec3 ink = vec3(0.02, 0.02, 0.025);
+	// the iris and the pupil slide the way it looks
+	vec2 ic = e - clamp(eye_look, vec2(-1.0), vec2(1.0)) * (0.92 - iris_size) * 0.75;
+	float ir = length(ic) / iris_size;
+	float aa = max(fwidth(ir), 0.02);
+	vec3 c = mix(white * 0.86, white, smoothstep(1.0, 0.4, er));
+	vec3 ring = mix(iris * 1.2, iris * 0.6, smoothstep(0.3, 1.0, ir));
+	c = mix(c, ring, 1.0 - smoothstep(1.0 - aa, 1.0 + aa, ir));
+	c = mix(c, iris * 0.3, smoothstep(0.82, 0.95, ir) * (1.0 - smoothstep(1.0 - aa, 1.0 + aa, ir)));
+	vec2 pp = ic / (iris_size * pupil_size);
+	float pd = length(pp);
+	if (pupil_shape == 1) {
+		pd = length(pp * vec2(0.55, 1.9));
+	} else if (pupil_shape == 2) {
+		pd = length(pp * vec2(2.6, 0.72));
+	} else if (pupil_shape == 3) {
+		pd = min(pd, length((pp - vec2(0.55, -0.45)) * 1.9));
+	}
+	float pa = max(fwidth(pd), 0.02);
+	c = mix(c, ink, 1.0 - smoothstep(1.0 - pa, 1.0 + pa, pd));
+	// the highlights, where the light is (up and towards the nose), not moving as it looks
+	float ea = max(fwidth(er), 0.01);
+	c = mix(c, vec3(1.0), 1.0 - smoothstep(0.17 - ea, 0.17 + ea, length(e - vec2(0.24, 0.36))));
+	c = mix(c, vec3(1.0), 0.8 * (1.0 - smoothstep(0.07 - ea, 0.07 + ea, length(e - vec2(-0.2, -0.3)))));
+	// the lids, which give it its character; they meet as it blinks
+	float shut = -0.12;
+	float upper = mix(lid + lid_tilt * e.x, shut, blink);
+	float lower = mix(lower_lid - 0.12 * e.x * e.x, shut + 0.03, blink);
+	float la = max(fwidth(e.y), 0.01);
+	float on_lid = max(smoothstep(upper - la, upper + la, e.y), 1.0 - smoothstep(lower - la, lower + la, e.y));
+	float lid_edge = max(1.0 - smoothstep(0.06, 0.06 + 2.0 * la, abs(e.y - upper)),
+		0.6 * (1.0 - smoothstep(0.04, 0.04 + 2.0 * la, abs(e.y - lower))));
+	c = mix(c, skin * 0.92, on_lid);
+	c = mix(c, ink, lid_edge * step(er, 1.0));
+	// the dark outline, and the skin beyond where the eye meets it
+	c = mix(c, ink, smoothstep(0.84 - ea, 0.86 + ea, er));
+	c = mix(c, skin, smoothstep(1.0 - ea, 1.0 + ea, er));
+	return c;
 }
 
 
@@ -358,6 +433,9 @@ void fragment() {
 		c = mix(eye_ring, around * 0.5, smoothstep(0.52, 0.64, er));
 		c = mix(c, vec3(0.85, 0.7, 0.3), 0.5 * (1.0 - smoothstep(0.36, 0.44, er)));
 		c = mix(c, vec3(0.01), 1.0 - smoothstep(0.3, 0.34, er));
+		if (cartoon_eyes > 0.0) {
+			c = mix(c, cartoon_eye(UV, around), cartoon_eyes);
+		}
 		rough = 0.08;
 		glint = 0.0;
 	} else if (is_fin) {
