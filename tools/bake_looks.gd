@@ -5,6 +5,9 @@ extends SceneTree
 ##   godot --path . --audio-driver Dummy --resolution 320x240 -s res://tools/bake_looks.gd -- \
 ##     [--kinds=garibaldi,orca,...] [--components=garibaldi,...] [--seeds=3] [--plan=res://plan.json]
 ##
+## `--imports` (headless will do) only writes the import settings of every baked picture already there
+## (lossy, mipmaps): for a game that installed baked components from GameCommon; then `--import`.
+##
 ## Which components and settings: `--plan` (a JSON object, component script -> list of settings
 ## dictionaries), or every kind in the game's Species table with its `set` (Gulp), or every
 ## component in res://creatures as it comes; `--kinds`/`--components` narrow it. For each component and each distinct set of settings
@@ -51,6 +54,7 @@ var _only_kinds: PackedStringArray = []
 var _only_components: PackedStringArray = []
 var _seeds := 4
 var _plan_file := ""
+var _imports_only := false
 var _stage: Node3D
 var _view: SubViewport
 var _camera: Camera3D
@@ -71,10 +75,26 @@ func _initialize() -> void:
 			_seeds = int(arg.get_slice("=", 1))
 		elif arg.begins_with("--plan="):
 			_plan_file = arg.get_slice("=", 1)
+		elif arg == "--imports":
+			_imports_only = true
 	_run.call_deferred()
 
 
 func _run() -> void:
+	if _imports_only:
+		# (a game that installed baked components: their pictures' import settings, then --import)
+		var n := 0
+		for folder in DirAccess.get_directories_at("res://creatures"):
+			var dir := "res://creatures/%s/baked" % folder
+			if not DirAccess.dir_exists_absolute(dir):
+				continue
+			for file in DirAccess.get_files_at(dir):
+				if file.ends_with(".png"):
+					_import_settings(dir.path_join(file))
+					n += 1
+		print("BAKED import settings for %d pictures" % n)
+		quit()
+		return
 	_make_views()
 	var plan := _plan()
 	for script_path: String in plan:

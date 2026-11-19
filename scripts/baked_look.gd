@@ -76,6 +76,8 @@ static func everything(folder := "res://creatures") -> Dictionary:
 	var indexes: PackedStringArray = []
 	for name in DirAccess.get_directories_at(folder):
 		var dir := "%s/%s/baked" % [folder, name]
+		if not DirAccess.dir_exists_absolute(dir):
+			continue
 		for file in DirAccess.get_files_at(dir):
 			file = file.trim_suffix(".remap")
 			if file.ends_with("look.res"):

@@ -345,8 +345,10 @@ Same markings for nearly every kind. Different:
 ### Pack and memory
 
 186 baked pictures, 6.5 MB imported (lossy WebP with mipmaps), about 88 MB of RGBA8 on the GPU, all loaded at the start;
-baked meshes 16 MB (the full-float atlas UVs: half floats came out empty), against 14 MB of game and far models that a
-web build now leaves out (259 listed in `creatures/*/baked/*primed.txt`). The pack was not exported in this pass.
+baked meshes 14 MB (compressed as the importer does; the atlas UVs full floats: half floats came out empty), against
+about 14 MB of game and far models that a web build now leaves out (listed in `creatures/*/baked/*primed.txt`). A web
+export from the working checkout: index.pck 55.1 MB, of which about 7 MB were another session's uncommitted title-captain
+pictures: about 48 MB from what is committed, against 37.9 MB at the last push.
 
 Found on the way (each fixed): the warm-up showed particles as plain meshes, but particles draw as a MultiMesh
 with colours and custom data, another version (the first leap at Steamer Lane stalled 62 ms); a component that shows its
