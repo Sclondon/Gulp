@@ -1115,3 +1115,17 @@ browser after this push.
   like the more buttony nose on the brother". This replaces their earlier "a bit too red button nosed, needs to be a tad
   angular": leave the frozen head's nose shape alone (only its redness was eased, `nose_less_red`). His part in work is
   the eyes (downturned, soft bags, hazel).
+- **THE FIGURES ARE TABLED** (the user, 2026-11-19, about 2 AM, after some forty builder rounds over a day): of the
+  brother's eyes after four passes: "No he looks totally bugeyed now, I'm more worried about his busted ass jaw and
+  neck"; then "Ehhh we're not making good progress lets table this work for now", and they stopped the three running
+  builders themselves. Do not restart figure work unless the user asks. Where it was left (nothing is in the game):
+  the captain (`models/captain.glb`: frozen base + named adjustments; hands on their third pass: repainted, fist still
+  blocky), the brother (`models/brother.glb`: his 6 PM head restored and frozen; eyes enlarged over four passes, which
+  the user dislikes: "bugeyed"; his jaw and neck, in side view a slack lower face running into a thick patchy neck, are
+  what the user wants fixed first), the boy (`models/boy.glb`: frozen head; nose on its third pass), townsfolk bodies,
+  hair (five passes), the face rig (two passes). The stopped builders' half-done script edits were not recorded; a
+  copy of that diff was put in the session's scratchpad (`tabled\unfinished_rounds.patch`, which a clean-up may lose).
+  What Claude takes from the day (its own reading, not the user's words): scripted, agent-built figures converged on
+  bodies but not on faces and hands; dozens of rounds of critique-and-fix moved slowly and often sideways; if this is
+  picked up again, start by asking the user how they want faces made (for example by hand in Blender, from a bought or
+  commissioned base, or a simpler stylised face like the mask heads the user's other games use) before running builders.
