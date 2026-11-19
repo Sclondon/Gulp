@@ -1184,7 +1184,7 @@ HAND_GROW = 1.15
 HAND_SX = HAND_PX * HAND_GROW      # metres a pixel of the hands sheet (its wrist to middle fingertip, 20.3 cm before the grow)
 HAND_LEN = 0.203 * HAND_GROW
 HAND_LOOP_L = 0.012                # the hand's open loop stands this far beyond the wrist ring
-HAND_UNSUBDIV = int(arg("--hand-unsub", "1"))
+HAND_UNSUBDIV = int(arg("--hand-unsub", "2"))   # (twentieth round: 1; see bevel_fingers)
 HAND_TOP = 80                      # each view's top row in the working picture
 # each view: its box in the sheet (columns, rows), quarter turns (numpy's rot90: + counter-clockwise), mirrored, and the
 # column it is put at in the working picture
@@ -1370,6 +1370,47 @@ def digit_axis(C, ids):
     return c, d
 
 
+# Twentieth round (the fifth critic: "jagged shards" on the fingers). Un-subdivided ONCE the base hand's fingers came
+# out as a diamond lattice (each ring's points alternately 8 mm ahead and behind), a saw-tooth outline whatever was
+# smoothed after; un-subdivided twice they are clean square rings, four corners round. So: twice, and every edge running
+# along a digit is bevelled (a share HAND_BEVEL of its faces either side), which makes each digit eight-sided with the
+# same clean rings. About 480 triangles a hand.
+HAND_BEVEL = float(arg("--hand-bevel", "0.3"))
+
+
+def bevel_fingers(C, faces, label, loop, names):
+    import bmesh
+    bm = bmesh.new()
+    vs = [bm.verts.new(tuple(map(float, p))) for p in C]
+    for f in faces:
+        bm.faces.new([vs[i] for i in f])
+    bm.verts.ensure_lookup_table()
+    bm.verts.index_update()
+    bm.edges.ensure_lookup_table()
+    axes = {n: digit_axis(C, np.where(label == n)[0])[1] for n in names}
+    pick = []
+    for e in bm.edges:
+        a, b = e.verts[0].index, e.verts[1].index
+        if label[a] != label[b] or label[a] not in axes:
+            continue
+        d = C[b] - C[a]
+        if abs(float(d @ axes[label[a]])) > 0.7 * float(np.linalg.norm(d)):
+            pick.append(e)
+    bmesh.ops.bevel(bm, geom=pick, offset=HAND_BEVEL * 100.0, offset_type="PERCENT", segments=1, profile=0.5,
+                    affect="EDGES", clamp_overlap=True)
+    bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 4], quad_method="BEAUTY", ngon_method="BEAUTY")
+    bm.verts.index_update()
+    bm.verts.ensure_lookup_table()
+    P = np.array([tuple(v.co) for v in bm.verts], float)
+    nf = [[v.index for v in f.verts] for f in bm.faces]
+    bm.free()
+    near = np.array([int(np.argmin(np.linalg.norm(C - p, axis=1))) for p in P])
+    new_loop = [int(np.argmin(np.linalg.norm(P - C[v], axis=1))) for v in loop]
+    print("CAPTAIN fingers bevelled: %d edges along them, %d -> %d triangles" % (
+        len(pick), sum(len(f) - 2 for f in faces), sum(len(f) - 2 for f in nf)))
+    return P, nf, label[near], new_loop
+
+
 def base_hand_fit():
     """The base hand in its own frame fitted to the sheet's back view in the sheet's pose (HB: C, flat, faces,
     label, J, loop); then its back, palm and thumb-side silhouettes compared."""
@@ -1429,6 +1470,12 @@ def base_hand_fit():
     if HAND_UNSUBDIV >= 2:
         C, faces, label, loop = drop_finger_rings(C, faces, label, loop, names)
         C, faces, label, loop = drop_finger_rings(C, faces, label, loop, ("thumb",), nth=2)
+    if HAND_BEVEL and HAND_UNSUBDIV >= 2:
+        C, faces, label, loop = bevel_fingers(C, faces, label, loop, names + ("thumb",))
+    for nth_ in [int(v) for v in arg("--hand-drop", "").split(",") if v]:
+        # (twentieth round: rings taken out of the un-subdivided-once hand along each finger, regular quads kept)
+        C, faces, label, loop = drop_finger_rings(C, faces, label, loop, names, nth=nth_)
+        print("CAPTAIN hand ring %d dropped: %d triangles" % (nth_, sum(len(f) - 2 for f in faces)))
     if HAND_DROP_MORE:
         # (fourteenth round: under 450 a hand; a second ring of each finger out, the one over the knuckle's first
         # bone, between the middle joint and the knuckle)
@@ -1525,8 +1572,9 @@ def base_hand_fit():
     hand_thumb_fit()
     round_fingertips()
     hand_silhouettes()
-    if HAND_KEEP_TRIS:
+    if HAND_KEEP_TRIS or HAND_PLANAR:
         thin_hand(HAND_KEEP_TRIS)
+    taubin_hand(HAND_TAUBIN)
 
 
 # Nineteenth round (the fourth critic: "short, curled sausages ... no knuckles and no nails ... seen from the end, the
@@ -1537,7 +1585,40 @@ def base_hand_fit():
 # curves: the knuckles, the tips, the thumb's root, and gives up the flat back and palm) to HAND_KEEP_TRIS, its wrist
 # loop held for the zip to the forearm. The practice: model or fit dense, reduce by quadric collapse (as game LODs are
 # made). Alternative kept: --hand-unsub 2 and --hand-keep 0 build the eighteenth round's hand.
-HAND_KEEP_TRIS = int(arg("--hand-keep", "520"))
+# Twentieth round (the fifth critic: "polygon shards on the outer edge of the palm and at fingertips"): the collapse
+# left slivers that shaded as shards. Now the fitted hand keeps its regular quads (eight corners round each finger) and
+# only its near-flat stretches (back of the hand, palm) are merged by a planar dissolve of HAND_PLANAR degrees, then
+# triangulated; --hand-keep N (with --hand-planar 0) brings back the nineteenth round's collapse.
+HAND_KEEP_TRIS = int(arg("--hand-keep", "0"))
+HAND_PLANAR = float(arg("--hand-planar", "0"))
+
+
+# (twentieth round, of the hand in grey: each finger a string of beads, every ring bulging a little out of line, which the
+# fifth critic read as "jagged shards". Taubin smoothing (a shrink step then an inflate step, so the hand keeps its
+# size) over the fitted hand, its wrist loop held: rounds)
+HAND_TAUBIN = int(arg("--hand-taubin", "2"))
+
+
+def taubin_hand(rounds, lam=0.5, mu=-0.53):
+    if rounds <= 0:
+        return
+    P = HB["flat"].copy()
+    E = edges_of(HB["faces"])
+    deg = np.bincount(E.ravel(), minlength=len(P)).astype(float)
+    held = np.zeros(len(P), bool)
+    held[HB["loop"]] = True
+    P0 = P.copy()
+    for _ in range(rounds):
+        for k in (lam, mu):
+            acc = np.zeros_like(P)
+            np.add.at(acc, E[:, 0], P[E[:, 1]])
+            np.add.at(acc, E[:, 1], P[E[:, 0]])
+            lap = acc / np.maximum(deg, 1)[:, None] - P
+            lap[held] = 0.0
+            P += k * lap
+    print("CAPTAIN hand smoothed (Taubin, %d rounds): most a point moved %.1f mm" % (rounds, 1000 * float(np.linalg.norm(P - P0, axis=1).max())))
+    HB["flat"] = P
+    HB["C"] = P.copy()
 
 
 def thin_hand(keep):
@@ -1557,13 +1638,26 @@ def thin_hand(keep):
     g = ob.vertex_groups.new(name="free")
     g.add([i for i in range(len(C)) if i not in held], 1.0, "REPLACE")
     dec = ob.modifiers.new("fewer", "DECIMATE")
-    dec.decimate_type = "COLLAPSE"
-    dec.ratio = min(1.0, keep / max(n_before, 1))
-    dec.vertex_group = "free"
-    dec.use_collapse_triangulate = False
+    if HAND_PLANAR:
+        dec.decimate_type = "DISSOLVE"
+        dec.angle_limit = math.radians(HAND_PLANAR)
+        dec.use_dissolve_boundaries = False
+        dec.delimit = {"NORMAL"}
+    else:
+        dec.decimate_type = "COLLAPSE"
+        dec.ratio = min(1.0, keep / max(n_before, 1))
+        dec.vertex_group = "free"
+        dec.use_collapse_triangulate = False
     bpy.context.view_layer.update()
     ev = ob.evaluated_get(bpy.context.evaluated_depsgraph_get())
     m2 = ev.to_mesh()
+    if HAND_PLANAR:
+        import bmesh
+        bm = bmesh.new()
+        bm.from_mesh(m2)
+        bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 4], quad_method="BEAUTY", ngon_method="BEAUTY")
+        bm.to_mesh(m2)
+        bm.free()
     P = np.array([tuple(v.co) for v in m2.vertices], float)
     nf = [list(p.vertices) for p in m2.polygons]
     ev.to_mesh_clear()
@@ -1599,7 +1693,7 @@ def thin_hand(keep):
 # 2026-11-18), copied unchanged in what it does, with the captain's numbers: round fingertips, flatter-backed fingers,
 # knuckle bumps, a thenar pad, and the wrist loop widened to the forearm so no cuff step shows.
 FINGER_THIN = 0.12
-THENAR = 0.007
+THENAR = 0.011   # (twentieth round: 0.007; the critic: "a large thumb with a fat thenar pad")
 WRIST_WIDEN = (1.08, 1.04)   # (nineteenth round: was 1.25, 1.15; with the hand grown 15% the heel stood 2 to 3 cm out of the sheet inside the wrist)
 WRIST_FADE = 0.03                # metres up the hand over which the widening fades out (the palm keeps the sheet's width)
 WRIST_HALF = (0.061, 0.058)      # the forearm's last two rings' half widths at most (metres)
@@ -1682,8 +1776,10 @@ def shape_fingers():
     HB["C"] = C
 
 
-TIP_DOME = (0.5, 0.0)     # the share of the last bone from which each tip is domed; how far the very tip is drawn back
-                          # (in shares of the finger's radius)
+TIP_DOME = (0.62, 0.0)    # the share of the last bone from which each tip is domed; how far the very tip is drawn back
+                          # (in shares of the finger's radius) (twentieth round: 0.5; the dome later, so the tips stay
+                          # thick and blunt)
+NAIL = (0.3, 0.86)        # the nail's plate: from this share of the last bone; flattened to this share of the back's height
 
 
 def round_fingertips():
@@ -1727,6 +1823,19 @@ def round_fingertips():
         old = C[ids].copy()
         C[ids[dome]] = Q[dome]
         moved = max(moved, float(np.linalg.norm(C[ids] - old, axis=1).max()))
+        # (twentieth round, the fifth critic: "fingers that keep their thickness to blunt rounded tips ... short square
+        # nails": the back of the last bone, from NAIL[0] of its length to the tip, flattened to a plate at NAIL[1] of the
+        # finger's back height there, so a nail reads as a modelled flat plate)
+        up_ = np.array((0.0, 1.0, 0.0)) - d * d[1]
+        up_ /= np.linalg.norm(up_)
+        rel2 = C[ids] - a
+        s2 = rel2 @ d / ln
+        hb = rel2 @ up_
+        band = (s2 > NAIL[0]) & (hb > 0)
+        if band.sum() > 2:
+            top = float(np.percentile(hb[band], 90)) * NAIL[1]
+            k_ = band & (hb > top)
+            C[ids[k_]] -= np.outer(hb[k_] - top, up_)
     HB["flat"] = C
     HB["C"] = C.copy()
     print("CAPTAIN fingertips domed: most a point moved %.1f mm" % (moved * 1000))
@@ -2080,8 +2189,9 @@ def hand_silhouettes():
 # is itself bent some 20 to 40 degrees a joint. So the bends are measured on it and the curls set to reach these, in
 # radians at the knuckle, the middle joint and the last (index first): about 5 to 10 degrees, more toward the little
 # finger.)
-HAND_RELAXED_BENDS = {"index": (0.06, 0.10, 0.06), "middle": (0.08, 0.12, 0.07), "ring": (0.11, 0.15, 0.09),
-                      "little": (0.15, 0.19, 0.11)}
+# (twentieth round, the fifth critic: "clawed": about two thirds of the eighteenth round's bends)
+HAND_RELAXED_BENDS = {"index": (0.04, 0.07, 0.04), "middle": (0.05, 0.08, 0.05), "ring": (0.07, 0.10, 0.06),
+                      "little": (0.10, 0.13, 0.08)}
 
 
 def finger_bends(J):
@@ -2133,7 +2243,17 @@ def straighten_fingers(C, J, label, bins=7):
         base = offs[1] if len(offs) > 1 else np.zeros(3)
         offs = offs - base
         offs[0] = 0.0
-        sh = np.stack([np.interp(s, mids, offs[:, k]) for k in range(3)], 1)
+        # (twentieth round: the bins' middles, each of a part of a ring, swing from bin to bin, and followed point by
+        # point they corrugated every finger into a row of ridges; the bow is now a smooth curve, a quadratic through
+        # the knuckle fitted to them)
+        mids_ = np.array(mids)
+        if len(mids_) >= 4:
+            A_ = np.stack([mids_, mids_ ** 2], 1)
+            coef = np.linalg.lstsq(A_, offs, rcond=None)[0]
+            sq = np.clip(s, 0.0, None)
+            sh = np.outer(sq, coef[0]) + np.outer(sq ** 2, coef[1])
+        else:
+            sh = np.stack([np.interp(s, mids, offs[:, k]) for k in range(3)], 1)
         w = smooth01(0.0, 0.012, s)
         C[ids] -= sh * w[:, None]
     return C
@@ -4389,7 +4509,9 @@ def skeleton_joints(M, T, joints):
         el = Vector(mirror_x(joints["elbow_l"], s))
         wr = Vector(mirror_x(joints["wrist_l"], s))
         bones.append(("clavicle" + sfx, Vector((s * 0.04, sh_.y - 0.01, sh_.z + 0.06)), "chest"))
-        bones.append(("upper_arm" + sfx, sh_, "chest"))
+        # (twentieth round: under the clavicle, as the boy's builder has it: the viewer raises the clavicle with the
+        # arm, so the shoulder's top lifts instead of folding over the raised arm)
+        bones.append(("upper_arm" + sfx, sh_, "clavicle" + sfx))
         bones.append(("forearm" + sfx, el, "upper_arm" + sfx))
         bones.append(("hand" + sfx, wr, "forearm" + sfx))
         for f in FINGERS:
@@ -4448,6 +4570,11 @@ def chain_weights(s, names, ends, blend):
     return w
 
 
+# (twentieth round) the clavicle's share of the chest's top toward each shoulder, and the elbow's blend (metres each side)
+CLAV_SHARE = float(arg("--clav", "0.7"))
+ELBOW_BLEND = float(arg("--elbow-blend", "0.06"))
+
+
 def weights_of(M, T, bones, joints):
     at = {n: np.array(p) for n, p, _ in bones}
     P = np.array(M.P)
@@ -4469,6 +4596,16 @@ def weights_of(M, T, bones, joints):
             w = chain_weights(p[2], ["hips", "spine", "chest", "neck"], [zt["hips_spine"], zt["spine_chest"], zt["chest_neck"]], 0.07)
             # near the shoulder: some of the upper arm
             for s, sx in ((1, "_l"), (-1, "_r")):
+                # (twentieth round, the boy's way) the top of the chest out toward each shoulder, and the trapezius's outer
+                # slope, ride the clavicle
+                kc = CLAV_SHARE * float(smooth01(0.04, 0.12, s * p[0])) * float(smooth01(at["upper_arm" + sx][2] - 0.1, at["upper_arm" + sx][2] - 0.02, p[2]))
+                if kc > 0:
+                    moved = w.get("chest", 0.0) * kc + w.get("neck", 0.0) * kc * 0.5
+                    if "chest" in w:
+                        w["chest"] *= 1 - kc
+                    if "neck" in w:
+                        w["neck"] *= 1 - kc * 0.5
+                    w["clavicle" + sx] = w.get("clavicle" + sx, 0) + moved
                 d = np.linalg.norm(p - at["upper_arm" + sx])
                 k = 0.45 * (1 - float(smooth01(0.07, 0.17, d)))
                 # (eighteenth round, the pose test: with an arm raised the trapezius's slope by the neck rose with it as a
@@ -4489,18 +4626,19 @@ def weights_of(M, T, bones, joints):
             if vi in M.tag["crotch"]:
                 w = {"hips": 0.6, "thigh_l": 0.2, "thigh_r": 0.2}
         elif fam == "shoulder":
-            w = {"chest": 0.55, "upper_arm" + sfx: 0.45}
+            w = {"chest": 0.2, "clavicle" + sfx: 0.4, "upper_arm" + sfx: 0.4}
         elif fam == "arm":
             J, E, W = at["upper_arm" + sfx], at["forearm" + sfx], at["hand" + sfx]
             Lu = np.linalg.norm(E - J)
             s = along(p, J, E)
             if s > Lu - 0.06:
                 s = Lu + along(p, E, W)
-            w = chain_weights(s, ["upper_arm" + sfx, "forearm" + sfx, "hand" + sfx], [Lu, Lu + np.linalg.norm(W - E) + 0.005], 0.045)
+            w = chain_weights(s, ["upper_arm" + sfx, "forearm" + sfx, "hand" + sfx], [Lu, Lu + np.linalg.norm(W - E) + 0.005], ELBOW_BLEND)
             k = 0.4 * (1 - float(smooth01(0.0, 0.08, s)))
             if k > 0:
                 w = {n: v * (1 - k) for n, v in w.items()}
-                w["chest"] = w.get("chest", 0) + k
+                w["chest"] = w.get("chest", 0) + k * 0.4
+                w["clavicle" + sfx] = w.get("clavicle" + sfx, 0) + k * 0.6
         elif fam == "hand":
             sub = part.split("_")[2] if part.count("_") >= 2 else ""
             if sub in FINGERS or sub == "thumb":
@@ -6188,8 +6326,10 @@ def nose_round(Hm, sh, mir):
 # nose's front end laid round a ball (its radius, how far its middle sits behind the tip, its height on the bare sheet),
 # the bridge shortened by drawing the ball's top back toward the face, and two nostrils pressed into its underside.
 NOSE_BULB = (0.035, 0.031, 646.0)   # (nineteenth round: was 3.0 cm and row 640; the sheet's ball is about 7 cm across, its tip lower)
-NOSE_GROW = (1.28, 1.18, 1.12)     # the nose grown about the ball's middle: across, forward, up
-NOSTRILS = (0.015, 0.005, 0.010)   # (out from the middle, metres in, radius)
+NOSE_GROW = (1.26, 1.04, 1.08)   # (twentieth round: 1.28, 1.18, 1.12; the fifth critic: "projects too far and droops below the nostril line"; the side outline's tip still sits on the sheet's within a centimetre, so only the ball's forward swell and its hang are taken back)     # the nose grown about the ball's middle: across, forward, up
+NOSE_LIFT = 0.004    # (twentieth round: the tip lifted, metres; was 3 mm lowered)
+NOSE_RGB = (0.89, 0.53, 0.46)   # (twentieth round) the nose's coral, as the sheet's (about #E58A7A, a little deeper for the lit render)
+NOSTRILS = (0.015, 0.008, 0.011)   # (twentieth round: 5 mm deep, 1 cm wide)   # (out from the middle, metres in, radius)
 
 
 def nose_bulb(Hm, mir):
@@ -6225,7 +6365,7 @@ def nose_bulb(Hm, mir):
     r = np.linalg.norm(d * np.array((1.0, 0.6, 1.0)), axis=1)
     g = np.clip((1.9 * R - r) / (0.9 * R), 0.0, 1.0) * (P[:, 1] < NOSE_BACK + 0.01)
     P = P + d * (np.array(NOSE_GROW) - 1.0)[None, :] * g[:, None]
-    P[:, 2] -= 0.003 * g * np.clip(-d[:, 1] / R, 0, 1)
+    P[:, 2] += NOSE_LIFT * g * np.clip(-d[:, 1] / R, 0, 1)
     Hm.P = [p for p in mirror_even(P, mir)]
     print("CAPTAIN nose bulb: %d points onto a ball of %.1f cm radius" % (int((k[:, 0] > 0.05).sum()), R * 100))
 
@@ -6238,19 +6378,20 @@ def nose_bulb(Hm, mir):
 HEAD_CARVES = (
     (((78, 652), (96, 700), (114, 748), (126, 800)), -0.008, 12),
     (((120, 575), (150, 615), (162, 660)), 0.008, 26),            # the cheeks' fullness outside the folds
-    (((112, 770), (130, 830), (140, 880)), 0.006, 20),            # the jowls hanging outside the mouth's folds
+    (((112, 770), (130, 830), (140, 880)), 0.008, 20),            # the jowls hanging outside the mouth's folds
     (((46, 527), (100, 523), (142, 530)), -0.004, 7),             # the eye's slit
-    (((50, 511), (100, 506), (140, 514)), 0.003, 9),              # the puffy upper lid
-    (((56, 546), (100, 552), (140, 548)), 0.004, 10),             # the bag under it
-    (((14, 468), (16, 500)), -0.004, 7),                          # the frown's crease
+    (((50, 511), (100, 506), (140, 514)), 0.005, 9),              # the puffy upper lid
+    (((56, 546), (100, 552), (140, 548)), 0.006, 10),             # the bag under it
+    (((14, 468), (16, 500)), -0.006, 7),
+    (((26, 474), (28, 502)), -0.004, 6),                          # the frown's crease
     (((0, 730), (60, 736), (116, 754)), -0.006, 7),               # the mouth's line (nineteenth round: on the sheet's line, 730 in the middle, the corners 24 px lower)
-    (((0, 752), (50, 758)), 0.004, 10),                           # the full lower lip, pouting
+    (((0, 754), (50, 760), (86, 766)), 0.005, 12),                           # the full lower lip, pouting
     (((0, 784), (50, 782)), -0.004, 10),                          # the groove over the chin
-    (((0, 830), (40, 826)), 0.004, 22),                           # the ball of the chin (nineteenth round)
+    (((0, 830), (40, 826), (70, 830)), 0.006, 26),                           # the ball of the chin (nineteenth round)
     (((120, 765), (128, 820), (134, 870)), -0.004, 12),           # the folds into the jowls
     # (sixteenth round, the critic: "a heavy, overhanging brow shelf that knots down over the nose ... lids that are
     # folded creases following the curve of the eyeball"; the user: "his eyes should just be wrinkly slits")
-    (((24, 492), (70, 484), (120, 488), (156, 500)), 0.009, 11),  # the brow's shelf over each eye
+    (((24, 504), (70, 490), (120, 484), (156, 490)), 0.010, 11),  # the brow's shelf over each eye
     (((30, 508), (80, 512), (130, 516)), -0.004, 6),              # the fold under the shelf, over the lid
     (((52, 532), (100, 536), (140, 546)), -0.003, 6),             # the slit's outer end lower, along the eyeball
     (((150, 520), (172, 512)), -0.003, 5),                        # crow's feet: the deepest fold at the eye's corner
@@ -6345,8 +6486,29 @@ def finish_base_head(Hm, face_uv, sh):
     H2.P = [p for p in mirror_even(H2.P, mir2)]
     dome_fill(H2, sh, frozen2, mir2)
     occiput(H2, frozen2, mir2)
+    ears_out(H2, mir2)
     unfold(H2, frozen2, mir2)
     return H2, uv2
+
+
+# (twentieth round, the fifth critic: "ears flat against the head". Measured on the bare sheet: the ears are already its
+# size (top to lobe 0.31 of the head's height on him, 0.28 on the sheet: the critic's "30% bigger" is overruled), but
+# from the front they stand out 11% of the head's width on the sheet, 8% on him: each ear turned out about its front
+# edge, its back moved out EAR_FLARE of its depth)
+EAR_FLARE = float(arg("--ear-flare", "0.12"))   # (0.16 added 5 folded edges to the face rig's jaw test)
+
+
+def ears_out(Hm, mir):
+    P = np.array(Hm.P)
+    rw = bare_row(P[:, 2])
+    w = np.clip((np.abs(P[:, 0]) - 0.108) / 0.014, 0.0, 1.0) * ((rw > 450) & (rw < 680))
+    ear = w > 0
+    if ear.sum() < 4:
+        return
+    y0 = float(P[ear, 1].min())
+    P[:, 0] += np.sign(P[:, 0]) * EAR_FLARE * np.clip(P[:, 1] - y0, 0.0, None) * w
+    Hm.P = [p for p in mirror_even(P, mir)]
+    print("CAPTAIN ears turned out: %d points, the back edge out %.1f cm" % (int(ear.sum()), 100 * EAR_FLARE * float(P[ear, 1].max() - y0)))
 
 
 DOME_ROWS = (190, 325)       # bare-sheet rows of the skull filled out to the side view's back outline (fourteenth round: only
@@ -7315,6 +7477,7 @@ DELT_DEEP = (0.016, 0.065)  # the deltoid's front and back heads: metres out in 
 JAW_CREASE = (0.005, 0.003, 0.005, 0.004)   # metres: the throat back, up; the double chin down, forward
 WRIST_SMOOTH = (0.05, 10)       # the wrist's smoothing: reach from the joint (metres), rounds
 WRIST_FILL = (0.7, 0.0, 0.034)   # the wrist filled back out: share, metres along the arm past the joint, spread
+WRIST_RUN = (0.045, 0.09, 0.85, 0.02)  # (twentieth round) the wrist's run: the joint's stretch either side, the reach fitted, the share drawn
 
 
 def upper_mass(M, joints):
@@ -7419,6 +7582,49 @@ def upper_mass(M, joints):
         odd = np.where((np.abs(al) < 0.05) & (pr > 0.072) & (pr < 0.2))[0]
         print("CAPTAIN wrist%s: points standing out over 7.2 cm from the arm's line: %d %s" % (
             "_l" if s_ > 0 else "_r", len(odd), sorted({M.part[i] for i in odd})))
+    # (twentieth round, the fifth critic: "a hard seam ring where the hand meets the forearm, with jagged triangles";
+    # "the wrist pinches then the hand flares") The wrist's outline made one smooth run: round the arm's line, in 16
+    # sectors, the radius over WRIST_RUN of arm and hand either side of the joint is taken as a straight run between
+    # the medians either side of the joint's own stretch (each point moved 1.5 cm at most), and the points within it are drawn most of the way onto it
+    for s_ in (1.0, -1.0):
+        sfx_ = "_l" if s_ > 0 else "_r"
+        Wj = mirror_x(np.array(joints["wrist_l"]), s_)
+        Ej = mirror_x(np.array(joints["elbow_l"]), s_)
+        Df_ = (Wj - Ej) / np.linalg.norm(Wj - Ej)
+        e1 = np.cross(Df_, (0.0, 0.0, 1.0))
+        e1 /= np.linalg.norm(e1)
+        e2 = np.cross(Df_, e1)
+        parts_ = np.array(M.part)
+        mine = np.isin(parts_, ("hand" + sfx_, "arm" + sfx_))
+        rel = P - Wj
+        al = rel @ Df_
+        perp = rel - np.outer(al, Df_)
+        pr = np.linalg.norm(perp, axis=1)
+        th = np.arctan2(perp @ e2, perp @ e1)
+        zone = mine & (np.abs(al) < WRIST_RUN[1]) & (pr < 0.12)
+        fit_ = zone & (np.abs(al) > WRIST_RUN[0])
+        sec = ((th + math.pi) / math.tau * 16).astype(int) % 16
+        moved_ = 0.0
+        for k in range(16):
+            near_k = (np.abs(((sec - k + 8) % 16) - 8) <= 1)
+            f_ = fit_ & near_k
+            if f_.sum() < 4:
+                continue
+            lo_, hi_ = f_ & (al < 0), f_ & (al > 0)
+            if lo_.sum() < 2 or hi_.sum() < 2:
+                continue
+            a0, r0 = float(np.median(al[lo_])), float(np.median(pr[lo_]))
+            a1, r1 = float(np.median(al[hi_])), float(np.median(pr[hi_]))
+            j_ = zone & (sec == k) & (np.abs(al) <= WRIST_RUN[0])
+            for i in np.where(j_)[0]:
+                want = r0 + (r1 - r0) * float(np.clip((al[i] - a0) / max(a1 - a0, 1e-6), 0.0, 1.0))
+                want = float(np.clip(want, pr[i] - WRIST_RUN[3], pr[i] + WRIST_RUN[3]))
+                t_ = WRIST_RUN[2] * (1.0 - smooth01(WRIST_RUN[0] * 0.6, WRIST_RUN[0], abs(al[i])))
+                new_r = pr[i] + (want - pr[i]) * t_
+                q = Wj + Df_ * al[i] + perp[i] / max(pr[i], 1e-9) * new_r
+                moved_ = max(moved_, float(np.linalg.norm(q - P[i])))
+                P[i] = q
+        print("CAPTAIN wrist%s run: drawn onto one smooth outline, most a point moved %.1f mm" % (sfx_, moved_ * 1000))
     # The under-jaw's crease (the user: "stop his chin and jaw phasing into his neck- have a pose where he is looking up
     # to see what I mean"). In section the midline ran chin (y -0.189) -> head's open edge (-0.166) -> throat (-0.088)
     # -> neck's base (-0.140) -> chest (-0.182) within 5 cm of height: a fold existed, but the under-jaw's last row and
@@ -7630,6 +7836,8 @@ def unfold_body(M, rounds=40, limit=100.0):
     tris = np.array(M.tris())
     fams = np.array([part_family(p) for p in M.part])
     ok = np.isin(fams, ("torso", "neck", "shoulder", "arm")) | ((fams == "head") & (P[:, 2] < 1.33))
+    # (twentieth round: and the palm, whose heel folded into shards at the wrist)
+    ok |= np.isin(np.array(M.part), ("hand_l", "hand_r"))
     E = edges_of(M.faces)
     deg = np.zeros(len(P))
     np.add.at(deg, E[:, 0], 1.0)
@@ -8975,6 +9183,16 @@ def paint_head(M, face_uv, sh):
     grey = np.clip((0.16 - sat) / 0.08, 0, 1) * browz
     grey = box_blur(grey[..., None], 1)[..., 0] * browz
     rgb = rgb * (1 - grey[..., None] * 0.8) + np.array((0.74, 0.72, 0.69)) * (grey[..., None] * 0.8)
+    # (twentieth round, the fifth critic: "painted dark maroon-brown ... colour salmon/coral pink, lighter than the
+    # cheeks' red"; the sheet's ball is a clear coral with a light tip). The nose's ball (in front of his cheeks' line,
+    # between the brows' and the mouth's rows) recoloured to NOSE_RGB, keeping half its light and shade, soft at the edge
+    nz_ = headish & (z < bare_z(545)) & (z > bare_z(668)) & (x_ < 0.05) & (pos[..., 1] < NOSE_BACK + 0.004)
+    nose_k = box_blur(box_blur(nz_.astype(float)[..., None], 3), 3)[..., 0] * headish
+    lum_ = rgb.mean(-1)
+    shade = np.clip(lum_ / max(float(np.median(lum_[nz_])) if nz_.any() else 0.5, 1e-3), 0.75, 1.2) ** 0.5
+    coral = np.array(NOSE_RGB)[None, None, :] * shade[..., None]
+    rgb = rgb * (1 - nose_k[..., None] * 0.85) + coral * (nose_k[..., None] * 0.85)
+    print("CAPTAIN paint face: nose recoloured coral over %d texels" % int(nz_.sum()))
     print("CAPTAIN paint face: scalp plain over %d texels; beard zone evened over %d (stubble %s)"
           % (int((scalp > 0.5).sum()), int(beard.sum()), np.round(stub.mean((0, 1)), 3)))
     print("CAPTAIN paint face: %.0f%% of its texels seen by a view" % (100.0 * (good & hit).sum() / max(hit.sum(), 1)))

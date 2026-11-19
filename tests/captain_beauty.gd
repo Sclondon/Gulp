@@ -118,6 +118,11 @@ const POSES := {
 }
 
 
+## How far the clavicle lifts (degrees) for an arm straight up, and comes forward for an arm straight ahead.
+const CLAV_RISE := 24.0
+const CLAV_FWD := 14.0
+
+
 ## The rigid move of each bone (skeleton space) for a list of operations, then set as the bones' poses.
 func _apply(sk: Skeleton3D, ops: Array) -> void:
 	var n := sk.get_bone_count()
@@ -174,6 +179,19 @@ func _apply(sk: Skeleton3D, ops: Array) -> void:
 						else:
 							deg = float(op[2][["index", "middle", "ring", "little"].find(bname.get_slice("_", 1))])
 						X[b] = X[b] * _about(h, _curl_axis(sk, rest, sfx), deg)
+		# (twentieth round, as the boy's viewer: the upper arm hangs from the clavicle, which lifts with the arm's rise
+		# above level and comes forward with its reach, so the shoulder's top rises instead of folding)
+		if bname.begins_with("clavicle"):
+			var cs := bname.right(2)
+			var ua := sk.find_bone("upper_arm" + cs)
+			if ua >= 0 and sk.get_bone_parent(ua) == b:
+				for op in ops:
+					if op[0] == "aim" and op[1] == "upper_arm" + cs:
+						var to: Vector3 = (op[3] as Vector3).normalized()
+						var sg := 1.0 if cs == "_l" else -1.0
+						var rise := clampf((to.y + 0.35) / 1.35, 0.0, 1.0) * CLAV_RISE
+						var fwd := clampf(to.z, 0.0, 1.0) * CLAV_FWD - clampf(-to.z, 0.0, 1.0) * 8.0
+						X[b] = X[b] * _about(h, Vector3.BACK, rise * sg) * _about(h, Vector3.UP, -fwd * sg)
 		for sfx in legs:
 			var op: Array = legs[sfx]
 			if bname == "thigh" + sfx or bname == "shin" + sfx or bname == "foot" + sfx:
@@ -286,6 +304,8 @@ func _initialize() -> void:
 			mesh.visible = false
 	_grey.albedo_color = Color(0.7, 0.7, 0.7)
 	_grey.roughness = 0.8
+	# (twentieth round: 4x multisampling, so silhouettes are not stair-stepped into what reads as shards)
+	root.msaa_3d = Viewport.MSAA_4X
 	_cam = Camera3D.new()
 	_cam.fov = 35.0
 	_cam.near = 0.05
