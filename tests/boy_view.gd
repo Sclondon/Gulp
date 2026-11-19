@@ -93,7 +93,8 @@ func _initialize() -> void:
 	# (fourth pass) unlit side and back, to tell the paint from the light
 	for b in [["body_side_unlit", Vector3(-1, 0, 0)], ["body_back_unlit", Vector3(0, 0, -1)]]:
 		_shots.append([b[0], b[1], body_at, body_size, false, "", 5.0, false])
-	for p in [["grey_stride_side", Vector3(1, 0, 0)], ["grey_stride_q", Vector3(0.7, 0.15, 0.7)], ["grey_sit_side", Vector3(1, 0, 0)], ["grey_sit_q", Vector3(0.7, 0.15, 0.7)]]:
+	# (seventh pass; the critic: "render these two poses large, from front and side")
+	for p in [["grey_stride_front", Vector3(0, 0, 1)], ["grey_stride_side", Vector3(1, 0, 0)], ["grey_stride_q", Vector3(0.7, 0.15, 0.7)], ["grey_sit_front", Vector3(0, 0, 1)], ["grey_sit_side", Vector3(1, 0, 0)], ["grey_sit_q", Vector3(0.7, 0.15, 0.7)]]:
 		_shots.append([p[0], (p[1] as Vector3).normalized(), body_at, body_size, true, "stride" if "stride" in p[0] else "sit", 5.0, true])
 	# (--beauty: only the views as the game will show him: a perspective eye (35 degrees) at eye height, the sun over
 	# the eye's left shoulder, soft sky light; a 900-row window is expected)

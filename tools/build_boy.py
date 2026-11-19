@@ -1259,7 +1259,10 @@ HB = {"chin": 285, "lip_low": 276, "mouth": 286, "lip_up": 279, "nose_base": 278
 HB_EYE = tuple(range(57, 67))
 HB_MOUTH_L, HB_JAW_L = 125, 106   # the base's left mouth corner and jaw angle (picked by their place on the Real_Kid shape)
 # Heights on the bald row (head-sheet rows) the base's landmarks are moved to, before the outlines are fitted.
-HB_ROWS = (("chin", 1305.0), ("mouth", 1223.0), ("nose_base", 1195.0), ("nose", 1170.0), ("eye", 1103.0),
+# (seventh pass: the chin's bottom measured again off the bald front and side views at twice size: row 1318 to 1322,
+# not 1305; the model's chin sat 1.1 cm high and its under-jaw ran down the throat as a ramp)
+CHIN_ROW = float(arg("--chin-row", "1318"))
+HB_ROWS = (("chin", CHIN_ROW), ("mouth", 1223.0), ("nose_base", 1195.0), ("nose", 1170.0), ("eye", 1103.0),
            ("brow", 1035.0), ("crown", H_CROWN))
 # The hole cut in the base head's closed underside for the neck: faces whose middles lie in this ellipse (base
 # coordinates: y of its middle, half width, half depth). 30 quads; its edge is a ring of 22 points from just behind
@@ -1267,7 +1270,8 @@ HB_ROWS = (("chin", 1305.0), ("mouth", 1223.0), ("nose_base", 1195.0), ("nose", 
 # many as the torso's top ring, started 11 cm behind the chin: the under-jaw came out as long as a shelf.)
 NECK_HOLE = (-0.040, 0.045, 0.060)
 NECK_RINGS = (0.25, 0.5, 0.75)   # (sixth pass, the budget: three rings, from four)
-NECK_FULL = float(arg("--neck-full", "1.08"))
+NECK_FULL = float(arg("--neck-full", "1.0"))    # (seventh pass: from 1.08; the neck is sized to the sheet after)
+NECK_THIN = float(arg("--neck-thin", "1.0"))
 HEAD_UV_M = 0.42             # metres a unit of the base head's UV map (sizes its island beside the others)
 
 
@@ -1573,7 +1577,7 @@ def stage(name, P, faces):
 
 
 EAR_ROUND = float(arg("--ear-round", "1.6"))
-EAR_THICK = float(arg("--ear-thick", "0.0016"))
+EAR_THICK = float(arg("--ear-thick", "0.0006"))   # (seventh pass: from 0.0016; "thick, flat paddles ... thin the rim")
 # (sixth pass, the budget: the crown's faces are no longer split (its outline is smooth enough lit), and the face only
 # where it faces forward)
 SPLIT_CROWN = "--no-split-crown" not in ARGS
@@ -1783,10 +1787,13 @@ def make_head(sh):
     # (CHIN_HALF out at row 1165), each row's widest point of the head moved onto that line
     rows_p = hrow(P[:, 2])
     lower = ~ear & (rows_p > JAW_ANGLE[0] - 15)
-    rr = np.arange(int(JAW_ANGLE[0]) - 15, int(H_CHIN) + 5)
+    rr = np.arange(int(JAW_ANGLE[0]) - 15, int(CHIN_ROW) + 5)
     # (fifth pass: a round jaw, a U, not a V from the angles to the chin)
-    tj = np.clip((rr - JAW_ANGLE[0]) / (H_CHIN - JAW_ANGLE[0]), 0, 1)
-    want = (CHIN_HALF + (JAW_ANGLE[1] - CHIN_HALF) * (1 - tj ** 1.3)) * HS
+    # (seventh pass: the sheet's bald front view, measured at twice size: half widths 128 at row 1240, about 110 at 1280,
+    # 80 at 1300, 45 at 1315 (a broad round chin), an ellipse's quarter from the jaw's angles to the chin's bottom; the
+    # old V (32 at the chin) made the narrow long jaw the critic read as "a goblin or a little old man")
+    tj = np.clip((rr - JAW_ANGLE[0]) / (CHIN_ROW + 2 - JAW_ANGLE[0]), 0, 1)
+    want = np.maximum(JAW_ANGLE[1] * np.sqrt(np.clip(1.0 - tj ** 2.2, 0, 1)), CHIN_HALF * 0.9) * HS
     have = np.array([np.abs(P[lower & (np.abs(rows_p - r) < 6), 0]).max() if (lower & (np.abs(rows_p - r) < 6)).any() else np.nan for r in rr])
     k = np.clip(box_smooth(fill_nan(want / have), 4), 0.55, 1.25)
     t = smooth01(JAW_ANGLE[0] - 15, JAW_ANGLE[0] + 5, rows_p)
@@ -1877,8 +1884,12 @@ YOUNG = float(arg("--young", "1.0"))
 YOUNG_SOCKET = (0.017, 14)        # the socket filled: reach, rounds of smoothing
 YOUNG_EYEBALL = (0.009, 0.001)   # the eyeball's bulge under the lid
 YOUNG_BROW = (0.014, 14)          # the brow ridge softened
-YOUNG_CHEEK = (0.021, 0.0055)     # the cheeks' fullness
-YOUNG_LIPS = (0.015, 0.004)      # the lips drawn back
+YOUNG_CHEEK = (float(arg("--cheek-reach", "0.024")), float(arg("--cheek", "0.0085")))     # the cheeks' fullness (seventh pass: from 0.021, 0.0055: "full round apple cheeks ... 5-8 mm outward")
+MOUTH_NARROW = float(arg("--mouth-narrow", "0.14"))   # (seventh pass) the corners drawn in: 70 to 60 head-sheet pixels out
+NOSE_WIDE = float(arg("--nose-wide", "0.3"))
+SOFTEN = float(arg("--soften", "1.0"))
+CHEEK_LOW = float(arg("--cheek-low", "0.005"))
+YOUNG_LIPS = (0.015, float(arg("--lips-back", "0.0015")))   # (seventh pass: from 0.004, which cut a band across his mouth)      # the lips drawn back
 
 
 def young_face(P, Hd, movable):
@@ -1937,11 +1948,87 @@ def young_face(P, Hd, movable):
     P[:, 1] -= w * float(arg("--ledge", "0.0026"))
     w2 = np.maximum(near(mid, 0.02), near(ch, 0.03) * 0.8) * YOUNG
     P = lap(P, np.clip(w2, 0, 1) * 0.5, 4)
+    # (seventh pass; the critic: "a smaller, closed, soft smile ... narrower (inside the pupils' width) ... a fuller,
+    # defined, pinkish lower lip ... corners tucked in"; "a round, upturned button nose ... widen the tip and alae by
+    # about 30%, round the tip into a ball and tilt it up")
+    if MOUTH_NARROW > 0:
+        cl = P[mk["mouth_l"]]
+        xc = abs(float(cl[0]))
+        zm = float(P[mk["mouth"], 2])
+        front = P[:, 1] < float(P[mk["mouth"], 1]) + 0.016
+        w = np.exp(-((P[:, 2] - zm) / 0.0085) ** 2) * (1.0 - smooth01(xc, xc + 0.014, np.abs(P[:, 0]))) * front
+        P[:, 0] *= 1.0 - MOUTH_NARROW * w * smooth01(0.0, xc, np.abs(P[:, 0]))
+        lo = P[mk["lip_low"]]
+        w = near(lo + np.array((0.0, 0.0, -0.002)), 0.008) * front
+        P[:, 1] -= w * 0.0011
+    if NOSE_WIDE > 0:
+        tip = P[mk["nose"]].copy()
+        base = P[mk["nose_base"]].copy()
+        w = np.exp(-(np.linalg.norm((P - (tip * 0.6 + base * 0.4)) * np.array((0.7, 1.0, 1.0)), axis=1) / 0.012) ** 2)
+        w *= P[:, 1] < tip[1] + 0.02
+        P[:, 0] *= 1.0 + NOSE_WIDE * w
+        # the tip's underside lifted (an upturn) and the ball of the tip a little rounder forward
+        under = smooth01(tip[2] + 0.002, base[2], P[:, 2])
+        P[:, 2] += w * under * 0.0018
+        P[:, 1] -= near(tip, 0.006) * 0.0007
+    P = lap(P, np.clip(near(P[mk["mouth"]], 0.02) + near(P[mk["nose"]], 0.012), 0, 1) * 0.3, 2)
+    if SOFTEN > 0:
+        # (seventh pass; the critic: "painted nasolabial creases", "a visible step or crease running across the chin",
+        # "the cheeks are flat, even slightly hollow under the cheekbone") the lower face softened as a whole (lips'
+        # seam and the nose kept), then the cheeks filled low and outward of the mouth too, as the sheet's round face
+        cm_ = P[mk["mouth"]]
+        ch_ = P[mk["chin"]]
+        lowf = np.maximum(near(cm_ * 0.5 + ch_ * 0.5, 0.03), np.maximum(*[near(c + np.array((s * 0.012, 0.0, -0.04)), 0.025) for s, c in ((1.0, eyes[0]), (-1.0, eyes[1]))]))
+        guard = 1.0 - 0.85 * np.maximum(near(cm_, 0.006), near(P[mk["nose"]], 0.014))
+        P = lap(P, np.clip(lowf * guard * SOFTEN, 0, 1) * 0.5, 10)
+        N = normals_of(P, tris)
+        for s, c in ((1.0, eyes[0]), (-1.0, eyes[1])):
+            at = c + np.array((s * 0.016, 0.0, -0.042))
+            cand = np.where(~Hd["ear"] & (P[:, 1] < c[1] + 0.02))[0]
+            cc = P[cand[np.argmin(np.linalg.norm((P[cand] - at)[:, [0, 2]], axis=1))]]
+            P = P + N * (near(cc, 0.02) * CHEEK_LOW)[:, None]
     P[keep] = P0[keep]
     P = symmetric(P, mir, keep=keep)
     n, _ = folded(P, Hd["faces"])
-    print("BOY young face: most moved %.1f mm; %d triangles folded" % (1000 * float(np.linalg.norm(P - P0, axis=1).max()), n))
+    dm = np.linalg.norm(P - P0, axis=1)
+    iw = int(np.argmax(dm))
+    print("BOY young face: most moved %.1f mm (at %s, from %s); %d triangles folded" % (1000 * float(dm.max()), np.round(P[iw], 3), np.round(P0[iw], 3), n))
     return P
+
+
+def side_warp_final(P, Hd, sh):
+    """(seventh pass) Measured against the bald side view row by row, the fitted head sat 0.6 to 0.9 cm too far
+    forward (its back of the skull 16 pixels short of the sheet's, its brow 11 pixels proud), so the occiput did not
+    overhang the neck (the critic: "a light-bulb shape with no occipital shelf"). Each point moved front to back by its
+    height, so the skull's front (crown to brow) and back (crown to the nape) land on the sheet's; below the brow the
+    face keeps its shape and moves with the brow's row, below the nape the back moves with the nape's row."""
+    P = np.array(P, float)
+    rr = np.arange(int(H_CROWN) + 8, NAPE_ROW + 1)
+    m = view_mask(P, Hd["tris"], "hside", sh.head_mask.shape)
+    mid = HVIEW["hside"][1]
+    c0, c1 = HSPAN["hside"]
+    ys = np.full((len(rr), 4), np.nan)
+    for i, r in enumerate(rr):
+        a = run_near(m, r, mid, c0, c1)
+        b = run_near(sh.head_mask, r, mid, c0, c1)
+        if a and b:
+            ys[i] = (side_y(a[1] + 1), side_y(a[0]), side_y(b[1] + 1), side_y(b[0]))
+            if r > 1050:
+                ys[i, 0] = ys[i, 2] = np.nan
+    for k in range(4):
+        ys[:, k] = box_smooth(fill_nan(ys[:, k]), 4)
+    r = np.clip(hrow(P[:, 2]), rr[0], rr[-1])
+    fm, bm_, ft, bt = (np.interp(r, rr, ys[:, j]) for j in range(4))
+    Q = P.copy()
+    Q[:, 1] = ft + (P[:, 1] - fm) * (bt - ft) / np.maximum(bm_ - fm, 1e-6)
+    # (s_curve carries all above his chest 6 mm forward afterwards: the head is set back by as much here)
+    Q[:, 1] += 0.006 * S_CURVE
+    d = Q[:, 1] - P[:, 1]
+    print("BOY side warp (final): front %.1f mm, back %.1f mm at the widest; moved %.1f to %.1f mm" % (
+        1000 * float(np.nanmean(ys[:, 2] - ys[:, 0])), 1000 * float(np.nanmean(ys[:, 3] - ys[:, 1])), 1000 * d.min(), 1000 * d.max()))
+    n, _ = folded(Q, Hd["faces"])
+    print("BOY head after the side warp: %d triangles folded" % n)
+    return Q
 
 
 def fit_made_head(Hd, sh, rounds):
@@ -1964,6 +2051,7 @@ def fit_made_head(Hd, sh, rounds):
     n, _ = folded(P, Hd["faces"])
     print("BOY head after the outline fit: %d triangles folded" % n)
     P = young_face(P, Hd, movable)
+    P = side_warp_final(P, Hd, sh)
     stage("5_fit", P, Hd["faces"])
     Hd["P"] = P
     return Hd
@@ -2089,6 +2177,35 @@ def build_head(M, sh, T):
         full = 1.0 + (NECK_FULL - 1.0) * math.sin(math.pi * t)
         Q[:, :2] = c[:2] + d / np.maximum(r, 1e-6)[:, None] * (rs * full)[:, None]
         Pm[rg] = Q
+    # (seventh pass; the critic: "the neck is a long, even cylinder, as wide as the jaw ... thin it by about 15%".
+    # Measured: the model's neck 186 head-sheet pixels across against the sheet's 147, 185 deep against 155, its back
+    # 10 to 15 pixels proud of the sheet's nape) each middle ring set to the sheet's width at its side points' row and
+    # to the sheet's throat and nape at its front and back points' rows, where those are the neck's own outline
+    for ri, rg in enumerate(rings[1:-1]):
+        Q = Pm[rg]
+        q4, q2 = len(rg) // 4, len(rg) // 2
+        c = Q.mean(0)
+        rs_, rf_, rb_ = float(hrow(Q[q4, 2])), float(hrow(Q[0, 2])), float(hrow(Q[q2, 2]))
+        run = run_near(sh.head_target, int(rs_), HVIEW["hfront"][1], *HSPAN["hfront"])
+        if run and rs_ > JAW_ROW + 30:
+            a = float(np.abs(Q[:, 0] - c[0]).max())
+            kx_ = float(np.clip((run[1] + 1 - run[0]) / 2.0 * HS * NECK_THIN / max(a, 1e-4), 0.7, 1.1))
+            Q[:, 0] = c[0] + (Q[:, 0] - c[0]) * kx_
+        else:
+            kx_ = 1.0
+        ky_ = [1.0, 1.0]
+        sf = run_near(sh.head_mask, int(rf_), HVIEW["hside"][1], *HSPAN["hside"])
+        sb = run_near(sh.head_mask, int(rb_), HVIEW["hside"][1], *HSPAN["hside"])
+        ymin, ymax = float(Q[:, 1].min()), float(Q[:, 1].max())
+        if sf and rf_ > CHIN_ROW + 8:
+            F = side_y(sf[1] + 1)
+            ky_[0] = float(np.clip((c[1] - F) / max(c[1] - ymin, 1e-4), 0.7, 1.1))
+        if sb and rb_ > NAPE_ROW + 8:
+            Bk = side_y(sb[0])
+            ky_[1] = float(np.clip((Bk - c[1]) / max(ymax - c[1], 1e-4), 0.7, 1.1))
+        Q[:, 1] = c[1] + (Q[:, 1] - c[1]) * np.where(Q[:, 1] < c[1], ky_[0], ky_[1])
+        Pm[rg] = Q
+        print("BOY neck ring %d sized to the sheet: across x%.2f, front x%.2f, back x%.2f" % (ri + 1, kx_, ky_[0], ky_[1]))
     M.P = [p for p in Pm]
     n, _ = folded(Pm, faces)
     for ri, rg in enumerate(rings):
@@ -2119,12 +2236,12 @@ HAND_UV_M = 0.3           # metres a unit of the base hand's UV map
 HAND_THUMB_T = 0.045      # the palm's edge on the thumb's side (the hand's own t): beyond it, the thumb
 HAND_WEB_A = 0.1          # past the webs between the fingers (the hand's own a): the fingers stand apart there
 HAND_DEPTH = float(arg("--hand-depth", "1.2"))
-HAND_REST = {"curl": (0.14, 0.2, 0.12), "spread": 0.75, "thumb_in": float(arg("--thumb-in", "0.12")), "thumb_fwd": float(arg("--thumb-fwd", "0.1")), "thumb_curl": 0.12}
+HAND_REST = {"curl": (0.15, 0.21, 0.13), "spread": 0.7, "thumb_in": float(arg("--thumb-in", "-0.12")), "thumb_fwd": float(arg("--thumb-fwd", "0.05")), "thumb_curl": 0.16}   # (seventh pass: a relaxed curl, index about 12 degrees a joint to the little finger about 30; the thumb 20 degrees out of the palm)
 # (sixth pass; the critic: the thumb "hangs below the hand as a separate dangling nub": turned in under the palm by
 # 0.45 and forward by 0.3 it hung under the palm; now it lies beside the index, a little in front, as the sheet hangs it)
 # (fourth pass) the curl grows from the index to the little finger, as a relaxed hand hangs (the critic: "the index
 # finger straightest and the little finger most curled")
-HAND_CASCADE = {"index": 0.7, "middle": 0.95, "ring": 1.15, "little": 1.35}
+HAND_CASCADE = {"index": 0.75, "middle": 1.0, "ring": 1.3, "little": 1.6}
 HAND = {}
 FRAME_ID = (np.array((0.0, 0.0, 1.0)), np.array((0.0, 1.0, 0.0)), np.array((1.0, 0.0, 0.0)))   # (back, across, along)
 
@@ -2383,6 +2500,178 @@ def dissolve_finger_rings(Lc, faces, uvs):
     return Ln, Fn, Un
 
 
+FINGER_SPLIT = "--no-finger-split" not in ARGS
+FINGER_TAPER = float(arg("--finger-taper", "0.15"))
+THUMB_ROUND = (float(arg("--thumb-across", "0.8")), float(arg("--thumb-through", "1.1")))
+FINGER_RATIO = {"index": 0.92, "middle": 1.0, "ring": 0.93, "little": 0.76}
+KNUCKLE = (float(arg("--knuckle", "0.0022")), 0.0012)
+
+
+def split_fingers(Lc, faces, uvs, groups):
+    """(seventh pass; the critic: "fat, nearly equal-length sausages with blunt, faceted, hexagonal ends ... remodel
+    each finger as a 6-sided tube tapering about 25% to a rounded, domed tip") Each finger's and the thumb's edges
+    running round it cut once at their middles (rounded out with the surface), so each digit is twice as many sides
+    round and no longer along it: its tubes go from four or five sides to eight or ten for about 300 triangles a
+    hand. groups: name -> point numbers. Gives (Lc, faces, uvs, groups renumbered, the old points' new numbers)."""
+    bm = bmesh.new()
+    lay = {k: bm.verts.layers.float.new(k) for k in groups}
+    uvl = bm.loops.layers.uv.new("UVMap")
+    vs = [bm.verts.new(Vector(p)) for p in Lc]
+    for k, idx in groups.items():
+        for i in idx:
+            vs[i][lay[k]] = 1.0
+    for f, uv in zip(faces, uvs):
+        bf = bm.faces.new([vs[i] for i in f])
+        for l_, q in zip(bf.loops, uv):
+            l_[uvl].uv = q
+    bm.normal_update()
+    cut = []
+    bm.verts.index_update()
+    for k, idx in groups.items():
+        Q = Lc[idx]
+        u = np.linalg.svd(Q - Q.mean(0))[2][0]
+        s_ = set(int(i) for i in idx)
+        for e in bm.edges:
+            a, b = e.verts[0].index, e.verts[1].index
+            if a in s_ and b in s_:
+                d = Lc[b] - Lc[a]
+                if abs(float(d @ u)) < 0.55 * float(np.linalg.norm(d)):
+                    cut.append(e)
+    bmesh.ops.subdivide_edges(bm, edges=list(set(cut)), cuts=1, use_grid_fill=True, use_single_edge=False, smooth=0.0,
+                              quad_corner_type="INNER_VERT")
+    ngons = [f for f in bm.faces if len(f.verts) > 4]
+    if ngons:
+        bmesh.ops.triangulate(bm, faces=ngons)
+    bm.verts.index_update()
+    Pn = np.array([v.co[:] for v in bm.verts])
+    Fn = [[v.index for v in f.verts] for f in bm.faces]
+    Un = [[tuple(l_[uvl].uv) for l_ in f.loops] for f in bm.faces]
+    G = {k: np.array([i for i, v in enumerate(bm.verts) if v[lay[k]] > 0.75]) for k in groups}
+    # (the grid fill put a point in the middle of each end cap and the rounding pushed it out into a spike: each
+    # digit's furthest point set back to the middle of the points round it)
+    nb = {}
+    for f in Fn:
+        for i in range(len(f)):
+            nb.setdefault(f[i], set()).update((f[i - 1], f[(i + 1) % len(f)]))
+    # (the cut points put round each digit's axis at the radius of the old points beside them along it, so each
+    # tube is round; a cap's middle point, whose neighbours are all new, put on the axis just past them)
+    kd0 = kdtree.KDTree(len(Pn))
+    for i, p in enumerate(Pn):
+        kd0.insert(Vector(p), i)
+    kd0.balance()
+    is_old = np.zeros(len(Pn), bool)
+    for p in Lc:
+        is_old[kd0.find(Vector(p))[1]] = True
+    for k, idx in G.items():
+        oi = idx[is_old[idx]]
+        Q = Pn[oi]
+        c = Q.mean(0)
+        u = np.linalg.svd(Q - c)[2][0]
+        so = (Q - c) @ u
+        ro = np.linalg.norm((Q - c) - np.outer(so, u), axis=1)
+        new = idx[~is_old[idx]]
+        for v in new:
+            s = float((Pn[v] - c) @ u)
+            if all(not is_old[w] for w in nb[v]):
+                continue
+            near_ = np.abs(so - s) < 0.003
+            if near_.sum() < 2:
+                continue
+            perp = (Pn[v] - c) - s * u
+            r = float(np.linalg.norm(perp))
+            if r > 1e-6:
+                Pn[v] = c + s * u + perp / r * float(ro[near_].mean())
+        for v in new:
+            if all(not is_old[w] for w in nb[v]):
+                ring_ = Pn[list(nb[v])]
+                m = ring_.mean(0)
+                s_ = (ring_ - c) @ u
+                rr = float(np.linalg.norm((ring_ - m) - np.outer((ring_ - m) @ u, u), axis=1).mean())
+                out = np.sign(float(np.mean(s_) - np.median(so))) or 1.0
+                Pn[v] = m + u * out * rr * 0.45
+    bm.free()
+    kd = kdtree.KDTree(len(Pn))
+    for i, p in enumerate(Pn):
+        kd.insert(Vector(p), i)
+    kd.balance()
+    old = np.array([kd.find(Vector(p))[1] for p in Lc])
+    print("BOY hand: %d edges round the digits cut: %d triangles, from %d" % (len(set(cut)), len(tris_of(Fn)), len(tris_of(faces))))
+    return Pn, Fn, Un, G, old
+
+
+def shape_digits(Lc, chains, fingers, thumb, tag=""):
+    """(seventh pass, after the brother's shape_fingers) On the fitted open hand (a along it, t across toward the
+    thumb, b out of its back): each finger tapered toward its tip (FINGER_TAPER at the tip's root, round its own axis),
+    the lengths set to a hand's (middle 1, index and ring 0.92, little 0.76: the critic) by moving each finger's points
+    along its axis, knuckle bumps on the back over each finger's root and middle joints."""
+    Lc = np.array(Lc, float)
+    mid_len = None
+    for name in ("middle", "index", "ring", "little", "thumb"):
+        idx = fingers[name] if name != "thumb" else thumb
+        J = chains[name][4]
+        root, tip = np.asarray(J[0], float), np.asarray(J[3], float)
+        u = tip - root
+        L = float(np.linalg.norm(u))
+        u /= L
+        d = Lc[idx] - root
+        s = d @ u
+        perp = d - np.outer(s, u)
+        t = np.clip(s / L, 0, 1)
+        k = 1.0 - (FINGER_TAPER if name != "thumb" else FINGER_TAPER * 0.6) * smooth01(0.15, 0.85, t)
+        if name == "middle":
+            mid_len = L
+            kl = 1.0
+        elif name == "thumb":
+            kl = 1.0
+        else:
+            kl = min(1.0, FINGER_RATIO[name] * mid_len / L)
+        # (the length change grows along the finger from its root, so the palm's web stays put)
+        s2 = s * (1.0 + (kl - 1.0) * smooth01(0.0, 0.3 * L, s))
+        if name == "thumb":
+            # (the base's thumb is a flat paddle in the palm's plane: narrower across, a little fuller through)
+            bk = np.array((0.0, 0.0, 1.0))
+            bk = bk - (bk @ u) * u
+            bk /= np.linalg.norm(bk)
+            pb = perp @ bk
+            perp = (perp - np.outer(pb, bk)) * THUMB_ROUND[0] + np.outer(pb, bk) * THUMB_ROUND[1]
+        Lc[idx] = root + np.outer(s2, u) + perp * k[:, None]
+        # the tip clipped to a half ellipsoid round its axis (the brother's shape_fingers): a domed fingertip, the
+        # cap's corners drawn in, nothing pushed out
+        js2 = np.asarray(J[2], float)
+        d = u
+        a = np.cross(np.array((0.0, 0.0, 1.0)), d)
+        a /= np.linalg.norm(a)
+        b = np.cross(d, a)
+        Q = Lc[idx] - js2
+        s = Q @ d
+        ra, rb = Q @ a, Q @ b
+        s_tip = float(s.max())
+        band = (s > s_tip - 0.02) & (s < s_tip - 0.008)
+        if band.sum() >= 4:
+            ca, cb = float(ra[band].mean()), float(rb[band].mean())
+            Ra = float(np.abs(ra[band] - ca).max())
+            Rb = float(np.abs(rb[band] - cb).max())
+            La = min(Ra, Rb) * 1.1
+            s0 = s_tip - La
+            q = np.stack([np.clip(s - s0, 0, None) / La, (ra - ca) / Ra, (rb - cb) / Rb], 1)
+            r = np.linalg.norm(q, axis=1)
+            kk = np.where((s > s0) & (r > 1.0), 1.0 / np.maximum(r, 1e-9), 1.0)
+            s_n = np.where(s > s0, s0 + (s - s0) * kk, s)
+            Lc[idx] = js2 + s_n[:, None] * d + (ca + (ra - ca) * kk)[:, None] * a + (cb + (rb - cb) * kk)[:, None] * b
+    bump = np.zeros(len(Lc))
+    for name in FINGERS:
+        J = chains[name][4]
+        for j, (h, rad) in enumerate(((KNUCKLE[0], 0.009), (KNUCKLE[1], 0.006))):
+            jp = np.asarray(J[j], float)
+            dist = np.linalg.norm((Lc - jp)[:, :2], axis=1)
+            on_back = np.clip((Lc[:, 2] - jp[2]) / 0.003, 0, 1)
+            bump = np.maximum(bump, h * np.exp(-(dist / rad) ** 2) * on_back)
+    Lc[:, 2] += bump
+    print("BOY hand digits shaped%s: tapered %.0f%%, lengths to the middle's %s, knuckles %.1f mm" % (
+        tag, FINGER_TAPER * 100, FINGER_RATIO, 1000 * float(bump.max())))
+    return Lc
+
+
 TIP_CAP = float(arg("--tip-cap", "0.0075"))
 
 
@@ -2501,6 +2790,13 @@ def make_hand(sh):
     comps.sort(key=lambda c: -Lc[c, 1].mean())
     print("BOY hand base: thumb %d points, fingers %s points" % (len(thumb), [len(c) for c in comps]))
     fingers = dict(zip(FINGERS, comps[:4]))
+    if FINGER_SPLIT:
+        groups = dict(fingers)
+        groups["thumb"] = thumb
+        Lc, faces, uvs, G, old = split_fingers(Lc, faces, uvs, groups)
+        ring = [int(old[v]) for v in ring]
+        thumb = G["thumb"]
+        fingers = {n: G[n] for n in FINGERS}
     tris = tris_of(faces)
     keep = {v: hand_keep(v, sh.hand_mask.shape) for v in ("back", "palm")}
 
@@ -2553,6 +2849,8 @@ def make_hand(sh):
     Lc[:, 2] *= HAND_DEPTH
     chains = hand_chains(Lc, faces, thumb, fingers)
     Lc = round_tips(Lc, faces, chains, fingers, thumb)
+    chains = hand_chains(Lc, faces, thumb, fingers)
+    Lc = shape_digits(Lc, chains, fingers, thumb)
     chains = hand_chains(Lc, faces, thumb, fingers)
     print("BOY hand outline fit: %d pixels differ (from %d)" % (err(Lc), e1))
     n, _ = folded(Lc, faces)
@@ -2702,7 +3000,7 @@ def plump_toes(L, F):
     return L
 
 
-FOOT_FLAT = math.radians(float(arg("--foot-flat", "12")))
+FOOT_FLAT = math.radians(float(arg("--foot-flat", "12")))   # (seventh pass: 20 was tried to pay for the fingers: the foot went to a blocky wedge)
 
 
 def flat_dissolve(L, F, ring, may):
@@ -2743,6 +3041,40 @@ def flat_dissolve(L, F, ring, may):
     bm.free()
     print("BOY foot: flat stretches merged: %d triangles, from %d" % (sum(len(f) - 2 for f in F2), n0))
     return L2, F2, ring2
+
+
+FOOT_ARCH_LIFT = float(arg("--arch", "0.008"))
+BIG_TOE = float(arg("--big-toe", "1.18"))
+
+
+def shape_foot(L, F):
+    """(seventh pass; the critic: "the inner arch is missing ... a flat foot", "the big toe is barely bigger than the
+    others and not split from them by a clear gap", "heel: it has a hard corner") In the foot's own frame (u forward,
+    v out, w up, the big toe toward -v): the inner sole lifted over the middle of the foot into an arch, the big toe
+    made fuller and set a little apart inward, the heel's back-bottom corner drawn in."""
+    L = np.array(L, float)
+    u, v, w = L[:, 0], L[:, 1], L[:, 2]
+    u0, u1 = float(u.min()), float(u.max())
+    vin = float(v.min())
+    t = (u - u0) / (u1 - u0)
+    arch = np.exp(-((t - 0.5) / 0.17) ** 2) * smooth01(0.0, vin * 0.8, v) * (1.0 - smooth01(0.0, 0.022, w))
+    L[:, 2] += FOOT_ARCH_LIFT * arch
+    # the big toe: the toes' innermost third forward of where the toes part
+    toe = u > u1 - 0.045
+    if toe.any():
+        vt0, vt1 = float(v[toe].min()), float(v[toe].max())
+        big = toe & (v < vt0 + (vt1 - vt0) * 0.3)
+        if big.sum() > 3:
+            c = L[big].mean(0)
+            g = smooth01(u1 - 0.045, u1 - 0.03, u) * big
+            L[:, 1] += ((v - c[1]) * (BIG_TOE - 1.0) - 0.0018) * g
+            L[:, 2] += ((w - c[2]) * (BIG_TOE - 1.0) * 0.7) * g * (w > 0.002)
+    # the heel's corner
+    heel = (1.0 - smooth01(u0, u0 + 0.03, u)) * (1.0 - smooth01(0.0, 0.03, w))
+    L[:, 0] += 0.004 * heel * (1.0 - smooth01(0.0, 0.012, w)) * 0.8
+    L[:, 2] += 0.002 * heel * (1.0 - smooth01(0.0, 0.006, w)) * (u < u0 + 0.01)
+    print("BOY foot shaped: arch %.1f mm, big toe x%.2f, heel rounded" % (1000 * FOOT_ARCH_LIFT, BIG_TOE))
+    return L
 
 
 def make_foot():
@@ -2817,6 +3149,7 @@ def make_foot():
     if out_sign > 0:
         F = [f[::-1] for f in F]
     L = plump_toes(L, F)
+    L = shape_foot(L, F)
     L, F, ring = flat_dissolve(L, F, ring, ~(L[:, 0] > L[:, 0].max() - 0.045))
     toes = L[:, 0] > L[:, 0].max() - 0.075
     FOOT.update(P=L, faces=F, ring=ring, toes=toes, ball=np.array((L[:, 0].max() - 0.07, 0.0, 0.022)),
@@ -5233,6 +5566,8 @@ def paint_boxers(Bx, face_uv, placed, band_faces, sh):
     # the cloth's colour: the sheet's shorts in the front view, their lit middle
     sel = sh.body_mask[760:880, 450:680] & is_shorts(sh.body_pix[760:880, 450:680])
     cloth = np.median(sh.body_pix[760:880, 450:680][sel], axis=0) if sel.any() else np.array((0.86, 0.82, 0.72))
+    # (seventh pass; the critic: "a muddy olive-grey ... the concept is a warm off-white knit (about #E8DFCB)")
+    cloth = np.array((0.91, 0.875, 0.795))
     print("BOY shorts' cloth %s" % np.round(cloth, 3))
     rgb = np.ones((size, size, 3)) * cloth
     band = np.isin(fid, list(band_faces))
@@ -5267,8 +5602,14 @@ def paint_boxers(Bx, face_uv, placed, band_faces, sh):
     folds = 1.0 - 0.05 * np.clip(np.sin(z * 90.0 + xs_ * 40.0) * np.sin(xs_ * 55.0 + 1.0), 0, 1)
     rgb *= (knit * np.where(trunk | (fam != "boxers_lining"), folds, 1.0))[..., None]
     hem_z = float(body_z(BOXER_HEM_ROW))
-    rgb[(fam != "boxers_torso") & hit & (z - hem_z < 0.007)] *= 0.93
-    rgb[fam == "boxers_lining"] *= 0.62
+    # (seventh pass: the hem a soft lighter knit edge with small scallops, and the lining inside it the same cloth a
+    # little shaded: the dark grey band the critic saw was the lining at 0.62)
+    hem = (fam != "boxers_torso") & (fam != "boxers_lining") & hit & (z - hem_z < 0.008)
+    ang = np.arctan2(pos[..., 0] - np.sign(pos[..., 0]) * 0.07, pos[..., 1])
+    scal = 0.5 + 0.5 * np.cos(ang * 22.0)
+    rgb[hem] *= 1.035
+    rgb[hem & (z - hem_z < 0.0025 * scal + 0.0008)] *= 0.93
+    rgb[fam == "boxers_lining"] *= 0.86
     return pad_edges(fill_out(rgb, hit, 64), hit)
 
 
@@ -5408,15 +5749,18 @@ def tone_report(M, face_uv, face_rgb, sh):
 # big, wide-set eyes, 3.9 cm corner to corner.
 # ------------------------------------------------------------------------------------------------------------------
 
-EYE_INNER = (44.0, 1103.0)
-EYE_OUTER = (113.0, 1101.0)
-EYE_TOP = (78.0, 1080.0)
-EYE_LOW = (76.0, 1124.0)
-EYE_IRIS = (76.0, 1102.0, 18.0)
-EYE_R = 0.0125
-EYE_RX = 0.0195
+# (seventh pass: measured again at twice size, the opening 50 to 120 out and 1077 to 1128 down, the iris 20 to 22
+# pixels round centred at 1104 so the upper lid covers its top; the critic: "about 20% larger, sunk 2 to 3 mm")
+EYE_INNER = (42.0, 1104.0)
+EYE_OUTER = (118.0, 1101.0)
+EYE_TOP = (79.0, 1077.0)
+EYE_LOW = (78.0, 1128.0)
+EYE_IRIS = (78.0, 1104.0, 21.0)
+EYE_R = 0.0135
+EYE_RX = 0.0215
 EYE_RAD = np.array((EYE_RX, EYE_R, EYE_R))
-EYE_BACK = 0.0028
+EYE_BACK = float(arg("--eye-back", "0.0048"))   # (seventh pass: from 0.0028, the eyes sunk into their sockets)
+EYE_LID = (float(arg("--lid-up", "0.0013")), float(arg("--lid-low", "0.0008")))   # (seventh pass: from 0.0006, 0.0004: a thick upper lid, a raised lower one)
 LID_THICK = 0.0013
 EYES_OPEN = "--closed-eyes" not in ARGS
 EYE_REFINE = (float(arg("--eye-refine-w", "45")), float(arg("--eye-refine-h", "29")))   # (sixth pass, the budget: from 52 x 34)
@@ -5581,10 +5925,10 @@ def open_eyes(M, face_uv, weights, under):
             above, below = top - row, row - low
             push = 0.0
             if 0 < above < 14:
-                push += 0.0006 * math.exp(-((above - 3.5) / 3.0) ** 2)
+                push += EYE_LID[0] * math.exp(-((above - 3.5) / 3.0) ** 2)
                 push -= 0.0011 * math.exp(-((above - 9.5) / 2.6) ** 2)      # the crease (softer: a boy's)
             if 0 < below < 14:
-                push += 0.0004 * math.exp(-((below - 7.0) / 3.0) ** 2)
+                push += EYE_LID[1] * math.exp(-((below - 5.0) / 3.5) ** 2)
             P[i] = P[i] + np.array((0.0, -1.0, 0.0)) * push * fade
         ring2 = []
         mid = np.array((C[0], C[2]))
@@ -5644,6 +5988,8 @@ def eye_texture(path, size=256):
     img = img * (1 - soft * inn) + iris * soft * inn
     pup = np.clip((rp - r) / 0.02, 0, 1)[..., None]
     img = img * (1 - pup) + np.array((0.04, 0.04, 0.05)) * pup
+    # (seventh pass) the upper lid's shadow on the ball: no white shows over the iris, the stare softened
+    img = img * (1.0 - 0.5 * np.clip((Y - 0.32) / 0.4, 0, 1))[..., None]
     hl = np.clip((0.09 - np.hypot(X * EYE_RX / EYE_R - 0.12, Y - 0.14)) / 0.03, 0, 1)[..., None]
     img = img * (1 - hl) + np.array((1.0, 1.0, 0.98)) * hl
     save_rgb(path, img[::-1])
@@ -5741,7 +6087,7 @@ def soft_noise(pos, scale, seed, n=6):
 
 
 def blush(rgb, w, tint=ROSE):
-    return rgb * (1.0 + (tint - 1.0) * np.clip(w, 0, 1)[..., None])
+    return rgb * (1.0 + (np.asarray(tint, float) - 1.0) * np.clip(w, 0, 1)[..., None])
 
 
 def nearest_texel(pos, sel, at):
@@ -5781,6 +6127,104 @@ def freckles(rgb, pos, region, count, seed, r=(0.0008, 0.0017), s=(0.22, 0.5)):
     pick = rng.choice(idx, count, p=p / p.sum())
     C = pos.reshape(-1, 3)[pick]
     return spots(rgb, pos, region > 0.01, C, rng.uniform(*r, count), rng.uniform(*s, count), FRECKLE)
+
+
+def body_marks(rgb, pos, nrm, hit, fam, joints):
+    """(seventh pass; the critic: "warm peach skin with hand-painted variation: rosy at the nose, cheeks, ears, elbows,
+    knees, knuckles and toes ... painted soft shading under the jaw, armpits, the waistband and between the ribs ...
+    freckles ... scattered over the shoulders, upper back, chest and forearms"; "small pink nipples", "the bottom of
+    the ribcage readable as a soft curve", "a visible spine channel, and shoulder blades", nails on fingers and toes)
+    Marks laid by rule in 3D on his own joints. The sheet's navel sits at row 672, 2 cm over the band (row 692): the
+    band stays where the sheet draws it and the navel is painted (the critic asked the band 3 to 4 cm lower)."""
+    pos = np.nan_to_num(pos)
+    nrm = np.nan_to_num(nrm)
+    x, y, z = pos[..., 0], pos[..., 1], pos[..., 2]
+    torso = hit & np.isin(fam, ("torso", "shoulder"))
+    front = smooth01(-0.2, -0.6, nrm[..., 1])
+    back = smooth01(0.2, 0.6, nrm[..., 1])
+    zs = float(joints["shoulder_l"][2])
+    xs = abs(float(joints["shoulder_l"][0]))
+    # the hands and feet warmer, the toes' and fingers' ends rosier
+    # (faded toward the wrist and the ankle so no step shows at the seams there)
+    for sfx in ("_l", "_r"):
+        kn = np.array(joints["knuckles" + sfx], float)
+        rgb = blush(rgb, (hit & (fam == "hand")) * 0.3 * np.exp(-(np.linalg.norm(pos - kn, axis=-1) / 0.05) ** 2))
+    rgb = blush(rgb, (hit & (fam == "foot")) * 0.28 * (1.0 - smooth01(0.025, 0.06, z)))
+    for sfx in ("_l", "_r"):
+        for name in FINGERS + ("thumb",):
+            J = [np.array(p, float) for p in joints[name + sfx]]
+            tip, j2 = J[3], J[2]
+            u = (tip - j2) / max(np.linalg.norm(tip - j2), 1e-6)
+            Tb = np.array(joints["hand_frame" + sfx][0], float)
+            if name == "thumb":
+                Tb = np.array(joints["thumb_back" + sfx], float)
+                Tb = Tb - (Tb @ u) * u
+                Tb /= max(np.linalg.norm(Tb), 1e-6)
+            hb = hit & (fam == "hand") & ((nrm * Tb).sum(-1) > 0.35)
+            at = nearest_texel(pos, hb, tip - u * 0.0055 + Tb * 0.01)
+            rgb = blush(rgb, (hit & (fam == "hand")) * 0.5 * np.exp(-(np.linalg.norm(pos - tip, axis=-1) / 0.008) ** 2))
+            if at is not None:
+                rgb = spots(rgb, pos, hb, [at], [0.0047 if name != "thumb" else 0.0056], [0.55], (1.06, 0.94, 0.93))
+                rgb = spots(rgb, pos, hb, [at + u * 0.0035], [0.0026], [0.4], (1.08, 1.03, 1.0))
+        # toenails: the top of each toe's end, found as the foot's front in strips across it
+        ft = hit & (fam == "foot")
+        side = np.sign(x) == (1.0 if sfx == "_l" else -1.0)
+        ft &= side
+        if ft.any():
+            an = np.array(joints["ankle" + sfx], float)
+            tt = np.array(joints["toe_tip" + sfx], float)
+            fw = tt - an
+            fw[2] = 0.0
+            fw /= np.linalg.norm(fw)
+            ac = np.array((-fw[1], fw[0], 0.0))
+            pr = (pos - an) @ fw
+            cr = (pos - an) @ ac
+            bins = np.linspace(cr[ft].min(), cr[ft].max(), 30)
+            bi = np.clip(np.digitize(cr, bins) - 1, 0, 28)
+            fr = np.full(29, -1.0)
+            for i in range(29):
+                s_ = ft & (bi == i)
+                if s_.any():
+                    fr[i] = pr[s_].max()
+            fmax = fr[bi]
+            dd = fmax - pr
+            nail = ft & (nrm[..., 2] > 0.25) & (dd > 0.002) & (dd < 0.011) & (z < 0.03)
+            rgb = blush(rgb, ft * 0.45 * np.exp(-(dd / 0.012) ** 2))
+            rgb[nail] = rgb[nail] * 0.75 + np.array((0.95, 0.8, 0.76)) * 0.25
+    # the navel (the sheet's row 672) and a little shade round it
+    zn = float(body_z(672))
+    nav = np.exp(-((x / 0.0045) ** 2 + ((z - zn) / 0.006) ** 2)) * front * torso
+    rgb = blush(rgb, nav * 0.8, (0.78, 0.6, 0.56))
+    rgb = blush(rgb, np.exp(-((x / 0.012) ** 2 + ((z - zn - 0.004) / 0.012) ** 2)) * front * torso * 0.4, SHADE)
+    # the nipples
+    for s in (1.0, -1.0):
+        c = np.array((s * xs * 0.42, 0.0, zs - 0.105))
+        w = np.exp(-(((x - c[0]) / 0.006) ** 2 + ((z - c[2]) / 0.006) ** 2)) * front * torso
+        rgb = blush(rgb, w * 0.6, (0.9, 0.7, 0.68))
+    # the ribcage's lower edge: a soft shade along an arch from the breastbone's end out and down
+    zr = zs - 0.2
+    arch = zr - 1.1 * np.abs(x) + 6.0 * x ** 2
+    rgb = blush(rgb, np.exp(-((z - (arch - 0.008)) / 0.009) ** 2) * (np.abs(x) > 0.012) * (np.abs(x) < 0.1) * front * torso * 0.45, SHADE)
+    # the collarbones: a light ridge with a soft shade under it, from the notch to each shoulder's point
+    zn0 = zs + 0.04
+    for s in (1.0, -1.0):
+        t = np.clip((s * x - 0.018) / (xs - 0.018), 0, 1)
+        zc = zn0 - 0.012 * np.sin(np.pi * t * 0.8) + 0.008 * t
+        on = (s * x > 0.016) & (s * x < xs + 0.01) & (front > 0) & torso
+        rgb = blush(rgb, np.exp(-((z - (zc - 0.009)) / 0.009) ** 2) * on * 0.22, SHADE)
+        rgb = blush(rgb, np.exp(-((z - zc) / 0.004) ** 2) * on * 0.3, (1.03, 1.0, 0.98))
+    # the spine's channel and the shoulder blades' inner and lower edges, on his back
+    rgb = blush(rgb, np.exp(-(x / 0.006) ** 2) * back * torso * (z < zs + 0.03) * (z > float(body_z(700))) * 0.25, SHADE)
+    for s in (1.0, -1.0):
+        bx, bz = s * 0.055, zs - 0.06
+        d = np.hypot((x - bx) / 0.045, (z - bz) / 0.075)
+        rgb = blush(rgb, np.exp(-((d - 1.0) / 0.12) ** 2) * (z < bz + 0.02) * back * torso * 0.18, SHADE)
+    # more freckles: the upper back, the arms, the tops of the shoulders
+    up = torso * back * smooth01(zs - 0.2, zs - 0.05, z)
+    rgb = freckles(rgb, pos, up * hit, 180, 61)
+    arms = (hit & (fam == "arm")) * smooth01(-0.2, 0.5, nrm[..., 2] + 0.3)
+    rgb = freckles(rgb, pos, arms * 1.0, 110, 67, s=(0.15, 0.4))
+    return rgb
 
 
 def rule_paint(M, face_uv, picture, pos, nrm, hit, fam, joints):
@@ -5833,11 +6277,98 @@ def rule_paint(M, face_uv, picture, pos, nrm, hit, fam, joints):
         rgb = freckles(rgb, pos, fore * 1.0, 70, 37, s=(0.15, 0.35))
         hb = hit & (fam == "hand")
         rgb = freckles(rgb, pos, hb * 1.0, 16, 41, r=(0.0007, 0.0012), s=(0.12, 0.25))
+        rgb = body_marks(rgb, pos, nrm, hit, fam, joints)
     if picture == "face":
         ear = hit & (fam == "ear")
         xa = np.abs(pos[..., 0])
-        rgb = blush(rgb, ear * (0.18 + 0.4 * smooth01(0.09, 0.122, xa)))
+        rgb = blush(rgb, ear * (0.05 + 0.33 * smooth01(0.095, 0.125, xa)))   # (seventh pass: from 0.18 + 0.4, "saturated, uniform pink-red")
     return np.clip(rgb, 0, 1)
+
+
+FACE_BY_RULE = "--sheet-face" not in ARGS
+
+
+def face_features(M, rgb, pos, nrm, hit, fam):
+    """(seventh pass; the critic: "the smile is almost entirely paint: a long dark line from cheek to cheek, with heavy
+    dark brackets at the corners and painted nasolabial creases ... a second dark horizontal line under the lower lip
+    ... a darker grey-brown patch over the jaw and chin": the sheet's painting projected onto a face of another shape)
+    The face drawn by rule on his own landmarks, in head-sheet columns (out from his middle) and rows: soft sandy brows,
+    a dark lash line along each upper lid thickening outward, a soft lid crease, rosy cheeks and nose tip, a small soft
+    smile line between the modelled lips with a rose lower lip, freckles over the nose and cheeks. No folds, no lines
+    under the lip, nothing on the jaw."""
+    out = rgb.copy()
+    pos = np.nan_to_num(pos)
+    nrm = np.nan_to_num(nrm)
+    out = np.where(np.isfinite(out), out, SKIN_BASE)
+    # (the face only: the back of his head lies in the same columns and rows)
+    head = hit & (fam == "head") & (pos[..., 1] < -0.02)
+    col = pos[..., 0] / HS
+    ac = np.abs(col)
+    row = hrow(pos[..., 2])
+    fwd = smooth01(0.05, 0.35, -nrm[..., 1])
+    mk = M.tag["head_marks"]
+    Pm = np.array(M.P)
+
+    def tint(w, c, a=1.0):
+        nonlocal out
+        w = np.clip(w, 0, 1)[..., None] * a
+        out = out * (1.0 - w) + np.asarray(c, float) * w
+
+    def mult(w, m):
+        nonlocal out
+        out = out * (1.0 + (np.asarray(m, float) - 1.0) * np.clip(w, 0, 1)[..., None])
+    # brows: an arc above each eye, the inner end lower and fuller, sandy blond (the hair's), a little stroked
+    ti = np.clip((ac - 38.0) / 88.0, 0, 1)
+    rb = 1042.0 - 10.0 * np.sin(np.pi * np.clip(ti * 0.85 + 0.08, 0, 1)) ** 0.8 + 3.0 * ti
+    hh = 6.5 - 3.0 * ti
+    ends = smooth01(32.0, 42.0, ac) * (1.0 - smooth01(118.0, 128.0, ac))
+    strokes = 0.85 + 0.15 * np.sin(col * 1.9 + row * 0.7)
+    tint(np.exp(-((row - rb) / hh) ** 4) * ends * strokes * fwd * head, (0.64, 0.5, 0.34), 0.72)
+    # the eye: the opening's upper and lower curves in (column, row)
+    poly = eye_outline()
+    up = poly[:25]
+    low = poly[24:][::-1]
+    lt = np.interp(ac, up[:, 0], up[:, 1], left=np.nan, right=np.nan)
+    lb = np.interp(ac, low[:, 0], low[:, 1], left=np.nan, right=np.nan)
+    t = np.clip((ac - EYE_INNER[0]) / (EYE_OUTER[0] - EYE_INNER[0]), 0, 1)
+    inside = np.isfinite(lt)
+    d_up = np.where(inside, lt - row, 99.0)
+    d_low = np.where(inside & np.isfinite(lb), row - lb, 99.0)
+    # the lash line (on the lid's margin and just above it), thickest at the outer end, with a small flick out
+    lash = np.exp(-((d_up - 0.6) / (1.4 + 1.6 * t)) ** 2) * smooth01(0.0, 0.25, t)
+    flick_c = np.array((EYE_OUTER[0] + 4.0, EYE_OUTER[1] - 4.0))
+    flick = np.exp(-(((ac - flick_c[0]) / 5.0) ** 2 + ((row - flick_c[1]) / 2.2) ** 2))
+    tint(np.maximum(lash, flick) * head, (0.24, 0.16, 0.12), 0.85)
+    # the lid crease and a little shade under the brow
+    mult(np.exp(-((d_up - 10.0) / 2.6) ** 2) * 0.55 * head, SHADE)
+    # the lower lid: a faint warm line, no dark rim
+    mult(np.exp(-((d_low - 1.5) / 1.8) ** 2) * 0.35 * head, (0.97, 0.86, 0.84))
+    # cheeks, nose: rose
+    for s in (1.0, -1.0):
+        mult(np.exp(-(((col - s * 95.0) / 40.0) ** 2 + ((row - 1166.0) / 30.0) ** 2)) * 0.55 * head, ROSE)
+    nose_row = float(hrow(Pm[mk["nose"], 2]))
+    mult(np.exp(-((col / 20.0) ** 2 + ((row - nose_row - 4.0) / 16.0) ** 2)) * 0.65 * head, (1.0, 0.8, 0.77))
+    # the mouth: a short soft line on the lips' seam, its ends turned up; a rose lower lip; small dimples
+    zm = float(Pm[mk["mouth"], 2])
+    xc = abs(float(Pm[mk["mouth_l"], 0]))
+    xr = pos[..., 0] / max(xc, 1e-4)
+    zl = zm + 0.0016 * xr ** 2
+    near_front = (pos[..., 1] < float(Pm[mk["mouth"], 1]) + 0.012) & head
+    line = np.exp(-((pos[..., 2] - zl) / 0.00075) ** 2) * (1.0 - smooth01(0.75, 1.02, np.abs(xr)))
+    tint(line * near_front, (0.58, 0.36, 0.34), 0.6)
+    lip = np.exp(-(((pos[..., 2] - (zm - 0.0042)) / 0.0032) ** 2 + (pos[..., 0] / (0.62 * xc)) ** 4))
+    mult(lip * near_front * 0.9, (1.0, 0.8, 0.78))
+    uplip = np.exp(-(((pos[..., 2] - (zm + 0.0025)) / 0.002) ** 2 + (pos[..., 0] / (0.7 * xc)) ** 4))
+    mult(uplip * near_front * 0.35, (1.0, 0.86, 0.84))
+    for s in (1.0, -1.0):
+        dim = np.exp(-(((pos[..., 0] - s * xc * 1.04) / 0.0018) ** 2 + ((pos[..., 2] - zm - 0.0018) / 0.0022) ** 2))
+        mult(dim * near_front * 0.5, SHADE)
+    # freckles over the bridge of the nose and the cheeks
+    reg = np.exp(-((ac - 58.0) / 46.0) ** 2) * np.exp(-((row - 1148.0) / 20.0) ** 2) * fwd * head
+    reg = np.maximum(reg, np.exp(-((ac / 26.0) ** 2 + ((row - 1140.0) / 14.0) ** 2)) * head)
+    out = freckles(out, pos, reg * hit, 110, 53, r=(0.0006, 0.0012), s=(0.25, 0.55))
+    out = np.where(hit[..., None], np.nan_to_num(out), np.nan_to_num(rgb))
+    return np.clip(out, 0, 1)
 
 
 def rule_face(M, face_uv, face, joints):
@@ -5845,6 +6376,12 @@ def rule_face(M, face_uv, face, joints):
     rule paint over his scalp, the back of his head, his ears and his neck."""
     P = np.array(M.P)
     pos, nrm, hit, fid = texel_geometry(M, face_uv, "face", P, normals_of(P, M.tris()))
+    # (seventh pass: some seam texels came back hit with no position (NaN), and the neck tone step turned them into
+    # black lines down his head: they are left out, and the padding fills them)
+    bad = ~(np.isfinite(pos).all(-1) & np.isfinite(nrm).all(-1))
+    hit = hit & ~bad
+    pos = np.nan_to_num(pos)
+    nrm = np.nan_to_num(nrm)
     fam = np.array([part_family(p) for p in M.fpart] + ["none"])[fid]
     ff = -nrm[..., 1]
     z = pos[..., 2]
@@ -5870,6 +6407,10 @@ def rule_face(M, face_uv, face, joints):
     warm = np.clip(up / np.maximum(med, 1e-3), 0.9, 1.1) ** 0.5
     toned = np.clip(SKIN_BASE * detail * warm, 0, 1)
     rule = rule_paint(M, face_uv, "face", pos, nrm, hit, fam, joints)
+    if FACE_BY_RULE:
+        out = face_features(M, rule, pos, nrm, hit, fam)
+        print("BOY rule face: painted by rule (features drawn on his own landmarks; nothing projected from the sheet)")
+        return out, pos, hit
     wf = head * smooth01(0.35, 0.62, ff) * (1.0 - smooth01(float(hz(985)), float(hz(945)), z)) * smooth01(float(hz(1335)), float(hz(1300)), z)
     wf = blur(wf, 3) * head
     out = toned * wf[..., None] + rule * (1.0 - wf[..., None])
@@ -6060,7 +6601,33 @@ def main():
         symmetrize(M, mir)
     unfold_body(M, tries=4, ring=False)
     s_curve(M, T)
+    shoulder_slope(M, joints)
     finish(M, T, joints, sh)
+
+
+SHOULDER_DROP = (float(arg("--shoulder-drop", "0.007")), float(arg("--shoulder-in", "0.005")))
+
+
+def shoulder_slope(M, joints):
+    """(seventh pass; the critic: "narrow, bony, sloping shoulders ... lower and narrow the shoulder caps by about 1 cm
+    each side"; "in the two grey poses the shoulder top looks boxy and square") The top of each shoulder, where the
+    trapezius meets the arm's cap, drawn down and in on a soft round field (the cap's outline rounder, the slope from
+    the neck longer); the arm below the cap and the neck above it barely move."""
+    P = np.array(M.P)
+    fams = np.array([part_family(p) for p in M.part])
+    ok = np.isin(fams, ("torso", "shoulder", "arm"))
+    moved = 0.0
+    for sfx, s in (("_l", 1.0), ("_r", -1.0)):
+        sj = np.array(joints["shoulder_l"], float) * np.array((s, 1.0, 1.0))
+        c = sj + np.array((-s * 0.01, 0.0, 0.035))
+        d = np.linalg.norm((P - c) * np.array((1.0, 1.3, 1.0)), axis=1)
+        w = np.exp(-(d / 0.045) ** 2) * ok * (P[:, 2] > sj[2] - 0.02)
+        P[:, 2] -= SHOULDER_DROP[0] * w
+        P[:, 0] -= s * SHOULDER_DROP[1] * w
+        moved = max(moved, float(w.max()))
+    M.P = [p for p in P]
+    n, _ = folded(P, M.faces)
+    print("BOY shoulders sloped: %.1f mm down, %.1f mm in at most; %d folded" % (1000 * SHOULDER_DROP[0] * moved, 1000 * SHOULDER_DROP[1] * moved, n))
 
 
 S_CURVE = float(arg("--s-curve", "1.0"))
