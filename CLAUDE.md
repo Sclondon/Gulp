@@ -1017,3 +1017,10 @@ the research (with sources), the numbers, what is checked and what is rough. Con
   work why are his forearms and wrists such different sizes" (a base hand's slim wrist loop zipped to a swelled
   forearm: taper the forearm to a thick wrist and size the hand's loop to meet it); "stop his chin and jaw phasing into
   his neck- have a pose where he is looking up to see what I mean" (judge every head with the head tilted back).
+- The older brother's body, changed again (the user, 2026-11-18, evening): "The older brothers is a bit too bulky a big
+  gutted, though I like how it works so make it a different grown man model". So the bulky big-bellied body fitted to
+  `concept_brother_tpose6.jpg` is kept as a townsperson, `models/npc/man_big.glb` (a grown man; a face of his own is
+  owed), and the brother's body sheet is now `tools/art_src/concept_brother_tpose7.jpg` (tall, stocky, hairy, a nearly
+  flat stomach, no gut; made in the NPC conversation /app/a896ddb450545c99). `tools/build_brother.py` builds both by
+  `-- --figure brother|man_big`. His pose sheet `concept_brother_poses.jpg` shows the bulkier build: use it for poses
+  only.
