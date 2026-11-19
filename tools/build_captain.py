@@ -8306,7 +8306,7 @@ def adj_throat_round(M, P, N, ctx, amt):
 
 ADJUSTMENTS = [
     # (name, function, amount)
-    ("knuckle_bumps", adj_knuckle_bumps, 0.009),
+    ("knuckle_bumps", adj_knuckle_bumps, 0.009),   # (twenty-fourth round: 0.014 and finger_joints 0.25 tried: no visible change in grey at this mesh density, so not kept)
     ("finger_joints", adj_finger_joints, 0.16),
     ("palm_pads", adj_palm_pads, 0.005),
     ("frown", adj_frown, 0.006),
@@ -8324,6 +8324,9 @@ ADJUSTMENTS = [
     ("toe_round", None, 0),
     ("toe_clefts_deep", None, 0),   # a second pass of the clefts, deeper
     ("finger_long", None, 0.15),   # (twenty-third round, the hands: fingers 14% short against the hands sheet)
+    # (twenty-fourth round, the hands)
+    ("finger_thick", None, 0.3),
+    ("thumb_rest", None, 40.0),
 ]
 
 
@@ -8509,7 +8512,82 @@ def adj_finger_long(M, P, N, ctx, amt):
     return mv
 
 
-ADJ_FN = {"deltoid_mass": adj_deltoid_mass, "heel_fin_off": adj_heel_fin_off, "toe_clefts": adj_toe_clefts,
+def _finger_frame(ctx, P, sfx, n):
+    """(twenty-fourth round) A finger's own frame from its skin: d along it (knuckle joint to its last joint), `back`
+    square to d toward the hand's back, `side` across; and for every point its distance along d (s, from the knuckle
+    joint) and the finger's middle at that s (the mean of its points within about 5 mm, so a bone set off the finger's
+    middle does not matter)."""
+    js = [np.array(v, float) for v in ctx["joints"][n + sfx]]
+    j1 = np.array(ctx["bones"]["finger_%s_1%s" % (n, sfx)], float)
+    d = js[-1] - js[0]
+    d /= np.linalg.norm(d)
+    back0 = np.array(ctx["joints"]["hand_frame" + sfx][0], float)
+    back = back0 - d * (back0 @ d)
+    back /= np.linalg.norm(back)
+    side = np.cross(d, back)
+    mine = np.array([p == "hand%s_%s" % (sfx, n) for p in ctx["parts"]])
+    idx = np.where(mine)[0]
+    s = (P[idx] - j1) @ d
+    W = _gauss(s[:, None] - s[None, :], 0.005)
+    c = (W @ P[idx]) / W.sum(1)[:, None]
+    c -= np.outer(((c - j1) @ d) - s, d)      # (the middle at the point's own s)
+    return idx, s, c, d, back, side
+
+
+def adj_finger_thick(M, P, N, ctx, amt):
+    """(twenty-fourth round, the hands) Against the hands sheet at one scale his fingers were about 30% too thin across
+    (the middle finger 20 mm, the sheet's 27) and tapered to narrow tips where the sheet's stay thick to blunt, square
+    tips: each finger's skin pushed out from its own middle, across by `amt` (share) and up and down by 0.35 of it,
+    coming in over the first 2.5 cm past the knuckle (the webs and the palm keep their width), and a further half of
+    `amt` across over the last 2.5 cm, so the tip is blunt."""
+    mv = np.zeros_like(P)
+    for sfx in ("_l", "_r"):
+        for n in ("index", "middle", "ring", "little"):
+            idx, s, c, d, back, side = _finger_frame(ctx, P, sfx, n)
+            L = float(s.max())
+            off = P[idx] - c
+            a, b = off @ side, off @ back
+            ramp = smooth01(0.004, 0.025, s)
+            kx = amt * ramp + 0.5 * amt * smooth01(L - 0.03, L - 0.008, s)
+            ky = 0.35 * amt * ramp
+            mv[idx] += np.outer(a * kx, side) + np.outer(b * ky, back)
+    return mv
+
+
+def adj_thumb_rest(M, P, N, ctx, amt):
+    """(twenty-fourth round, the hands) At rest his thumb lay tucked under the palm, and only the viewer turned it out
+    (the relaxed pose's 40 degrees about the hand's length): the thumb's skin and its two outer bones turned out about
+    the hand's length through the thumb's root joint by `amt` degrees (the left hand negative, the right mirrored), so
+    the rest pose is the sheet's natural hand, the thumb set out to the side. The thumb is turned whole from 1 cm past
+    its root; the 2.5 cm before that and the thenar pad beside it turn part way (each point turned, not blended, so
+    nothing shrinks)."""
+    mv = np.zeros_like(P)
+    parts = ctx["parts"]
+    moves = ctx.setdefault("bone_moves", {})
+    for sfx, sg in (("_l", -1.0), ("_r", 1.0)):
+        b = ctx["bones"]
+        w_ = np.array(b["hand" + sfx], float)
+        m1 = np.array(b["finger_middle_1" + sfx], float)
+        t1 = np.array(b["thumb_1" + sfx], float)
+        t2 = np.array(b["thumb_2" + sfx], float)
+        al = (m1 - w_) / np.linalg.norm(m1 - w_)
+        u = (t2 - t1) / np.linalg.norm(t2 - t1)
+        thumb = np.array([p == "hand%s_thumb" % sfx for p in parts])
+        palm = np.array([p == "hand" + sfx for p in parts])
+        s1 = (P - t1) @ u
+        k = np.where(thumb, smooth01(-0.015, 0.01, s1), 0.0)
+        k = np.where(palm, 0.5 * (1.0 - smooth01(0.005, 0.03, np.linalg.norm(P - t1, axis=1))), k)
+        for i in np.where(k > 1e-3)[0]:
+            R = np.array(Matrix.Rotation(math.radians(sg * amt * k[i]), 3, Vector(al)))
+            mv[i] = R @ (P[i] - t1) + t1 - P[i]
+        R = np.array(Matrix.Rotation(math.radians(sg * amt), 3, Vector(al)))
+        for n in ("thumb_2", "thumb_3"):
+            h = np.array(moves.get(n + sfx, b[n + sfx]), float)
+            moves[n + sfx] = R @ (h - t1) + t1
+    return mv
+
+
+ADJ_FN = {"thumb_rest": adj_thumb_rest, "finger_thick": adj_finger_thick, "deltoid_mass": adj_deltoid_mass, "heel_fin_off": adj_heel_fin_off, "toe_clefts": adj_toe_clefts,
           "wrist_seam": adj_wrist_seam, "heel_pole": adj_heel_pole, "toe_round": adj_toe_round,
           "toe_clefts_deep": adj_toe_clefts, "finger_long": adj_finger_long}
 ADJUSTMENTS = [(n, f or ADJ_FN[n], a) for n, f, a in ADJUSTMENTS]
@@ -10369,7 +10447,7 @@ def lift_tattoo(sh, c0, c1, r0, r1, pix_all=None, mask_all=None):
 # the hands sheet's back view (its box, pixels), placed on the back of his left hand HAND_ANCHOR_AT metres up from the
 # hand's lowest knuckles toward the wrist, HAND_ANCHOR_SIZE tall, its crown toward the wrist (as the sheet draws it)
 HAND_ANCHOR_BOX = ((418, 580), (440, 572))
-HAND_ANCHOR_AT = 0.55              # share of the way from the wrist's ring down to the knuckles
+HAND_ANCHOR_AT = 0.55              # share of the way from the wrist's ring down to the knuckles (twenty-fourth round: 0.3 moved it across onto the knuckles, not toward the wrist: left at 0.55)
 HAND_ANCHOR_SIZE = 0.034           # metres tall
 
 

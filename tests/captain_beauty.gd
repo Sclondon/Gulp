@@ -45,6 +45,8 @@ func _pose(name: String) -> void:
 				_apply(sk, HAND_FIST)
 			"h_grip":
 				_apply(sk, HAND_GRIP)
+			"h_half":
+				_apply(sk, HAND_HALF)
 			"h_relaxed":
 				_apply(sk, HAND_RELAXED)
 			"armfwd":
@@ -134,16 +136,26 @@ const POSES := {
 ## (twenty-third round) The fist and the grip of the hands sheet, each joint its own angle (knuckle, middle, tip),
 ## the thumb across: tuned by the --hands pictures.
 const HAND_FIST := [["curl3", "_l", [[85, 95, 55], [85, 95, 55], [88, 95, 55], [90, 95, 55]]],
-	# (the thumb across the front of the curled fingers: tried six single turns and four pairs; this one lies across)
-	["thumbrot", "_l", "thumb_1", "across", -30.0], ["thumbrot", "_l", "thumb_1", "palm", -40.0], ["thumbrot", "_l", "thumb_2", "palm", -30.0], ["thumbrot", "_l", "thumb_3", "palm", -39.0],
+	# (twenty-fourth round: the thumb's turns found by a search over its bones (each joint about the hand's three
+	# axes) for its last joint over the index finger's middle bone and its tip toward the middle finger's, clear of
+	# the fingers: it lies across the curled fingers' undersides, its tip no longer poking out below the fist. The
+	# round-23 thumb was across -30, palm -40; thumb_2 palm -30; thumb_3 palm -39. Searched from the thumb's new rest,
+	# turned out by thumb_rest)
+	["thumbrot", "_l", "thumb_1", "along", 19.2], ["thumbrot", "_l", "thumb_1", "palm", -22.1], ["thumbrot", "_l", "thumb_1", "across", 28.9],
+	["thumbrot", "_l", "thumb_2", "palm", -24.9], ["thumbrot", "_l", "thumb_2", "across", -15.3], ["thumbrot", "_l", "thumb_2", "along", 26.7],
+	["thumbrot", "_l", "thumb_3", "palm", -50.5], ["thumbrot", "_l", "thumb_3", "across", -13.3], ["thumbrot", "_l", "thumb_3", "along", 47.4],
 	# (the fingers drawn together at the knuckles, so the curled fingers close side by side, not as separate hooks)
 	["thumbrot", "_l", "finger_index_1", "palm", -7.0], ["thumbrot", "_l", "finger_ring_1", "palm", 5.0], ["thumbrot", "_l", "finger_little_1", "palm", 10.0]]
 ## The relaxed hand of the sheet's back, palm and thumb views: the thumb turned out from under the palm about the
 ## hand's length (tried along +-40, across +-35, palm +-30 and pairs: this one lies as the sheet draws it), the
 ## fingers a little curved.
-const HAND_RELAXED := [["thumbrot", "_l", "thumb_1", "along", -40.0], ["curl3", "_l", [[6, 10, 6], [6, 10, 6], [7, 11, 7], [8, 12, 8]]]]
+const HAND_RELAXED := [["curl3", "_l", [[6, 10, 6], [6, 10, 6], [7, 11, 7], [8, 12, 8]]]]
+## (twenty-fourth round) A half-closed hand, between the relaxed hand and the grip, for checking the joints part way.
+const HAND_HALF := [["curl3", "_l", [[40, 50, 30], [40, 50, 30], [42, 52, 30], [45, 55, 30]]]]
 const HAND_GRIP := [["curl3", "_l", [[60, 70, 40], [62, 72, 40], [65, 72, 40], [68, 72, 40]]],
-	["thumbrot", "_l", "thumb_1", "across", -20.0], ["thumbrot", "_l", "thumb_1", "palm", -28.0], ["thumbrot", "_l", "thumb_2", "palm", -20.0], ["thumbrot", "_l", "thumb_3", "palm", -25.0],
+	# (twenty-fourth round: the thumb now rests turned out 40 degrees about the hand's length (thumb_rest); the last turn
+	# below takes it back to the old rest first, so the grip's thumb lies as it did)
+	["thumbrot", "_l", "thumb_1", "across", -20.0], ["thumbrot", "_l", "thumb_1", "palm", -28.0], ["thumbrot", "_l", "thumb_1", "along", 40.0], ["thumbrot", "_l", "thumb_2", "palm", -20.0], ["thumbrot", "_l", "thumb_3", "palm", -25.0],
 	["thumbrot", "_l", "finger_index_1", "palm", -5.0], ["thumbrot", "_l", "finger_ring_1", "palm", 4.0], ["thumbrot", "_l", "finger_little_1", "palm", 8.0]]
 
 
@@ -513,8 +525,10 @@ func _initialize() -> void:
 	# the fist and the grip round a spoke; mirrored where needed so each lies as the sheet draws it)
 	if "--hands" in OS.get_cmdline_user_args():
 		_shots = []
+		# (twenty-fourth round: a darker grey for the hands, so the raking light shows knuckles and folds)
+		_grey.albedo_color = Color(0.55, 0.55, 0.55)
 		var vs := {"relaxed": ["back", "palm", "thumb", "little", "tips"], "fist": ["fistview", "back", "thumb", "tips", "little", "palm"],
-			"grip": ["back", "thumb", "tips"]}
+			"grip": ["back", "thumb", "tips"], "half": ["back", "thumb", "palm"]}
 		for pz: String in vs:
 			for g in [false, true]:
 				var gt := "_grey" if g else ""
@@ -591,6 +605,11 @@ func _process(_delta: float) -> bool:
 		# (the sun over the camera's left shoulder for every shot, so no view is lit from behind)
 		var to := (at - eye).normalized()
 		var light := (to + _cam.global_transform.basis.x * -0.45 + Vector3(0, -0.6, 0)).normalized()
+		if shot.size() > 8:
+			# (twenty-fourth round: the hand views light from the picture's upper left, raking, in the camera's own
+			# frame: lit from the eye, the grey hands read as flat white cut-outs with no knuckles or folds)
+			light = (to * 0.8 + _cam.global_transform.basis.x * 0.45 - _cam.global_transform.basis.y * 0.55).normalized()
+		_sun.shadow_enabled = shot.size() <= 8   # (the hand's shadow fell on the thigh behind it as a second dark hand)
 		_sun.basis = Basis.looking_at(light, Vector3.UP)
 	elif f % 5 == 4 and _out != "":
 		var img := root.get_texture().get_image()
