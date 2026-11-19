@@ -6374,6 +6374,14 @@ R7_ADJUST = [("face_delight", True, 1.0),        # kept: the old painted light d
              ("lash_line", True, 1.0),           # kept: the soft lower line (the painted upper line gives way to the ribbon)
              ("bag_line", True, 2.0),            # kept: the bags' soft fill and curved line under each eye (1.0 hardly showed)
              ("iris_warm", True, 1.0),           # kept: amber-brown round the pupil to golden olive (it read yellow-green)
+             # Fourteenth round (scratchpad brother14/eyes.png, pictures in --game-light: no sun shadows, as in Gulp):
+             # also kept, not as named amounts: the lash strip thinner and dark brown (LASH_RIBBON), the lower lid's
+             # dark line now a faint warm edge (R7_LASH_LO), the bag line broad and soft (BAG_LINE)
+             ("lid_almond", True, 0.5),          # kept: the lids' corners rounder, the lower lid flatter (1.0 went boxy)
+             ("lid_cover", True, 2.5),           # kept: the upper lid 2.5 sheet px lower, over the iris's top
+             ("iris_low", True, 3.0),            # kept: the iris 3 sheet px lower on the ball, its foot on the lower lid: a soft gaze
+             ("sclera_lit", True, 0.35),         # kept: the eye a third self-lit (warm off-white, not grey-blue), the lid's soft shadow painted on the ball's top, a smaller pupil, the highlight upper left
+             ("lid_fold", True, 1.0),            # kept, small: the fold over the upper lid twice as deep
              ("lid_uv", False, 0.6),             # dropped: more picture round the margins by moving the margins' places; the faces folded over each other
              ("iris_big", False, 0.25),          # dropped: with eyes_big the iris is already 0.25 of the distance between the pupils (head3: 0.24)
              ("brows_thin", False, 0.2),         # (see below)
@@ -6714,6 +6722,7 @@ def adjust_r7(R):
 R7_PAINT_ADJ = ("nose_less_red", "face_delight", "forehead_bands", "socket_clean", "lid_clean", "teal_patch", "nose_shine", "cheeks_less_red", "neck_patch", "brows_thin", "nasolabial_soft", "iris_hazel", "bag_shade", "iris_sheet", "sclera_warm", "eye_paint", "jaw_lift_paint")
 R7_EYE_ADJ = ("eyes_downturn", "eye_bags", "lid_heavy", "eyes_open", "socket_fill", "eyes_big", "eyes_forward")
 R7_PAINT_ADJ = R7_PAINT_ADJ + ("socket_skin", "lash_line", "bag_line", "iris_big", "lid_uv", "lash_ribbon", "iris_warm")
+R7_EYE_ADJ = R7_EYE_ADJ + ("lid_almond", "iris_low", "lid_cover", "lid_fold", "sclera_lit", "iris_light", "lash_rig")   # (fourteenth round)
 
 
 def r7_eye_adjust():
@@ -7044,7 +7053,11 @@ def r7_paint_more(face, fpos, fhit, M):
     return np.clip(face, 0, 1)
 
 
-BAG_LINE = (0.010, 0.0016, 0.22, 0.07)   # bag_line: the line's distance under the lower lid, its spread (m), its depth, the fill's
+BAG_LINE = (0.010, 0.0035, 0.07, 0.06)   # bag_line: the line's distance under the lower lid, its spread (m), its depth, the fill's
+# (fourteenth round: was (0.010, 0.0016, 0.22, 0.07): at bag_line 2 a near-black drawn loop under each eye (goggles);
+# head3 draws the bag as a soft warm shadow, so the line is twice as broad and a third as dark)
+R7_LASH_LO = (0.18, (0.62, 0.42, 0.36))  # lash_line: the lower lid's edge, its strength and colour (fourteenth round: a
+# faint warm edge, as head3 has, in place of the dark line at 0.4 that ringed the eye)
 LID_SHADE = (0.0045, 0.0016, 0.10)  # socket_skin: the lid crease's height over the margin, its spread (m) and depth
 LID_SOFT = (0.003, 0.012, 0.05)      # socket_skin: the broad soft shade from the crease to under the brow (m, m, depth)
 R7_LASH = (0.0006, 0.0014, 0.0006)      # lash_line: the upper line's thickness at the inner and outer end, the lower's (m)
@@ -7087,7 +7100,9 @@ def r7_lids_paint(face, fpos, fhit, M):
         h = z - z_top
         along = smooth01(-0.12, 0.08, t) * (1.0 - smooth01(0.95, 1.2, t))
         if ks > 0:
-            sh = LID_SHADE[2] * np.exp(-((h - LID_SHADE[0]) / LID_SHADE[1]) ** 2)
+            # (fourteenth round, "lid_fold", a share: head3's fold over the upper lid is a clear soft line; the crease's
+            # depth raised by this share)
+            sh = LID_SHADE[2] * (1.0 + r7_amount("lid_fold")) * np.exp(-((h - LID_SHADE[0]) / LID_SHADE[1]) ** 2)
             sh = sh + LID_SOFT[2] * smooth01(0.0, LID_SOFT[0], h) * (1.0 - smooth01(LID_SOFT[0], LID_SOFT[1], h))
             sh = sh * along * front * ks * (h > -0.0005)
             face = face * (1 - sh[..., None] * np.array((0.9, 1.05, 1.0)))
@@ -7099,11 +7114,13 @@ def r7_lids_paint(face, fpos, fhit, M):
             zf = out[1] - 0.0008 * np.clip(tf, 0, 1)
             a_fl = (tf > -0.05) * (1.0 - smooth01(0.4, 1.0, tf)) * (1.0 - smooth01(0.4 * R7_LASH[1] * (1 - 0.7 * np.clip(tf, 0, 1)), R7_LASH[1] * (1 - 0.7 * np.clip(tf, 0, 1)), np.abs(z - zf)))
             hl = z_low - z
-            a_lo = 0.4 * (1.0 - smooth01(0.4 * R7_LASH[2], R7_LASH[2], hl)) * (hl > -0.0003) * (z < 0.5 * (z_top + z_low)) * smooth01(0.1, 0.35, t) * (1.0 - smooth01(0.85, 1.0, t))
+            a_lo = (1.0 - smooth01(0.4 * R7_LASH[2], R7_LASH[2], hl)) * (hl > -0.0003) * (z < 0.5 * (z_top + z_low)) * smooth01(0.1, 0.35, t) * (1.0 - smooth01(0.85, 1.0, t))
             a_fl = a_fl * (r7_amount("lash_ribbon") <= 0)
-            a_ = np.clip(np.maximum(np.maximum(a_up, a_fl), a_lo), 0, 1) * front * kl
+            a_ = np.clip(np.maximum(a_up, a_fl), 0, 1) * front * kl
             a_ = a_ * (np.abs(x - C[0]) < 0.05)
             face = face * (1 - a_[..., None]) + np.array(R7_LASH_RGB) * a_[..., None]
+            a_lo = np.clip(a_lo, 0, 1) * front * kl * R7_LASH_LO[0] * (np.abs(x - C[0]) < 0.05)
+            face = face * (1 - a_lo[..., None]) + np.array(R7_LASH_LO[1]) * a_lo[..., None]
         kb = r7_amount("bag_line")
         if kb > 0:
             # ("bag_line": head3's world-weary bags: under each eye a soft warm shade filling the pouch and, at its
@@ -7120,8 +7137,9 @@ def r7_lids_paint(face, fpos, fhit, M):
     return face
 
 
-LASH_RIBBON = (0.0011, 0.003, 0.004)   # lash_ribbon: thickness at the inner end and at the outer corner (m), the flick's length
-LASH_RIBBON_RGB = (0.16, 0.1, 0.075)     # lash_ribbon: its colour (head3's dark brown upper line)
+LASH_RIBBON = (0.0006, 0.0019, 0.003)   # lash_ribbon: thickness at the inner end and at the outer corner (m), the flick's length
+LASH_RIBBON_RGB = (0.30, 0.19, 0.13)     # lash_ribbon: its colour (head3's medium-dark brown upper line)
+# (fourteenth round: was 1.1 to 3 mm, a 4 mm flick, near-black (0.16, 0.1, 0.075): it outlined the eye like eyeliner)
 
 
 def lash_ribbons(M, weights, cut):
@@ -7415,6 +7433,10 @@ def ball_y(x, z, C):
     return C[1] - EYE_RAD[1] * math.sqrt(max(k, 0.0))
 
 
+LID_ALMOND = (0.35, 0.4)   # lid_almond: how much the upper and the lower lid's sine power drops per unit
+SCLERA_TOP_SHADE = 0.22    # sclera_lit: the upper lid's painted shadow at the ball's top (share darker)
+
+
 def eye_outline(n=48):
     """The almond as (column out, row) points round it, from the inner corner over the top and back under."""
     (c0, r0), (c1, r1) = EYE_INNER, EYE_OUTER
@@ -7423,6 +7445,11 @@ def eye_outline(n=48):
     r1 = r1 + FIGURE.get("eye_down", 0.0)
     tu = (EYE_TOP[0] - c0) / (c1 - c0)
     tl = (EYE_LOW[0] - c0) / (c1 - c0)
+    # (fourteenth round, "lid_almond", a share: head3 draws a soft almond, a high rounded upper arch and a flatter lower
+    # lid meeting at small rounded corners; the sine's power taken down so both lids leave the corners steeply (rounded,
+    # not a lemon's points) and the arch and the lower lid flatten across the middle)
+    ka = r7_amount("lid_almond") if HEAD_ROUTE == "r7" else 0.0
+    pu, pl = 0.85 - LID_ALMOND[0] * ka, 0.9 - LID_ALMOND[1] * ka
     out = []
     for i in range(n):
         s = i / n * 2.0
@@ -7434,10 +7461,13 @@ def eye_outline(n=48):
             tt = t ** (math.log(0.5) / math.log(tu))
             # (ninth round, the critic: "staring ... white showing round the iris"; the brief: the upper lid over the top
             # quarter of the iris: the lid's peak lowered by the figure's "lid_drop" (head sheet pixels))
-            row = rc - (rc - EYE_TOP[1] - FIGURE.get("lid_drop", 0.0)) * (math.sin(math.pi * tt) ** 0.85)
+            # (fourteenth round, "lid_cover", sheet pixels: the same for the r7 head, so the upper lid lies over the
+            # iris's top as head3's does (with iris_low, the iris's foot on the lower lid))
+            drop = FIGURE.get("lid_drop", 0.0) + (r7_amount("lid_cover") if HEAD_ROUTE == "r7" else 0.0)
+            row = rc - (rc - EYE_TOP[1] - drop) * (math.sin(math.pi * tt) ** pu)
         else:
             tt = t ** (math.log(0.5) / math.log(tl))
-            row = rc + (EYE_LOW[1] - rc) * (math.sin(math.pi * tt) ** 0.9)
+            row = rc + (EYE_LOW[1] - rc) * (math.sin(math.pi * tt) ** pl)
         out.append((c0 + (c1 - c0) * t, row))
     return np.array(out)
 
@@ -7808,14 +7838,22 @@ def eye_texture(path, size=256):
         # (thirteenth round, "iris_big", a share: head3's iris is 0.24 of the distance between the pupils; with eyes_big
         # the model's was 0.19)
         ri *= 1.0 + r7_amount("iris_big")
-    rp = ri * 0.36
+    rp = ri * (0.3 if (HEAD_ROUTE == "r7" and r7_amount("sclera_lit") > 0) else 0.36)
+    sclera_r = r
+    Y_ = Y
+    if HEAD_ROUTE == "r7" and r7_amount("iris_low") > 0:
+        # (fourteenth round, "iris_low", sheet pixels: head3's upper lid covers the iris's top and the lower lid meets
+        # its foot, a soft gaze; the model's whole iris showed with white above it. The iris and pupil painted this much
+        # lower on the ball (the opening's size unchanged))
+        Y = Y + r7_amount("iris_low") / EYE_IRIS[2] * ri
+        r = np.hypot(X * EYE_RX / EYE_R, Y)
     img = np.zeros((size, size, 3))
     sclera = np.array((0.93, 0.9, 0.86))
     if HEAD_ROUTE == "r7" and r7_amount("sclera_warm") > 0:
         # (head3's whites are warm cream, a little darker than the skin; in the game's light the old white read blue-grey)
         sclera = sclera * (1 - r7_amount("sclera_warm")) + np.array((0.92, 0.86, 0.77)) * r7_amount("sclera_warm")
-    img[:] = sclera * (1.0 - 0.18 * np.clip((r - 0.75) / 0.25, 0, 1))[..., None]
-    img[:] = img * (1.0 - 0.05 * np.clip((r - ri) / 0.4, 0, 1))[..., None] + np.array((0.03, -0.01, -0.02)) * np.clip((r - 0.7) / 0.3, 0, 1)[..., None]
+    img[:] = sclera * (1.0 - 0.18 * np.clip((sclera_r - 0.75) / 0.25, 0, 1))[..., None]
+    img[:] = img * (1.0 - 0.05 * np.clip((r - ri) / 0.4, 0, 1))[..., None] + np.array((0.03, -0.01, -0.02)) * np.clip((sclera_r - 0.7) / 0.3, 0, 1)[..., None]
     t = np.clip(r / ri, 0, 1)
     ang = np.arctan2(Y, X)
     rays = 0.04 * np.sin(ang * 23.0) + 0.03 * np.sin(ang * 37.0 + 1.3)
@@ -7872,9 +7910,15 @@ def eye_texture(path, size=256):
     img = img * (1 - soft * inn) + iris * soft * inn
     pup = np.clip((rp - r) / 0.02, 0, 1)[..., None]
     img = img * (1 - pup) + np.array((0.05, 0.05, 0.07)) * pup
+    if HEAD_ROUTE == "r7" and r7_amount("sclera_lit") > 0:
+        # (fourteenth round, "sclera_lit": the upper lid's soft shadow painted across the top of the ball, from a little
+        # above the iris's middle up to past its top; the pupil a little smaller, as head3's)
+        top = np.clip((sclera_r * 0 + Y_ - 0.3 * ri) / (0.9 * ri), 0, 1) ** 1.5
+        img = img * (1.0 - SCLERA_TOP_SHADE * top[..., None] * np.array((1.0, 1.04, 1.1)))
     if FIGURE.get("iris") == "hazel":
         # a small highlight, up and to one side of the pupil
-        hl = np.clip(1.0 - np.hypot(X * EYE_RX / EYE_R + ri * 0.35, Y + ri * 0.35) / (ri * 0.16), 0, 1)[..., None]
+        hy = -1.0 if (HEAD_ROUTE == "r7" and r7_amount("sclera_lit") > 0) else 1.0   # (fourteenth round: at the upper left, as head3's)
+        hl = np.clip(1.0 - np.hypot(X * EYE_RX / EYE_R + ri * 0.35, Y + hy * ri * 0.35) / (ri * 0.16), 0, 1)[..., None]
         img = img * (1 - hl * 0.85) + np.array((0.97, 0.96, 0.92)) * hl * 0.85
     save_rgb(path, img[::-1])
 
@@ -8522,7 +8566,17 @@ def finish(M, T, joints, sh):
     eye_texture(eye_path)
     Pe, Fe = eye_balls(eyes)
     ob = mesh_object("brother_eyes", Pe, [f for f, _ in Fe], armature, [{"head": 1.0}] * len(Pe))
-    ob.data.materials.append(textured_material("brother_eye", eye_path))
+    mat_e = textured_material("brother_eye", eye_path)
+    if HEAD_ROUTE == "r7" and r7_amount("sclera_lit") > 0:
+        # (fourteenth round, "sclera_lit", a share: in the test's light (a low sun, a cool sky's fill) the warm whites
+        # rendered grey-blue; head3's are a warm off-white. The usual stylised answer: the eye partly self-lit, its own
+        # picture as emission at this share (exported as glTF's emissive texture), the lid's soft shadow painted on it)
+        nt_ = mat_e.node_tree
+        bsdf_ = next(n for n in nt_.nodes if n.type == "BSDF_PRINCIPLED")
+        tex_ = next(n for n in nt_.nodes if n.type == "TEX_IMAGE")
+        nt_.links.new(tex_.outputs["Color"], bsdf_.inputs["Emission Color"])
+        bsdf_.inputs["Emission Strength"].default_value = r7_amount("sclera_lit")
+    ob.data.materials.append(mat_e)
     uvl = ob.data.uv_layers.new(name="UVMap")
     for poly, (_, uv) in zip(ob.data.polygons, Fe):
         for li, q in zip(poly.loop_indices, uv):

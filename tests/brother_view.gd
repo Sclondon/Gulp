@@ -8,6 +8,7 @@ extends SceneTree
 ## (arms down and forward, elbows and knees bent) from the front and the side. Then quits.
 
 const MODEL := "res://models/brother.glb"
+const GAME_LIGHT_SUN := 0.7   # --game-light: the sun's energy without shadows (see _process)
 var _model_path := MODEL
 
 var _out := ""
@@ -91,6 +92,10 @@ func _initialize() -> void:
 		_sun.basis = Basis.looking_at(Vector3(0.55, -0.7, -0.45).normalized(), Vector3.UP)
 		_sun.shadow_enabled = true
 		_sun.directional_shadow_max_distance = 12.0
+		# (fourteenth round: --game-light draws no sun shadows, as Gulp's world has none (CLAUDE.md, "What
+		# Compatibility changed"): the brow and nose then cast no hard shadow over the eyes)
+		if "--game-light" in OS.get_cmdline_user_args():
+			_sun.shadow_enabled = false
 		_grey = StandardMaterial3D.new()
 		_grey.albedo_color = Color(0.5, 0.5, 0.52)
 		_grey.roughness = 0.75
@@ -500,6 +505,10 @@ func _process(_delta: float) -> bool:
 			# the albedo, the shaded back about 0.55 (two and a half to one), with the albedo at the sheet's own
 			# painted tone (SKIN_TONE in tools/build_brother.py).
 			_sun.light_energy = 0.12
+			# (fourteenth round: with --game-light (no shadows) Compatibility lights the face far dimmer for the same
+			# energy (forehead 0.62 against 0.86): the sun is raised so the lit front lands where it did)
+			if not _sun.shadow_enabled:
+				_sun.light_energy = GAME_LIGHT_SUN
 			_env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 			_env.ambient_light_energy = 0.55
 			if d.get("unlit", false):
