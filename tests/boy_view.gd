@@ -33,6 +33,9 @@ var _focus := ""
 
 
 func _initialize() -> void:
+	if "--wire" in OS.get_cmdline_user_args():
+		RenderingServer.set_debug_generate_wireframes(true)
+		root.debug_draw = Viewport.DEBUG_DRAW_WIREFRAME
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			_out = a.get_slice("=", 1)
@@ -126,8 +129,8 @@ func _initialize() -> void:
 	# and one other, painted and lit and in plain grey; framed on the posed bones; an 800x800 window is expected)
 	if _poses:
 		_shots.clear()
-		for pn in POSE_NAMES + ["stride", "sit", "hands"]:
-			if (_only.is_empty() and pn == "hands") or (not _only.is_empty() and not pn in _only):
+		for pn in POSE_NAMES + ["stride", "sit", "hands", "elbow0", "elbow90", "elbow140", "knee0", "knee90", "knee140"]:
+			if (_only.is_empty() and (pn == "hands" or pn.begins_with("elbow") or pn.begins_with("knee"))) or (not _only.is_empty() and not pn in _only):
 				continue
 			var pv: Array = POSE_VIEWS.get(pn, [[], 35.0, 90.0])
 			if _focus != "":
@@ -137,6 +140,15 @@ func _initialize() -> void:
 				var d := Vector3(-sin(a), 0.12, cos(a)).normalized()
 				for grey in [false, true]:
 					_shots.append(["pose_%s_%d%s" % [pn, vi, "_grey" if grey else ""], d, null, 0.0, true, pn, 5.0, grey])
+	# (--hand=fist,point,...: ninth pass, close-ups of his left hand in those finger presets, the arm hanging a little
+	# out from his side, seen from the hand's own back, palm, thumb side, little-finger side and fingertips, lit and grey)
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--hand="):
+			_shots.clear()
+			for preset in a.get_slice("=", 1).split(","):
+				for view in ["back", "palm", "thumb", "little", "tips"]:
+					for grey in [false, true]:
+						_shots.append(["hand_%s_%s%s" % [preset, view, "_grey" if grey else ""], view, null, 0.17, true, "hand:" + preset, 0.12, grey])
 	_grey = StandardMaterial3D.new()
 	_grey.albedo_color = Color(0.7, 0.7, 0.72)
 	_grey.roughness = 0.8
@@ -149,6 +161,9 @@ func _bone_at(name: String) -> Vector3:
 
 func _pose(kind: String) -> void:
 	_skel.reset_bone_poses()
+	if kind.begins_with("hand:"):
+		_apply({"fingers_l": kind.get_slice(":", 1), "arm_l": [Vector3(0.45, -1, 0.3), Vector3(0.45, -1, 0.3)]})
+		return
 	if POSES.has(kind):
 		_apply(POSES[kind])
 		return
@@ -183,12 +198,12 @@ func _pose(kind: String) -> void:
 ##   "foot_l"/"toe_l": euler degrees from the shin/foot; "ground": "feet" (the lower foot's ankle at its rest
 ##   height), "toes", "hips" (the lowest of the seat at the floor), or none. "_r" keys default to the "_l" ones mirrored.
 const HANDS := {
-	"relax": [12.0, 18.0, 24.0, 30.0, 6.0, 15.0, 10.0],
+	"relax": [12.0, 18.0, 24.0, 30.0, 6.0, -12.0, 14.0],
 	"open": [2.0, 2.0, 3.0, 4.0, 10.0, 5.0, 0.0],
 	"spread": [0.0, 0.0, 2.0, 3.0, 22.0, -10.0, 0.0],
-	"fist": [66.0, 72.0, 76.0, 80.0, 0.0, 0.0, 30.0, 0.85],
+	"fist": [66.0, 72.0, 76.0, 80.0, 0.0, 0.0, 48.0, 0.85],
 	"point": [2.0, 88.0, 90.0, 92.0, 0.0, 0.0, 25.0, 0.6],
-	"rest": [18.0, 22.0, 26.0, 30.0, 4.0, 20.0, 15.0],
+	"rest": [18.0, 22.0, 26.0, 30.0, 4.0, -8.0, 18.0],
 	"flat": [0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0],
 }
 const POSES := {
@@ -202,8 +217,8 @@ const POSES := {
 		"arm_l": [Vector3(0.28, -1, 0.12), Vector3(-0.8, -0.3, 0.5), 0.0, -20.0], "hand_l": Vector3(0, 0, 0), "fingers_l": "relax",
 		"leg_l": [Vector3(0.18, -1, 0.3), Vector3(0.0, -1, -0.22)], "ground": "feet"},
 	"shock": {"spine": Vector3(-6, 0, 0), "chest": Vector3(-6, 0, 0), "head": Vector3(-4, 0, 0),
-		"arm_l": [Vector3(0.95, -0.45, 0.35), Vector3(0.12, 1, 0.3)], "fingers_l": "spread", "fingers_r": "spread",
-		"arm_r": [Vector3(-0.95, -0.4, 0.35), Vector3(-0.12, 1, 0.3)],
+		"arm_l": [Vector3(0.8, -0.55, 0.3), Vector3(0.1, 1, 0.3), 0.0, -70.0], "fingers_l": "spread", "fingers_r": "spread",
+		"arm_r": [Vector3(-0.8, -0.5, 0.3), Vector3(-0.1, 1, 0.3), 0.0, -70.0],
 		"leg_l": [Vector3(0.12, -0.35, 1), Vector3(0.12, -1, -0.15)], "foot_l": Vector3(-25, 0, 0),
 		"leg_r": [Vector3(-0.08, -1, 0.12), Vector3(-0.05, -1, -0.05)], "ground": "feet"},
 	"swim": {"turn": Vector3(88, 0, 0), "spine": Vector3(88, 0, 0), "chest": Vector3(85, 0, 0), "neck": Vector3(68, 0, 0), "head": Vector3(52, 0, 0),
@@ -216,19 +231,27 @@ const POSES := {
 		"leg_r": [Vector3(-0.04, -0.25, 1), Vector3(-0.02, -1, 0.12)], "foot_r": Vector3(5, 0, 0),
 		"leg_l": [Vector3(0.04, -0.82, -0.58), Vector3(0.03, 0.2, -1)], "foot_l": Vector3(35, 0, 0), "root": Vector3(0, -0.03, 0)},
 	"crouch": {"spine": Vector3(30, 0, 0), "chest": Vector3(22, -8, 0), "neck": Vector3(0, 0, 0), "head": Vector3(8, 12, 0),
-		"leg_l": [Vector3(0.32, 0.3, 1), Vector3(0.1, -1, -0.5)], "foot_l": Vector3(-6, 0, 0),
+		"leg_l": [Vector3(0.3, 0.45, 1), Vector3(0.05, -1, -0.85)], "foot_l": Vector3(-28, 0, 0),
 		"arm_l": [Vector3(0.25, -0.5, 0.82), Vector3(0.0, -0.85, 0.15)], "hand_l": Vector3(0, 0, 0), "fingers_l": "rest",
 		"arm_r": [Vector3(-0.35, -0.75, 0.6), Vector3(-0.35, -0.65, 0.7)], "fingers_r": "point", "ground": "feet"},
 	"cross": {"spine": Vector3(16, 0, 0), "chest": Vector3(12, 0, 0), "neck": Vector3(-6, 0, 0), "head": Vector3(-10, 0, 0),
-		"leg_l": [Vector3(0.8, 0.14, 0.6), Vector3(-0.85, -0.22, 0.45)], "foot_l": Vector3(0, 0, -20),
+		"leg_l": [Vector3(0.82, -0.1, 0.56), Vector3(-0.93, -0.08, 0.3)], "foot_l": Vector3(-50, 0, -40),
+		"leg_r": [Vector3(-0.82, -0.1, 0.56), Vector3(0.96, -0.1, 0.1)],
 		"arm_l": [Vector3(0.15, -0.45, 0.88), Vector3(-0.2, 0.92, -0.3)], "hand_l": Vector3(0, 0, 0), "fingers_l": "fist", "ground": "hips"},
 	"reach": {"spine": Vector3(-4, 0, 0), "chest": Vector3(-8, 0, 0), "neck": Vector3(-20, 0, 0), "head": Vector3(-34, 0, 0),
 		"arm_l": [Vector3(0.12, 1, 0.12), Vector3(0.06, 1, 0.12)], "fingers_l": "spread",
 		"arm_r": [Vector3(-0.15, -1, -0.12), Vector3(-0.1, -1, 0.08)], "fingers_r": "relax",
 		"leg_l": [Vector3(0.03, -1, -0.02), Vector3(0.02, -1, 0.0)], "foot_l": Vector3(55, 0, 0), "toe_l": Vector3(-55, 0, 0), "ground": "toes"},
 	"hands": {"fingers_l": "fist", "fingers_r": "point", "arm_l": [Vector3(0.6, -1, 0.3), Vector3(0.6, -1, 0.3)], "arm_r": [Vector3(-0.6, -1, 0.3), Vector3(-0.6, -1, 0.3)]},
-	"lookup": {"neck": Vector3(-22, 0, 0), "head": Vector3(-42, 0, 0), "chest": Vector3(-4, 0, 0),
-		"arm_l": [Vector3(0.5, 0.8, 0.3), Vector3(-0.95, 0.2, 0.1), 0.0, -60.0], "hand_l": Vector3(0, 0, 70), "fingers_l": "flat",
+	# (ninth pass) the elbow and knee at 0, 90 and 140 degrees, for close-ups (--only=elbow90 --focus=forearm_l:0.4:90,0)
+	"elbow0": {"arm_l": [Vector3(0.29, -0.96, 0), Vector3(0.29, -0.96, 0)], "fingers_l": "relax"},
+	"elbow90": {"arm_l": [Vector3(0.29, -0.96, 0), Vector3(0, 0, 1)], "fingers_l": "relax"},
+	"elbow140": {"arm_l": [Vector3(0.29, -0.96, 0), Vector3(-0.22, 0.735, 0.643)], "fingers_l": "relax"},
+	"knee0": {"leg_l": [Vector3(0.03, -1, 0), Vector3(0.03, -1, 0)]},
+	"knee90": {"leg_l": [Vector3(0.03, -1, 0), Vector3(0, 0, -1)]},
+	"knee140": {"leg_l": [Vector3(0.03, -1, 0), Vector3(0, 0.766, -0.643)]},
+	"lookup": {"neck": Vector3(-18, 0, 0), "head": Vector3(-30, 0, 0), "chest": Vector3(-4, 0, 0),
+		"arm_l": [Vector3(0.4, 0.88, 0.38), Vector3(-0.88, 0.5, 0.1), 0.0, -60.0], "hand_l": Vector3(0, 0, 70), "fingers_l": "flat",
 		"arm_r": [Vector3(-0.12, -1, 0.02), Vector3(-0.08, -1, 0.15)], "fingers_r": "relax",
 		"leg_l": [Vector3(0.04, -1, 0.0), Vector3(0.03, -1, 0.0)], "ground": "feet"},
 }
@@ -360,6 +383,15 @@ func _apply(spec: Dictionary) -> void:
 				var want := tip - g.origin
 				var full := Quaternion(cur.normalized(), want.normalized())
 				g.basis = Basis(Quaternion().slerp(full, float(c[7]))) * g.basis
+			# (ninth pass) the thumb's second and end bones bend toward the middle finger's middle joint as posed (its
+			# pad toward the fingers), not round the fingers' own axis, which swung it out sideways in a fist
+			if base in ["thumb_2", "thumb_3"]:
+				var g0: Basis = gp.basis * (_rest_g(vp).basis.inverse() * rg.basis)
+				var seg_dir: Vector3 = g0 * (_rest_g("thumb_3" + side).origin - _rest_g("thumb_2" + side).origin)
+				var aim: Vector3 = (_G["finger_middle_2" + side] as Transform3D).origin - g.origin
+				var axw := seg_dir.cross(aim)
+				if axw.length() > 1e-6:
+					g.basis = Basis(Quaternion(axw.normalized(), deg_to_rad(c[6]))) * g0
 		_G[name] = g
 	# (down to the floor)
 	var ground: String = spec.get("ground", "")
@@ -434,6 +466,17 @@ func _process(_delta: float) -> bool:
 		for mesh: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
 			mesh.material_override = _grey if grey else null
 		# (grey: the sun from over the eye's left shoulder, whichever way the eye looks, so the forms are raked)
+		if shot[1] is String:
+			_pose(shot[5])
+			# (the hand's own directions, as posed: its back faced out and 38 degrees forward at rest)
+			var hg: Transform3D = _G["hand_l"]
+			var turn := hg.basis * _rest_g("hand_l").basis.inverse()
+			var back := (turn * Vector3(0.79, 0, 0.62)).normalized()
+			var fwd := ((_G["finger_middle_1_l"] as Transform3D).origin - hg.origin).normalized()
+			var thumb_side := ((_G["finger_index_1_l"] as Transform3D).origin - (_G["finger_little_1_l"] as Transform3D).origin).normalized()
+			var tilt := back * 0.25
+			shot[1] = ({"back": back + fwd * 0.15, "palm": -back - fwd * 0.1, "thumb": thumb_side + tilt, "little": -thumb_side + tilt, "tips": fwd + back * 0.35} as Dictionary)[shot[1]].normalized()
+			shot[2] = hg.origin * 0.3 + (_G["finger_middle_1_l"] as Transform3D).origin * 0.45 + (_G["finger_middle_2_l"] as Transform3D).origin * 0.25
 		var look: Vector3 = -(shot[1] as Vector3)
 		var right := look.cross(Vector3.UP).normalized() if absf(look.y) < 0.9 else Vector3.RIGHT
 		var travel := (look * 0.35 + Vector3.DOWN * 0.55 + right).normalized()
@@ -468,6 +511,9 @@ func _process(_delta: float) -> bool:
 			_cam.size = maxf(hi.x - lo.x, hi.y - lo.y) * 1.12 + 0.12
 			if _focus != "":
 				shot[2] = (_G[_focus.get_slice(":", 0)] as Transform3D).origin
+				if _focus.get_slice_count(":") > 3:
+					var o := _focus.get_slice(":", 3).split(",")
+					shot[2] += Vector3(float(o[0]), float(o[1]), float(o[2]))
 				_cam.size = float(_focus.get_slice(":", 1))
 		var at: Vector3 = shot[2]
 		_cam.near = 0.01
