@@ -201,8 +201,8 @@ const HANDS := {
 	"relax": [12.0, 18.0, 24.0, 30.0, 6.0, -12.0, 14.0],
 	"open": [2.0, 2.0, 3.0, 4.0, 10.0, 5.0, 0.0],
 	"spread": [0.0, 0.0, 2.0, 3.0, 22.0, -10.0, 0.0],
-	"fist": [66.0, 72.0, 76.0, 80.0, 0.0, 0.0, 48.0, 0.85],
-	"point": [2.0, 88.0, 90.0, 92.0, 0.0, 0.0, 25.0, 0.6],
+	"fist": [88.0, 90.0, 90.0, 80.0, 0.0, 0.0, 40.0, 0.7],   # (tenth pass: from 66 to 80, which left the fingers hooked like claws below the knuckles)
+	"point": [2.0, 90.0, 90.0, 80.0, 0.0, 0.0, 25.0, 0.4],
 	"rest": [18.0, 22.0, 26.0, 30.0, 4.0, -8.0, 18.0],
 	"flat": [0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0],
 }
@@ -374,7 +374,10 @@ func _apply(spec: Dictionary) -> void:
 				else:
 					q = Quaternion(ax[0], -deg_to_rad(c[6]) * sg)
 			var gp: Transform3D = _G[vp]
-			g.basis = gp.basis * Basis(q) * (_rest_g(vp).basis.inverse() * rg.basis)
+			# (tenth pass: the curl axes are in the skeleton's rest space, so the turn goes between the parent's posed
+			# change and the bone's rest; put inside the parent's own frame it was turned by the parent's rest basis, and
+			# each finger curled about a skewed axis: the fist's fingers splayed and crossed into shards)
+			g.basis = gp.basis * _rest_g(vp).basis.inverse() * Basis(q) * rg.basis
 			# (a closed hand: the thumb's first bone aimed, by the share c[7], at the index finger's middle joint as
 			# posed, so the thumb lies across the curled fingers)
 			if base == "thumb_1" and c.size() > 7 and float(c[7]) > 0.0:

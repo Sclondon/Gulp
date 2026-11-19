@@ -2243,6 +2243,8 @@ HAND_REST = {"curl": (0.15, 0.21, 0.13), "spread": 0.7, "thumb_in": float(arg("-
 # (fourth pass) the curl grows from the index to the little finger, as a relaxed hand hangs (the critic: "the index
 # finger straightest and the little finger most curled")
 HAND_CASCADE = {"index": 0.75, "middle": 1.0, "ring": 1.3, "little": 1.6}
+HAND_COLLAPSE = float(arg("--hand-collapse", "0.4"))   # (tenth pass) the full base hand collapsed to this share; 0: un-subdivided as before
+HAND_TAUBIN = int(arg("--hand-taubin", "5"))            # (tenth pass) Taubin rounds over the fitted hand (its wrist loop kept)
 HAND = {}
 FRAME_ID = (np.array((0.0, 0.0, 1.0)), np.array((0.0, 1.0, 0.0)), np.array((1.0, 0.0, 0.0)))   # (back, across, along)
 
@@ -2519,6 +2521,7 @@ THUMB_ROUND = (float(arg("--thumb-across", "0.8")), float(arg("--thumb-through",
 FINGER_RATIO = {"index": 0.92, "middle": 1.0, "ring": 0.93, "little": 0.76}
 KNUCKLE = (float(arg("--knuckle", "0.0022")), 0.0012)
 SIX_SIDES = float(arg("--six", "0.8"))   # (ninth pass) 0: every edge round a digit cut (eight to ten sides)
+FINGER_THIN = float(arg("--finger-thin", "0.85"))   # (tenth pass) the fingers made this much as thick round their own axes
 
 
 def split_fingers(Lc, faces, uvs, groups):
@@ -2658,6 +2661,8 @@ def shape_digits(Lc, chains, fingers, thumb, tag=""):
             bk /= np.linalg.norm(bk)
             pb = perp @ bk
             perp = (perp - np.outer(pb, bk)) * THUMB_ROUND[0] + np.outer(pb, bk) * THUMB_ROUND[1]
+        # (tenth pass; the critic: "thin each finger about 20-25%": they were 2 cm through, a grown man's)
+        k = k * (FINGER_THIN if name != "thumb" else 0.5 + 0.5 * FINGER_THIN)
         Lc[idx] = root + np.outer(s2, u) + perp * k[:, None]
         # the tip clipped to a half ellipsoid round its axis (the brother's shape_fingers): a domed fingertip, the
         # cap's corners drawn in, nothing pushed out
@@ -2738,9 +2743,18 @@ def make_hand(sh):
             uvl.data[li].uv = q
     ob = bpy.data.objects.new("_hand", me)
     bpy.context.scene.collection.objects.link(ob)
-    mod = ob.modifiers.new("u", "DECIMATE")
-    mod.decimate_type = "UNSUBDIV"
-    mod.iterations = int(arg("--hand-unsub", "2"))
+    if HAND_COLLAPSE > 0:
+        # (tenth pass, after the brother's ninth round; the critic: "sausage claws ... the fist shatters into prisms":
+        # un-subdivided twice the fingers were four points round, square pegs that splintered when bent. The full base
+        # hand collapsed instead: fingers about eight points round, the knuckle loops kept, about 450 triangles a hand)
+        mod = ob.modifiers.new("c", "DECIMATE")
+        mod.decimate_type = "COLLAPSE"
+        mod.ratio = HAND_COLLAPSE
+        mod.use_collapse_triangulate = False
+    else:
+        mod = ob.modifiers.new("u", "DECIMATE")
+        mod.decimate_type = "UNSUBDIV"
+        mod.iterations = int(arg("--hand-unsub", "2"))
     dg = bpy.context.evaluated_depsgraph_get()
     ev = ob.evaluated_get(dg)
     m2 = ev.to_mesh()
@@ -2765,7 +2779,7 @@ def make_hand(sh):
     Lc = Lc[used]
     # (fourth pass) one ring of each finger dissolved, the one in the middle of its middle bone (no joint bends there):
     # 467 triangles to about 435, under the 450 asked for
-    if "--no-dissolve" not in ARGS:
+    if "--no-dissolve" not in ARGS and HAND_COLLAPSE <= 0:
         Lc, faces, uvs = dissolve_finger_rings(Lc, faces, uvs)
     ec = {}
     for f in faces:
@@ -2784,6 +2798,9 @@ def make_hand(sh):
         if c == start:
             break
         ring.append(c)
+    if HAND_COLLAPSE > 0:
+        # (the cut through the collapsed stub leaves a saw-toothed wrist loop: its points brought to one plane)
+        Lc[ring, 0] = float(np.median(Lc[ring, 0]))
     Lc[:, 0] += HAND_RING_A - Lc[ring, 0].mean()
     print("BOY hand base: %d points, %d faces (%d triangles) after un-subdividing; its wrist ring %d points (%d loops open)" % (
         len(Lc), len(faces), len(tris_of(faces)), len(ring), len(adj) - len(ring)))
@@ -2817,7 +2834,7 @@ def make_hand(sh):
     comps.sort(key=lambda c: -Lc[c, 1].mean())
     print("BOY hand base: thumb %d points, fingers %s points" % (len(thumb), [len(c) for c in comps]))
     fingers = dict(zip(FINGERS, comps[:4]))
-    if FINGER_SPLIT:
+    if FINGER_SPLIT and HAND_COLLAPSE <= 0:
         groups = dict(fingers)
         groups["thumb"] = thumb
         Lc, faces, uvs, G, old = split_fingers(Lc, faces, uvs, groups)
@@ -2878,6 +2895,14 @@ def make_hand(sh):
     Lc = round_tips(Lc, faces, chains, fingers, thumb)
     chains = hand_chains(Lc, faces, thumb, fingers)
     Lc = shape_digits(Lc, chains, fingers, thumb)
+    if HAND_TAUBIN > 0:
+        # (tenth pass, as the brother's hand_taubin: the outline fit moves outline points one by one and the collapsed
+        # mesh is uneven; Taubin rounds, which do not shrink, even it out; the wrist loop stays where the arm meets it)
+        sel = np.ones(len(Lc), bool)
+        sel[ring] = False
+        before = Lc.copy()
+        Lc = smooth_points(Lc, edges_of(faces), sel, rounds=HAND_TAUBIN)
+        print("BOY hand evened: %d Taubin rounds, most a point moved %.1f mm" % (HAND_TAUBIN, 1000 * float(np.linalg.norm(Lc - before, axis=1).max())))
     chains = hand_chains(Lc, faces, thumb, fingers)
     print("BOY hand outline fit: %d pixels differ (from %d)" % (err(Lc), e1))
     n, _ = folded(Lc, faces)
@@ -4285,9 +4310,11 @@ KNEE_BLEND = float(arg("--knee-blend", "0.05"))     # (ninth pass: from 0.04 at 
 
 
 KNUCKLE_WEIGHTS = "--old-hand-weights" not in ARGS
-KNUCKLE_BEHIND = float(arg("--knuckle-behind", "0.011"))   # metres behind the knuckle where the palm starts to follow the finger
-KNUCKLE_PAST = float(arg("--knuckle-past", "0.007"))       # metres past it where the skin is the finger's alone
+KNUCKLE_BEHIND = float(arg("--knuckle-behind", "0.014"))   # metres behind the knuckle where the palm starts to follow the finger
+KNUCKLE_PAST = float(arg("--knuckle-past", "0.01"))       # metres past it where the skin is the finger's alone
 THENAR_SHARE = float(arg("--thenar-share", "0.35"))
+JOINT_BLEND = float(arg("--joint-blend", "0.5"))   # (tenth pass) the middle and end joints blend over this share of the shorter bone each side
+KNUCKLE_PALM = float(arg("--knuckle-palm", "0.004"))   # (tenth pass) metres behind the knuckle where the palm side starts to follow the finger
 
 
 def knuckle_weights(p, part, sfx, at, joints):
@@ -4339,10 +4366,14 @@ def knuckle_weights(p, part, sfx, at, joints):
             s = l1 + max(0.0, along(p, a2, a3))
             if s > l1 + l2 - 0.003:
                 s = l1 + l2 + max(0.0, along(p, a3, a3 + (a3 - a2)))
-        kf = float(smooth01(-KNUCKLE_BEHIND, KNUCKLE_PAST, s)) * out_k
+        # (tenth pass: on the palm's side the blend is short, KNUCKLE_PALM behind the knuckle, so the palm's skin does
+        # not fold in under the curling finger; the back keeps the long blend that rounds the knuckle)
+        hb = float((p - at["finger_%s_1%s" % (f, sfx)]) @ back)
+        behind = KNUCKLE_PALM + (KNUCKLE_BEHIND - KNUCKLE_PALM) * float(smooth01(-0.004, 0.003, hb))
+        kf = float(smooth01(-behind, KNUCKLE_PAST, s)) * out_k
         c = {"hand" + sfx: 1.0 - kf, names[0]: kf}
         l3 = 0.5 * l2
-        for name, at_, b in ((names[1], l1, 0.33 * min(l1, l2)), (names[2], l1 + l2, 0.33 * min(l2, l3))):
+        for name, at_, b in ((names[1], l1, JOINT_BLEND * min(l1, l2)), (names[2], l1 + l2, JOINT_BLEND * min(l2, l3))):
             t = float(smooth01(at_ - b, at_ + b, s))
             c = {kk: vv * (1 - t) for kk, vv in c.items()}
             c[name] = c.get(name, 0.0) + t
@@ -6413,16 +6444,16 @@ def tone_report(M, face_uv, face_rgb, sh):
 # pixels round centred at 1104 so the upper lid covers its top; the critic: "about 20% larger, sunk 2 to 3 mm")
 EYE_INNER = (42.0, 1104.0)
 EYE_OUTER = (118.0, 1101.0)
-EYE_TOP = (79.0, float(arg("--eye-top", "1086")))   # (eighth pass: from 1077; ninth: from 1080, which still showed the iris whole: the lid now over its top 3 px)
+EYE_TOP = (79.0, float(arg("--eye-top", "1082")))   # (eighth pass: from 1077; ninth: from 1080, which still showed the iris whole: the lid now over its top 3 px)
 EYE_LOW = (78.0, 1128.0)
-EYE_IRIS = (78.0, 1104.0, 21.0)
+EYE_IRIS = (78.0, 1104.0, float(arg("--iris", "27.0")))   # (tenth pass: from 21; the sheet's iris is about 58 head-sheet pixels across)
 EYE_R = 0.0135
 EYE_RX = 0.0215
 EYE_RAD = np.array((EYE_RX, EYE_R, EYE_R))
 # (ninth pass, a note from the face rig: his eyeball is NOT a sphere but this ellipsoid, wider across (21.5 mm) than
 # through (13.5 mm); the rig fits it as a 15.6 mm ball. A rounder ball would let the lids slide over it cleaner, if it
 # can be had without the eye reading too round from the front.)
-EYE_BACK = float(arg("--eye-back", "0.0048"))   # (seventh pass: from 0.0028, the eyes sunk into their sockets)
+EYE_BACK = float(arg("--eye-back", "0.0028"))   # (seventh pass: 0.0048, the eyes sunk into their sockets; tenth: back to 0.0028, the critic: "dark pits ... bring the eyeballs forward")
 EYE_LID = (float(arg("--lid-up", "0.0013")), float(arg("--lid-low", "0.0008")))   # (seventh pass: from 0.0006, 0.0004: a thick upper lid, a raised lower one)
 LID_THICK = 0.0013
 EYES_OPEN = "--closed-eyes" not in ARGS
@@ -7010,6 +7041,9 @@ def rule_paint(M, face_uv, picture, pos, nrm, hit, fam, joints):
 
 
 FACE_BY_RULE = "--sheet-face" not in ARGS
+BROW_ROW = float(arg("--brow-row", "1046"))      # (tenth pass: from 1042; the critic: "lower the brows ... thicken them ... darker")
+BROW_THICK = float(arg("--brow-thick", "9.0"))   # (tenth pass: from 6.5)
+BROW_TINT = (0.5, 0.37, 0.24)
 
 
 def lip_seam(M, mk):
@@ -7112,11 +7146,11 @@ def face_features(M, rgb, pos, nrm, hit, fam):
         out = out * (1.0 + (np.asarray(m, float) - 1.0) * np.clip(w, 0, 1)[..., None])
     # brows: an arc above each eye, the inner end lower and fuller, sandy blond (the hair's), a little stroked
     ti = np.clip((ac - 38.0) / 88.0, 0, 1)
-    rb = 1042.0 - 10.0 * np.sin(np.pi * np.clip(ti * 0.85 + 0.08, 0, 1)) ** 0.8 + 3.0 * ti
-    hh = 6.5 - 3.0 * ti
+    rb = BROW_ROW - 10.0 * np.sin(np.pi * np.clip(ti * 0.85 + 0.08, 0, 1)) ** 0.8 + 3.0 * ti
+    hh = BROW_THICK - 3.0 * ti
     ends = smooth01(32.0, 42.0, ac) * (1.0 - smooth01(118.0, 128.0, ac))
     strokes = 0.85 + 0.15 * np.sin(col * 1.9 + row * 0.7)
-    tint(np.exp(-((row - rb) / hh) ** 4) * ends * strokes * fwd * head, (0.6, 0.47, 0.33), 0.62)   # (eighth pass: softer, blond-brown; from 0.64, 0.5, 0.34 at 0.72)
+    tint(np.exp(-((row - rb) / hh) ** 4) * ends * strokes * fwd * head, BROW_TINT, 0.74)   # (eighth pass: softer, blond-brown; from 0.64, 0.5, 0.34 at 0.72)
     # the eye: the opening's upper and lower curves in (column, row)
     poly = eye_outline()
     up = poly[:25]
@@ -7217,7 +7251,7 @@ def rule_face(M, face_uv, face, joints):
 
 
 FACE_POLISH = "--no-face-polish" not in ARGS
-CROWN_SMOOTH = int(arg("--crown-smooth", "6"))
+CROWN_SMOOTH = int(arg("--crown-smooth", "14"))
 BROW_RIDGE = float(arg("--brow-ridge", "0.0012"))
 
 
@@ -7262,6 +7296,60 @@ def face_polish(M):
         CROWN_SMOOTH, int((w > 0.02).sum()), 1000 * BROW_RIDGE, n))
 
 
+NAPE_POLISH = "--no-nape-polish" not in ARGS
+NAPE_IN = float(arg("--nape-in", "0.005"))       # metres the nape is drawn forward under the skull's back
+THROAT_IN = float(arg("--throat-in", "0.004"))   # metres the throat under the jaw is drawn back
+NAPE_SMOOTH = int(arg("--nape-smooth", "10"))
+CROWN_DOME = float(arg("--crown-dome", "0.6"))   # share of the way the cranium is drawn onto its ellipsoid
+DOME_ROW = float(arg("--dome-row", "985"))         # the ellipsoid's middle (head-sheet row): between the brows and the crown
+
+
+def nape_polish(M):
+    """(tenth pass; the critic: "from behind, the neck is a wide funnel with vertical ridges (two tendon-like fins)
+    running up into the skull ... no plane under the jaw") The back of the neck and the skull's base smoothed by Taubin
+    rounds (the fins were where the head's open edge met the neck's rings), the nape drawn forward under the occiput so
+    the skull overhangs it, and the throat under the chin drawn back so a plane under the jaw meets the neck at an
+    angle. Soft fields; the face, ears and shoulders do not move."""
+    P = np.array(M.P)
+    fams = np.array([part_family(p) for p in M.part])
+    ok = np.isin(fams, ("head", "neck"))
+    z = P[:, 2]
+    zc = float(hz(1330.0))              # below the chin: the neck
+    z_skull = float(hz(1215.0))         # the skull's base at his back
+    z_low = NECK_Z - 0.025
+    cy = float(np.median(P[ok & (z > z_skull), 1]))
+    back = smooth01(cy - 0.01, cy + 0.03, P[:, 1])
+    band = smooth01(z_low, z_low + 0.02, z) * (1.0 - smooth01(z_skull, z_skull + 0.025, z))
+    w = ok * back * band
+    if NAPE_SMOOTH > 0:
+        before = P.copy()
+        taubin(M, w > 0.02, rounds=NAPE_SMOOTH)
+        P = np.array(M.P)
+        P = before + (P - before) * w[:, None]
+    # the nape forward, most just under the skull, fading down the neck
+    under = np.exp(-((z - (z_skull - 0.03)) / 0.03) ** 2) * ok * back * (z < z_skull + 0.005)
+    P[:, 1] -= NAPE_IN * under
+    # the throat back: the front of the neck between the chin's underside and the neck's middle
+    front = smooth01(0.0, -0.025, P[:, 1] - cy)
+    throat = np.exp(-((z - (zc + 0.008)) / 0.022) ** 2) * ok * front * np.exp(-(P[:, 0] / 0.035) ** 2)
+    P[:, 1] += THROAT_IN * throat
+    # (the critic: "a tall, narrow bullet with a flattish, faceted crown"; the sheet's bald front and back draw a ball)
+    # The cranium above the brows drawn toward the ellipsoid through its own extents: the flat top and the square
+    # corners at the temples (which stood outside the sheet's outline) rounded; the face and the ears do not move.
+    if CROWN_DOME > 0:
+        cran = (fams == "head") & (z > float(hz(1010.0)))
+        c = np.array((0.0, float((P[cran, 1].max() + P[cran, 1].min()) / 2), float(hz(DOME_ROW))))
+        R = np.array((float(np.abs(P[cran, 0]).max()), float((P[cran, 1].max() - P[cran, 1].min()) / 2), float(P[cran, 2].max() - c[2])))
+        d = (P - c) / R
+        r = np.linalg.norm(d, axis=1)
+        wd = (fams == "head") * smooth01(float(hz(1025.0)), float(hz(965.0)), z) * CROWN_DOME
+        P = P + (c + d / np.maximum(r, 1e-6)[:, None] * R - P) * wd[:, None] * (r > 0.3)[:, None]
+    M.P = [p for p in P]
+    n, _ = folded(P, M.faces)
+    print("BOY nape polish: %d points smoothed, nape %.1f mm in, throat %.1f mm back; %d folded" % (
+        int((w > 0.02).sum()), 1000 * NAPE_IN * float(under.max()), 1000 * THROAT_IN * float(throat.max()), n))
+
+
 def finish(M, T, joints, sh):
     H = None
     bones = skeleton_joints(M, T, joints)
@@ -7275,6 +7363,8 @@ def finish(M, T, joints, sh):
     unfold_head(M)
     if FACE_POLISH:
         face_polish(M)
+    if NAPE_POLISH:
+        nape_polish(M)
     # (third pass: the head is the fitted base mesh, made in build_head; no splitting, smoothing or sculpting here)
     hobjs = lambda: [(np.array(M.P), M.tris(), M.tri_fams())]
     fit_angled_model(hobjs(), sh)
