@@ -2,13 +2,10 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://brq6n4k2xcn76"
+uid="uid://dxt5bbrhf4xhb"
 path="res://.godot/imported/boy_face_boy_eye.png-fb27d14665ff1c2725910f3a0a196deb.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "554ef75985c120b2cee23f0beb6a38da"
 }
 
 [deps]
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

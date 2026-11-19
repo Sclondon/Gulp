@@ -5,34 +5,43 @@ Run (a post-process on a copy; the figure's own glb is never written):
     [--report <file.json>] [--keep-blend <file.blend>]
 
 DECISION (Claude's pick; research and sources in tools/FACE_RIG.md)
-    One `jaw` bone (child of `head`, pivot at the jaw hinge in front of and below the ear) for the open mouth, plus 17
-    morph targets with the same names on every figure:
+    One `jaw` bone (child of `head`, pivot at the jaw hinge in front of and below the ear) for the open mouth, two eye
+    bones `eye_l`/`eye_r` that aim the eyeballs, plus 20 morph targets with the same names on every figure:
         smile frown mouth_o mouth_wide lips_press cheeks_puff brows_up brows_down brows_sad
-        eyes_closed eyes_wide squint sneer   eyes_closed_L eyes_closed_R smile_L smile_R   (L/R = the figure's own)
-    and a mouth inside (lips cut open, an inner lip roll, a dark bag, upper teeth on `head`, lower teeth and tongue on
-    `jaw`, one palette picture). Why: the hybrid of a jaw joint for the rotation and blend shapes for what bones do badly
+        eyes_closed eyes_wide squint sneer eyes_happy   eyes_closed_L eyes_closed_R smile_L smile_R   (L/R = figure's own)
+        blink_arc_L blink_arc_R   (correctives, set by the driver: see SHAPES)
+    and a mouth inside (lips cut open, a soft inner lip, a warm dark pouch, upper teeth on `head`, lower teeth and a
+    tongue on `jaw`, one small picture with a painted row of teeth). Expressions are FACS recipes (EXPRESSIONS below,
+    also written to models/face/face_expressions.json). Why: the hybrid of a jaw joint for the rotation and blend shapes for what bones do badly
     (lips, brows, lids) is the usual set-up for game faces; Godot's Compatibility renderer runs a blend shape only while
     its weight is not zero, but over EVERY vertex of the mesh that holds it, so the head is split off into a mesh of its
     own (`<figure>_head`) on the same skeleton: the shapes cost head vertices only. Lids are moved by rotating about the
     fitted eyeball centre, so they slide over the ball (a sphere-guarded blink). Alternatives (bones only, ARKit's 52,
     visemes, texture-swap faces, a second surface of the body mesh) and why not: tools/FACE_RIG.md.
 
-HOW TO INTEGRATE into a build script (build_brother.py, build_boy.py, build_captain.py, build_npc.py)
-    Just before the glTF export, with the armature, the body mesh (head joined into it, the face's faces on the material
-    whose name ends in `_face`) and the eyeball mesh (or None) as Blender objects:
+HOW TO INTEGRATE into a build script (build_brother.py, build_boy.py, build_captain.py, build_npc.py): the checklist
+is in tools/FACE_RIG.md, "Integration". In short, just before the glTF export:
 
         import importlib.util, os
         spec = importlib.util.spec_from_file_location("face_rig", os.path.join(os.path.dirname(__file__), "face_rig.py"))
         face_rig = importlib.util.module_from_spec(spec); spec.loader.exec_module(face_rig)
-        rig = face_rig.rig_face(armature_obj, body_obj, eyes_obj, figure="brother")   # or "boy", "captain", "npc"
-        # rig["head"] is the new <figure>_head mesh, rig["mouth"] the teeth/tongue/bag mesh, rig["report"] the costs
+        try:
+            rig = face_rig.rig_face(armature_obj, body_obj, eyes_obj, figure="brother", tex_dir=".../textures/face",
+                                    hair=[beard_obj, moustache_obj])      # hair: optional, bound to the face
+        except face_rig.FaceRigError as ex:
+            raise SystemExit("face rig: %s" % ex)                         # a clear message, nothing half-done
+        # rig["head"] = <figure>_head mesh (the shapes), rig["mouth"] = teeth and tongue, rig["report"] = costs, checks
         ... export as before, with export_morph=True, export_morph_normal=True, export_try_sparse_sk=False, then:
         face_rig.zero_still_normals(out_glb)    # no shading change where a shape moves nothing (the neck seam)
 
-    Or step by step: split_head, find_face_landmarks, cut_mouth, add_lip_roll, add_jaw, weight_jaw, add_mouth,
-    add_shapes, (captain) cut_slits + add_eyeballs, finish_normals. Hair, beards and moustaches made later are bound to
-    the face with bind_to_face(hair_obj, head_obj): it copies jaw/head weights and every shape's movement from the
-    nearest point of the head, so a beard follows the jaw and a moustache follows `smile` and `mouth_o`.
+    rig_face adds the bones `jaw`, `eye_l`, `eye_r` (children of `head`, in that order right after it: every bone
+    index after `head` shifts by three; names do not change). It checks its inputs and what it measured, and raises
+    FaceRigError saying what to change. Self-test on any figure's glb (no files written, exit 1 on a failure):
+        blender --background --factory-startup --python tools/face_rig.py -- <in.glb> --selftest [--figure X]
+
+    Hair, beards and moustaches: pass them as `hair` (or call bind_to_face(hair_obj, head_obj) after add_shapes): each
+    vertex copies the bone weights and every shape's movement of the nearest point of the head, so a beard follows the
+    jaw and the smile's cheeks, a moustache the upper lip. Test copies: `--bind a.glb,b.glb` on the command line.
 
 Godot: MeshInstance3D.set_blend_shape_value(mesh.find_blend_shape_by_name("smile"), 0..1); the jaw opens by rotating
 the `jaw` bone about the world's sideways axis expressed in the bone's rest frame (see tests/face_view.gd, `bone_turn`).
@@ -43,9 +52,48 @@ from mathutils import Vector, Matrix, Quaternion
 from mathutils.bvhtree import BVHTree
 from mathutils.kdtree import KDTree
 
+
+class FaceRigError(RuntimeError):
+    """A head that does not meet face_rig's assumptions. The message says which one and what to change."""
+
 SHAPES = ["smile", "frown", "mouth_o", "mouth_wide", "lips_press", "cheeks_puff", "brows_up", "brows_down",
-          "brows_sad", "eyes_closed", "eyes_wide", "squint", "sneer",
-          "eyes_closed_L", "eyes_closed_R", "smile_L", "smile_R"]
+          "brows_sad", "eyes_closed", "eyes_wide", "squint", "sneer", "eyes_happy",
+          "eyes_closed_L", "eyes_closed_R", "smile_L", "smile_R",
+          "blink_arc_L", "blink_arc_R"]
+# blink_arc_L/R are CORRECTIVES, never keyed by hand: a straight-line blend of eyes_closed cuts the lid through the
+# eyeball half-way (the chord of an arc). A driver sets blink_arc_X = 4 c (1 - c), c = that eye's total closure
+# (eyes_closed + eyes_closed_X, clamped 0..1); at c = 0.5 the lid then sits exactly on its true arc, on the shell.
+# (tests/face_view.gd `apply_face` is the reference driver.)
+CORNER_FOLLOW = 0.4
+SNAP = 0.0005      # a cut snaps vertices this near its line onto it (fewer slivers, fewer new vertices)
+
+# Expressions built from FACS action-unit recipes (Ekman and Friesen's Facial Action Coding System; the usual prototype
+# combinations): joy = AU6 cheek raiser + AU12 lip corner puller (+ AU25/26 lips part, jaw drop, for a laugh);
+# surprise = AU1 + AU2 brows up + AU5 upper lid raiser + AU26 jaw drop; anger = AU4 brow lowerer + AU5 + AU7 lid
+# tightener + AU23/24 lips pressed, or with AU10 upper lip raiser and AU27 mouth stretch for a shout; sadness = AU1 +
+# AU4 (inner brows up and together: brows_sad) + AU15 lip corner depressor (frown). Shape <- AU: smile = 6 + 12;
+# eyes_happy = 6 + 43 (the cheeks push the lower lids up into closed arcs); brows_up = 1 + 2; brows_down = 4;
+# brows_sad = 1 + 4; eyes_wide = 5; squint = 7; sneer = 9 + 10; frown = 15 (+ 17); lips_press = 23 + 24;
+# mouth_wide = 20 + 25 + 10/16 (stretched, lips parted); mouth_o = 18 + 22 (funneled); jaw bone = 26/27.
+# Each entry: shapes, jaw (degrees), head and neck tilt (degrees, negative = back), eyes (yaw, pitch degrees).
+# Written to models/face/face_expressions.json so the viewer (and later the game) read the same recipes.
+EXPRESSIONS = {
+    "neutral": dict(shapes={}),
+    "smile": dict(shapes={"smile": 1.0, "squint": 0.25}),
+    "laugh": dict(shapes={"smile": 1.0, "eyes_happy": 1.0, "mouth_wide": 0.45, "brows_up": 0.35}, jaw=17, head=-16, neck=-6),
+    "shock": dict(shapes={"eyes_wide": 1.0, "brows_up": 1.0, "mouth_o": 0.35}, jaw=17),
+    "shout": dict(shapes={"brows_down": 1.0, "squint": 0.35, "sneer": 0.7, "mouth_wide": 0.9}, jaw=14),
+    "sad": dict(shapes={"brows_sad": 1.0, "frown": 1.0, "eyes_closed": 0.25}, head=7, eyes=(0, -8)),
+    "bored": dict(shapes={"eyes_closed": 0.45, "lips_press": 0.4, "frown": 0.2}, eyes=(8, -4)),
+    "puff": dict(shapes={"cheeks_puff": 1.0, "lips_press": 0.5, "eyes_wide": 0.3}),
+    "blink half": dict(shapes={"eyes_closed": 0.5}),
+    "blink": dict(shapes={"eyes_closed": 1.0}),
+    "look up": dict(shapes={"brows_up": 0.3}, head=-23, neck=-12, eyes=(0, 14)),
+    "look left": dict(shapes={}, eyes=(24, 0)),
+    "look right": dict(shapes={}, eyes=(-24, 0)),
+    "look down": dict(shapes={"eyes_closed": 0.2}, eyes=(0, -16)),
+}
+EYE_YAW_MAX, EYE_PITCH_MAX = 30.0, 22.0     # how far the eye bones may turn (degrees), for drivers
 
 # per-figure tuning: multipliers on the shared amounts (Claude's picks, change freely)
 FIGURES = {
@@ -55,15 +103,24 @@ FIGURES = {
     "npc": dict(smile=1.4, brows=1.3, lids=1.0, slits=False),
 }
 
-# the mouth palette: cells of an 8x1 strip (u at a cell's middle)
-PALETTE = [("bag", (0.10, 0.025, 0.03)), ("teeth", (0.90, 0.86, 0.76)), ("gums", (0.70, 0.30, 0.31)),
-           ("tongue", (0.66, 0.26, 0.31)), ("lip_in", (0.52, 0.20, 0.21)), ("sclera", (0.93, 0.91, 0.86)),
-           ("lid_in", (0.45, 0.22, 0.20)), ("spare", (0.5, 0.5, 0.5))]
+# The mouth picture (64 x 16): the left half is a strip of eight teeth (u 0..0.5 across a row of teeth, v 0 at the
+# biting edge .. 1 at the gum line), painted with darker gaps and a warmer neck; the right half holds eight flat cells
+# (u at a cell's middle). The insides are warm dark reds, never black: a lit mouth reads as a mouth, a black one as a hole.
+PALETTE = [("bag", (0.36, 0.11, 0.10)), ("bag_deep", (0.17, 0.045, 0.045)), ("gums", (0.80, 0.42, 0.42)),
+           ("tongue", (0.78, 0.38, 0.38)), ("lip_in", (0.78, 0.45, 0.43)), ("teeth_back", (0.70, 0.64, 0.56)),
+           ("lid_in", (0.62, 0.36, 0.33)), ("tongue_dark", (0.55, 0.22, 0.24))]
+PAL_W, PAL_H, TEETH_W = 64, 16, 32
+TOOTH_N = 8
 
 
 def cell_uv(name, v=0.5):
     i = [p[0] for p in PALETTE].index(name)
-    return ((i + 0.5) / len(PALETTE), v)
+    return ((TEETH_W + (i + 0.5) * (PAL_W - TEETH_W) / len(PALETTE)) / PAL_W, v)
+
+
+def teeth_uv(s, v):
+    """s 0..1 across the row of teeth, v 0 (edge) .. 1 (gum line)."""
+    return (min(max(s, 0.0), 1.0) * (TEETH_W - 0.01) / PAL_W, 0.03 + 0.94 * min(max(v, 0.0), 1.0))
 
 
 def log(*a):
@@ -365,9 +422,26 @@ def find_face_landmarks(head, eyes=None, seam=None, body=None):
         F.u = float(np.mean([abs(e["c"][0]) for e in F.eyes]))
         # lid margins: the head's boundary loops nearest each eye
         loops = _boundary_loops(head)
+        Ef = [list(p.vertices) for p in eyes.data.polygons]
         for e in F.eyes:
             best = min(loops, key=lambda L: np.linalg.norm(P[L].mean(axis=0) - e["c"]))
             e["margin"] = best
+            # the guard the lids slide over: the real eyeball mesh of this side (cartoon eyes are often not spheres)
+            keep = [f for f in Ef if all(E[i, 0] * e["side"] > 0 for i in f)]
+            e["bvh"] = BVHTree.FromPolygons([Vector(p) for p in E], keep)
+            # the lids' pivot: the ball's centre, set back until the margin spans at most about +-35 degrees about
+            # it (a flattened cartoon eye's sphere fit sits far forward, and lids turned about it swing 90 degrees)
+            M = P[best]
+            back = 0.0
+            for _ in range(80):
+                cl = e["c"] + np.array([0, back, 0])
+                V = M - cl
+                if np.abs(np.arctan2(V[:, 2], -V[:, 1])).max() <= 0.62:
+                    break
+                back += 0.0005
+            e["c_lid"] = e["c"] + np.array([0, back, 0])
+            if back > 0:
+                log("eye %+d: lids pivot %.1f mm behind the fitted ball centre" % (e["side"], back * 1000))
     else:
         F.eyes = None
         F.u = u0
@@ -394,8 +468,29 @@ def find_face_landmarks(head, eyes=None, seam=None, body=None):
         vs = [v for v in _valleys(zs, ys, 0.3 * u) if zs[v[0]] < F.nose_tip[2] - 0.45 * u]
         log("mouth: no modelled crease; using the painted mouth line")
     if not vs:
-        raise RuntimeError("no mouth line found")
-    i, prom0 = max(vs, key=lambda v: v[1])
+        raise FaceRigError("no mouth line found under the nose (neither a modelled crease nor a painted line)")
+    # the lips' meeting line is the HIGHEST clear valley under the nose: the crease under the lower lip (mentolabial
+    # sulcus) can be deeper on a modelled chin, and took the brother's cut below his lips. Where the face picture
+    # paints the lips, prefer the candidate where it is darkest.
+    top = max(v[1] for v in vs)
+    cand = [v for v in vs if v[1] >= 0.35 * top]
+    i, prom0 = max(cand, key=lambda v: v[1])
+    if tex is not None and sig is geo_sig:
+        # the painted line between the lips, if the picture has one, says which crease is the mouth
+        tz, ty = tex_sig(0.0, F.nose_tip[2] - 0.25 * u, F.nose_tip[2] - 1.6 * u)
+        tv = [v for v in _valleys(tz, ty, 0.3 * u) if tz[v[0]] < F.nose_tip[2] - 0.35 * u and v[1] > 0.04]
+        if tv:
+            zt = tz[max(tv, key=lambda v: v[1])[0]]
+            near = [v for v in cand if abs(zs[v[0]] - zt) < 0.12 * u]
+            log("mouth: painted line at z %.4f; creases at %s" % (zt, [round(zs[v[0]], 4) for v in cand]))
+            if near:
+                i, prom0 = max(near, key=lambda v: v[1])
+            else:
+                sig, thr = tex_sig, 0.04
+                zs, ys = sig(0.0, F.nose_tip[2] - 0.25 * u, F.nose_tip[2] - 1.6 * u)
+                vs = [v for v in _valleys(zs, ys, 0.3 * u) if zs[v[0]] < F.nose_tip[2] - 0.35 * u]
+                i, prom0 = max(vs, key=lambda v: v[1])
+                log("mouth: no crease at the painted line; cutting along the painted line")
     yfront, _n = _front(bvh, 0.0, zs[i], y0)
     F.mouth_mid = np.array([0.0, yfront, zs[i]])
     # follow it outward to the corners
@@ -552,7 +647,7 @@ def cut_open(obj, curve, x0, x1, zband, ymax, mirror=False):
         # snap near points onto the curve (no slivers), then warp, cut, unwarp
         for v in rverts:
             d = v.co.z - cz(v.co.x)
-            if abs(d) < 0.00035 and a - 1e-4 <= v.co.x <= b + 1e-4:
+            if abs(d) < SNAP and a - 1e-4 <= v.co.x <= b + 1e-4:
                 v.co.z = cz(v.co.x)
         for v in rverts:
             v.co.z -= cz(v.co.x)
@@ -601,7 +696,9 @@ def cut_open(obj, curve, x0, x1, zband, ymax, mirror=False):
 
 
 def cut_mouth(head, F):
-    r = cut_open(head, F.mouth_curve, -F.corner_x, F.corner_x, 0.3 * F.u, F.mouth_mid[1] + 0.35 * F.u)[0]
+    # the cut may reach back as far as the corners lie (a broad face turns back well before its mouth corners)
+    ymax = max(F.mouth_mid[1] + 0.35 * F.u, F.corner[1] + 0.25 * F.u)
+    r = cut_open(head, F.mouth_curve, -F.corner_x, F.corner_x, 0.3 * F.u, ymax)[0]
     F.lip = r
     me = head.data
     ends = max(abs(me.vertices[r["upper"][0]].co.x), abs(me.vertices[r["upper"][-1]].co.x))
@@ -627,11 +724,13 @@ def cut_slits(head, F):
 
 
 # ---------------------------------------------------------------------------------------------------- rolls
-def add_roll(obj, chain, side, depth_fn, mat_index, uvname, into=None, rows_n=2, face_to=None, last=None):
+def add_roll(obj, chain, side, depth_fn, mat_index, uvname, into=None, rows_n=2, face_to=None, last=None, sub=None,
+             src_out=None):
     """Extrude a cut chain inward as rows (an inner lip, a lid's inside, or a whole mouth pouch). side +1 = rolls
     upward (an upper lip), -1 = downward. depth_fn(k) gives (back, along, taper power) offsets for row k. uvname: a
     palette cell, or a function of k. into: a point the rows head toward instead of straight back (an eye's centre).
     face_to: faces are wound to face this point (else by side). last: a list that receives the last row's indices.
+    sub: rows from 2 on keep only about this many points of the chain (the deep pouch needs no lip-fine density).
     Returns {new vertex index: source vertex index}."""
     bm = bmesh.new(); bm.from_mesh(obj.data)
     bm.verts.ensure_lookup_table()
@@ -641,19 +740,24 @@ def add_roll(obj, chain, side, depth_fn, mat_index, uvname, into=None, rows_n=2,
     n = len(C)
     xs = np.array([v.co.x for v in C])
     xa, xb = xs[0], xs[-1]
-    rows = [C]
+    keep_all = list(range(n))
+    keep_sub = keep_all if (sub is None or n <= sub) else sorted(set(np.round(np.linspace(0, n - 1, sub)).astype(int).tolist()))
+    rows = [dict(zip(keep_all, C))]
     src = {}
     for k in range(1, rows_n + 1):
-        row = [C[0]]
+        keep = keep_all if k == 1 else keep_sub
+        row = {0: C[0], n - 1: C[-1]}
         dk = depth_fn(k)
         back, along = dk[0], dk[1]
         pw = dk[2] if len(dk) > 2 else 0.6
-        for i in range(1, n - 1):
+        for i in keep[1:-1]:
             v = C[i]
             t = (v.co.x - xa) / max(1e-9, (xb - xa))
             taper = math.sin(math.pi * t) ** pw
             if into is None:
-                off = Vector((0, back * taper, side * along * taper))
+                # depth never tapers below 0.3 of its full value: rows near a corner sitting on the skin z-fight
+                # with it and show as dark specks at rest
+                off = Vector((0, back * max(taper, 0.3), side * along * taper))
             else:
                 d = (Vector(into) - v.co)
                 dist = d.length
@@ -663,15 +767,17 @@ def add_roll(obj, chain, side, depth_fn, mat_index, uvname, into=None, rows_n=2,
             if dl is not None:
                 nv[dl] = v[dl]
             src[nv] = v
-            row.append(nv)
-        row.append(C[-1])
+            row[i] = nv
         rows.append(row)
     bm.verts.index_update()
     faces = []
     for k in range(rows_n):
         A, B = rows[k], rows[k + 1]
-        for i in range(n - 1):
-            q = [A[i], A[i + 1], B[i + 1], B[i]]
+        ka, kb = sorted(A), sorted(B)
+        for j in range(len(kb) - 1):
+            i0, i1 = kb[j], kb[j + 1]
+            # the A side may be denser: every A point between i0 and i1 joins this face
+            q = [A[i] for i in ka if i0 <= i <= i1] + [B[i1], B[i0]]
             uq = []
             for v in q:
                 if v not in uq:
@@ -698,7 +804,7 @@ def add_roll(obj, chain, side, depth_fn, mat_index, uvname, into=None, rows_n=2,
     bm.verts.index_update()
     out = {nv.index: s.index for nv, s in src.items()}
     if last is not None:
-        last[:] = [v.index for v in rows[-1]]
+        last[:] = [rows[-1][i].index for i in sorted(rows[-1])]
     bm.to_mesh(obj.data); bm.free()
     return out
 
@@ -707,15 +813,15 @@ def add_lip_roll(head, F, mat_index):
     u = F.m
     # the inner lip (rows 1, 2) runs on into the mouth's roof and floor (rows 3, 4), and the two are joined at the
     # back: a closed pouch hung from the lips, so an open mouth never shows through the head (the 'mouth bag')
-    rows = {1: (0.06 * u, 0.035 * u, 0.6), 2: (0.14 * u, 0.13 * u, 0.6), 3: (0.30 * u, 0.36 * u, 0.35),
-            4: (0.62 * u, 0.30 * u, 0.3)}
+    # row 1: the soft pink inner lip; row 2: the roof and floor; row 3: deep in the mouth (darker)
+    rows = {1: (0.08 * u, 0.07 * u, 0.6), 2: (0.32 * u, 0.36 * u, 0.4), 3: (0.64 * u, 0.30 * u, 0.3)}
     depth = lambda k: rows[k]
-    cell = lambda k: "lip_in" if k <= 2 else "bag"
+    cell = lambda k: {1: "lip_in", 2: "bag", 3: "bag_deep"}[k]
     inner = (0.0, F.mouth_mid[1] + 0.35 * u, F.mouth_mid[2])
     F.roll_src = {}
     lu, ll = [], []
-    F.roll_src.update(add_roll(head, F.lip["upper"], +1, depth, mat_index, cell, rows_n=4, face_to=inner, last=lu))
-    F.roll_src.update(add_roll(head, F.lip["lower"], -1, depth, mat_index, cell, rows_n=4, face_to=inner, last=ll))
+    F.roll_src.update(add_roll(head, F.lip["upper"], +1, depth, mat_index, cell, rows_n=3, face_to=inner, last=lu, sub=7))
+    F.roll_src.update(add_roll(head, F.lip["lower"], -1, depth, mat_index, cell, rows_n=3, face_to=inner, last=ll, sub=7))
     # keep the deep rows inside the head (at the corners the cheek turns back, and a roof row could poke out)
     me = head.data
     pulled = 0
@@ -752,7 +858,7 @@ def add_lip_roll(head, F, mat_index):
             f.normal_flip()
         f.material_index = mat_index
         for l in f.loops:
-            l[uvl].uv = cell_uv("bag")
+            l[uvl].uv = cell_uv("bag_deep")
         nf += 1
     bm.to_mesh(head.data); bm.free()
     F.pouch_back = (lu, ll)
@@ -788,8 +894,36 @@ def add_jaw(armature, F):
     jb.use_connect = False
     jb.align_roll(Vector((0, 0, 1)))
     jb.use_deform = True
+    # eye bones (the usual way to aim game eyes: a bone per eyeball at its centre, rotated by look-at code): eye_l is
+    # the figure's own left (+x), each a child of head, pointing forward
+    for e in F.eyes:
+        nm = "eye_l" if e["side"] > 0 else "eye_r"
+        b = eb[nm] if nm in eb else eb.new(nm)
+        c = Vector(e["c"])
+        b.head = inv @ c
+        b.tail = inv @ (c + Vector((0, -2.0 * e["r"], 0)))
+        b.parent = eb["head"]
+        b.use_connect = False
+        b.align_roll(Vector((0, 0, 1)))
+        b.use_deform = True
     bpy.ops.object.mode_set(mode="OBJECT")
-    log("jaw bone: head %s tail %s" % (np.round(F.hinge, 4), np.round(F.chin, 4)))
+    log("jaw bone: head %s tail %s; eye bones at %s" % (np.round(F.hinge, 4), np.round(F.chin, 4),
+                                                       [np.round(e["c"], 4).tolist() for e in F.eyes]))
+
+
+def weight_eyes(eyes_obj, F):
+    """Every vertex of the eyeball mesh onto eye_l (x > 0) or eye_r, wholly (the balls turn rigidly)."""
+    if eyes_obj is None:
+        return
+    P = mesh_arrays(eyes_obj)
+    for g in list(eyes_obj.vertex_groups):
+        eyes_obj.vertex_groups.remove(g)
+    gl = eyes_obj.vertex_groups.new(name="eye_l"); gr = eyes_obj.vertex_groups.new(name="eye_r")
+    li = [i for i in range(len(P)) if P[i, 0] > 0]; ri = [i for i in range(len(P)) if P[i, 0] <= 0]
+    gl.add(li, 1.0, "REPLACE"); gr.add(ri, 1.0, "REPLACE")
+    if not any(m.type == "ARMATURE" for m in eyes_obj.modifiers):
+        raise FaceRigError("the eyeball mesh %s has no Armature modifier" % eyes_obj.name)
+    log("eyes: %d verts on eye_l, %d on eye_r" % (len(li), len(ri)))
 
 
 def jaw_field(F, P, side_of=None):
@@ -815,8 +949,9 @@ def jaw_field(F, P, side_of=None):
     taper = np.sqrt(np.clip(1.0 - (ax / cx) ** 2, 0.0, 1.0))
     if side_of is None:
         side_of = np.sign(dz)
-    lower = np.maximum(0.5 + 0.5 * taper, smoothstep(0.0, -0.45 * u, dz))
-    upper = (0.5 - 0.5 * taper) * np.exp(-(dz / (0.22 * u)) ** 2)
+    # (Disney's empirical jaw rig: the corners follow about half; 0.4 here so a smile can hold them up as the jaw drops)
+    lower = np.maximum(CORNER_FOLLOW + (1 - CORNER_FOLLOW) * taper, smoothstep(0.0, -0.45 * u, dz))
+    upper = (CORNER_FOLLOW - CORNER_FOLLOW * taper) * np.exp(-(dz / (0.22 * u)) ** 2)
     inside = np.where(side_of < 0, lower, upper)
     inside = np.where(dz < -0.5 * u, outside, inside)
     blend = smoothstep(cx, 1.25 * cx, ax)
@@ -906,13 +1041,26 @@ def side_flags(head, F, P):
 
 # ---------------------------------------------------------------------------------------------------- mouth parts
 def palette_image(path):
-    img = bpy.data.images.get("face_palette") or bpy.data.images.new("face_palette", len(PALETTE) * 4, 4)
-    px = []
-    for row in range(4):
-        for name, c in PALETTE:
-            for _ in range(4):
-                px += [c[0], c[1], c[2], 1.0]
-    img.pixels = px
+    img = bpy.data.images.get("face_palette") or bpy.data.images.new("face_palette", PAL_W, PAL_H)
+    px = np.zeros((PAL_H, PAL_W, 4)); px[:, :, 3] = 1.0
+    tw = TEETH_W // TOOTH_N
+    for y in range(PAL_H):
+        v = (y + 0.5) / PAL_H                      # image row 0 is v = 0 (Blender's pixels start at the bottom)
+        enamel = np.array([0.95, 0.93, 0.86]) * (1.0 - 0.10 * v) + np.array([0.0, -0.02, -0.06]) * v
+        for x in range(TEETH_W):
+            c = enamel.copy()
+            k = x % tw
+            if k == 0:                              # the gap between two teeth: a soft grey-pink line
+                c = c * 0.62 + np.array([0.10, 0.03, 0.03])
+            elif k == tw - 1:
+                c = c * 0.90
+            if v < 0.12:                            # the biting edge a touch see-through-grey
+                c = c * 0.92
+            px[y, x, :3] = c
+        for i, (name, c) in enumerate(PALETTE):
+            w = (PAL_W - TEETH_W) // len(PALETTE)
+            px[y, TEETH_W + i * w:TEETH_W + (i + 1) * w, :3] = c
+    img.pixels = px.ravel().tolist()
     img.filepath_raw = path
     img.file_format = "PNG"
     try:
@@ -956,37 +1104,69 @@ def add_mouth(armature, head, F, figure_name, img):
     ym, zm = F.mouth_mid[1], F.mouth_mid[2]
     V, Fc, UV, W = [], [], [], []   # W: jaw share per vertex
 
-    def add(verts, faces, cell, jaw_of):
+    def add(verts, faces, cell, jaw_of, uvs=None):
+        """cell: a palette cell name for every face, or None with uvs: a per-face list of per-corner UVs."""
         base = len(V)
         for p in verts:
             V.append(p); W.append(jaw_of(p))
-        for f in faces:
-            Fc.append(tuple(base + i for i in f)); UV.append(cell)
+        for j, f in enumerate(faces):
+            Fc.append(tuple(base + i for i in f)); UV.append(cell if uvs is None else uvs[j])
 
     # (the bag itself is the pouch hung from the lips in the head mesh: add_lip_roll)
-    # teeth: an arch strip each, teeth row and gum row (separate verts so each has its own colour)
-    def arch(z_top, z_bot, y_front, width, cell_top, cell_bot, jaw, n=8):
-        rowsz = [(z_top, cell_top), (z_bot, cell_bot)]
-        out = []
-        for (za, zb), cell in (((z_top[0], z_top[1]), cell_top), ((z_bot[0], z_bot[1]), cell_bot)):
-            verts, faces = [], []
-            for i in range(n + 1):
-                s = -1 + 2 * i / n
-                x = s * width
-                y = y_front + 0.38 * u * s * s
-                verts += [(x, y, za), (x, y, zb)]
-            for i in range(n):
-                a = 2 * i
-                faces.append((a, a + 2, a + 3, a + 1))
-            add(verts, faces, cell, lambda p, jaw=jaw: jaw)
+    # teeth: each row a curved arch with a little thickness: gum on the front, the teeth's front face (the painted
+    # row of teeth), the biting edge, the back of the teeth. sgn +1 = upper row (edge at the bottom), -1 = lower.
+    def arch(sgn, z_edge, z_gumline, z_gumtop, y_front, width, jaw, n=8):
+        th = 0.075 * u                                 # the teeth's thickness front to back
+        # profile (dy back, z, which part): the section through the arch, front gum top to back of the teeth
+        prof = [(0.0, z_gumtop), (0.0, z_gumline), (0.0, z_edge), (th, z_edge), (th, z_gumline)]
+        parts = ["gum", "front", "edge", "back"]
+        verts, faces, uvs = [], [], []
+        m = len(prof)
+        for i in range(n + 1):
+            s = -1 + 2 * i / n
+            x = s * width
+            y = y_front + 0.42 * u * s * s
+            for (dy, z) in prof:
+                # the row narrows a little toward its back face, so the thickness follows the arch
+                verts.append((x * (1 - 0.6 * dy / max(1e-6, width)), y + dy, z))
+        for i in range(n):
+            s0, s1 = i / n, (i + 1) / n
+            for k, part in enumerate(parts):
+                a, b = i * m + k, i * m + k + 1
+                faces.append((a, (i + 1) * m + k, (i + 1) * m + k + 1, b))
+                if part == "gum":
+                    uvs.append([cell_uv("gums")] * 4)
+                elif part == "front":
+                    # v runs from the gum line (1) to the edge (0)
+                    uvs.append([teeth_uv(s0, 1), teeth_uv(s1, 1), teeth_uv(s1, 0), teeth_uv(s0, 0)])
+                elif part == "edge":
+                    uvs.append([teeth_uv(s0, 0.05), teeth_uv(s1, 0.05), teeth_uv(s1, 0.0), teeth_uv(s0, 0.0)])
+                else:
+                    uvs.append([cell_uv("teeth_back")] * 4)
+        add(verts, faces, None, lambda p, jaw=jaw: jaw, uvs)
 
-    # upper: edge just below the line, gum above
-    arch((zm - 0.05 * u, zm + 0.16 * u), (zm + 0.16 * u, zm + 0.27 * u), ym + 0.15 * u, cx * 0.8, "teeth", "gums", 0.0)
-    # lower: behind the upper (overbite)
-    arch((zm - 0.04 * u, zm - 0.19 * u), (zm - 0.19 * u, zm - 0.28 * u), ym + 0.19 * u, cx * 0.74, "teeth", "gums", 1.0)
-    # the tongue: a low dome on the mouth's floor
-    tv, tf = _ellipsoid(0.0, ym + 0.5 * u, zm - 0.24 * u, cx * 0.62, 0.3 * u, 0.11 * u, 8, 3, 0.0, math.pi / 2)
-    add(tv, tf, "tongue", lambda p: 1.0)
+    # upper row: its edge just below the lips' meeting line, gum above; lower row behind it (an overbite)
+    arch(+1, zm - 0.05 * u, zm + 0.15 * u, zm + 0.27 * u, ym + 0.13 * u, cx * 0.80, 0.0)
+    arch(-1, zm - 0.03 * u, zm - 0.20 * u, zm - 0.30 * u, ym + 0.19 * u, cx * 0.72, 1.0)
+    # the tongue: a shaped dome resting behind the lower teeth, its tip up near their edge, a groove down its middle
+    tv, tf, tuv = [], [], []
+    nx, ny = 6, 5
+    tw_, tl_, tz = cx * 0.62, 0.48 * u, zm - 0.17 * u
+    for j in range(ny + 1):
+        b = j / ny                                     # 0 at the tip, 1 at the back
+        wj = tw_ * (0.55 + 0.45 * math.sin(min(1.0, b * 1.6 + 0.15) * math.pi / 2))
+        for i in range(nx + 1):
+            a = -1 + 2 * i / nx
+            h = 0.12 * u * math.sqrt(max(0.0, 1 - a * a)) - 0.025 * u * math.exp(-(a / 0.3) ** 2)
+            h *= 0.6 + 0.4 * math.sin(min(1.0, b * 2.0) * math.pi / 2)
+            tv.append((a * wj, ym + 0.27 * u + b * tl_, tz + h + 0.04 * u * (1 - b)))
+    for j in range(ny):
+        for i in range(nx):
+            q = j * (nx + 1) + i
+            tf.append((q, q + 1, q + nx + 2, q + nx + 1))
+            edge = i == 0 or i == nx - 1
+            tuv.append([cell_uv("tongue_dark" if edge else "tongue")] * 4)
+    add(tv, tf, None, lambda p: 1.0, tuv)
 
     # teeth and tongue stay inside the head (a wide arch would poke out through the cheeks)
     inner = Vector((0.0, ym + 0.35 * u, zm))
@@ -1003,8 +1183,8 @@ def add_mouth(armature, head, F, figure_name, img):
     me.update()
     uvl = me.uv_layers.new(name="UVMap")
     for p, cell in zip(me.polygons, UV):
-        for li in p.loop_indices:
-            uvl.data[li].uv = cell_uv(cell)
+        for k, li in enumerate(p.loop_indices):
+            uvl.data[li].uv = cell_uv(cell) if isinstance(cell, str) else cell[k]
     mat = bpy.data.materials.get(figure_name + "_mouth_in") or palette_material(figure_name + "_mouth", img)   # one material for all the insides
     me.materials.append(mat)
     ob = bpy.data.objects.new(figure_name + "_mouth", me)
@@ -1215,8 +1395,10 @@ def lid_rotation(F, e, P, close_up, close_lo, band_up=None, band_lo=None):
     return a, ang
 
 
-def lid_remap(F, e, P, up_to, lo_to):
-    """Move the lids by sliding them over the eyeball: in the eye's frame (s along the eye, h up, depth forward), each
+def _lid_remap_heights(F, e, P, up_to, lo_to):
+    """(Retired 2026-11-18: rebuilt each point from its distance to the ball's centre with a square root, which
+    threw points near the eye corners inward as spikes. lid_remap works in angle about the eye's axis instead.)
+    Move the lids by sliding them over the eyeball: in the eye's frame (s along the eye, h up, depth forward), each
     point of the upper lid's band [hu, hu + B] is mapped linearly onto [hu', hu + B] (hu' = up_to(t, hu, hl), the
     edge's new height), the lower lid's band likewise, and the point is put back at its own distance from the ball's
     centre (at least a shell 1.5 mm off the ball), keeping s. Linear in h, so nothing folds; on the shell, so the lid
@@ -1256,21 +1438,154 @@ def lid_remap(F, e, P, up_to, lo_to):
     fade *= (fw > -0.2 * r)
     hn = h.copy()
     bu = is_up & (h <= hu + Bu)
-    k = (h[bu] - hu[bu]) / Bu                         # 0 at the edge .. 1 at the band's top
-    hn[bu] = hu2[bu] + np.clip(k, 0, 1) * (hu[bu] + Bu - hu2[bu])
+    # 0 at the edge .. 1 at the band's top; the lid's rim just below its edge keeps its place below it (k < 0), so
+    # the rim is carried with the edge, never squashed onto it
+    k = (h[bu] - hu[bu]) / Bu
+    hn[bu] = hu2[bu] + np.clip(k, -0.5, 1) * (hu[bu] + Bu - hu2[bu])
     bl = is_lo & (h >= hl - Bl)
     k = (hl[bl] - h[bl]) / Bl
-    hn[bl] = hl2[bl] - np.clip(k, 0, 1) * (hl2[bl] - (hl[bl] - Bl))
+    hn[bl] = hl2[bl] - np.clip(k, -0.5, 1) * (hl2[bl] - (hl[bl] - Bl))
     hn = h + (hn - h) * fade
     moved = np.abs(hn - h) > 1e-7
     ro = max(r, e.get("r_out", r))
     shell = np.where(is_up, ro + 0.0012, ro + 0.0006)   # over the cornea; the upper lid rides just over the lower
-    dn = np.where(moved, np.maximum(d, shell), d)
+    # push each lid out as a whole (its thickness kept: every point by its lid's need, the rim's), faded by how far
+    # the point moves, instead of clamping each point to the shell (which flattened the rim onto the front)
+    dn = d.copy()
+    how = np.clip(np.abs(hn - h) / (0.25 * r), 0, 1)
+    for lid in (is_up & moved, is_lo & moved & ~is_up):
+        if lid.any():
+            need = float(np.max(shell[lid] - d[lid]))
+            if need > 0:
+                dn[lid] = d[lid] + need * how[lid]
+    dn = np.where(moved, np.maximum(dn, shell - 0.0004), dn)
     f2 = dn * dn - s * s - hn * hn
     fwd_new = np.sqrt(np.maximum(f2, (0.25 * r) ** 2))
     # (a moved point always comes out in front of the ball, on or beyond the shell)
     # keep the lid's own thickness: points that were behind the front edge stay as far behind
     Q = c + np.outer(s, a) + np.outer(hn, up) + np.outer(np.where(moved, fwd_new, fw), f)
+    Q[~moved] = P[~moved]
+    return Q
+
+
+def _guard_mesh(e, P, c, a, f, up, s, phi, pn, rho, moved, is_up, is_lo):
+    """Turned lid points, kept outside the real eyeball mesh: each lid is pushed out from the axis as a whole by
+    what its most buried point needs (its thickness kept), faded by how far each point turned; any point still too
+    close is then pushed out alone. Clearance 1.2 mm for the upper lid, 0.7 mm for the lower (it rides under)."""
+    bvh = e["bvh"]
+    r = e["r"]
+    how = np.clip(np.abs(pn - phi) / 0.2, 0, 1)
+
+    def place(rr):
+        return c + np.outer(s, a) + np.outer(rr * np.sin(pn), up) + np.outer(rr * np.cos(pn), f)
+
+    def lack(Q, idx, want):
+        """How far each point must move out (along its own radial direction) to clear the ball by `want`."""
+        out = np.zeros(len(idx))
+        for j, i in enumerate(idx):
+            q = Vector(Q[i])
+            loc, nrm, _fi, dist = bvh.find_nearest(q)
+            if loc is None:
+                continue
+            sd = (q - loc).dot(nrm)
+            if sd < want[j]:
+                rd = Vector(np.sin(pn[i]) * up + np.cos(pn[i]) * f)
+                out[j] = (want[j] - sd) / max(0.35, abs(rd.dot(nrm)))
+        return out
+    rn = rho.copy()
+    Q = place(rn)
+    for lid, clear in ((is_up & moved, 0.0012), (is_lo & moved, 0.0007)):
+        idx = np.where(lid)[0]
+        if not len(idx):
+            continue
+        want = np.full(len(idx), clear)
+        need = lack(Q, idx, want)
+        top = float(np.clip(need.max(initial=0.0), 0.0, 0.3 * r))
+        rn[idx] = rho[idx] + top * how[idx]
+    Q = place(rn)
+    for _ in range(3):                                   # stragglers, one by one
+        idx = np.where(moved & (how > 0.05))[0]
+        want = np.where(is_up[idx], 0.0012, 0.0007)
+        need = lack(Q, idx, want)
+        if need.max(initial=0.0) <= 1e-5:
+            break
+        rn[idx] += need * 1.05
+        Q = place(rn)
+    Q[~moved] = P[~moved]
+    return Q
+
+
+def lid_remap(F, e, P, up_to, lo_to):
+    """Move the lids by turning them about the eye's long axis (inner to outer corner, through the ball's centre).
+    Each point is described by (s along the axis, phi its angle about it measured up from straight ahead, rho its
+    distance from the axis). The upper lid's band [phi_u, phi_u + Bu] is mapped linearly onto [phi_u', phi_u + Bu]
+    (phi_u' = up_to(t, phi_u, phi_l), the edge's new angle), the lower lid's likewise; s and rho are kept, so the lid
+    keeps its thickness and slides round the ball (a sphere-guarded blink, emg2face). Linear and monotone in phi, so
+    nothing folds; no square roots, so nothing is thrown inward at the corners. Moved lids are then pushed out as a
+    whole, if need be, to clear the cornea (ro + 1.2 mm) in front and the ball (r + 0.8 mm) elsewhere."""
+    ef = dict(e); ef["c"] = e.get("c_lid", e["c"])
+    a, f, up, s, _phi = eye_frame(ef, P)
+    r, c = e["r"], ef["c"]
+    V = P - c
+    h = V @ up
+    fw = V @ f
+    phi = np.arctan2(h, fw)
+    rho = np.hypot(h, fw)
+    if e.get("margin"):
+        M = np.array(e["margin"])
+        sm, hm, pm = s[M], h[M], phi[M]
+        i0, i1 = np.argmin(sm), np.argmax(sm)
+        hchord = hm[i0] + (hm[i1] - hm[i0]) * (sm - sm[i0]) / max(1e-9, sm[i1] - sm[i0])
+        upm = hm >= hchord
+        ou, ol = np.argsort(sm[upm]), np.argsort(sm[~upm])
+        pu = np.interp(s, sm[upm][ou], pm[upm][ou]); pl = np.interp(s, sm[~upm][ol], pm[~upm][ol])
+        s0, s1 = sm[i0], sm[i1]
+    else:
+        Ch = np.array(e["cut"]["upper"])
+        o = np.argsort(s[Ch])
+        pu = pl = np.interp(s, s[Ch][o], phi[Ch][o])
+        s0, s1 = s[Ch].min(), s[Ch].max()
+    t = np.clip((s - s0) / max(1e-9, s1 - s0), 0, 1)
+    inside_s = (s >= s0) & (s <= s1)
+    pu2 = np.where(inside_s, up_to(t, pu, pl), pu)
+    pl2 = np.where(inside_s, lo_to(t, pu, pl), pl)
+    Bu, Bl = 0.95, 0.75                                  # the bands, in radians above / below the edges
+    side = e.get("side_flags")
+    tol = np.minimum(0.25, 0.3 * np.maximum(pu - pl, 0.0)) + 0.02
+    is_up = (phi >= pu - tol) if side is None else (side > 0)
+    is_lo = ((phi <= pl + tol) & ~is_up) if side is None else (side < 0)
+    d = np.linalg.norm(V, axis=1)
+    fade = (1.0 - smoothstep(0.0, 0.5 * r, np.maximum(s0 - s, s - s1))) * (1.0 - smoothstep(1.7 * r, 2.6 * r, d))
+    fade *= (fw > -0.2 * r)
+    pn = phi.copy()
+    bu = is_up & (phi <= pu + Bu)
+    k = (phi[bu] - pu[bu]) / Bu
+    pn[bu] = pu2[bu] + np.clip(k, -0.5, 1) * (pu[bu] + Bu - pu2[bu])
+    bl = is_lo & (phi >= pl - Bl)
+    k = (pl[bl] - phi[bl]) / Bl
+    pn[bl] = pl2[bl] - np.clip(k, -0.5, 1) * (pl2[bl] - (pl[bl] - Bl))
+    pn = phi + (pn - phi) * fade
+    moved = np.abs(pn - phi) > 1e-6
+    ro = max(r, e.get("r_out", r))
+    if e.get("bvh") is not None:
+        return _guard_mesh(e, P, c, a, f, up, s, phi, pn, rho, moved, is_up, is_lo)
+    # the guard: the cornea's bulge (ro + 1.2 mm) only in a cone straight ahead of the ball, the ball (r + 0.8 mm)
+    # elsewhere; as a radius about the axis at each s (near the corners, s close to r, it must stay small)
+    dcos = rho * np.cos(pn) / np.maximum(1e-9, np.hypot(s, rho))
+    cone = smoothstep(0.64, 0.9, dcos)
+    S = r + 0.0008 + (ro + 0.0012 - r - 0.0008) * cone
+    S = np.where(is_lo, S - 0.0005, S)                  # the upper lid rides just over the lower
+    shell = np.sqrt(np.maximum(S * S - s * s, 0.0))
+    how = np.clip(np.abs(pn - phi) / 0.2, 0, 1)
+    rn = rho.copy()
+    mid = np.abs(s) < 0.6 * r
+    for lid in (is_up & moved, is_lo & moved):
+        if (lid & mid).any():
+            need = float(np.clip(np.max((shell - rho)[lid & mid]), 0.0, 0.25 * r))
+            if need > 0:
+                rn[lid] = rho[lid] + need * how[lid]
+    rn = np.where(moved, np.maximum(rn, shell - 0.0003 * how), rn)
+    Q = c + np.outer(s, a) + np.outer(rn * np.sin(pn), up) + np.outer(rn * np.cos(pn), f)
     Q[~moved] = P[~moved]
     return Q
 
@@ -1287,9 +1602,12 @@ def lids_delta(F, P, which, amount=1.0, sides=(1, -1), mask=None):
             if which == "closed":      # a squeeze: the folds above and below press toward the slit
                 ut = lambda t, hu, hl: hu - 0.0 * t
                 lt = lambda t, hu, hl: hl + 0.0 * t
+            elif which == "happy":     # the slit bows upward in the middle, a closed laughing arc
+                ut = lambda t, hu, hl: hu + 0.35 * bump_(t) * amount
+                lt = lambda t, hu, hl: hl + 0.35 * bump_(t) * amount
             elif which == "wide":      # the slits pop open on to the eyeballs
-                ut = lambda t, hu, hl: hu + 0.55 * r * bump_(t) * amount
-                lt = lambda t, hu, hl: hl - 0.3 * r * bump_(t) * amount
+                ut = lambda t, hu, hl: hu + 0.55 * bump_(t) * amount
+                lt = lambda t, hu, hl: hl - 0.3 * bump_(t) * amount
             else:
                 ut = lambda t, hu, hl: hu
                 lt = lambda t, hu, hl: hl
@@ -1297,15 +1615,19 @@ def lids_delta(F, P, which, amount=1.0, sides=(1, -1), mask=None):
             if which == "closed":
                 ut = lambda t, hu, hl: hu + ((hl + 0.32 * (hu - hl)) - hu) * amount   # past the lower: a little overlap
                 lt = lambda t, hu, hl: hl + ((hl + 0.42 * (hu - hl)) - hl) * amount
+            elif which == "happy":     # AU6: the lower lid pushed far up, the upper lid down to meet it in an arch
+                arch = lambda t, hu, hl: hl + (hu - hl) * (0.22 + 0.30 * bump_(t))
+                ut = lambda t, hu, hl: hu + (arch(t, hu, hl) - 0.06 * (hu - hl) - hu) * amount
+                lt = lambda t, hu, hl: hl + (arch(t, hu, hl) + 0.04 * (hu - hl) - hl) * amount
             elif which == "wide":
-                ut = lambda t, hu, hl: hu + 0.22 * (hu - hl) * amount
-                lt = lambda t, hu, hl: hl - 0.08 * (hu - hl) * amount
+                ut = lambda t, hu, hl: hu + 0.36 * (hu - hl) * bump_(t) ** 0.5 * amount
+                lt = lambda t, hu, hl: hl - 0.12 * (hu - hl) * bump_(t) ** 0.5 * amount
             else:  # squint
                 ut = lambda t, hu, hl: hu - 0.15 * (hu - hl) * amount
                 lt = lambda t, hu, hl: hl + 0.35 * (hu - hl) * amount
         Q = lid_remap(F, e, P, ut, lt)
         D += Q - P
-    if F.slits and which in ("closed", "squint"):
+    if F.slits and which in ("closed", "squint", "happy"):
         # closed slits: the lids are already shut; a blink or squint scrunches the skin round them instead
         for e in F.eyes:
             if e["side"] not in sides:
@@ -1314,7 +1636,7 @@ def lids_delta(F, P, which, amount=1.0, sides=(1, -1), mask=None):
             above = bump(P, [abs(c[0]), c[1] - r, c[2] + 0.9 * r], [1.3 * r, 1.2 * r, 0.6 * r])
             below = bump(P, [abs(c[0]), c[1] - r, c[2] - 0.9 * r], [1.3 * r, 1.2 * r, 0.6 * r])
             sidem = (np.sign(P[:, 0]) == e["side"]).astype(float)
-            k = 1.0 if which == "closed" else 0.7
+            k = {"closed": 1.0, "squint": 0.7, "happy": 1.2}[which]
             D[:, 2] += (-0.18 * r * above + 0.22 * r * below) * sidem * k * amount
             D[:, 1] -= 0.06 * r * (above + below) * sidem * k * amount
     return D
@@ -1406,15 +1728,26 @@ def add_shapes(head, F, params):
     sm, br, ld = params["smile"], params["brows"], params["lids"]
     D = {}
 
-    # smile: corners up, back and out; cheeks up and forward; lower lids pushed up a little
+    # smile (AU12 + AU6): corners pulled up, back and out along the zygomatic line; the cheeks bunch up and forward
+    # under the eyes (which pushes the lower lids up), the nasolabial fold deepens (the cheek beside it comes forward
+    # while the lip side goes back), the upper lip lifts and stretches a little, the lower lip flattens.
     cb = bump(P, corner, [0.55 * u, 0.6 * u, 0.42 * u])
     d = np.zeros_like(P)
-    d[:, 2] += 0.17 * u * cb * sm
-    d[:, 1] += 0.10 * u * cb * sm
-    d[:, 0] += sgnx * 0.07 * u * cb * sm
-    d[:, 2] += 0.07 * u * cheek * sm
-    d[:, 1] -= 0.035 * u * cheek * sm
-    d += 0.25 * lids_delta(F, P, "squint")
+    d[:, 2] += 0.24 * u * cb * sm
+    d[:, 1] += 0.13 * u * cb * sm
+    d[:, 0] += sgnx * 0.11 * u * cb * sm
+    # the apple of the cheek: up and forward, a broad mass from beside the nose to below the outer eye corner
+    apple = bump(P, [F.eye_x * 1.0, 0, F.eye_z - 0.95 * u], [0.62 * u, 9.0, 0.5 * u]) * (P[:, 1] < F.hinge[1] - 0.2 * u)
+    d[:, 2] += 0.13 * u * apple * sm
+    d[:, 1] -= 0.06 * u * apple * sm
+    # the nasolabial fold: beside the corner, outward of the line from the nose wing to the corner, comes forward
+    fold = bump(P, [cx + 0.30 * u, F.corner[1] - 0.05 * u, 0.5 * (F.corner[2] + F.ala[2])], [0.32 * u, 0.5 * u, 0.55 * u])
+    d[:, 1] -= 0.05 * u * fold * sm
+    # upper lip: up a touch, stretched; lower lip: corners up with it, the middle flattens back
+    lipmid0 = lipzone * np.exp(-((np.abs(P[:, 0])) / (0.7 * cx)) ** 2)
+    d[:, 2] += 0.03 * u * lipmid0 * upper * sm
+    d[:, 1] += 0.03 * u * lipmid0 * lower * sm
+    d += 0.5 * sm * lids_delta(F, P, "squint")     # the lower lids pushed up by the cheeks
     D["smile"] = d
     # frown: corners down, chin pushed up a little
     d = np.zeros_like(P)
@@ -1453,7 +1786,7 @@ def add_shapes(head, F, params):
     # cheeks_puff: cheeks out along their normals, lips pushed forward and pressed
     d = np.zeros_like(P)
     pc = bump(P, [cx + 0.5 * u, F.corner[1] + 0.35 * u, F.corner[2] + 0.12 * u], [0.6 * u, 0.7 * u, 0.55 * u])
-    d += N * (0.2 * u * pc)[:, None]
+    d += N * (0.32 * u * pc)[:, None]
     d[:, 1] -= 0.04 * u * lz
     D["cheeks_puff"] = d
     # brows
@@ -1469,8 +1802,8 @@ def add_shapes(head, F, params):
     D["brows_up"] = d
     bi = brow_zone(F.eye_x * 0.55, 0.55 * u)
     d = np.zeros_like(P)
-    d[:, 2] -= 0.15 * u * bi * br
-    d[:, 0] -= sgnx * 0.07 * u * bi * br
+    d[:, 2] -= 0.21 * u * bi * br
+    d[:, 0] -= sgnx * 0.09 * u * bi * br
     d[:, 1] -= 0.02 * u * bi * br
     bo = brow_zone(F.eye_x * 1.3, 0.5 * u)
     d[:, 2] -= 0.04 * u * bo * br
@@ -1483,6 +1816,12 @@ def add_shapes(head, F, params):
     # lids
     D["eyes_closed"] = lids_delta(F, P, "closed", ld)
     D["eyes_wide"] = lids_delta(F, P, "wide", ld) + 0.35 * D["brows_up"]
+    # eyes_happy (AU6 + AU43): closed laughing arcs; the skin under the eye bunches up with the lower lid
+    d = lids_delta(F, P, "happy", ld)
+    under = bump(P, [F.eye_x, 0, F.eye_z - 0.75 * u], [0.6 * u, 9.0, 0.35 * u]) * (P[:, 1] < F.hinge[1] - 0.2 * u)
+    d[:, 2] += 0.06 * u * under
+    d[:, 1] -= 0.02 * u * under
+    D["eyes_happy"] = d
     d = lids_delta(F, P, "squint", ld)
     d[:, 2] += 0.05 * u * cheek; d[:, 1] -= 0.02 * u * cheek
     D["squint"] = d
@@ -1502,6 +1841,9 @@ def add_shapes(head, F, params):
     D["eyes_closed_R"] = lids_delta(F, P, "closed", ld, sides=(-1,))
     D["smile_L"] = D["smile"] * left[:, None]
     D["smile_R"] = D["smile"] * (1 - left)[:, None]
+    # blink correctives: the true half-closed lid (slid along the ball, on the shell) less the straight-line half
+    for nm, sd in (("blink_arc_L", (1,)), ("blink_arc_R", (-1,))):
+        D[nm] = lids_delta(F, P, "closed", 0.5 * ld, sides=sd) - 0.5 * D["eyes_closed_" + nm[-1]]
 
     # roll rows copy their source; mask; keep the corners and the cut sealed where they should be
     rolls = dict(getattr(F, "roll_src", {})); rolls.update(getattr(F, "lid_roll_src", {}))
@@ -1528,7 +1870,108 @@ def add_shapes(head, F, params):
     return D
 
 
+def _face_image(obj):
+    for m in obj.data.materials:
+        if m and m.name.endswith("_face") and m.use_nodes:
+            for n in m.node_tree.nodes:
+                if n.type == "TEX_IMAGE" and n.image is not None:
+                    w, h = n.image.size
+                    px = np.empty(w * h * 4, dtype=np.float32)
+                    n.image.pixels.foreach_get(px)
+                    return px.reshape(h, w, 4)[:, :, :3]
+    return None
+
+
+def _uv_hit(obj, P, hit):
+    me = obj.data
+    uv = me.uv_layers.active.data
+    poly = me.polygons[hit[2]]
+    li = list(poly.loop_indices)
+    best = None
+    for k in range(1, len(li) - 1):          # the triangle of the polygon that holds the point
+        ids = (li[0], li[k], li[k + 1])
+        a, b, c = (P[me.loops[l].vertex_index] for l in ids)
+        v0, v1, v2 = b - a, c - a, np.array(hit[0]) - a
+        d00, d01, d11, d20, d21 = v0 @ v0, v0 @ v1, v1 @ v1, v2 @ v0, v2 @ v1
+        den = d00 * d11 - d01 * d01
+        if abs(den) < 1e-18:
+            continue
+        bv = (d11 * d20 - d01 * d21) / den; cw = (d00 * d21 - d01 * d20) / den; aw = 1 - bv - cw
+        err = max(0, -aw) + max(0, -bv) + max(0, -cw)
+        t = aw * np.array(uv[ids[0]].uv) + bv * np.array(uv[ids[1]].uv) + cw * np.array(uv[ids[2]].uv)
+        if best is None or err < best[0]:
+            best = (err, t)
+    return None if best is None else best[1]
+
+
+def fix_lid_uvs(head, F):
+    """Lid faces that are hidden at rest (the lid's thickness, its inner rim) come into view when the lids close; if
+    their UVs land on the painted eye (iris, pupil, white) the closed lid shows a painted pupil. Give those faces the
+    UV of the skin just above the upper lid (or below the lower lid). Returns the number of faces changed."""
+    img = _face_image(head)
+    if img is None or not head.data.uv_layers or F.slits:
+        return 0
+    me = head.data
+    H, W = img.shape[:2]
+    P = mesh_arrays(head)
+    bvh = _bvh(head)
+    uvl = me.uv_layers.active.data
+
+    def texel(t):
+        return img[int(np.clip(t[1] % 1.0 * H, 0, H - 1)), int(np.clip(t[0] % 1.0 * W, 0, W - 1))]
+    moved = np.zeros(len(P))
+    for k in ("eyes_closed", "eyes_happy"):
+        moved = np.maximum(moved, np.linalg.norm(F.D[k], axis=1))
+    isface = [bool(m and m.name.endswith("_face")) for m in me.materials]
+    changed = 0
+    for e in F.eyes:
+        c, r = e["c"], e["r"]
+        skin = {}
+        for side, dz in ((1, 1.35), (-1, -1.45)):
+            hit = bvh.ray_cast(Vector((c[0], F.y0, c[2] + dz * r)), Vector((0, 1, 0)), 1.0)
+            if hit[0] is not None:
+                t = _uv_hit(head, P, hit)
+                if t is not None:
+                    skin[side] = (t, texel(t))
+        if len(skin) < 2:
+            continue
+        for p in me.polygons:
+            if not isface[p.material_index]:
+                continue
+            vs = list(p.vertices)
+            cen = P[vs].mean(axis=0)
+            if np.linalg.norm(cen - c) > 2.0 * r or moved[vs].max() < 0.0003 or np.sign(cen[0]) != e["side"]:
+                continue
+            # hidden at rest: facing away from the front, or behind other skin seen from the front
+            hidden = p.normal.y > -0.05
+            if not hidden:
+                h2 = bvh.ray_cast(Vector((cen[0], F.y0, cen[2])), Vector((0, 1, 0)), 1.0)
+                hidden = h2[0] is not None and h2[2] != p.index and h2[0].y < cen[1] - 0.0006
+            if not hidden:
+                continue
+            side = 1 if cen[2] >= c[2] else -1
+            st, scol = skin[side]
+            cols = np.array([texel(uvl[li].uv) for li in p.loop_indices])
+            if np.abs(cols - scol).max() < 0.16:
+                continue
+            for li in p.loop_indices:
+                uvl[li].uv = (float(st[0]), float(st[1]))
+            changed += 1
+    log("lids: %d hidden lid faces moved off the painted eye onto skin" % changed)
+    return changed
+
+
 # ---------------------------------------------------------------------------------------------------- checks
+def drive_correctives(shapes):
+    """The weights a driver sends: the expression's own, plus each eye's blink corrective (4 c (1 - c))."""
+    out = dict(shapes)
+    for s in ("L", "R"):
+        c = min(1.0, max(0.0, shapes.get("eyes_closed", 0.0) + shapes.get("eyes_closed_" + s, 0.0)))
+        if 0.0 < c < 1.0:
+            out["blink_arc_" + s] = 4.0 * c * (1.0 - c)
+    return out
+
+
 def check_faces(head, F):
     """Inside-out at rest (normals against the outward direction from the head's middle, for the skin), folded faces
     in every shape and in the laugh/shout mixes with the jaw open, lids inside eyeballs, teeth in front of lips."""
@@ -1565,12 +2008,16 @@ def check_faces(head, F):
         R = np.array(Matrix.Rotation(math.radians(deg), 3, "X"))  # a + turn about X drops the chin (front is -y)
         Qr = (Q - F.hinge) @ R.T + F.hinge
         return Q + Jw[:, None] * (Qr - Q)
-    mixes = {k: {k: 1.0} for k in SHAPES}
-    mixes["laugh"] = {"mouth_wide": 1.0, "eyes_closed": 1.0, "brows_up": 0.6, "smile": 0.8, "_jaw": 25}
-    mixes["shock"] = {"eyes_wide": 1.0, "brows_up": 1.0, "mouth_o": 0.8, "_jaw": 15}
-    mixes["shout"] = {"brows_down": 1.0, "mouth_wide": 1.0, "sneer": 0.5, "_jaw": 20}
+    mixes = {k: {k: 1.0} for k in SHAPES if not k.startswith("blink_arc")}
+    for name, ex in EXPRESSIONS.items():
+        m = dict(drive_correctives(ex["shapes"]))
+        if ex.get("jaw"):
+            m["_jaw"] = ex["jaw"]
+        mixes["x " + name] = m
     mixes["jaw25"] = {"_jaw": 25}
-    mixes["blink_half"] = {"eyes_closed": 0.5}
+    mixes["blink_quarter"] = drive_correctives({"eyes_closed": 0.25})
+    mixes["blink_3q"] = drive_correctives({"eyes_closed": 0.75})
+    mixes["blink_half_no_arc"] = {"eyes_closed": 0.5}
     mixes["wide_half"] = {"eyes_wide": 0.5}
     for name, mix in mixes.items():
         Q = P.copy()
@@ -1581,6 +2028,8 @@ def check_faces(head, F):
             Q = jaw_open(Q, mix["_jaw"])
         n1 = normals(Q)
         fl = np.einsum("ij,ij->i", n0, n1) < 0
+        area = 0.5 * np.linalg.norm(np.cross(Q[T[:, 1]] - Q[T[:, 0]], Q[T[:, 2]] - Q[T[:, 0]]), axis=1)
+        big = int((fl & skin & (area > 1e-6)).sum())      # folded skin faces over 1 mm2: the ones that show
         flips = int(fl.sum())
         fz = cen[fl & skin]
         where_ = "" if len(fz) == 0 else "skin z %.3f..%.3f y %.3f..%.3f" % (fz[:, 2].min(), fz[:, 2].max(), fz[:, 1].min(), fz[:, 1].max())
@@ -1588,8 +2037,17 @@ def check_faces(head, F):
         for e in F.eyes:
             d = np.linalg.norm(Q - e["c"], axis=1)
             d0 = np.linalg.norm(P - e["c"], axis=1)
-            inside += int(((d < e["r"] - 0.0003) & (d0 >= e["r"] - 0.0003)).sum())
-        rep[name] = dict(flipped=flips, flipped_skin=int((fl & skin).sum()), where=where_, into_eyeball=inside, max_move_mm=round(float(np.abs(Q - P).max() * 1000), 1))
+            if e.get("bvh") is None:
+                inside += int(((d < e["r"] - 0.0003) & (d0 >= e["r"] - 0.0003)).sum())
+                continue
+            near = np.where((d < 2.0 * e.get("r_out", e["r"])) & (np.linalg.norm(Q - P, axis=1) > 1e-5))[0]
+            for i in near:      # moved points that end up inside the real ball (signed distance under -0.3 mm)
+                def sdist(p):
+                    loc, nrm, _f, _d = e["bvh"].find_nearest(Vector(p))
+                    return 1.0 if loc is None else (Vector(p) - loc).dot(nrm)
+                if sdist(Q[i]) < -0.0003 and sdist(P[i]) >= -0.0003:
+                    inside += 1
+        rep[name] = dict(flipped=flips, flipped_skin=int((fl & skin).sum()), flipped_big=big, where=where_, into_eyeball=inside, max_move_mm=round(float(np.abs(Q - P).max() * 1000), 1))
     return rep
 
 
@@ -1689,18 +2147,74 @@ def zero_still_normals(glb_path, eps=1e-7):
 
 
 # ---------------------------------------------------------------------------------------------------- all of it
-def rig_face(armature, body, eyes, figure="brother", tex_dir=None):
+def _require(ok, msg):
+    if not ok:
+        raise FaceRigError(msg)
+
+
+def check_inputs(armature, body, eyes):
+    """The assumptions rig_face makes of a figure, each with what to change when it fails."""
+    _require(armature is not None and armature.type == "ARMATURE", "no armature object given")
+    bones = armature.data.bones
+    _require("head" in bones, "the armature has no bone named 'head' (the jaw and eye bones hang from it)")
+    _require("neck" in bones, "the armature has no bone named 'neck' (the throat's weights fade to it)")
+    for b in ("jaw", "eye_l", "eye_r"):
+        _require(b not in bones, "the armature already has a '%s' bone: rig_face adds it; run it once, on a fresh build" % b)
+    _require(body is not None and body.type == "MESH", "no body mesh given")
+    _require(any(m and m.name.endswith("_face") for m in body.data.materials),
+             "the body mesh %s has no material whose name ends in '_face' (the head's faces are found by it)" % body.name)
+    _require("head" in body.vertex_groups, "the body mesh has no 'head' vertex group")
+    _require(any(m.type == "ARMATURE" and m.object == armature for m in body.modifiers),
+             "the body mesh has no Armature modifier pointing at %s" % armature.name)
+    _require(body.data.shape_keys is None, "the body mesh already has shape keys: rig_face makes the face's own")
+    _require(len(body.data.uv_layers) > 0, "the body mesh has no UV map")
+    if eyes is not None:
+        P = mesh_arrays(eyes)
+        _require((P[:, 0] > 0).any() and (P[:, 0] < 0).any(), "the eyeball mesh %s does not have a ball each side of x = 0" % eyes.name)
+
+
+def check_landmarks(F):
+    """Sanity of what was measured: fails loudly instead of rigging a face wrongly."""
+    u = F.u
+    _require(0.02 < u < 0.12, "eye half-spacing %.4f m is outside 0.02..0.12: wrong scale, or the eyes were not found" % u)
+    _require(F.nose_tip[2] < F.eye_z and F.mouth_mid[2] < F.nose_tip[2],
+             "eyes, nose and mouth are not in order top to bottom (eye z %.3f, nose %.3f, mouth %.3f)" % (F.eye_z, F.nose_tip[2], F.mouth_mid[2]))
+    _require(F.chin_bottom[2] < F.mouth_mid[2] - 0.4 * u, "the chin's underside was not found below the mouth")
+    _require(F.hinge[1] > F.mouth_mid[1] + 1.5 * u, "the jaw hinge is not well behind the mouth (the ears were not found?)")
+    for e in F.eyes:
+        _require(0.006 < e["r"] < 0.04, "an eyeball radius of %.4f m is not believable" % e["r"])
+        if not F.slits:
+            _require(e.get("margin") is not None and len(e["margin"]) >= 8,
+                     "no lid margin (an open boundary loop of 8+ vertices round the eye) found in the head")
+
+
+def rig_face(armature, body, eyes, figure="brother", tex_dir=None, hair=()):
+    """THE call for a build script: everything, in order, with checks. Raises FaceRigError (a clear message) when the
+    figure does not meet an assumption; never returns a half-rigged figure silently. hair: separate meshes (beard,
+    moustache, brows) to bind to the face. Returns dict(head, mouth, eyes, report, face)."""
+    check_inputs(armature, body, eyes)
     params = dict(FIGURES.get(figure, FIGURES["npc"]))
     if eyes is None:
         params["slits"] = True    # no eyeball mesh: treat the eyes as closed slits (found by their crease)
     name = body.name[:-5] if body.name.endswith("_body") else figure
     head, seam, tables = split_head(body, armature, name)
-    F = find_face_landmarks(head, eyes if not params["slits"] else None, seam, body=body)
+    _require(len(head.data.polygons) > 200, "the head split off with only %d faces" % len(head.data.polygons))
+    tris0 = sum(len(p.vertices) - 2 for p in head.data.polygons)
+    try:
+        F = find_face_landmarks(head, eyes if not params["slits"] else None, seam, body=body)
+    except FaceRigError:
+        raise
+    except Exception as ex:
+        raise FaceRigError("measuring the face failed: %s" % ex)
+    check_landmarks(F)
     img = palette_image(os.path.join(tex_dir or bpy.app.tempdir, "face_palette.png"))
     mat = palette_material(name + "_mouth_in", img)
     head.data.materials.append(mat)
     mi = len(head.data.materials) - 1
     cut_mouth(head, F)
+    reach = min(abs(head.data.vertices[F.lip["upper"][0]].co.x), abs(head.data.vertices[F.lip["upper"][-1]].co.x))
+    _require(len(F.lip["upper"]) >= 5, "the mouth cut found only %d vertices along the lips" % len(F.lip["upper"]))
+    F.cut_reach = reach
     add_lip_roll(head, F, mi)
     if F.slits:
         settle_eyeballs(F)
@@ -1710,35 +2224,116 @@ def rig_face(armature, body, eyes, figure="brother", tex_dir=None):
     weight_jaw(head, F, seam=seam, others=[body])
     mouth = add_mouth(armature, head, F, name, img)
     eyes_new = add_eyeballs(armature, head, F, name) if F.slits else None
+    weight_eyes(eyes_new if F.slits else eyes, F)
     add_shapes(head, F, params)
+    lid_fix = fix_lid_uvs(head, F)
     finish_normals(head, seam, tables, F)
+    for h in hair:
+        bind_to_face(h, head)
     rep = shape_cost(head, mouth, body)
+    rep["lid_faces_moved_to_skin"] = lid_fix
+    rep["head_tris_before"] = tris0
+    rep["added_tris"] = rep["head_tris"] - tris0 + rep["mouth_tris"]    # lips' roll, pouch, (slit rolls), teeth, tongue
     rep["checks"] = check_faces(head, F)
-    rep["landmarks"] = dict(u=F.u, corner_x=F.corner_x, mouth=F.mouth_mid.tolist(), hinge=F.hinge.tolist(),
-                            menton=F.chin_bottom.tolist(), gonion=F.gonion.tolist(), ear=F.ear.tolist(),
-                            chin=F.chin.tolist(), eyes=[dict(c=e["c"].tolist(), r=e["r"]) for e in F.eyes])
+    rep["landmarks"] = dict(u=F.u, corner_x=F.corner_x, cut_reach=F.cut_reach, mouth=F.mouth_mid.tolist(),
+                            hinge=F.hinge.tolist(), menton=F.chin_bottom.tolist(), gonion=F.gonion.tolist(),
+                            ear=F.ear.tolist(), chin=F.chin.tolist(), slits=F.slits,
+                            eyes=[dict(c=e["c"].tolist(), r=e["r"]) for e in F.eyes])
+    rep["bones_added"] = ["jaw", "eye_l", "eye_r"]
     return dict(head=head, mouth=mouth, eyes=eyes_new, report=rep, face=F)
+
+
+def write_expressions(path):
+    with open(path, "w") as fh:
+        json.dump(dict(expressions=EXPRESSIONS, shapes=SHAPES, corrective="blink_arc_X = 4c(1-c), c = eyes_closed + eyes_closed_X",
+                       eye_yaw_max=EYE_YAW_MAX, eye_pitch_max=EYE_PITCH_MAX), fh, indent=1)
+
+
+def selftest_report(rep):
+    """Print the self-test's verdict; returns the number of failures."""
+    fails = []
+    lm = rep["landmarks"]
+    log("SELFTEST landmarks: u %.4f, mouth corners at %.4f, cut reaches %.4f (%.0f%%), slits %s, eyes %s" % (
+        lm["u"], lm["corner_x"], lm["cut_reach"], 100 * lm["cut_reach"] / lm["corner_x"], lm["slits"],
+        [(round(e["c"][0], 4), round(e["c"][2], 4), round(e["r"], 4)) for e in lm["eyes"]]))
+    if lm["cut_reach"] < 0.85 * lm["corner_x"]:
+        fails.append("the mouth cut stops at %.0f%% of the mouth's width" % (100 * lm["cut_reach"] / lm["corner_x"]))
+    for k, v in rep["checks"].items():
+        if not isinstance(v, dict):
+            continue
+        bad = v["flipped_skin"] > 0 or v["into_eyeball"] > 0
+        if k in ("jaw25", "blink_half_no_arc"):
+            bad = False                           # shown for comparison only
+        log("SELFTEST %-18s folded %3d (skin %3d) into eyeball %2d  max move %5.1f mm %s %s" % (
+            k, v["flipped"], v["flipped_skin"], v["into_eyeball"], v["max_move_mm"], v["where"], "FAIL" if bad else ""))
+        if bad:
+            fails.append(k)
+    log("SELFTEST cost: head %d verts %d tris, mouth parts %d tris, %d shapes" % (
+        rep["head_verts"], rep["head_tris"], rep["mouth_tris"], rep["shapes"]))
+    log("SELFTEST %s" % ("PASS" if not fails else "FAIL: " + ", ".join(fails)))
+    return len(fails)
 
 
 def main():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    src, dst = argv[0], argv[1]
+    selftest = "--selftest" in argv
+    if selftest:
+        argv.remove("--selftest")
+    pos = []
+    i = 0
+    while i < len(argv):
+        if argv[i].startswith("--"):
+            i += 2
+        else:
+            pos.append(argv[i]); i += 1
+    src = pos[0]
+    dst = pos[1] if len(pos) > 1 else None
     figure = argv[argv.index("--figure") + 1] if "--figure" in argv else os.path.basename(src).split(".")[0].split("_")[0]
     report_path = argv[argv.index("--report") + 1] if "--report" in argv else None
     keep_blend = argv[argv.index("--keep-blend") + 1] if "--keep-blend" in argv else None
+    bind = argv[argv.index("--bind") + 1].split(",") if "--bind" in argv else []
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=os.path.abspath(src), merge_vertices=True)
     for o in list(bpy.data.objects):
         if o.type == "MESH" and o.parent is None and o.name.startswith("Icosphere"):
             bpy.data.objects.remove(o)       # the importer's bone shape
-    arm = next(o for o in bpy.data.objects if o.type == "ARMATURE")
-    body = next(o for o in bpy.data.objects if o.type == "MESH" and o.name.endswith("_body"))
+    arm = next((o for o in bpy.data.objects if o.type == "ARMATURE"), None)
+    body = next((o for o in bpy.data.objects if o.type == "MESH" and o.name.endswith("_body")), None)
     eyes = next((o for o in bpy.data.objects if o.type == "MESH" and o.name.endswith("_eyes")), None)
-    tex_dir = os.path.join(os.path.dirname(os.path.abspath(dst)), "..", "..", "textures", "face")
+    hair = []
+    for p in bind:
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=os.path.abspath(p))
+        for o in set(bpy.data.objects) - before:
+            if o.type != "MESH":
+                continue
+            mw = o.matrix_world.copy()
+            o.parent = arm
+            o.matrix_world = mw
+            if not any(m.type == "ARMATURE" for m in o.modifiers):
+                o.modifiers.new("Armature", "ARMATURE").object = arm
+            hair.append(o)
+            log("bind: %s (%d verts) from %s" % (o.name, len(o.data.vertices), os.path.basename(p)))
+    tex_dir = os.path.join(os.path.dirname(os.path.abspath(dst or src)), "..", "..", "textures", "face") if dst else bpy.app.tempdir
     os.makedirs(tex_dir, exist_ok=True)
-    rig = rig_face(arm, body, eyes, figure, tex_dir)
+    try:
+        rig = rig_face(arm, body, eyes, figure, tex_dir, hair=hair)
+    except FaceRigError as ex:
+        log("FAILED: %s" % ex)
+        sys.exit(2)
     rep = rig["report"]
     log("REPORT " + json.dumps(rep))
+    if dst:
+        write_expressions(os.path.join(os.path.dirname(os.path.abspath(dst)), "face_expressions.json"))
+    if selftest:
+        n = selftest_report(rep)
+        if report_path:
+            with open(report_path, "w") as fh:
+                json.dump(rep, fh, indent=1)
+        if dst is None:
+            sys.exit(1 if n else 0)
+    if dst is None:
+        return
     if keep_blend:
         bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(keep_blend))
     for o in bpy.context.view_layer.objects:

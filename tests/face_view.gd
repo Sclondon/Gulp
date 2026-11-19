@@ -12,18 +12,11 @@ extends SceneTree
 const TILE := 260
 const BIG := 520
 
-const EXPRESSIONS := [
-	["neutral", {}, 0.0, 0.0, 0.0],
-	["smile", {"smile": 1.0}, 0.0, 0.0, 0.0],
-	["laugh", {"mouth_wide": 1.0, "eyes_closed": 1.0, "brows_up": 0.6, "smile": 0.8}, 25.0, -18.0, -7.0],
-	["shock", {"eyes_wide": 1.0, "brows_up": 1.0, "mouth_o": 0.8}, 15.0, 0.0, 0.0],
-	["shout", {"brows_down": 1.0, "mouth_wide": 1.0, "sneer": 0.4}, 20.0, 0.0, 0.0],
-	["sad", {"brows_sad": 1.0, "frown": 0.8, "eyes_closed": 0.2}, 0.0, 6.0, 0.0],
-	["bored", {"eyes_closed": 0.45, "lips_press": 0.5, "frown": 0.25}, 0.0, 0.0, 0.0],
-	["puff", {"cheeks_puff": 1.0, "lips_press": 0.5, "eyes_wide": 0.3}, 0.0, 0.0, 0.0],
-	["blink", {"eyes_closed": 1.0}, 0.0, 0.0, 0.0],
-	["look up", {}, 0.0, -23.0, -12.0],
-]
+## The recipes come from models/face/face_expressions.json (written by tools/face_rig.py from its EXPRESSIONS,
+## built from FACS action units). Each row here: [name, shapes, jaw, head, neck, eye yaw, eye pitch].
+var EXPRESSIONS: Array = []
+const ORDER := ["neutral", "smile", "laugh", "shock", "shout", "sad", "bored", "puff", "blink half", "blink",
+	"look up", "look left", "look right", "look down"]
 
 ## The concept pose sheets' faces: [x, y, size] in the sheet's 2000-wide display coordinates.
 const CONCEPT := {
@@ -53,6 +46,8 @@ var _vp: SubViewport
 var _hide := ""
 var _face_local := Vector3.ZERO
 var _hsize := 0.31
+var _file := ""      # --file=<name>: load models/face/<name>.glb instead of <figure>_face.glb
+var _only := ""      # --only=<expression>: one big three-quarter picture, <file>_<expression>.png
 
 
 func bone_turn(sk: Skeleton3D, bone: String, axis: Vector3, deg: float) -> void:
@@ -65,20 +60,59 @@ func bone_turn(sk: Skeleton3D, bone: String, axis: Vector3, deg: float) -> void:
 	sk.set_bone_pose_rotation(b, (sk.get_bone_rest(b).basis.orthonormalized() * d).get_rotation_quaternion())
 
 
-func _pose(shapes: Dictionary, jaw: float, head: float, neck: float) -> void:
+## The reference face driver (what the game's will do): the expression's weights, plus each eye's blink corrective
+## blink_arc_X = 4c(1 - c), c = eyes_closed + eyes_closed_X (keeps a half-closed lid on its arc over the eyeball).
+static func drive_correctives(shapes: Dictionary) -> Dictionary:
+	var out := shapes.duplicate()
+	for s in ["L", "R"]:
+		var c := clampf(float(shapes.get("eyes_closed", 0.0)) + float(shapes.get("eyes_closed_" + s, 0.0)), 0.0, 1.0)
+		if c > 0.0 and c < 1.0:
+			out["blink_arc_" + s] = 4.0 * c * (1.0 - c)
+	return out
+
+
+## Aim both eyes: yaw > 0 turns them to the figure's own left, pitch > 0 up (degrees, from rest).
+func aim_eyes(sk: Skeleton3D, yaw: float, pitch: float) -> void:
+	for b in ["eye_l", "eye_r"]:
+		var i := sk.find_bone(b)
+		if i < 0:
+			continue
+		var g := sk.get_bone_global_rest(i).basis.orthonormalized()
+		var turn := Basis(Vector3.UP, deg_to_rad(yaw)) * Basis(Vector3.RIGHT, deg_to_rad(-pitch))
+		sk.set_bone_pose_rotation(i, (sk.get_bone_rest(i).basis.orthonormalized() * (g.inverse() * turn * g)).get_rotation_quaternion())
+
+
+func _pose(shapes: Dictionary, jaw: float, head: float, neck: float, eyes := Vector2.ZERO) -> void:
+	var w := drive_correctives(shapes)
 	for mi: MeshInstance3D in _heads:
 		for i in mi.mesh.get_blend_shape_count():
 			mi.set_blend_shape_value(i, 0.0)
-		for k in shapes:
+		for k in w:
 			var i: int = mi.find_blend_shape_by_name(k)
 			if i < 0:
 				push_warning("no shape " + k)
 			else:
-				mi.set_blend_shape_value(i, shapes[k])
+				mi.set_blend_shape_value(i, w[k])
 	_sk.reset_bone_poses()
 	bone_turn(_sk, "jaw", Vector3.RIGHT, jaw)
 	bone_turn(_sk, "head", Vector3.RIGHT, head)
 	bone_turn(_sk, "neck", Vector3.RIGHT, neck)
+	aim_eyes(_sk, eyes.x, eyes.y)
+
+
+func _pose_row(e: Array) -> void:
+	_pose(e[1], e[2], e[3], e[4], Vector2(e[5], e[6]))
+
+
+func _load_expressions() -> void:
+	var f := FileAccess.open("res://models/face/face_expressions.json", FileAccess.READ)
+	var d: Dictionary = JSON.parse_string(f.get_as_text())
+	var ex: Dictionary = d["expressions"]
+	for n in ORDER:
+		var x: Dictionary = ex[n]
+		var ey: Array = x.get("eyes", [0.0, 0.0])
+		EXPRESSIONS.append([n, x.get("shapes", {}), float(x.get("jaw", 0.0)), float(x.get("head", 0.0)),
+			float(x.get("neck", 0.0)), float(ey[0]), float(ey[1])])
 
 
 func _grey_on(on: bool) -> void:
@@ -129,6 +163,11 @@ func _initialize() -> void:
 			_hide = a.get_slice("=", 1)
 		if a == "--combine":
 			combine = true
+		if a.begins_with("--file="):
+			_file = a.get_slice("=", 1)
+		if a.begins_with("--only="):
+			_only = a.get_slice("=", 1)
+	_load_expressions()
 	if combine:
 		_combine()
 		quit()
@@ -186,7 +225,7 @@ func _run() -> void:
 	_cam.current = true
 	_grey.albedo_color = Color(0.72, 0.72, 0.72)
 	_grey.roughness = 0.8
-	var path := "res://models/face/%s_face.glb" % _figure
+	var path := "res://models/face/%s.glb" % (_file if _file != "" else _figure + "_face")
 	var ps: PackedScene = load(path)
 	if ps == null:
 		push_error("cannot load " + path)
@@ -205,7 +244,8 @@ func _run() -> void:
 	if _hide != "":
 		for mi: MeshInstance3D in _model.find_children("*" + _hide + "*", "MeshInstance3D", true, false):
 			mi.visible = false
-	print("FACEVIEW bones ", _sk.get_bone_count(), " jaw ", _sk.find_bone("jaw"))
+	print("FACEVIEW bones ", _sk.get_bone_count(), " head ", _sk.find_bone("head"), " jaw ", _sk.find_bone("jaw"),
+		" eye_l ", _sk.find_bone("eye_l"), " eye_r ", _sk.find_bone("eye_r"))
 	var hm: MeshInstance3D = _heads[0]
 	var bb: AABB = hm.global_transform * hm.get_aabb()
 	_hsize = bb.size.y
@@ -213,6 +253,17 @@ func _run() -> void:
 	var hr: Transform3D = _sk.global_transform * _sk.get_bone_global_rest(_sk.find_bone("head"))
 	_face_local = hr.affine_inverse() * fp
 	print("FACEVIEW head size ", _hsize, " face point ", fp)
+
+	if _only != "":
+		for e in EXPRESSIONS:
+			if e[0] == _only:
+				_pose_row(e)
+				_aim(28.0, 1.25, 0.0)
+				var one: Image = await _shot()
+				one.save_png(_out.path_join((_file if _file != "" else _figure) + "_" + _only.replace(" ", "_") + ".png"))
+				print("FACEVIEW wrote one picture")
+		quit()
+		return
 
 	# concept sheet
 	var concept: Image = null
@@ -236,7 +287,7 @@ func _run() -> void:
 				crop.convert(Image.FORMAT_RGB8)
 				sheet.blit_rect(_tile(crop, TILE), Rect2i(0, 0, TILE, TILE), Vector2i(c * TILE, 0))
 		for row in [1, 2, 3]:
-			_pose(e[1], e[2], e[3], e[4])
+			_pose_row(e)
 			_grey_on(row == 3)
 			_aim(0.0 if row == 1 else 35.0, 1.0, 0.03 if e[0] == "look up" else 0.0)
 			var img: Image = await _shot()
@@ -247,12 +298,14 @@ func _run() -> void:
 	print("FACEVIEW wrote ", _figure, "_expressions.png")
 
 	# close-ups for checking: blink and laugh, eye and mouth, front and side
-	var close := Image.create(5 * TILE * 2, TILE * 2, false, Image.FORMAT_RGB8)
-	var cl := [[8, 0.0, 0.04, 0.45], [4, 90.0, -0.05, 0.6], [2, 0.0, -0.05, 0.6], [4, 35.0, -0.05, 0.6], [0, 25.0, -0.06, 0.3]]
+	# (blink half and blink at the eye; the laugh's mouth front and three-quarter; the mouth at rest; shock's eyes)
+	var cl := [[8, 0.0, 0.04, 0.42], [9, 0.0, 0.04, 0.42], [2, 0.0, -0.05, 0.6], [2, 35.0, -0.05, 0.6],
+		[0, 25.0, -0.06, 0.35], [3, 0.0, 0.04, 0.45]]
+	var close := Image.create(cl.size() * TILE * 2, TILE * 2, false, Image.FORMAT_RGB8)
 	for i in cl.size():
 		var q: Array = cl[i]
 		var e: Array = EXPRESSIONS[q[0]]
-		_pose(e[1], e[2], e[3], e[4])
+		_pose_row(e)
 		_grey_on(false)
 		_aim(q[1], q[3], q[2])
 		var img: Image = await _shot()
@@ -273,11 +326,11 @@ func _run() -> void:
 	strip.save_png(_out.path_join(_figure + "_talk.png"))
 
 	# beauty: laugh, shock, look up, big, three-quarter
-	var beauty := Image.create(3 * BIG, BIG, false, Image.FORMAT_RGB8)
-	var picks := [2, 3, 9]
+	var picks := [2, 3, 5, 10]
+	var beauty := Image.create(picks.size() * BIG, BIG, false, Image.FORMAT_RGB8)
 	for i in picks.size():
 		var e: Array = EXPRESSIONS[picks[i]]
-		_pose(e[1], e[2], e[3], e[4])
+		_pose_row(e)
 		_aim(28.0, 1.05, 0.03 if e[0] == "look up" else 0.0)
 		var img: Image = await _shot()
 		img.convert(Image.FORMAT_RGB8)

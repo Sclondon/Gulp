@@ -1061,3 +1061,13 @@ browser after this push.
     `tools/face_rig.py`, `tools/FACE_RIG.md` (research with sources, then the decision), test outputs `models/face/*`.
   - Every figure's builder now runs the pose test against its pose sheet; critiques by a no-context reviewer drive
     each round; lit "beauty" pictures are what the user is shown.
+- Facial movement, second pass (2026-11-18, evening; `tools/FACE_RIG.md` is the record): `tools/face_rig.py` adds, as a
+  post-process on a built figure, a `jaw` bone, `eye_l`/`eye_r` bones (bone numbers after `head` shift by three; names
+  do not change), a mouth inside (arched teeth, tongue), 20 shared shapes, and expression recipes built from FACS
+  (`models/face/face_expressions.json`). `rig_face(...)` is one call for the build scripts; `-- <in.glb> --selftest`
+  checks a head. Beards and moustaches follow the face through `bind_to_face`. Test copies only (`models/face/*`), not
+  in the game. What the figures' builders owe it: the lips' meeting line as a real edge loop on the painted mouth line
+  (the cut otherwise costs about 500 triangles a figure, not 250); the boy's lids painted as skin with lashes a thin
+  line; a heavier loop under the captain's chin. Small folded faces remain in laughs (its self-test fails on them).
+- The captain's pose test is `tests/captain_beauty.gd -- --poses`, the boy's `tests/boy_view.gd -- --poses`; all three
+  rigs already have three bones a finger and thumb (`finger_<name>_1..3_<side>`, `thumb_1..3_<side>`).

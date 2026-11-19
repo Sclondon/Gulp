@@ -69,6 +69,7 @@ Each line: the source, and what it said that mattered here. "Unverified" marks w
 ## Decision (Claude's pick, from the research above)
 
 **What:** faces move by **one `jaw` bone plus 17 morph targets on a head mesh of its own**, with a mouth inside.
+(Second pass: 20 shapes, adding `eyes_happy` and the blink correctives `blink_arc_L`/`_R`, and two eye bones; see below.)
 
 - `jaw`: child of `head`, pivot at the jaw hinge found from the head (in front of and below the ear's middle, at the
   height of the cheekbone's underside). Lower lip, chin, under-jaw, lower teeth and tongue follow it; the lip corners at
@@ -133,7 +134,83 @@ it); the mouth bag is best hung from the lips themselves (a separate ellipsoid l
 - Skeleton and inverse bind matrices are unchanged by the round trip (checked by comparing the glbs); the new bone
   `jaw` is inserted after `head`, so bone INDICES after it shift by one (names are unchanged).
 
-## Costs (glTF, as exported)
+## Second pass (2026-11-18, evening, Claude): what changed and why
+
+More research for this pass: FACS (Ekman and Friesen's Facial Action Coding System) prototype combinations: joy =
+AU6 cheek raiser + AU12 lip corner puller (+ AU25/26 for a laugh); surprise = AU1 + 2 + 5 + 26; anger = AU4 + 5 + 7 +
+23/24, or with AU10 + 27 shouting; sadness = AU1 + 4 + 15. The viewer's expressions are now these recipes
+(`EXPRESSIONS` in face_rig.py, written to `models/face/face_expressions.json`, read by tests/face_view.gd). Eye aiming:
+a bone per eyeball under the head, turned by look-at code, is the usual game answer (Roblox's dynamic heads and the
+usual Unity/Unreal character rigs aim eyes by joints; UV-scrolling irises suit flat painted eyes, and ours are balls).
+
+- **Mouth**: the palette is now a 64 x 16 picture whose left half is a row of eight painted teeth (gaps, a warmer
+  neck); teeth are curved arches with thickness (gum, front, biting edge, back); a shaped tongue with a groove rests
+  behind the lower teeth; the inside is warm dark red (`bag`), darker deep in (`bag_deep`), never black; the inner lip
+  is pink. Pouch three rows (was four), the deep rows thinned to seven points.
+- **Where the mouth is cut**: the painted line between the lips now decides which modelled crease is the mouth (the
+  brother's cut had taken the crease UNDER his lower lip; the captain's was too narrow); with no crease at the painted
+  line the cut follows the paint. The cut's region reaches back as far as the corners (the captain's now spans 98% of
+  his mouth, was 69%).
+- **Joy**: `smile` is now AU12 + AU6 (corners up, back and out 0.24/0.13/0.11 u; the cheeks' apples up and forward; the
+  nasolabial fold deepened; the lower lids pushed up by half a squint). New `eyes_happy` (AU6 + AU43): closed lids meeting
+  in an upward arch, the skin under them bunched. The laugh is smile + eyes_happy + some mouth_wide + jaw 17 with the head
+  back. The corners now follow the jaw 0.4 (was 0.5: Disney's "about half"), so a smile holds them up as the jaw drops.
+- **Lids**: `lid_remap` turns lid points about the eye's long axis (angle remap, radius kept), so the lid keeps its
+  thickness and slides round the ball; the old version rebuilt points from their distance to the centre with a square
+  root and threw corner points inward (the boy's spiky lids). The lids' pivot is set back until the margin spans about
+  +-35 degrees (the boy's eye is a flattened shape: its sphere fit sat 13 mm too far forward and his lids swung 95
+  degrees). The guard is the real eyeball mesh (a BVH per side), not a sphere. Rim points below a lid's edge are carried
+  with it (were squashed onto it).
+- **Blink in-betweens**: `blink_arc_L`/`_R`, correctives a driver sets to 4c(1-c) (c = that eye's closure). Without
+  them a half blink puts 52 of the boy's lid points inside his eyeball; with them none.
+- **Eyes**: bones `eye_l` (the figure's own left, +x) and `eye_r`, children of `head`, at each ball's centre; the
+  eyeball mesh is weighted wholly to them. Yaw + turns to the figure's left, pitch + up (tests/face_view.gd `aim_eyes`).
+- **Lid UVs**: `fix_lid_uvs` gives hidden lid faces (the lid's inner rim, which comes into view as it closes) a skin
+  texel when their UVs land on painted eye (29 faces on the boy, 6 on the brother).
+- **Checks and self-test**: `rig_face` checks its inputs and what it measured and raises `FaceRigError` with what to
+  change; `--selftest` prints landmarks, folds (and how many are over 1 mm2), lid-through-eyeball counts for every shape
+  and every recipe, and exits 1 on any failure. `--bind a.glb,b.glb` binds hair pieces for a test copy.
+
+## Integration (checklist for the figure builders)
+
+1. Build the figure as now (armature with `head` and `neck`; body mesh `<figure>_body` with the head's faces on a
+   material named `*_face`, UV mapped, Armature modifier; eyeball mesh `<figure>_eyes` with an Armature modifier, or none
+   for slit eyes). No shape keys on the body, no `jaw`/`eye_l`/`eye_r` bones yet.
+2. Just before export: `rig = face_rig.rig_face(arm, body, eyes, figure=..., tex_dir=<textures/face>, hair=[...])` in a
+   try/except `face_rig.FaceRigError` that stops the build with the message.
+3. Export with `export_morph=True, export_morph_normal=True, export_morph_tangent=False, export_try_sparse_sk=False`,
+   then `face_rig.zero_still_normals(out_glb)`; write `face_rig.write_expressions(<models/face/face_expressions.json>)`
+   if the recipes changed.
+4. Bone indices: `jaw`, `eye_l`, `eye_r` come right after `head` (head 4, jaw 5, eye_l 6, eye_r 7 on all three now);
+   every bone index after `head` shifts by three. Anything that stores bone INDICES (baked clips by index, attachment
+   tables) must be re-baked or switched to names; names are unchanged.
+5. Run `blender ... tools/face_rig.py -- models/<figure>.glb --selftest` after every rebuild; then
+   `tests/face_view.gd -- --figure=<figure> --out=<dir>` and look at the sheet.
+6. In Godot: the head is its own MeshInstance3D (`<figure>_head`) with the blend shapes; a face driver sets the
+   recipe's weights plus the blink correctives (`drive_correctives` in tests/face_view.gd), turns `jaw` about the
+   world's sideways axis (`bone_turn`) and the eye bones (`aim_eyes`). Keep normal maps off the head (Compatibility
+   shades blend-shaped normal maps wrongly).
+
+## Costs (second pass)
+
+| | head (shapes) | triangles added to the head | mouth parts | added in all | shapes |
+| --- | --- | --- | --- | --- | --- |
+| brother | 1,167 v, 2,226 t | 306 (a cut along paint crosses many triangles) | 132 v, 188 t | 494 | 20 |
+| boy | 1,262 v, 2,422 t | 194 | 132 v, 188 t | 382 | 20 |
+| captain | 1,419 v, 2,754 t (+ eyeballs 216 v) | 392 (lips and both slits' rolls) | 132 v, 188 t | 580 | 20 |
+
+The target was 150 to 300 added. Mouth parts are 188 (teeth 128, tongue 60); the overrun is the cut: where the lips'
+meeting line is not an edge loop of the mesh, cutting it slices every triangle it crosses (the brother's 35 cut
+vertices against the boy's 23). The fix belongs in the builds: a lips' meeting line that IS an edge loop (the base mesh
+has one) brings the brother and captain to about 250.
+
+Phones: a recipe drives 1 to 5 shapes (smile 2, laugh 4, shock 3, shout 4, sad 3 + 2 correctives, blink 1, a half
+blink 1 + 2 correctives); each is one transform-feedback pass over the head's 1,170 to 1,420 vertices while its weight
+is not zero, nothing while the face is still. Memory: 20 shapes x about 1,300 vertices x (position + normal), about
+0.6 MB a figure. The L/R halves (4 shapes) cost memory only (about 0.12 MB) until a wink or a lopsided grin uses them:
+worth keeping.
+
+## Costs (first pass, glTF, as exported)
 
 | | head mesh (has the shapes) | mouth parts | shapes | file |
 | --- | --- | --- | --- | --- |

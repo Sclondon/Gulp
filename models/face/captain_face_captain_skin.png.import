@@ -2,13 +2,10 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://hldp70q72w2o"
+uid="uid://b2udosiqiitrx"
 path="res://.godot/imported/captain_face_captain_skin.png-d07b2aacba78ac878252f93c35fe6cb0.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "17bef8b7c1b544703e0e1f9c41a74967"
 }
 
 [deps]
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

@@ -1,0 +1,140 @@
+{
+ "expressions": {
+  "neutral": {
+   "shapes": {}
+  },
+  "smile": {
+   "shapes": {
+    "smile": 1.0,
+    "squint": 0.25
+   }
+  },
+  "laugh": {
+   "shapes": {
+    "smile": 1.0,
+    "eyes_happy": 1.0,
+    "mouth_wide": 0.45,
+    "brows_up": 0.35
+   },
+   "jaw": 17,
+   "head": -16,
+   "neck": -6
+  },
+  "shock": {
+   "shapes": {
+    "eyes_wide": 1.0,
+    "brows_up": 1.0,
+    "mouth_o": 0.35
+   },
+   "jaw": 17
+  },
+  "shout": {
+   "shapes": {
+    "brows_down": 1.0,
+    "squint": 0.35,
+    "sneer": 0.7,
+    "mouth_wide": 0.9
+   },
+   "jaw": 14
+  },
+  "sad": {
+   "shapes": {
+    "brows_sad": 1.0,
+    "frown": 1.0,
+    "eyes_closed": 0.25
+   },
+   "head": 7,
+   "eyes": [
+    0,
+    -8
+   ]
+  },
+  "bored": {
+   "shapes": {
+    "eyes_closed": 0.45,
+    "lips_press": 0.4,
+    "frown": 0.2
+   },
+   "eyes": [
+    8,
+    -4
+   ]
+  },
+  "puff": {
+   "shapes": {
+    "cheeks_puff": 1.0,
+    "lips_press": 0.5,
+    "eyes_wide": 0.3
+   }
+  },
+  "blink half": {
+   "shapes": {
+    "eyes_closed": 0.5
+   }
+  },
+  "blink": {
+   "shapes": {
+    "eyes_closed": 1.0
+   }
+  },
+  "look up": {
+   "shapes": {
+    "brows_up": 0.3
+   },
+   "head": -23,
+   "neck": -12,
+   "eyes": [
+    0,
+    14
+   ]
+  },
+  "look left": {
+   "shapes": {},
+   "eyes": [
+    24,
+    0
+   ]
+  },
+  "look right": {
+   "shapes": {},
+   "eyes": [
+    -24,
+    0
+   ]
+  },
+  "look down": {
+   "shapes": {
+    "eyes_closed": 0.2
+   },
+   "eyes": [
+    0,
+    -16
+   ]
+  }
+ },
+ "shapes": [
+  "smile",
+  "frown",
+  "mouth_o",
+  "mouth_wide",
+  "lips_press",
+  "cheeks_puff",
+  "brows_up",
+  "brows_down",
+  "brows_sad",
+  "eyes_closed",
+  "eyes_wide",
+  "squint",
+  "sneer",
+  "eyes_happy",
+  "eyes_closed_L",
+  "eyes_closed_R",
+  "smile_L",
+  "smile_R",
+  "blink_arc_L",
+  "blink_arc_R"
+ ],
+ "corrective": "blink_arc_X = 4c(1-c), c = eyes_closed + eyes_closed_X",
+ "eye_yaw_max": 30.0,
+ "eye_pitch_max": 22.0
+}
