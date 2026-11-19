@@ -2608,6 +2608,55 @@ def refine_toes(base):
         tips.append(int(near[np.argmax(P[near, 0])]) if len(near) else int(np.argmin(np.linalg.norm(P - t, axis=1))))
     print("%s toes refined: %d faces split, %d triangles a foot now" % (WHO, len(nf) - len(faces), sum(len(f) - 2 for f in nf)))
     base["F"], base["faces"], base["tips"] = P, nf, tips
+    if FOOT_KEEP_TRIS:
+        base = thin_foot(base, FOOT_KEEP_TRIS)
+    return base
+
+
+FOOT_KEEP_TRIS = 470     # (sixteenth round: the refined foot was 784 triangles; collapsed back to about this many, the
+                         # rounded toes kept: the flat sole and instep give most of them up. 0 keeps all.)
+
+
+def thin_foot(base, keep):
+    """The refined foot's triangles collapsed (Blender's decimate, Collapse) down to `keep`, its ankle loop and the
+    ring of points next to it held (they are zipped to the shin), the rest renumbered: the loop by position, the toes
+    and tips by the nearest new point to the old ones."""
+    F, faces = base["F"], base["faces"]
+    n_before = sum(len(f) - 2 for f in faces)
+    me = bpy.data.meshes.new("foot_thin")
+    me.from_pydata([tuple(map(float, p)) for p in F], [], faces)
+    me.update()
+    ob = bpy.data.objects.new("foot_thin", me)
+    bpy.context.scene.collection.objects.link(ob)
+    held = set(base["loop"])
+    for f in faces:
+        if held & set(f):
+            held |= set(f)
+    g = ob.vertex_groups.new(name="free")
+    g.add([i for i in range(len(F)) if i not in held], 1.0, "REPLACE")
+    dec = ob.modifiers.new("fewer", "DECIMATE")
+    dec.decimate_type = "COLLAPSE"
+    dec.ratio = min(1.0, keep / max(n_before, 1))
+    dec.vertex_group = "free"
+    dec.use_collapse_triangulate = False
+    bpy.context.view_layer.update()
+    ev = ob.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    m2 = ev.to_mesh()
+    P = np.array([tuple(v.co) for v in m2.vertices], float)
+    nf = [list(p.vertices) for p in m2.polygons]
+    ev.to_mesh_clear()
+    bpy.data.objects.remove(ob, do_unlink=True)
+    bpy.data.meshes.remove(me)
+
+    def nearest(q):
+        return int(np.argmin(np.linalg.norm(P - q, axis=1)))
+    loop = [nearest(F[v]) for v in base["loop"]]
+    toes = [sorted({nearest(F[v]) for v in c}) for c in base["toes"]]
+    tips = [nearest(F[t]) for t in base["tips"]]
+    worst = max(float(np.linalg.norm(P[n] - F[v])) for n, v in zip(loop, base["loop"]))
+    print("%s foot thinned: %d -> %d triangles; ankle loop held (worst %.1f mm), %d open loops" % (
+        WHO, n_before, sum(len(f) - 2 for f in nf), worst * 1000, len(open_loops(nf))))
+    base["F"], base["faces"], base["loop"], base["toes"], base["tips"] = P, nf, loop, toes, tips
     return base
 
 
@@ -3091,10 +3140,13 @@ NECK_RINGS = (
     # (fourteenth round, the critic: "the head meets the body at a hard horizontal ledge like a turtleneck"; "cut a
     # nape groove under the occiput": the throat drawn back and down under the chin, the nape in under the skull;
     # the head's forward carriage, which the body sheet's side view draws, is kept)
+    # (sixteenth round: the bare sheet's side view puts the back of his neck 3 cm further in than this ring stood, just
+    # under the head; the body sheet's back line there is the trapezius beside the spine, so only the middle columns
+    # are drawn in: the nape a groove between the two ridges of the trapezius, which keep the body sheet's outline)
     ((0.0, -0.088, 470), (0.048, -0.086, 468), (0.088, -0.068, 461), (0.116, -0.034, 440), (0.131, 0.008, 413),
-     (0.123, 0.054, 403), (0.094, 0.086, 399), (0.053, 0.103, 397), (0.0, 0.108, 396)),
+     (0.123, 0.054, 403), (0.094, 0.080, 399), (0.050, 0.084, 397), (0.0, 0.082, 396)),
     ((0.0, -0.140, 468), (0.062, -0.134, 467), (0.112, -0.100, 463), (0.152, -0.050, 443), (0.176, 0.010, 424),
-     (0.166, 0.070, 414), (0.132, 0.114, 409), (0.072, 0.139, 406), (0.0, 0.145, 405)),
+     (0.166, 0.070, 414), (0.132, 0.114, 409), (0.072, 0.132, 406), (0.0, 0.130, 405)),
 )
 # The upper chest under the chin (the shoulders' ring's front columns 0 and 1): (x, y, body-sheet row).
 CHEST_TOP = {0: (0.0, -0.172, 474), 1: (0.078, -0.165, 471)}
@@ -3461,6 +3513,42 @@ def build_cap(sh, M=None):
           len(open_edges([f for f, p in zip(Cm.faces, Cm.fpart) if p != "peak"]))))
     Cm.tag["rings"] = rings
     return Cm
+
+
+# Sixteenth round (the critic: "the crown is a hard, flat disc ... a soft, puffy crown that overhangs the band on all
+# sides and droops a little to the back"; concept_captain_tpose.jpg and concept_captain_head.jpg agree): the crown's
+# rings stood out round their own middle (metres, by ring from the band's bottom), the top's middle raised, the back of
+# the upper rings let down. The sheets keep the gold badge on the front (the critic asked for it gone; the sheets win).
+CAP_PUFF = (0.0, 0.0, 0.002, 0.008, 0.016, 0.015, 0.008, -0.002)
+CAP_DOME = 0.008
+CAP_DROOP = 0.009
+
+
+def cap_puff(Cm):
+    P = np.array(Cm.P, float)
+    rings = Cm.tag["rings"]
+    zs = [float(np.mean([P[v][2] for v in r])) for r in rings]
+    order = np.argsort(zs)
+    for n, k in enumerate(order):
+        r = rings[k]
+        c = np.mean([P[v] for v in r], axis=0)
+        amt = CAP_PUFF[min(n, len(CAP_PUFF) - 1)]
+        for v in r:
+            d = P[v][:2] - c[:2]
+            d /= max(np.linalg.norm(d), 1e-9)
+            P[v][:2] += d * amt
+            if n >= 4:
+                back = max(0.0, (P[v][1] - c[1]) / max(np.ptp([P[u][1] for u in r]) / 2.0, 1e-6))
+                P[v][2] -= CAP_DROOP * back * (n - 3) / (len(rings) - 3)
+    top_ring = rings[order[-1]]
+    tops = set()
+    for f in Cm.faces:
+        if len(f) == 3 and sum(1 for v in f if v in top_ring) == 2:
+            tops |= set(v for v in f if v not in top_ring)
+    for v in tops:
+        P[v][2] += CAP_DOME
+    Cm.P = [p for p in P]
+    print("CAPTAIN cap puffed: crown out %.1f cm, top up %.1f cm" % (100 * max(CAP_PUFF), 100 * CAP_DOME))
 
 
 def refit_cap(Cm, M, rings):
@@ -5733,6 +5821,13 @@ HEAD_CARVES = (
     (((0, 766), (50, 770)), 0.003, 10),                           # the full lower lip
     (((0, 808), (50, 806)), -0.004, 12),                          # the groove over the chin
     (((120, 765), (128, 820), (134, 870)), -0.004, 12),           # the folds into the jowls
+    # (sixteenth round, the critic: "a heavy, overhanging brow shelf that knots down over the nose ... lids that are
+    # folded creases following the curve of the eyeball"; the user: "his eyes should just be wrinkly slits")
+    (((24, 492), (70, 484), (120, 488), (156, 500)), 0.009, 11),  # the brow's shelf over each eye
+    (((30, 508), (80, 512), (130, 516)), -0.004, 6),              # the fold under the shelf, over the lid
+    (((52, 532), (100, 536), (140, 546)), -0.003, 6),             # the slit's outer end lower, along the eyeball
+    (((150, 520), (172, 512)), -0.003, 5),                        # crow's feet: the deepest fold at the eye's corner
+    (((150, 536), (174, 540)), -0.003, 5),
 )
 
 
@@ -5753,7 +5848,7 @@ def carve_face(Hm):
             dist = np.hypot(col - (a[0] + ab[0] * t), row - (a[1] + ab[1] * t))
             best = np.minimum(best, dist)
         d += depth * np.exp(-(best / width) ** 2)
-    d = np.clip(d, -0.008, 0.008)
+    d = np.clip(d, -0.008, 0.011)
     P += N * (d * facing)[:, None]
     Hm.P = [p for p in P]
     print("CAPTAIN face carved: most %.1f mm" % (1000 * float(np.abs(d * facing).max())))
@@ -5779,7 +5874,10 @@ def finish_base_head(Hm, face_uv, sh):
     for fi, f in enumerate(Hm.faces):
         c = P[f].mean(0)
         row = float(bare_row(c[2]))
-        if (row > 430 and c[1] < cy + 0.01) or (abs(c[0]) > 0.11 and 460 < row < 670) or (DOME_SPLIT and row < DOME_SPLIT):
+        # (sixteenth round: the back of the head too, from the occiput to the neck: between row 580 and the open edge at
+        # 780 it had no point down his middle at all, one slope of big faces that no nape could be drawn into)
+        if (row > 430 and c[1] < cy + 0.01) or (abs(c[0]) > 0.11 and 460 < row < 670) or (DOME_SPLIT and row < DOME_SPLIT) \
+                or (NAPE_SPLIT and c[1] > cy + 0.02 and row >= DOME_SPLIT):
             sel.add(fi)
     weights = [{} for _ in Hm.P]
     H2, uv2, _, _ = refine(Hm, sel, face_uv, weights)
@@ -5834,10 +5932,20 @@ DOME_STRETCH = 1.0
 # Fifteenth round (the second critic: "the crown comes to a faceted point"; "no bulge at the back of the skull";
 # "a narrow, pointed jaw where the bare sheet has a broad, jowly double chin"):
 DOME_SPLIT = 440             # the skull's faces above this bare-sheet row split once too (they were the cage's own, 16 round)
-OCCIPUT = (450.0, 85.0, 0.008, 700.0, 40.0, 0.005)   # the back of the skull pushed back (row, spread, metres), the nape
+OCCIPUT = (450.0, 85.0, 0.008, 680.0, 65.0, 0.036)   # the back of the skull pushed back (row, spread, metres), the nape
                                                      # under it drawn in (row, spread, metres)
+# (sixteenth round: the side view's back outline measured against the bare sheet's: the skull from row 250 to 580 within
+# 7 mm of the sheet's (whose outline there is the grey fringe, standing off the skull: the skull is not pushed further
+# back than the hair's outline, the sheet wins over the critic's "8% of head depth"); from row 600 down the model went
+# straight down and out where the sheet steps in under the skull, 2 cm at row 640, 3.3 cm at 670, 3.5 cm at 700: the
+# nape drawn in by that much, a groove under the occiput, rolling back out to the neck's ring)
 JOWLS = (865.0, 45.0, 0.005)     # the jowls out along their normals (row, spread, metres) where |x| > 5 cm
 CHIN_FILL = (930.0, 990.0, 0.007)  # the underside of the chin and jaw filled out (rows, metres): a double chin
+# Sixteenth round: the jaw's mass (jowls_and_chin): metres forward at most, centred this far out (m), spread (m); the
+# rows it rises over (r0 to r1) and falls off over (r2 to r3)
+JAW_MASS = (0.045, 0.08, 0.022, 760.0, 830.0, 950.0, 990.0)
+JOWL_HANG = 0.008             # metres the jowls are lowered over the jaw's line
+NAPE_SPLIT = True             # the back of the head's faces below the dome split once (finish_base_head)
 
 
 def jowls_and_chin(Hm):
@@ -5854,6 +5962,53 @@ def jowls_and_chin(Hm):
     loop = Hm.tag.get("loop", [])
     d[loop] = 0.0
     P += N * d[:, None]
+    # Sixteenth round (the user: "Seems like hes missing a chin/jaw/neck", "why is his jaw just straight flat across?";
+    # the critic: "a narrow, pointed jaw where the bare sheet has a broad, jowly double chin"). The front and side
+    # outlines already sat on the sheet's; what was wrong is the jaw's cross-section: measured at rows 860 to 940 its
+    # front fell back 8 cm between 5 and 8 cm out from his middle (a V, a pointed chin from below), where the sheet's
+    # three-quarter and from-below views draw a broad squared U whose front stays within 2 to 4 cm of the chin's out to
+    # the jowls. So the lower face's front is carried forward (pure -y: neither outline moves) by a band peaking 8 cm
+    # out, never past a curve just behind the chin's own front, and the jowls hung over the jaw's line (down).
+    if JAW_MASS:
+        amt, cx, sx, r0, r1, r2, r3 = JAW_MASS
+        ay = np.abs(P[:, 0])
+        row = bare_row(P[:, 2])
+        wr = smooth01(r0, r1, row) * (1.0 - smooth01(r2, r3, row))
+        wf = np.clip((-P[:, 1] - 0.025) / 0.04, 0.0, 1.0)
+        dy = amt * np.exp(-((ay - cx) / sx) ** 2) * wr * wf
+        # the chin's front, row by row (its middle's foremost point), and the curve the jaw may not pass
+        chin = np.full(len(P), -np.inf)
+        mid_ = ay < 0.018
+        for r in range(int(r0) - 20, int(r3) + 20, 10):
+            band = mid_ & (np.abs(row - r) < 12)
+            if band.any():
+                sel_ = np.abs(row - r) < 5
+                chin[sel_] = float(P[band, 1].min())
+        limit = chin + 0.006 + 0.32 * np.clip(ay - 0.035, 0, None) + 1.4 * np.clip(ay - 0.07, 0, None) ** 2
+        newy = np.where(np.isfinite(chin), np.maximum(P[:, 1] - dy, np.minimum(limit, P[:, 1])), P[:, 1])
+        newy[loop] = P[loop, 1]
+        moved = P[:, 1] - newy
+        P[:, 1] = newy
+        # the jowls hang: the jaw's outer front, between the mouth's corner and the jaw's angle, lowered a little
+        hang = JOWL_HANG * np.exp(-((ay - 0.075) / 0.025) ** 2) * np.exp(-((row - 900.0) / 40.0) ** 2) * wf
+        hang[loop] = 0.0
+        P[:, 2] -= hang
+        print("CAPTAIN jaw's mass forward: most %.1f cm (%d points over 5 mm); jowls hung %.1f mm"
+              % (100 * float(moved.max()), int((moved > 0.005).sum()), 1000 * float(hang.max())))
+        Hm.P = [p for p in mirror_even(P, Hm.tag["mir"])]
+        # (the moved band smoothed into its neighbours so no step shows at its edges)
+        sel = np.zeros(len(P), bool)
+        sel[moved > 0.001] = True
+        E = edges_of(Hm.faces)
+        for _ in range(2):
+            nb = sel.copy()
+            nb[E[sel[E[:, 0]], 1]] = True
+            nb[E[sel[E[:, 1]], 0]] = True
+            sel = nb
+        sel[loop] = False
+        for _ in range(3):
+            relax_full(Hm, ~sel, 0.3)
+        P = np.array(Hm.P)
     Hm.P = [p for p in mirror_even(P, Hm.tag["mir"])]
     print("CAPTAIN jowls out %.1f mm, chin's underside out %.1f mm" % (1000 * float(j.max()), 1000 * float(c.max())))
 
@@ -6080,6 +6235,19 @@ def transplant_head(M, T, face_uv, weights, under, sh):
             ref = vuv[hv[0] - base] if hv else uvs[0]
             uvs = [tuple(near_uv(v - base, ref)) if v >= base else ring_uv_near(v, ref) for v in f]
             fixed += 1
+            if np.ptp(np.array(uvs), axis=0).max() > 0.06:
+                # (sixteenth round, "the thin seam line on the crown" and on the back of the head: a few zipper faces
+                # still spanned the picture as long slivers, and the texels under them, inside the back of the head's
+                # island, were painted as the neck: light lines across it. Those faces take the UV of the head's
+                # point nearest each corner, unextended: a sliver no wider than the head's edge)
+                uvs = []
+                for v in f:
+                    if v >= base:
+                        uvs.append(tuple(near_uv(v - base, ref)))
+                    else:
+                        j = Hm.tag["loop"][int(np.argmin(np.linalg.norm(Ph[Hm.tag["loop"]] - R.P[v], axis=1)))]
+                        uvs.append(tuple(near_uv(j, ref)))
+                print("CAPTAIN zipper face %d still a sliver across the picture: its UVs drawn to the head's edge" % fi)
         new_uv[fi] = ("face", uvs)
     print("CAPTAIN zipper faces given one island's UVs: %d" % fixed)
     # weights: the head's bone, shared with the neck's over the rows next to the open edge
@@ -6294,6 +6462,62 @@ def sculpt_body(M):
             P[ring[j]][1] -= fwd
     M.P = [p for p in P]
     smooth_torso(M, rounds=TORSO_SMOOTH)
+    torso_forms(M)
+
+
+# Sixteenth round (the second critic: "a smooth balloon with no pecs, deltoids, shoulder blades or spine"; the
+# coordinator: "add a few well-placed loops", not the brother's refine_forms). The ring moves above are smoothed away by
+# the six rounds that take out the banding, so the forms are laid on AFTER the smoothing, as smooth fields along each
+# point's normal (no ring can stand out of them): (centre x, body-sheet row, forward-or-back side, spread across, spread
+# up above the centre, spread below it, metres along the normal). Side: -1 front, 1 back, 0 either.
+TORSO_FORMS = (
+    (0.085, 600.0, -1, 0.065, 0.075, 0.03, 0.030),     # the heavy pecs, sagging: soft above, their lower fold sharp
+    (0.085, 655.0, -1, 0.07, 0.018, 0.03, -0.012),     # the fold under each pec, onto the belly
+    (0.0, 600.0, -1, 0.022, 0.07, 0.05, -0.006),       # the breastbone's dip between them
+    (0.095, 545.0, 1, 0.06, 0.06, 0.07, 0.022),        # the shoulder blades under the fat
+    (0.0, 640.0, 1, 0.025, 0.2, 0.18, -0.014),         # the spine's groove, neck to waist
+    (0.13, 800.0, 0, 0.05, 0.04, 0.04, 0.010),         # the love handles over the band, at his sides
+)
+DELTOID = (0.016, 0.06)       # the deltoid's cap: metres out along the normal, spread round the shoulder's top
+
+
+def torso_forms(M):
+    P = np.array(M.P)
+    N = normals_of(P, M.tris())
+    fams = np.array([part_family(p) for p in M.part])
+    T = M.tag["torso_rings"]
+    keep = set(T[0]) | set(T[-1]) | set(T[-2]) | set(M.tag["crotch"])
+    cy = float(np.median(P[fams == "torso", 1]))
+    row = body_row(P[:, 2])
+    d = np.zeros(len(P))
+    torso = fams == "torso"
+    for cx, r, side, sx, su, sd, amt in TORSO_FORMS:
+        dz_px = row - r
+        s_up = su / S
+        s_dn = sd / S
+        gz = np.where(dz_px < 0, np.exp(-(dz_px / s_up) ** 2), np.exp(-(dz_px / s_dn) ** 2))
+        gx = np.exp(-((np.abs(P[:, 0]) - cx) / sx) ** 2)
+        if side < 0:
+            gs = np.clip((cy - P[:, 1]) / 0.05, 0, 1)
+        elif side > 0:
+            gs = np.clip((P[:, 1] - cy) / 0.05, 0, 1)
+        else:
+            gs = 1.0
+        d += amt * gz * gx * gs * torso
+    # the deltoids: round caps at each shoulder's top, on the torso's and the arm's points about the arm's root
+    for sfx in ("_l", "_r"):
+        hole = np.array([P[v] for v in M.tag["hole" + sfx]])
+        top = hole[np.argmax(hole[:, 2])]
+        c = hole.mean(0) * 0.4 + top * 0.6
+        c[0] += np.sign(c[0]) * 0.03
+        r2 = np.sum((P - c) ** 2, 1)
+        near = np.isin(fams, ("torso", "arm"))
+        d += DELTOID[0] * np.exp(-r2 / DELTOID[1] ** 2) * near
+    for v in keep:
+        d[v] = 0.0
+    P += N * d[:, None]
+    M.P = [p for p in P]
+    print("CAPTAIN torso forms laid on: out %.1f mm, in %.1f mm" % (1000 * float(d.max()), -1000 * float(d.min())))
 
 
 def smooth_torso(M, rounds=3, lam=0.5, mu=-0.52):
@@ -6661,7 +6885,9 @@ def finish(M, T, joints, sh):
     skin, spos, shit = paint_skin(M, face_uv, sh, tris_all, Pc, no_arms_c, reject_skin, joints)
     face, fpos, fhit = paint_head(M, face_uv, sh)
     # (fourteenth round: one warm light tan for body and head, the body's painted-in shadow divided out)
+    raw_skin = skin.copy()
     skin = even_tone(skin, shit)
+    skin = body_hair(skin, raw_skin, shit, spos)
     if BASE_FEET:
         Pp = np.array(M.P)
         _, snrm, _, sfid = texel_geometry(M, face_uv, "skin", Pp, normals_of(Pp, M.tris()))
@@ -6671,7 +6897,7 @@ def finish(M, T, joints, sh):
             mine = shit & (fparts == "foot" + sfx)
             shin = shit & (fparts == "leg" + sfx) & (spos[..., 2] > 0.17) & (spos[..., 2] < 0.26)
             lum = skin[shin].mean(1)
-            base_c = np.median(skin[shin][lum >= np.median(lum)], axis=0) * 0.92
+            base_c = np.median(skin[shin][lum >= np.median(lum)], axis=0) * 0.97
             legs = shit & (fparts == "leg" + sfx)
             skin = paint_feet(skin, spos, snrm, shit, mine, (o, f_, l_), M.tag["foot_toes" + sfx], base_c, shin=legs,
                               ring_z=float(body_z(LEG_ROWS[-1])))
@@ -6777,6 +7003,7 @@ def finish(M, T, joints, sh):
     # the cap: its own piece on the head's bone (the game can hide it: he has a whole bare head under it)
     Cap = build_cap(sh, M)
     cap_clear(Cap, M)
+    cap_puff(Cap)
     cap_object(Cap, sh, armature)
     # the earring in his left ear's lobe
     lobe = np.array(M.P[M.tag["earlobe_l"][0]])
@@ -6882,7 +7109,367 @@ def heart_cover(x, y):
     return f <= 0.0
 
 
+# Sixteenth round (the critic: "a tight paper shell with a ragged hem ... loose cotton boxers with a thick waistband";
+# the coordinator: port the brother's knit shorts for the structure, as loose cotton): the garment's structure is the
+# brother's `knit_shorts` (tools/build_brother.py, 2026-11-18), copied here unchanged in what it does (two legs that
+# read from the front, a band with a rolled lip, the hem turned under with a lip and an inside face), driven with the
+# captain's own numbers: the cloth stands well off him, the legs flare loose, the band is tall and stands proud, a few
+# soft folds hang round each leg and down the trunk. The old grid garment is kept as build_boxers_grid (--grid-boxers).
+GRID_BOXERS = "--grid-boxers" in ARGS
+BOXER_LOOSE = {"band_lip": 0.004, "band": 0.013, "cloth": 0.024, "leg_in": 0.010, "leg_out": 0.036, "hug": 0.0025}
+BOXER_LOOSE_HEM = 1060.0          # body-sheet row of the hem (the sheet's 1064 outside, 1034 at the crotch)
+BOXER_LOOSE_BULGE = 0.02          # the gentle fullness at the fly (the user: "a tasteful bulge")
+BOXER_LOOSE_FOLDS = (7, 0.006, 5, 0.007)   # soft folds: round the trunk below the band (how many, metres at the bottom),
+                                           # round each leg (how many, metres at the hem)
+BOXER_LOOSE_KEEP = 0.6            # the share of the garment's triangles kept by the collapse (976 -> about 590)
+
+
+def ring_double(pts):
+    """A closed ring of points with a new point between each two (the four-point subdivision rule: a smooth curve
+    through the old points). Gives 2n points, the old ones at even places. (build_brother.py's)"""
+    pts = np.asarray(pts, float)
+    n = len(pts)
+    out = np.zeros((2 * n,) + pts.shape[1:])
+    for i in range(n):
+        p0, p1, p2, p3 = pts[(i - 1) % n], pts[i], pts[(i + 1) % n], pts[(i + 2) % n]
+        out[2 * i] = p1
+        out[2 * i + 1] = (-p0 + 9.0 * p1 + 9.0 * p2 - p3) / 16.0
+    return out
+
+
+def knit_shorts(P, N, T, leg_rings, crotch, band_z, band_tall, mid_zs, hem_z, side_cols, stand,
+                bulge=0.017, seat=0.005, fly=0.0025, lower_rings=3):
+    """Shorts over a lofted body (build_brother.py's, 2026-11-18; see its docstring there).
+    Gives (Mesh, src: [{body point: weight}] per point, islands: {name: {face: uvs in metres}}, info)."""
+    nT = len(T[0])
+    Bx = Mesh()
+    src = []
+    zs = np.array([P[r].mean(0)[2] for r in T])
+    up = np.array((0.0, 0.0, 1.0))
+
+    def column_at(k, z):
+        ks = np.array([P[r[k]][2] for r in T])
+        q = np.array([np.interp(z, ks, P[[r[k] for r in T]][:, a]) for a in range(3)])
+        n = np.array([np.interp(z, ks, N[[r[k] for r in T]][:, a]) for a in range(3)])
+        i = int(np.clip(np.searchsorted(ks, z), 1, len(ks) - 1))
+        t = float(np.clip((z - ks[i - 1]) / max(ks[i] - ks[i - 1], 1e-9), 0, 1))
+        return q, n / max(np.linalg.norm(n), 1e-9), {T[i - 1][k]: 1.0 - t, T[i][k]: t}
+
+    def add(q, s, part="boxers"):
+        src.append(s)
+        return Bx.add(q, part)
+
+    def blend(a, b, t=0.5):
+        out = {}
+        for d, w in ((a, 1.0 - t), (b, t)):
+            for k, v in d.items():
+                out[k] = out.get(k, 0.0) + v * w
+        return out
+    z_low = [float(z) for z in zs[:lower_rings]][::-1]
+    rows = []
+    for k in range(nT):
+        phi = math.tau * k / nT
+        zb = band_z(phi)
+        zb1 = zb - band_tall
+        rows.append([zb, zb, zb1] + list(mid_zs(zb1)) + z_low)
+    nrows = len(rows[0])
+    G = []
+    for j in range(nrows):
+        qs, ns, ss = [], [], []
+        for k in range(nT):
+            q, n, s = column_at(k, rows[k][j])
+            qs.append(q)
+            ns.append(n)
+            ss.append(s)
+        Q2 = ring_double(qs)
+        N2 = ring_double(ns)
+        N2 /= np.maximum(np.linalg.norm(N2, axis=1, keepdims=True), 1e-9)
+        st = stand["band_lip"] if j == 0 else stand["band"] if j in (1, 2) else stand["cloth"]
+        ring = []
+        for i in range(2 * nT):
+            s = ss[i // 2] if i % 2 == 0 else blend(ss[i // 2], ss[(i // 2 + 1) % nT])
+            q = Q2[i] + N2[i] * st
+            if j == 0:
+                q = q - up * 0.003
+            ring.append(add(q, s))
+        G.append(ring)
+    nc = 2 * nT
+    for j in range(nrows - 1):
+        for i in range(nc):
+            ii = (i + 1) % nc
+            Bx.face([G[j][i], G[j][ii], G[j + 1][ii], G[j + 1][i]], "boxers_band" if j < 2 else "boxers_torso")
+            Bx.cell[len(Bx.faces) - 1] = ("trunk", j, i)
+    bottom = G[-1]
+    gc = add(P[crotch] - up * stand["cloth"], {crotch: 1.0})
+    legs, rolls = {}, {}
+    for sfx in ("_l", "_r"):
+        side = 1.0 if sfx == "_l" else -1.0
+        cols = side_cols(sfx)
+        top = []
+        for a, b in zip(cols[:-1], cols[1:]):
+            top.append(bottom[2 * a])
+            top.append(bottom[(2 * a + 1) % nc] if (b - a) % nT == 1 else bottom[(2 * a - 1) % nc])
+        top.append(bottom[2 * cols[-1]])
+        ten = [Bx.P[bottom[2 * c]] for c in cols] + [Bx.P[gc]]
+        d10 = ring_double(ten)
+        m1 = add(d10[2 * len(cols) - 1], blend(src[bottom[2 * cols[-1]]], src[gc]))
+        m2 = add(d10[-1], blend(src[gc], src[bottom[2 * cols[0]]]))
+        top += [m1, gc, m2]
+        rings = [top]
+        body = leg_rings[sfx]
+        bz = np.array([P[r].mean(0)[2] for r in body])
+        z1 = bz[1]
+        targets = [z1, (z1 + hem_z) / 2.0, hem_z]
+        for ti, z in enumerate(targets):
+            i = int(np.clip(np.searchsorted(-bz, -z), 1, len(bz) - 1))
+            t = float(np.clip((bz[i - 1] - z) / max(bz[i - 1] - bz[i], 1e-9), 0, 1))
+            A, B = body[i - 1], body[i]
+            pts = P[A] * (1 - t) + P[B] * t
+            c = pts.mean(0)
+            q10 = []
+            for p in pts:
+                out = p - c
+                out[2] = 0.0
+                out /= max(np.linalg.norm(out), 1e-9)
+                inner = max(0.0, -side * out[0])
+                st = stand["leg_in"] + (stand["leg_out"] - stand["leg_in"]) * (1.0 - inner) ** 1.5
+                st = stand["cloth"] * (1 - (ti + 1) / len(targets)) + st * ((ti + 1) / len(targets))
+                q = p + out * st
+                q[2] = z
+                q10.append(q)
+            q20 = ring_double(q10)
+            ring = []
+            for m in range(len(q20)):
+                k0, k1 = A[(m // 2) % len(A)], A[((m + 1) // 2) % len(A)]
+                l0, l1 = B[(m // 2) % len(B)], B[((m + 1) // 2) % len(B)]
+                s = blend(blend({k0: 1.0}, {k1: 1.0}), blend({l0: 1.0}, {l1: 1.0}), t)
+                ring.append(add(q20[m], s))
+            rings.append(ring)
+        for a, b in zip(rings, rings[1:]):
+            n = len(a)
+            for j in range(n):
+                k = (j + 1) % n
+                Bx.face([a[j], a[k], b[k], b[j]], "boxers_leg" + sfx)
+        hem = rings[-1]
+        hc = np.array([Bx.P[v] for v in hem]).mean(0)
+        lip, inside = [], []
+        for v in hem:
+            q = np.array(Bx.P[v], float)
+            dd = q - hc
+            dd[2] = 0.0
+            dd /= max(np.linalg.norm(dd), 1e-9)
+            lip.append(add(q - dd * 0.005 - up * 0.005, src[v]))
+        for v in hem:
+            q = np.array(Bx.P[v], float)
+            dd = q - hc
+            dd[2] = 0.0
+            dd /= max(np.linalg.norm(dd), 1e-9)
+            inside.append(add(q - dd * 0.012 + up * 0.016, src[v]))
+        n = len(hem)
+        roll = []
+        for j in range(n):
+            k = (j + 1) % n
+            Bx.face([hem[j], hem[k], lip[k], lip[j]], "boxers_hem" + sfx)
+            Bx.want[len(Bx.faces) - 1] = ("down", None)
+            roll.append(len(Bx.faces) - 1)
+            Bx.face([lip[j], lip[k], inside[k], inside[j]], "boxers_hem" + sfx)
+            Bx.want[len(Bx.faces) - 1] = ("in", hc)
+            roll.append(len(Bx.faces) - 1)
+        legs[sfx] = rings
+        rolls[sfx] = (hem, lip, inside, roll)
+    Q = np.array(Bx.P)
+    zc = float(P[crotch][2]) + 0.035
+    cy = float(np.mean([P[r].mean(0)[1] for r in T[:2]]))
+    front = Q[:, 1] < cy
+    w = np.exp(-(Q[:, 0] / 0.055) ** 2 - ((Q[:, 2] - zc) / 0.05) ** 2) * front
+    Q[:, 1] -= bulge * w
+    zf0 = min(band_z(0.0) - band_tall, zc + 0.11)
+    wf = np.exp(-(Q[:, 0] / 0.008) ** 2) * front * smooth01(zc + 0.02, zc + 0.05, Q[:, 2]) * (1.0 - smooth01(zf0 - 0.02, zf0, Q[:, 2]))
+    Q[:, 1] += fly * wf
+    ws = np.exp(-(Q[:, 0] / 0.02) ** 2) * (~front) * smooth01(zc - 0.03, zc + 0.04, Q[:, 2]) * (1.0 - smooth01(zc + 0.14, zc + 0.2, Q[:, 2]))
+    Q[:, 1] -= seat * ws
+    for sfx in ("_l", "_r"):
+        hem, lip, inside, _ = rolls[sfx]
+        for m, v in enumerate(hem):
+            Q[v, 2] += 0.0025 * math.sin(m * math.tau * 3 / len(hem) + (0.7 if sfx == "_l" else 2.1))
+            Q[lip[m], 2] += 0.0025 * math.sin(m * math.tau * 3 / len(hem) + (0.7 if sfx == "_l" else 2.1))
+    Bx.P = [q for q in Q]
+    mid = G[nrows // 2]
+    seg = [float(np.linalg.norm(Q[mid[(i + 1) % nc]] - Q[mid[i]])) for i in range(nc)]
+    islands = {"boxers_front": {}, "boxers_back": {}}
+    q0, q1 = nc * 3 // 4, nc // 4
+    for fi, c in Bx.cell.items():
+        j, i = c[1], c[2]
+        is_front = i >= q0 or i < q1
+        start = q0 if is_front else q1
+        uv = []
+        for v in Bx.faces[fi]:
+            kv = G[j].index(v) if v in G[j] else G[j + 1].index(v)
+            kk = (kv - start) % nc
+            if kk > nc // 2:
+                kk -= nc
+            u = sum(seg[(start + m) % nc] for m in range(kk)) if kk >= 0 else -seg[(start - 1) % nc]
+            uv.append((u if is_front else -u, float(Q[v][2])))
+        islands["boxers_front" if is_front else "boxers_back"][fi] = uv
+    for sfx, s in (("_l", 1.0), ("_r", -1.0)):
+        ring = legs[sfx][1]
+        cx, cy_ = Q[ring][:, 0].mean(), Q[ring][:, 1].mean()
+        R = float(np.hypot(Q[ring][:, 0] - cx, Q[ring][:, 1] - cy_).mean())
+        isl, hisl = {}, {}
+        hem, lip, inside, roll = rolls[sfx]
+        vpos = {}
+        for v in hem:
+            vpos[v] = 0.0
+        for v in lip:
+            vpos[v] = -0.007
+        for v in inside:
+            vpos[v] = -0.026
+        for fi, p in enumerate(Bx.fpart):
+            if p not in ("boxers_leg" + sfx, "boxers_hem" + sfx):
+                continue
+            th = [math.atan2(-(Q[v][1] - cy_), s * (Q[v][0] - cx)) for v in Bx.faces[fi]]
+            if max(th) - min(th) > math.pi:
+                th = [t + math.tau if t < 0 else t for t in th]
+            if p.startswith("boxers_hem"):
+                hisl[fi] = [(s * t * R, vpos[v]) for t, v in zip(th, Bx.faces[fi])]
+            else:
+                isl[fi] = [(s * t * R, float(Q[v][2])) for t, v in zip(th, Bx.faces[fi])]
+        islands["boxers_leg" + sfx] = isl
+        islands["boxers_hem" + sfx] = hisl
+    return Bx, src, islands, {"zc": zc, "cy": cy, "rows": nrows, "G": G, "legs": legs, "rolls": rolls}
+
+
+def loose_folds(Bx, info, P, T):
+    """Soft folds in the loose cotton (the captain's own, not the brother's knit): the trunk's cloth below the band
+    waved in and out round him, growing toward the crotch; each leg's cloth waved round the leg, most at the hem."""
+    Q = np.array(Bx.P)
+    G = info["G"]
+    nt, at, nl, al = BOXER_LOOSE_FOLDS
+    cy = info["cy"]
+    nrows = len(G)
+    for j in range(3, nrows):
+        grow = (j - 2) / max(nrows - 3, 1)
+        for i, v in enumerate(G[j]):
+            phi = math.tau * i / len(G[j])
+            d = Q[v] - np.array((0.0, cy, Q[v][2]))
+            d[2] = 0.0
+            d /= max(np.linalg.norm(d), 1e-9)
+            Q[v] += d * at * grow * math.cos(nt * phi + 0.4)
+    for sfx in ("_l", "_r"):
+        rings = info["legs"][sfx]
+        hem, lip, inside, _ = info["rolls"][sfx]
+        for ri, ring in enumerate(rings[1:], 1):
+            grow = ri / (len(rings) - 1)
+            c = Q[ring].mean(0)
+            for m, v in enumerate(ring):
+                d = Q[v] - c
+                d[2] = 0.0
+                d /= max(np.linalg.norm(d), 1e-9)
+                off = d * al * grow * math.cos(nl * math.tau * m / len(ring) + 1.1)
+                Q[v] += off
+                if ring is hem:
+                    Q[lip[m]] += off
+                    Q[inside[m]] += off * 0.5
+    Bx.P = [q for q in Q]
+
+
 def build_boxers(M, T, sh, weights, under, armature):
+    if GRID_BOXERS:
+        return build_boxers_grid(M, T, sh, weights, under, armature)
+    P = np.array(M.P)
+    N = normals_of(P, M.tris())
+    crotch = M.tag["crotch"][0]
+
+    def band_z(phi):
+        return float(body_z(band_row(phi)))
+
+    def mid_zs(zb1):
+        z905 = float(body_z(905.0))
+        zb1 = max(zb1, z905 + 0.012)
+        return [zb1 + (z905 - zb1) * t for t in (0.33, 0.66, 1.0)]
+
+    def side_cols(sfx):
+        return list(range(0, 9)) if sfx == "_l" else [col_of(k, -1) for k in range(0, 9)]
+    lower = sum(1 for r in TORSO_ROWS if r >= 915)
+    Tl = M.tag["torso_rings"][:12]
+    Bx, src, islands, info = knit_shorts(P, N, Tl, {s: M.tag["leg_rings" + s] for s in ("_l", "_r")}, crotch, band_z,
+                                         BOXER_BAND_TALL * S, mid_zs, float(body_z(BOXER_LOOSE_HEM)), side_cols,
+                                         BOXER_LOOSE, bulge=BOXER_LOOSE_BULGE, lower_rings=lower)
+    loose_folds(Bx, info, P, Tl)
+    Q = np.array(Bx.P)
+    flipped = 0
+    for fi, f in enumerate(Bx.faces):
+        n = face_normal(Q, f)
+        want = Bx.want.get(fi)
+        if want is None:
+            nb = np.zeros(3)
+            for v in f:
+                for b, w in src[v].items():
+                    nb += N[b] * w
+            ok = np.dot(n, nb) >= 0
+        elif want[0] == "down":
+            ok = n[2] <= 0
+        else:
+            c = Q[f].mean(0) - want[1]
+            c[2] = 0.0
+            ok = np.dot(n, c) <= 0
+        if not ok:
+            Bx.faces[fi] = f[::-1]
+            flipped += 1
+            # (the face's UVs turned with it: they are listed in its corners' order; left as they were, every turned
+            # face took its neighbours' corners' UVs and the hearts came out as torn halves; the brother's plain knit
+            # hides the same slip)
+            for isl_ in islands.values():
+                if fi in isl_:
+                    isl_[fi] = isl_[fi][::-1]
+    for n_ in islands:
+        ISLANDS[n_] = ("boxers", 0.5 if n_.startswith("boxers_hem") else 1.0)
+    ATLAS["boxers"] = 1024
+    placed, face_uv = pack(islands)
+    write_layout(face_uv, placed, "boxers", os.path.join(TEX, "captain_boxers_layout.png"))
+    band_faces = {fi for fi, p in enumerate(Bx.fpart) if p == "boxers_band"}
+    rgb = paint_boxers(Bx, face_uv, placed, band_faces, info["G"], info)
+    path = os.path.join(TEX, "captain_boxers.png")
+    save_rgb(path, rgb[::-1])
+    w = []
+    for s in src:
+        acc = {}
+        for b, k in s.items():
+            for bone, v in weights[b].items():
+                acc[bone] = acc.get(bone, 0.0) + v * k
+        top4 = sorted(acc.items(), key=lambda kv: -kv[1])[:4]
+        tot = sum(v for _, v in top4)
+        w.append({b: v / tot for b, v in top4})
+    ob = mesh_object("captain_boxers", Bx.P, Bx.faces, armature, w)
+    mat = textured_material("captain_boxers", path)
+    mat.use_backface_culling = True
+    ob.data.materials.append(mat)
+    uvl = ob.data.uv_layers.new(name="UVMap")
+    for poly in ob.data.polygons:
+        for li, q in zip(poly.loop_indices, face_uv[poly.index][1]):
+            uvl.data[li].uv = q
+    n_before = len(Bx.tris())
+    if BOXER_LOOSE_KEEP >= 1.0:
+        print("CAPTAIN boxers (loose, the brother's structure): %d triangles, %d islands, %d faces turned" % (n_before, len(islands), flipped))
+        return Bx
+    dec = ob.modifiers.new("fewer", "DECIMATE")
+    dec.decimate_type = "COLLAPSE"
+    dec.ratio = BOXER_LOOSE_KEEP
+    dec.use_symmetry = True
+    dec.symmetry_axis = "X"
+    dec.use_collapse_triangulate = True
+    bpy.context.view_layer.objects.active = ob
+    for o in bpy.context.view_layer.objects:
+        o.select_set(o is ob)
+    ob.modifiers.move(ob.modifiers.find(dec.name), 0)
+    bpy.ops.object.modifier_apply(modifier=dec.name)
+    n_after = sum(len(p.vertices) - 2 for p in ob.data.polygons)
+    print("CAPTAIN boxers (loose, the brother's structure): %d triangles (%d before the collapse), %d islands, %d faces turned"
+          % (n_after, n_before, len(islands), flipped))
+    return Bx
+
+
+def build_boxers_grid(M, T, sh, weights, under, armature):
     P = np.array(M.P)
     N = normals_of(P, M.tris())
     Bx = Mesh()
@@ -7055,7 +7642,7 @@ def build_boxers(M, T, sh, weights, under, armature):
     return Bx
 
 
-def paint_boxers(Bx, face_uv, placed, band_faces, G):
+def paint_boxers(Bx, face_uv, placed, band_faces, G, info=None):
     """The boxers' picture, painted by rule from where each texel lies on him."""
     size = ATLAS["boxers"]
     Q = np.array(Bx.P)
@@ -7080,10 +7667,31 @@ def paint_boxers(Bx, face_uv, placed, band_faces, G):
         cover += heart_cover(u, v) * 0.25
     band = np.isin(fid, list(band_faces))
     cover[band] = 0.0
+    fam0 = np.array([p for p in Bx.fpart] + ["none"])[fid]
+    hem_t = np.char.startswith(fam0.astype(str), "boxers_hem")
+    cover[hem_t] = 0.0           # (sixteenth round: the turned-under hem plain, so no cut heart shows at its edge)
     rgb = rgb * (1 - cover[..., None]) + np.array(BOXER_RED) * cover[..., None]
     # the band: gathered elastic, fine upright gathers
     gathers = 0.94 + 0.06 * np.cos(xs * math.tau / max(0.006 * ppm, 2.0)) ** 2
     rgb[band] = gathers[band][:, None] * np.array((0.75, 0.75, 0.765))     # (fourteenth round: white, not grey)
+    if info is not None:
+        # (sixteenth round: a thick ribbed elastic, its ribs every 7 mm round him, a slight grey cast; the hem's roll a
+        # little darker, the crotch's folds as shade fanning from it: the brother's paint_knit, at the captain's sizes)
+        ang = np.arctan2(pos[..., 0], -(pos[..., 1] - info["cy"]))
+        Rr = np.hypot(pos[..., 0], pos[..., 1] - info["cy"])
+        stripes = 0.5 + 0.5 * np.cos(ang * Rr / 0.007 * math.tau)
+        rgb[band] = (0.84 + 0.16 * stripes[band])[:, None] * np.array((0.76, 0.76, 0.78))
+        rgb[hem_t] *= 0.9
+        zc = info["zc"]
+        zb_ = pos[..., 2]
+        frontb = pos[..., 1] < info["cy"]
+        for s in (1.0, -1.0):
+            x = s * pos[..., 0]
+            for a in (0.35, 0.75, 1.1):
+                d = (zb_ - (zc - 0.035)) * math.cos(a) - x * math.sin(a)
+                fold = hit & frontb & (x > 0.01) & (x < 0.15) & (zb_ > zc - 0.07) & (zb_ < zc + 0.07)
+                g = np.exp(-(d / 0.009) ** 2)[fold]
+                rgb[fold] *= (1.0 - 0.09 * g)[:, None]
     z = pos[..., 2]
     # (shade under the band and in the crotch and inner thighs; the hem's edge)
     fam = np.array([p for p in Bx.fpart] + ["none"])[fid]
@@ -7325,6 +7933,13 @@ def paint_head(M, face_uv, sh):
     skin_ref = np.median(rgb[good & headish & (sat > 0.12) & (lum > 0.4)], axis=0)
     rb = bare_row(pos[..., 2])
     hairish = good & headish & (sat < 0.09) & (lum > 0.46) & (rb < 720) & (nrm[..., 1] > -0.35)
+    # (sixteenth round, "the dark band across the back of the head": the back view's fringe in its own shadow, under the
+    # lit tips, is darker than 0.46 and was kept as skin: a grey-green band. Behind his ears, low-saturation texels down to
+    # a darker grey count as fringe too, and the mask is grown by a few texels so its soft edge goes with it)
+    back_hair = good & headish & (sat < 0.115) & (lum > 0.26) & (rb > 360) & (rb < 740) & (nrm[..., 1] > 0.15)
+    for _ in range(4):
+        back_hair = back_hair | (np.roll(back_hair, 1, 0) | np.roll(back_hair, -1, 0) | np.roll(back_hair, 1, 1) | np.roll(back_hair, -1, 1)) & good & headish & (nrm[..., 1] > 0.1) & (rb > 340) & (rb < 760)
+    hairish |= back_hair
     rs = np.random.default_rng(5)
     speck = rs.random(rgb.shape[:2])
     # (thirteenth round: the fringe toned by mixing smeared into grey streaks across the back of his head: now left
@@ -7350,7 +7965,7 @@ def paint_head(M, face_uv, sh):
     ny, nz = nrm[..., 1], nrm[..., 2]
     zone = lambda a, b, x: smooth01(a, b, x)
     scalp = (zone(bare_z(330), bare_z(290), z) * zone(0.45, 0.75, 1.0 - np.clip(-ny, 0, 1))
-             + zone(0.1, 0.4, ny) * zone(bare_z(700), bare_z(640), z)
+             + zone(0.1, 0.4, ny) * zone(bare_z(790), bare_z(720), z)     # (sixteenth round: down to the nape, was 700)
              + zone(bare_z(300), bare_z(272), z))
     scalp = np.clip(scalp, 0, 1) * headish
     wv = (headish & ~(scalp > 0.5)).astype(float)[..., None] + (headish & (scalp > 0.5)).astype(float)[..., None]
@@ -7359,6 +7974,11 @@ def paint_head(M, face_uv, sh):
         acc, ws = box_blur(acc, 12), box_blur(ws, 12)
     plain = acc / np.maximum(ws, 1e-6)
     sm = box_blur(box_blur(scalp[..., None], 4), 4)
+    # (sixteenth round, "the thin seam line on the crown": at an island's edge the blur of the scalp's mask took in the
+    # empty texels outside it and fell to half, so the edge's texels kept the unevened paint, a light line along the
+    # seam between the face's island and the back's: the mask's blur divided by the blur of where the head is painted)
+    hm = box_blur(box_blur(headish.astype(float)[..., None], 4), 4)
+    sm = np.clip(sm / np.maximum(hm, 1e-3), 0, 1) * headish[..., None]
     rgb = rgb * (1 - sm) + plain * sm
     sat = rgb.max(-1) - rgb.min(-1)
     # (fifteenth round, the second critic: "a dark, smeared horizontal band across the back of the head and neck": the
@@ -7474,6 +8094,41 @@ def heal_seams(M, face_uv, picture, rgb, pos, hit, reach=0.02, cell=0.012):
     return out
 
 
+# Sixteenth round (the critic: "the chest hair is a thin, brownish-grey wisp ... the concept has a dense silver-grey mat
+# ... the same goes for the back pelt, the forearms and the leg hair"). even_tone divides each texel by the broad tone
+# round it, and where the sheet's hair covers a whole chest the broad tone is the hair's own, so it came out faint and
+# tan. The hair is found in the picture as painted (before the toning: greyer than the skin round it, not darker by
+# much, so not ink) and laid back over the toned skin as silver-grey strokes, keeping the painting's own light and
+# dark within them (roots darker).
+BODY_HAIR = (0.03, 0.035, 0.85)            # how much greyer than the skin round it (start, full); the most it covers
+HAIR_SILVER = (0.70, 0.69, 0.67)
+
+
+def body_hair(rgb, raw, hit, pos=None):
+    rb = raw[..., 0] - raw[..., 2]
+    lum = raw.mean(-1)
+    w = hit.astype(float)[..., None]
+    acc, ws = raw * w, w
+    for _ in range(2):
+        acc, ws = box_blur(acc, 10), box_blur(ws, 10)
+    local = acc / np.maximum(ws, 1e-6)
+    lrb = local[..., 0] - local[..., 2]
+    llum = local.mean(-1)
+    # (the broad tone of a hairy chest is itself greyish: the skin's own red taken from the picture's skin as a whole)
+    skin_rb = float(np.percentile(rb[hit], 70))
+    grey = np.maximum(lrb - rb, skin_rb - rb - 0.02)
+    a = np.clip((grey - BODY_HAIR[0]) / BODY_HAIR[1], 0, 1) * np.clip((lum - llum + 0.06) / 0.06, 0, 1) * hit
+    a = np.clip(a, 0, 1) * BODY_HAIR[2]
+    if pos is not None:
+        # (not on the belly just over the band: the sheet's grey waistband lay there and came out as a white patch)
+        a = a * (1.0 - smooth01(float(body_z(836.0)), float(body_z(852.0)), pos[..., 2]) * (pos[..., 1] < 0.0) * (pos[..., 2] > float(body_z(900.0))))
+    shade = np.clip(0.8 + 1.6 * (lum - llum), 0.6, 1.15)[..., None]
+    hair = np.array(HAIR_SILVER) * shade
+    out = rgb * (1 - a[..., None]) + hair * a[..., None]
+    print("CAPTAIN body hair laid back: %d texels over a half" % int((a > 0.42).sum()))
+    return np.where(hit[..., None], out, rgb)
+
+
 def match_tone(rgb, sel, target=SKIN_TONE):
     """The whole picture scaled channel by channel so its skin's middle tone is the target's."""
     med = np.median(rgb[sel], axis=0)
@@ -7510,9 +8165,11 @@ TATTOOS = (
     ("forearm_back_r", "back", (1776, 1862), (716, 852)),
     ("forearm_back_l", "back", (2548, 2642), (726, 852)),
 )
-INK = (0.16, 0.19, 0.25)      # the ink's colour, a faded blue-black (fifteenth round: one colour, no longer mixed with the sheet's)
+INK = (0.21, 0.26, 0.33)      # the ink's colour, a faded blue-black (fifteenth round: one colour, no longer mixed with the sheet's)
 TATTOO_LINE = (0.022, 0.06)   # how much darker than the skin round it a texel must be to count as a line (start, full)
-TATTOO_STRENGTH = 0.72        # the lines' opacity over the skin (faded into it)
+TATTOO_STRENGTH = 0.8         # the lines' opacity over the skin (faded into it; sixteenth round, was 0.72)
+TATTOO_FILL = 0.62            # the designs' fills against their lines (sixteenth round)
+TATTOO_GROW = 1               # pixels the lines are thickened by (sixteenth round)
 
 
 def lift_tattoo(sh, c0, c1, r0, r1):
@@ -7531,8 +8188,21 @@ def lift_tattoo(sh, c0, c1, r0, r1):
     local = box_blur(box_blur(lum[..., None], 5), 5)[..., 0]
     a = np.clip((local - lum - TATTOO_LINE[0]) / TATTOO_LINE[1], 0, 1) * np.clip((skin_rb - rb - 0.015) / 0.05, 0, 1)
     a *= np.clip((skin_lum - lum) / 0.08, 0, 1)
+    # (sixteenth round, the coordinator: "now thin scratchy scribbles. They should read as old sailor tattoos: bold-ish
+    # clean line work with some fill"): the sheet's designs are slate fills inside darker outlines, so the fill is
+    # taken too, by colour (bluer and darker than the skin), at TATTOO_FILL of the lines' strength; the lines thickened
+    # by a pixel; the edges made crisp; specks (ink with no ink round it) dropped.
+    fill = np.clip((skin_rb - rb - 0.03) / 0.05, 0, 1) * np.clip((skin_lum - lum - 0.03) / 0.07, 0, 1)
+    line = np.clip((a - 0.15) / 0.5, 0, 1)
+    for _ in range(TATTOO_GROW):
+        line = np.maximum(line, np.maximum.reduce([np.roll(line, 1, 0), np.roll(line, -1, 0), np.roll(line, 1, 1), np.roll(line, -1, 1)]) * 0.85)
+    a = np.maximum(line, fill * TATTOO_FILL)
+    a = box_blur(a[..., None], 1)[..., 0]
+    a = smooth01(0.28, 0.55, a) * np.maximum(a, 0.7)
+    near = box_blur((a > 0.3).astype(float)[..., None], 3)[..., 0]
+    a[near < 0.12] = 0.0
     a[~sh.body_mask[r0:r1, c0:c1]] = 0.0
-    a = np.clip((a - 0.15) / 0.6, 0, 1) * TATTOO_STRENGTH
+    a = np.clip(a, 0, 1) * TATTOO_STRENGTH
     ink = np.broadcast_to(np.array(INK, np.float32), pix.shape).copy()
     return np.concatenate([ink, a[..., None]], 2).astype(np.float32)
 
