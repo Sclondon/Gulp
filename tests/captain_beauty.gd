@@ -7,6 +7,7 @@ extends SceneTree
 const MODEL := "res://models/captain.glb"
 
 var _out := ""
+var _only: PackedStringArray = []
 var _cam: Camera3D
 var _model: Node3D
 var _shots: Array = []
@@ -38,15 +39,224 @@ func _pose(name: String) -> void:
 			"turn":
 				_turn(sk, "neck", Vector3.UP, 15.0)
 				_turn(sk, "head", Vector3.UP, 30.0)
-			"bend":
-				_turn(sk, "hand_l", Vector3.FORWARD, 40.0)
-				_turn(sk, "hand_r", Vector3.BACK, 40.0)
+			"bend", "bendb":
+				# (eighteenth round: "the bent 40 degrees shots do not actually bend the hand": the turn was about the
+				# arm's front-to-back axis, a sideways swing that hardly shows from the front. Now the hand is FLEXED (and
+				# with bendb extended) 40 degrees about the wrist's own across axis, as the poser turns bones)
+				var deg := 40.0 if name == "bend" else -40.0
+				_apply(sk, [["flex", "_l", deg], ["flex", "_r", deg]])
+			_:
+				if POSES.has(name):
+					_apply(sk, POSES[name]["ops"])
+
+
+# --- The pose test (eighteenth round; the user: "match the models to the poses as well to make sure the topology is
+# poseablw"). The eight poses of tools/art_src/concept_captain_poses.jpg, made with the skeleton only (faces are rigged
+# elsewhere). Coordinates: his left +X, up +Y, his front +Z, metres. Each pose is a list of operations:
+#   ["rot", bone, axis, degrees]   the bone turned about its own joint, the axis as at rest, after its parent's turn
+#   ["aim", bone, child, dir]      the bone turned so its line to `child` points along `dir` (world)
+#   ["root", offset, axis, deg]    the hips (and so all of him) turned about their joint and moved
+#   ["leg", side, ankle, knee dir, foot pitch]   this rig hangs shin and foot from the hips (as title_figures' _leg):
+#                                  the knee found from the two lengths, the thigh, shin and foot set to reach the ankle
+#   ["curl", side, [index, middle, ring, little], thumb]   degrees at each finger joint toward the palm
+#   ["flex", side, deg]            the hand bent at the wrist toward the palm
+const POSES := {
+	"laugh": {"cam": [Vector3(0.35, 0.05, 1.0), Vector3(0, 0.9, 0.05), 3.0], "ops": [
+		["rot", "spine", Vector3.RIGHT, -6.0], ["rot", "chest", Vector3.RIGHT, -6.0],
+		["rot", "neck", Vector3.RIGHT, -15.0], ["rot", "head", Vector3.RIGHT, -22.0],
+		["aim", "upper_arm_l", "forearm_l", Vector3(0.25, -0.75, 0.35)], ["aim", "forearm_l", "hand_l", Vector3(-0.75, -0.25, 0.6)],
+		["aim", "upper_arm_r", "forearm_r", Vector3(-0.25, -0.75, 0.35)], ["aim", "forearm_r", "hand_r", Vector3(0.75, -0.15, 0.6)],
+		["flex", "_l", -25.0], ["flex", "_r", -25.0], ["curl", "_l", [15, 15, 18, 20], 10], ["curl", "_r", [15, 15, 18, 20], 10],
+		["leg", "_l", Vector3(0.2, 0.136, 0.02), Vector3(0.3, 0, 1), 0.0], ["leg", "_r", Vector3(-0.2, 0.136, 0.02), Vector3(-0.3, 0, 1), 0.0]]},
+	"shock": {"cam": [Vector3(0.2, 0.05, 1.0), Vector3(0, 0.9, 0.05), 3.2], "ops": [
+		["root", Vector3(0, -0.02, -0.04), Vector3.RIGHT, -8.0],
+		["rot", "chest", Vector3.RIGHT, -6.0], ["rot", "head", Vector3.RIGHT, -8.0],
+		["aim", "upper_arm_l", "forearm_l", Vector3(0.85, 0.35, 0.35)], ["aim", "forearm_l", "hand_l", Vector3(0.3, 0.9, 0.3)],
+		["aim", "upper_arm_r", "forearm_r", Vector3(-0.9, -0.1, 0.45)], ["aim", "forearm_r", "hand_r", Vector3(-0.35, 0.75, 0.55)],
+		["flex", "_l", -45.0], ["flex", "_r", -45.0], ["curl", "_l", [5, 5, 8, 10], 0], ["curl", "_r", [5, 5, 8, 10], 0],
+		["leg", "_l", Vector3(0.2, 0.36, 0.3), Vector3(0.1, 0.3, 1), -25.0], ["leg", "_r", Vector3(-0.15, 0.136, -0.05), Vector3(0, 0, 1), 0.0]]},
+	"swim": {"cam": [Vector3(1.0, 0.45, 0.15), Vector3(0, 0.75, 0.2), 3.4], "ops": [
+		["root", Vector3(0, 0.15, 0.0), Vector3.RIGHT, 82.0],
+		["rot", "neck", Vector3.RIGHT, -25.0], ["rot", "head", Vector3.RIGHT, -25.0],
+		["aim", "upper_arm_l", "forearm_l", Vector3(0.35, 0.0, 1.0)], ["aim", "forearm_l", "hand_l", Vector3(0.2, -0.05, 1.0)],
+		["aim", "upper_arm_r", "forearm_r", Vector3(-0.35, -0.15, 1.0)], ["aim", "forearm_r", "hand_r", Vector3(-0.15, -0.2, 1.0)],
+		["curl", "_l", [5, 5, 5, 5], 0], ["curl", "_r", [5, 5, 5, 5], 0]]},
+	"wheel": {"cam": [Vector3(-0.4, 0.1, 1.0), Vector3(0, 0.9, 0.05), 3.0], "ops": [
+		["root", Vector3(0, -0.05, 0), Vector3.RIGHT, 8.0],
+		["rot", "chest", Vector3.RIGHT, 4.0], ["rot", "head", Vector3.RIGHT, 8.0],
+		["aim", "upper_arm_l", "forearm_l", Vector3(0.35, -0.5, 0.75)], ["aim", "forearm_l", "hand_l", Vector3(-0.35, 0.45, 0.8)],
+		["aim", "upper_arm_r", "forearm_r", Vector3(-0.35, -0.5, 0.75)], ["aim", "forearm_r", "hand_r", Vector3(0.35, 0.45, 0.8)],
+		["flex", "_l", 20.0], ["flex", "_r", 20.0], ["curl", "_l", [70, 75, 75, 75], 35], ["curl", "_r", [70, 75, 75, 75], 35],
+		["leg", "_l", Vector3(0.27, 0.136, 0.12), Vector3(0.4, 0, 1), 0.0], ["leg", "_r", Vector3(-0.27, 0.136, -0.12), Vector3(-0.4, 0, 1), 0.0]]},
+	"shout": {"cam": [Vector3(0.3, 0.05, 1.0), Vector3(0.1, 0.9, 0.05), 3.3], "ops": [
+		["root", Vector3(0, -0.04, 0), Vector3.RIGHT, 6.0],
+		["rot", "chest", Vector3.RIGHT, 4.0], ["rot", "neck", Vector3.UP, 15.0], ["rot", "head", Vector3.UP, 10.0],
+		["aim", "upper_arm_l", "forearm_l", Vector3(0.85, 0.2, 0.5)], ["aim", "forearm_l", "hand_l", Vector3(0.85, 0.25, 0.5)],
+		["aim", "upper_arm_r", "forearm_r", Vector3(-0.35, -0.55, 0.75)], ["aim", "forearm_r", "hand_r", Vector3(0.55, 0.8, 0.25)],
+		["curl", "_l", [0, 85, 85, 85], 40], ["flex", "_r", 10.0], ["curl", "_r", [35, 35, 35, 35], 10],
+		["leg", "_l", Vector3(0.28, 0.136, 0.08), Vector3(0.5, 0, 1), 0.0], ["leg", "_r", Vector3(-0.26, 0.136, -0.04), Vector3(-0.5, 0, 1), 0.0]]},
+	"sit": {"cam": [Vector3(0.45, 0.15, 1.0), Vector3(0, 0.65, 0.15), 3.0], "ops": [
+		["root", Vector3(0, -0.2, -0.05), Vector3.RIGHT, 12.0],
+		["rot", "spine", Vector3.RIGHT, 10.0], ["rot", "chest", Vector3.RIGHT, 10.0], ["rot", "head", Vector3.RIGHT, 18.0],
+		["aim", "upper_arm_l", "forearm_l", Vector3(0.3, -0.75, 0.55)], ["aim", "forearm_l", "hand_l", Vector3(-0.45, -0.15, 0.9)],
+		["aim", "upper_arm_r", "forearm_r", Vector3(-0.3, -0.75, 0.55)], ["aim", "forearm_r", "hand_r", Vector3(0.45, -0.1, 0.9)],
+		["curl", "_l", [40, 45, 50, 55], 20], ["curl", "_r", [40, 45, 50, 55], 20],
+		["leg", "_l", Vector3(0.21, 0.136, 0.3), Vector3(0.2, 0.3, 1), 0.0], ["leg", "_r", Vector3(-0.21, 0.136, 0.3), Vector3(-0.2, 0.3, 1), 0.0]]},
+	"haul": {"cam": [Vector3(-0.5, 0.1, 1.0), Vector3(0, 0.75, 0.15), 3.1], "ops": [
+		["root", Vector3(0, -0.08, -0.06), Vector3.RIGHT, 22.0],
+		["rot", "spine", Vector3.RIGHT, 12.0], ["rot", "chest", Vector3.RIGHT, 8.0], ["rot", "neck", Vector3.RIGHT, -20.0],
+		["rot", "chest", Vector3.UP, -12.0],
+		["aim", "upper_arm_l", "forearm_l", Vector3(-0.2, -0.6, 0.8)], ["aim", "forearm_l", "hand_l", Vector3(-0.55, -0.35, 0.75)],
+		["aim", "upper_arm_r", "forearm_r", Vector3(-0.45, -0.7, 0.55)], ["aim", "forearm_r", "hand_r", Vector3(-0.5, -0.2, 0.85)],
+		["curl", "_l", [70, 75, 75, 75], 35], ["curl", "_r", [70, 75, 75, 75], 35],
+		["leg", "_l", Vector3(0.25, 0.136, 0.25), Vector3(0.3, 0, 1), 0.0], ["leg", "_r", Vector3(-0.25, 0.136, -0.12), Vector3(-0.3, 0, 1), 0.0]]},
+	"look_up": {"cam": [Vector3(-0.35, 0.05, 1.0), Vector3(0, 0.9, 0.05), 3.0], "ops": [
+		["rot", "neck", Vector3.RIGHT, -14.0], ["rot", "head", Vector3.RIGHT, -24.0],
+		["aim", "upper_arm_r", "forearm_r", Vector3(-0.75, 0.55, 0.3)], ["aim", "forearm_r", "hand_r", Vector3(0.55, 0.65, 0.15)],
+		["flex", "_r", -20.0], ["curl", "_r", [35, 40, 45, 50], 20], ["curl", "_l", [10, 12, 15, 18], 5]]},
+}
+
+
+## The rigid move of each bone (skeleton space) for a list of operations, then set as the bones' poses.
+func _apply(sk: Skeleton3D, ops: Array) -> void:
+	var n := sk.get_bone_count()
+	var rest: Array[Transform3D] = []
+	for b in n:
+		rest.append(sk.get_bone_global_rest(b))
+	var X: Array[Transform3D] = []
+	X.resize(n)
+	var done: Array[bool] = []
+	done.resize(n)
+	var order: Array[int] = []
+	var stack: Array[int] = []
+	for b in n:
+		if sk.get_bone_parent(b) < 0:
+			stack.append(b)
+	while not stack.is_empty():
+		var b: int = stack.pop_front()
+		order.append(b)
+		for c in sk.get_bone_children(b):
+			stack.append(c)
+	var legs := {}
+	for op in ops:
+		if op[0] == "leg":
+			legs[op[1]] = op
+	for b in order:
+		var p := sk.get_bone_parent(b)
+		X[b] = X[p] if p >= 0 else Transform3D.IDENTITY
+		var bname := sk.get_bone_name(b)
+		var h := rest[b].origin
+		for op in ops:
+			match String(op[0]):
+				"root":
+					if p < 0:
+						X[b] = Transform3D(Basis.IDENTITY, op[1]) * _about(h, op[2], op[3])
+				"rot":
+					if op[1] == bname:
+						X[b] = X[b] * _about(h, op[2], op[3])
+				"aim":
+					if op[1] == bname:
+						var c := sk.find_bone(op[2])
+						var cur: Vector3 = X[b].basis * (rest[c].origin - h)
+						var hp: Vector3 = X[b] * h
+						var q := Quaternion(cur.normalized(), (op[3] as Vector3).normalized())
+						X[b] = Transform3D(Basis(q), hp - Basis(q) * hp) * X[b]
+				"flex":
+					if bname == "hand" + String(op[1]):
+						X[b] = X[b] * _about(h, _wrist_axis(sk, rest, String(op[1])), float(op[2]))
+				"curl":
+					var sfx := String(op[1])
+					if bname.ends_with(sfx) and (bname.begins_with("finger_") or bname.begins_with("thumb_")):
+						var deg := 0.0
+						if bname.begins_with("thumb_"):
+							deg = 0.0 if bname.begins_with("thumb_1") else float(op[3])
+						else:
+							deg = float(op[2][["index", "middle", "ring", "little"].find(bname.get_slice("_", 1))])
+						X[b] = X[b] * _about(h, _curl_axis(sk, rest, sfx), deg)
+		for sfx in legs:
+			var op: Array = legs[sfx]
+			if bname == "thigh" + sfx or bname == "shin" + sfx or bname == "foot" + sfx:
+				X[b] = _leg_move(sk, rest, X, sfx, bname, op)
+	for b in order:
+		var p := sk.get_bone_parent(b)
+		var g := X[b] * rest[b]
+		var local := ((X[p] * rest[p]).affine_inverse() * g) if p >= 0 else g
+		sk.set_bone_pose_position(b, local.origin)
+		sk.set_bone_pose_rotation(b, local.basis.orthonormalized().get_rotation_quaternion())
+
+
+func _about(h: Vector3, axis: Vector3, deg: float) -> Transform3D:
+	var bs := Basis(axis.normalized(), deg_to_rad(deg))
+	return Transform3D(bs, h - bs * h)
+
+
+## The wrist's across axis, signed so a positive turn bends the hand toward the palm.
+func _wrist_axis(sk: Skeleton3D, rest: Array[Transform3D], sfx: String) -> Vector3:
+	var along := (rest[sk.find_bone("hand" + sfx)].origin - rest[sk.find_bone("forearm" + sfx)].origin).normalized()
+	var k := _curl_axis(sk, rest, sfx)
+	return (k - along * k.dot(along)).normalized()
+
+
+## The knuckles' line, signed so a positive turn curls a finger toward the palm (the palm faces where the thumb's
+## middle joint stands off the knuckles' plane).
+func _curl_axis(sk: Skeleton3D, rest: Array[Transform3D], sfx: String) -> Vector3:
+	var i := rest[sk.find_bone("finger_index_1" + sfx)].origin
+	var l := rest[sk.find_bone("finger_little_1" + sfx)].origin
+	var m3 := rest[sk.find_bone("finger_middle_3" + sfx)].origin
+	var m1 := rest[sk.find_bone("finger_middle_1" + sfx)].origin
+	var t2 := rest[sk.find_bone("thumb_2" + sfx)].origin
+	var k := (l - i).normalized()
+	var along := (m3 - m1).normalized()
+	var palm := (t2 - m1)
+	palm = (palm - along * palm.dot(along) - k * palm.dot(k)).normalized()
+	# a positive turn about k moves `along` toward k x along; that must be toward the palm
+	return k if k.cross(along).dot(palm) > 0.0 else -k
+
+
+func _leg_move(sk: Skeleton3D, rest: Array[Transform3D], X: Array[Transform3D], sfx: String, bname: String, op: Array) -> Transform3D:
+	var hb := sk.find_bone("hips")
+	var H0 := rest[sk.find_bone("thigh" + sfx)].origin
+	var K0 := rest[sk.find_bone("shin" + sfx)].origin
+	var A0 := rest[sk.find_bone("foot" + sfx)].origin
+	var H: Vector3 = X[hb] * H0
+	var A: Vector3 = op[2]
+	var a := (K0 - H0).length()
+	var b := (A0 - K0).length()
+	var d := clampf((A - H).length(), 0.05, a + b - 0.002)
+	var dir := (A - H).normalized()
+	A = H + dir * d
+	var along := (a * a - b * b + d * d) / (2.0 * d)
+	var hh := sqrt(maxf(a * a - along * along, 0.0))
+	var pole: Vector3 = (op[3] as Vector3).normalized()
+	var pp := (pole - dir * pole.dot(dir)).normalized()
+	var K := H + dir * along + pp * hh
+	if bname == "thigh" + sfx:
+		return _seg_move(H0, K0, H, K, pole)
+	if bname == "shin" + sfx:
+		return _seg_move(K0, A0, K, A, pole)
+	var fb := X[hb].basis * Basis(Vector3.RIGHT, deg_to_rad(float(op[4])))
+	return Transform3D(fb, A - fb * A0)
+
+
+## The rigid move taking the segment p0->q0 (its pole the front at rest) to p1->q1 with its pole toward `pole`.
+func _seg_move(p0: Vector3, q0: Vector3, p1: Vector3, q1: Vector3, pole: Vector3) -> Transform3D:
+	var u0 := (q0 - p0).normalized()
+	var f0 := Vector3.BACK - u0 * Vector3.BACK.dot(u0)
+	f0 = f0.normalized()
+	var u1 := (q1 - p1).normalized()
+	var f1 := (pole - u1 * pole.dot(u1)).normalized()
+	var B0 := Basis(u0, f0, u0.cross(f0))
+	var B1 := Basis(u1, f1, u1.cross(f1))
+	var R := B1 * B0.inverse()
+	return Transform3D(R, p1 - R * p0)
 
 
 func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			_out = a.get_slice("=", 1)
+		if a.begins_with("--only="):
+			_only = a.get_slice("=", 1).split(",")
 	var world := Node3D.new()
 	root.add_child(world)
 	var env := Environment.new()
@@ -103,6 +313,26 @@ func _initialize() -> void:
 		_shots.append(["wrist_back" + gt, Vector3(0.2, 0.05, -1).normalized(), Vector3(0.45, 0.8, 0.0), 0.6, true, "", g])
 		_shots.append(["wrist_out" + gt, Vector3(1, 0.05, 0.1).normalized(), Vector3(0.45, 0.8, 0.0), 0.6, true, "", g])
 		_shots.append(["wrist_bent" + gt, Vector3(0.6, 0.05, 0.8).normalized(), Vector3(0.45, 0.8, 0.0), 0.6, true, "bend", g])
+		_shots.append(["wrist_bentb" + gt, Vector3(0.6, 0.05, 0.8).normalized(), Vector3(0.45, 0.8, 0.0), 0.6, true, "bendb", g])
+	# (eighteenth round: --poses: the pose test alone: each pose from the sheet's angle and from a quarter turn round,
+	# lit and in grey, cap on)
+	if "--poses" in OS.get_cmdline_user_args():
+		_shots = []
+		for pname: String in POSES:
+			var cam: Array = POSES[pname]["cam"]
+			var d0: Vector3 = (cam[0] as Vector3).normalized()
+			var d1: Vector3 = Basis(Vector3.UP, deg_to_rad(-80.0 if d0.x >= 0.0 else 80.0)) * d0
+			for g in [false, true]:
+				var gt := "_grey" if g else ""
+				_shots.append(["pose_" + pname + "_a" + gt, d0, cam[1], cam[2], true, pname, g])
+				_shots.append(["pose_" + pname + "_b" + gt, d1, cam[1], cam[2], true, pname, g])
+	# (eighteenth round: --only=<a,b> keeps the shots whose names begin with one of them)
+	if not _only.is_empty():
+		_shots = _shots.filter(func(s: Array) -> bool:
+			for o in _only:
+				if String(s[0]).begins_with(o):
+					return true
+			return false)
 
 
 func _process(_delta: float) -> bool:
@@ -124,7 +354,7 @@ func _process(_delta: float) -> bool:
 		var at: Vector3 = shot[2]
 		# (the eye at about his eye height for the whole-body views, looking a little down at his middle)
 		var eye: Vector3 = at + (shot[1] as Vector3) * float(shot[3])
-		if float(shot[3]) > 2.0:
+		if float(shot[3]) > 2.0 and not POSES.has(String(shot[5]) if shot.size() > 5 else ""):
 			eye.y = 1.5
 		_cam.position = eye
 		_cam.look_at(at, Vector3.UP)
