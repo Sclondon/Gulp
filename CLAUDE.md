@@ -1035,3 +1035,7 @@ the research (with sources), the numbers, what is checked and what is rough. Con
   red, less of a round button; a slightly more angular nose (and, Claude's reading, a touch more definition in the face,
   still boyish). Goes into `concept_brother_tpose8.jpg` and a new head sheet `concept_brother_head3.jpg` (two rows: with
   hair, and shaved), both owed after 6:15 PM.
+- The brother's eyes (the user, 2026-11-18, about 5:50 PM): "The brother should have a bit down turned eyes and more
+  prominent world weary bags for soft gentle kind eyes". Outer corners a little lower than the inner, a slightly heavy
+  outer upper lid, clear soft bags under each eye, relaxed brows: gentle and kind, a little tired. Into
+  `concept_brother_head3.jpg` and the model.
