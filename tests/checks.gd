@@ -242,6 +242,27 @@ func _breakers() -> void:
 							slivers += 1
 	_check("every face of a breaker's sheet faces the air, bent as the shader bends it", faces > 1000 and wrong == 0 and most > 0.5,
 			"%d of %d faces wrong where the shape shows (breaking weight up to %.2f); %d twisted slivers where it is faint" % [wrong, faces, most, slivers])
+	# The surface the game floats things on knows the lip: in the open tube a point is above the water
+	# (over the tube's floor) though the lip's top is over it.
+	var tube_site: Dictionary = Breakers.sites()[0]
+	var ti: int = tube_site.points.size() / 2
+	var tube_t := 100.0
+	for k in 800:
+		var cr := Breakers.crest(tube_site.points[ti], tube_site.ways[ti], tube_t)
+		if absf((cr.y - float(tube_site.tb[ti])) / Breakers.BREAK_TIME - 0.75) < 0.02:
+			break
+		tube_t += 0.01
+	var was := Surf.clock
+	Surf.clock = tube_t
+	var tcr := Breakers.crest(tube_site.points[ti], tube_site.ways[ti], tube_t)
+	var th: float = float(tube_site.heights[ti]) * Breakers.sets(tcr.z)
+	var tube_xz: Vector2 = tube_site.points[ti] + tube_site.ways[ti] * (Breakers.DEPTH_LINE - Breakers.d_of(tcr.x) + 0.8 * th)
+	var tube_y: float = Sea.SURFACE + float(Breakers.water_at(tube_xz, tube_t, 1.0)[1]) + 0.35 * th
+	var under_lip := Sea.surface_height(tube_xz.x, tube_xz.y, tube_y)
+	var lip_top := Sea.surface_height(tube_xz.x, tube_xz.y)
+	Surf.clock = was
+	_check("in a barrel's tube the surface is the tube's floor, under the lip's top", under_lip < tube_y and lip_top > tube_y,
+			"at %.2f m: floor %.2f, top %.2f" % [tube_y, under_lip, lip_top])
 	var zone_far := Breakers.zone(Vector2(-40.0, -55.0), Bay.shore_distance(Vector2(-40.0, -55.0)))
 	var site: Dictionary = Breakers.sites()[0]
 	var mid: Vector2 = site.points[site.points.size() / 2]

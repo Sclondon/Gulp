@@ -310,9 +310,10 @@ curling barrels on the waves, so research that". Built by an agent. Concept: `to
 
 ### Where the barrels break (Claude's pick)
 
-- **Steamer Lane**: the point west of Santa Cruz's wharf, `from` (-50, -125.5) to (-22, -123), waves to 2.6 m at a
-  full set, peeling west to east (a right, as there). Stops short of the wharf's harbour.
-- **Marina**: the long straight beach on the east shore south of the river mouth, (88.5, -10) to (86.5, 24), to 2.3 m,
+- **Steamer Lane**: the point west of Santa Cruz's wharf, `from` (-58, -126.5) to (-20, -123) (second pass; was
+  (-50, -125.5) to (-22, -123)), waves to 3.0 m at a full set (was 2.6), peeling west to east (a right, as there). Stops short of the wharf's harbour.
+- **Marina**: the long straight beach on the east shore south of the river mouth, (88.8, -18) to (86.3, 28) (was
+  (88.5, -10) to (86.5, 24)), to 2.9 m (was 2.3),
   peeling north to south (a beach break).
 - Everywhere else the surf is as before (spilling and broken water, rocky points and cliffs included). More breaks:
   add a line to `Breakers.SITES` on a straight, smooth coast (a concave cove makes the sections fan; Pleasure Point
@@ -320,9 +321,11 @@ curling barrels on the waves, so research that". Built by an agent. Concept: `to
 
 ### The numbers (Claude's picks, change freely)
 
-`Breakers`: STEP 0.6 m, POINTS 64 (12 behind, 40 in the profile, 12 ahead), DEPTH_LINE 8 m, ENTRY 12 m, WINDOW 1.7
-wavelengths, BREAK_TIME 2.2 s (face to landing), LAST_STAGE 1.5, BACK 1.6 and FRONT 2.6 wave heights, SEEN 110 m
-(drawn within it; the water mesh beyond), the peel `tb` 0.5 to 3.1 s along each strip, the ends' fade 2.5 to 8 m.
+`Breakers`: STEP 0.6 m, POINTS 96 (12 behind, 72 in the profile, 12 ahead; 64 and 40 before the second pass),
+DEPTH_LINE 8 m, ENTRY 12 m, WINDOW 1.7 wavelengths, BREAK_TIME 2.0 s (face to landing; 2.2 before), LAST_STAGE 1.5,
+BACK 1.6 and FRONT 2.6 wave heights, SEEN 110 m (drawn within it; the water mesh beyond), the peel `tb` 0.4 to 3.9 s
+along each strip (0.5 to 3.1 before), the ends' fade 0.8 to 3.5 m and the shoulders' taper (SHOULDER_LOW 0.4 over
+SHOULDER 14 and 7 m; before, a fade over 2.5 to 8 m), the sets' share 0.67 to 1.
 The shader repeats the sums (`breaker_point`, `breaker_crest`, `surface_at`): keep them alike with `Breakers.point`.
 `-- --no-breakers` leaves the breakers out (costs, comparisons).
 
@@ -345,14 +348,65 @@ The shader repeats the sums (`breaker_point`, `breaker_crest`, `surface_at`): ke
   is in sight. At a barrel (`--perf=barrel`, new), with and without `--no-breakers`: GPU 0.19 to 0.33 ms either way,
   within the noise. Not tried on a phone.
 
+### Second pass (2026-11-18, the user after GIFs from six angles: "Definitely needs another round")
+
+What the GIFs showed: only the close side view read as a tube; from above a moving foam line; from under the water a
+foam roof; the Marina from the beach a low green band; the "inside" camera dipping under the water. What changed
+(Claude's picks, after barrel photographs and the concept; a "round" tube is 1 to 2 times as wide as it is high,
+Pipeline's is round, Teahupo'o's lip is half the wave's height thick: Surferpedia "Wave shape", Swellnet's anatomy of
+Teahupo'o):
+
+- **Shape**: new profile keys (`Breakers.KEYS`): the crest 1.2 heights up (was 0.95), the lip thrown 1.6 to 1.85
+  heights (was 1.45 to 1.7) with a quarter to a third of a height of thickness, the tube about 1.4 times as wide as
+  high (about 1.5 x 1.05 heights inside, was about 1.3 x 0.8). The tip still never meets the water below (the profile
+  must not cross itself). 96 points down a section (72 in the curl, was 40) and a 128-column profile picture, so the
+  tip is round and the edge smooth. `tools/` has no profile viewer: the sheet of stages was drawn with a throwaway
+  script; `checks.gd` still counts crossings.
+- **Size and peel**: waves taller (Steamer Lane 3.0 m at a full set, was 2.6; the Marina 2.9, was 2.3, the same
+  profile, so as round) and the sets' share of it 0.67 to 1 (`Breakers.sets`, was 0.45 to 1: a small set's barrel
+  was too small to read). Strips longer (Steamer Lane 38 m from x -58, the Marina 46 m from z -18 to 28), BREAK_TIME
+  2.0 s and the peel 0.4 to 3.9 s along each (11 and 13 m/s), so a tube spins along the beach for longer. (A section
+  carries its wave one period, 7 s: the last section's peel time plus 1.5 breaks must fit in it.) The Marina's strip
+  walk now stops at the line's point nearest `to` (it ran on to 400 sections when `to` was off the line).
+- **Shoulders**: the breaking shape fades only in the last 0.8 to 3.5 m; before that the wave itself is lower towards
+  each end (to 0.4 of its height over 14 m on the shoulder still to break, 7 m on the white water side;
+  `SHOULDER`, each section's height in `heights` and CUSTOM0.z), so a tube tapers away instead of flattening.
+- **Look** (water.gdshader's breaker path): foam in two painted tones (a pale lit aqua band and white strokes, broken
+  along the lip by a big slow blotch) instead of a hard white line; a curtain of white streaks only on the falling tip;
+  white water only from the landing forward and over the collapsing crest (the back stays green), in heaps and holes,
+  shaded by the sun on its own shape (`breaker_foam_shade` the shaded side); painted streaks up the wave's back and its
+  top lit through, for the view from out at sea; the glassy water (no surf lace) over the whole section while it
+  carries a barrel, from well before the face stands up (the shoulder ahead was covered in the last wave's lace) and
+  further ahead of the crest. From under the water: the breaking section's foam roof mostly taken away, the wave's
+  body lit water a little darker than the surface round it, the lip brightest, the tube's floor clear so the dark
+  inside of the tube shows through, white where the lip lands.
+- **Spray** (`Breakers._make_stream`, `_feed_spray`): the drops are gone; three streams a break of billboards cut from
+  one painted puff made in code (`Breakers.puff`: five lobes, a noise-cut edge, three flat tones): a PLUME feathering
+  up and back off the crest (twice from a big one) and thrown off the pitching lip; a BURST of big puffs up and back
+  where the lip lands; and a CURTAIN of bubbles driven down under the landing. Only the side the eye is on is fed (the
+  surface hides each from the other), puffs fade out within 0.6 to 5 m of the eye, dimmed with the hour.
+- **The surface knows the lip**: `Sea.surface_height(x, z, y)` (new optional height) asks `Breakers.surface`, which reads
+  the nearest section's profile row: in the tube (between the floor and the lip's underside) the surface is the floor,
+  so a fish there is in the air and the camera above water; without `y` it is the lip's top. The camera's above/below,
+  the wet-lens streaks, the haze, the player's leap and landing pass their height (a fish left in the tube's air as a lip goes by falls to the floor, not put under it). About 12 to 17 us a call near a
+  break (5.5 for `Surf.height`), nothing elsewhere. New check: `in a barrel's tube the surface is the tube's floor`.
+- **Pictures** (`tests/barrel_shot.gd`): "inside" and "under" ride with the tube (put again each stage), the rest are
+  placed at stage 0.7 so the frame holds the curl; "inside" sinks as the tube closes; "under" is under the back of the
+  wave, where it is deep enough to swim (under the tube itself the water is too shallow for an eye: a barrel breaks in
+  water little deeper than it is high); "beach" is further along so it sees into the tube's open end; "sea" is behind
+  and above, as from a deck or the bluff; "high" a drone's view over the shoulder. Each saved line says whether the eye
+  is above or under the water.
+
 ### Rough
 
-- The surface the game floats things on (`Sea.surface_height`) is still the water's own sums: a fish or the camera
-  under a lip does not know the lip is there.
-- From under the water a barrel reads only faintly: the broken water's foam roof dominates (only within a crest's
-  reach is the underside cleared).
-- The lip's edge is a hard white line; the white water after the landing is flat painted foam, not a bursting cloud.
-  Spray is round drops, small next to the concept's plume.
-- At the strips' ends the curl shrinks over 2.5 to 8 m into the plain surf: a short shoulder, with a thin twisted
-  sliver or two.
-- Only two breaks. Nobody has swum one by hand.
+- From straight out to sea at the water a barrel is only its back and the plume (as a real one is); the "sea" picture
+  is from higher up.
+- The white water is painted heaps on the sheet plus the burst; it does not roll on as a moving foam ball after the
+  section's last stage (the water's own bore takes over).
+- Inside the tube as it closes (stage 1.2 on) the eye is in a jumble of foam faces; the trough under the tube shows
+  faint vertical bands where the sections meet at a grazing angle.
+- The rest of the surf's foam (the swash's flat white shapes, the lace on the plain surf) is as it was.
+- At the strips' ends a few thin twisted slivers remain where the shape is faint (307 counted, shown from the right
+  side by `v_air`).
+- Only two breaks. Nobody has swum one by hand; a fish in the tube now leaps there (the surface is the floor), which
+  is untried in play.

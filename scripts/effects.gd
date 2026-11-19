@@ -164,7 +164,7 @@ func _process(delta: float) -> void:
 	fov_kick = lerpf(fov_kick, FOV_KICK * burst, 1.0 - exp(-(5.0 if burst > fov_kick / FOV_KICK else 2.5) * delta))
 	_streaks = lerpf(_streaks, hard, 1.0 - exp(-(6.0 if hard > _streaks else 3.0) * delta))
 	if post:
-		post.set_shader_parameter(&"streaks", _streaks if camera and camera.global_position.y < Sea.surface_height(camera.global_position.x, camera.global_position.z) else 0.0)
+		post.set_shader_parameter(&"streaks", _streaks if camera and camera.global_position.y < Sea.surface_height(camera.global_position.x, camera.global_position.z, camera.global_position.y) else 0.0)
 
 
 # The churned water behind the fish: every so often the place its tail is at is kept (with how
@@ -184,7 +184,7 @@ func _churn(delta: float, under: bool, going: float, tail: Vector3, long: float)
 	var points := PackedVector4Array()
 	points.resize(HAZE_POINTS)
 	var seen := camera.get_viewport().get_visible_rect().size
-	var wet := camera.global_position.y < Sea.surface_height(camera.global_position.x, camera.global_position.z)
+	var wet := camera.global_position.y < Sea.surface_height(camera.global_position.x, camera.global_position.z, camera.global_position.y)
 	var tall := 2.0 * tan(deg_to_rad(camera.fov) * 0.5)
 	for i in HAZE_POINTS:
 		var h := _haze_at[i]

@@ -213,7 +213,7 @@ func step(delta: float) -> void:
 		var held := Sea.keep_in(Vector3(next.x, Sea.SURFACE - 1.0, next.z), room)
 		global_position = Vector3(held.x, next.y, held.z)
 		# (the water's surface where it is, waves and all: Sea.surface_height)
-		var top := Sea.surface_height(global_position.x, global_position.z)
+		var top := Sea.surface_height(global_position.x, global_position.z, global_position.y)
 		if global_position.y < top - room * 0.5 and velocity.y < 0.0:
 			in_air = false
 			pitch = asin(clampf(heading.y, -1.0, 1.0))
@@ -252,8 +252,13 @@ func step(delta: float) -> void:
 		return
 	var next := global_position + velocity * delta
 	# (the surface where it is: the swell, the surf, a rogue wave. tools/WATER_FX.md, "Surf and rogue waves")
-	var top := Sea.surface_height(next.x, next.z)
-	if next.y > top - room and heading.y > 0.2 and _speed > Fish.pace(length) * LEAP_PACE:
+	var top := Sea.surface_height(next.x, next.z, next.y)
+	if next.y > top + room and not is_nan(Breakers.surface(next.x, next.z, next.y, Surf.clock)):
+		# (in a barrel's lip as it went by, and now in the tube under it: it falls through the air to the
+		# tube's floor, rather than being put under it. scripts/breakers.gd, Breakers.surface)
+		in_air = true
+		global_position = next
+	elif next.y > top - room and heading.y > 0.2 and _speed > Fish.pace(length) * LEAP_PACE:
 		# Up through the surface, fast enough: out it comes.
 		in_air = true
 		velocity *= LEAP_KICK

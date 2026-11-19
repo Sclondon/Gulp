@@ -1009,6 +1009,10 @@ the research (with sources), the numbers, what is checked and what is rough. Con
 - The shader's breaker path (`breaker_point`, `breaker_crest`, `surface_at` in water.gdshader and surf.gdshaderinc)
   and `Breakers.point` are the same sums: change both. Pictures: `tests/barrel_shot.gd` (a held stage, views side,
   inside, under, beach, sea, high; `--debug=4` which mesh draws). `-- --no-breakers` leaves them out; `-- --perf=barrel`.
+- Barrels, second pass (2026-11-18, the user after six-angle GIFs: "Definitely needs another round"; Claude's picks):
+  bigger, rounder tubes with a thick lip, longer strips that peel faster, shoulders that taper, two-tone painted foam,
+  painted spray puffs (plume, burst, bubbles), a clearer look from under the water, and `Sea.surface_height(x, z, y)`
+  aware of the lip (in the tube the surface is its floor). `tools/WATER_FX.md`, "Second pass".
 - Pose sheets and the pose test (the user, 2026-11-18, evening): "Make some concept art of the 3 mains in different
   poses- laughing, shock, swim etc and match the models to the poses as well to make sure the topology is poseablw".
   Sheets: `tools/art_src/concept_captain_poses.jpg`, `concept_brother_poses.jpg`, `concept_boy_poses.jpg`. The test and

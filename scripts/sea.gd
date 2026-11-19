@@ -148,7 +148,13 @@ static func edge_at(z: float) -> float:
 
 ## Where the water's surface is at a point (world y), as it is drawn: the swell, the surf along the
 ## shores and any rogue wave (scripts/surf.gd). SURFACE is its middle height.
-static func surface_height(x: float, z: float) -> float:
+## With `y` (the height of whatever asks) it also knows a breaker's curling lip (scripts/breakers.gd):
+## something in the tube under a lip is above the surface (the tube's floor), something in the lip is
+## under it. Without, it is the top of the water there (the lip's top, over a tube).
+static func surface_height(x: float, z: float, y := INF) -> float:
+	var lip := Breakers.surface(x, z, y, Surf.clock)
+	if not is_nan(lip):
+		return lip
 	return Surf.height(x, z)
 
 

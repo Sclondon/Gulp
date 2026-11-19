@@ -296,7 +296,7 @@ vec3 breaker_point(vec2 base, vec2 way, float line_d, float tb, float site_h, fl
 		dc = 0.0;
 	} else {
 		vec3 cr = breaker_crest(base, way, line_d, water_clock);
-		hh = site_h * (0.8 + 0.3 * sin(cr.z * 0.27 + 1.0)) / 1.1;
+		hh = site_h * (0.92 + 0.18 * sin(cr.z * 0.27 + 1.0)) / 1.1;
 		stage = (cr.y - tb) / breaker_a.x;
 		sc = cr.x;
 		dc = surf_d(sc);
@@ -306,7 +306,9 @@ vec3 breaker_point(vec2 base, vec2 way, float line_d, float tb, float site_h, fl
 	vec4 b = vec4(0.0);
 	float wd = 0.0;
 	info = vec4(0.0, stage, 0.0, 0.0);
-	sect = vec3(breaker_stage_weight(stage) * fade, hh, 0.0);
+	// (sect.x: how much this section carries a barrel wave, from well before its face stands up, so the
+	// shoulder still to break is glassy too, to the white water settling)
+	sect = vec3(smoothstep(-1.2, -0.2, stage) * (1.0 - smoothstep(1.2, 1.5, stage)) * fade, hh, 0.0);
 	t_piece = v < breaker_b.z ? 0.0 : 1.0;
 	if (v < breaker_b.z) {
 		float f = v / breaker_b.z;
@@ -323,7 +325,7 @@ vec3 breaker_point(vec2 base, vec2 way, float line_d, float tb, float site_h, fl
 	}
 	still = base + (line_d - d) * way;
 	// (how near the crest this water is, a wave's length either side: its glassy water and clear underside)
-	sect.z = 1.0 - smoothstep(0.25, 0.42, rogue ? abs(d) / win : abs(surf_s(d) - sc) / surf_a.y);
+	sect.z = 1.0 - smoothstep(0.35, 0.6, rogue ? abs(d) / win : abs(surf_s(d) - sc) / surf_a.y * (d < dc ? 0.6 : 1.0));
 	float fine = fine_at(still, eye);
 	wd *= fine;
 	info.x = wd;
@@ -383,7 +385,7 @@ void vertex() {
 		vec3 sc2;
 		vec3 p = breaker_point(base, way, line_d, CUSTOM0.y, CUSTOM0.z, fade, v, rogue, CAMERA_POSITION_WORLD, still, info, wa, wb, sway, tp, sect);
 		// (its facing from the next point down the section: the air on the left going in to the shore)
-		float dv = v < 0.999 ? 0.5 / 63.0 : -0.5 / 63.0;
+		float dv = (v < 0.999 ? 0.5 : -0.5) / (breaker_points - 1.0);
 		vec2 s2;
 		vec4 i2;
 		vec4 a2;
@@ -646,7 +648,7 @@ void fragment() {
 		surf_white *= 1.0 - brk_bend;
 		// (and round a breaking barrel the water ahead of it is glassy, as in barrel photographs: the last
 		// wave's foam is left further in)
-		surf_white *= 1.0 - 0.85 * v_sect.x * v_sect.z;
+		surf_white *= 1.0 - 0.95 * v_sect.x * v_sect.z;
 		white = max(white, surf_white);
 		col = mix(col, foam_color.rgb, surf_white);
 	}
@@ -690,23 +692,48 @@ void fragment() {
 		float up_k = smoothstep(0.0, 0.95, v_sect.y);
 		vec3 body = mix(breaker_tube.rgb * 1.3, mix(surf_body.rgb, breaker_lip.rgb, 0.5), up_k) * lit_water;
 		col = mix(col, body, wd * 0.85);
+		// (its back, seen from out at sea: painted streaks running up it, as in the concept, and the top lit
+		// through where the crest thins)
+		float back_k = (1.0 - smoothstep(0.28, 0.36, v_brk_uv.y)) * wd;
+		float back_streak = smoothstep(0.55, 0.72, texture(foam_texture, vec2(v_brk_uv.x * 0.3, v_brk_uv.y * 0.22 + 0.13)).r);
+		col = mix(col, col * 1.3 + breaker_lip.rgb * lit_water * 0.08, back_streak * back_k * 0.45);
+		col = mix(col, breaker_lip.rgb * lit_water * 0.85, back_k * smoothstep(0.75, 1.05, v_sect.y) * 0.35);
 		// (inside: darker towards the back of the tube, the face streaked with the light coming up it)
 		float streaks = smoothstep(0.55, 0.75, texture(foam_texture, vec2(v_brk_uv.x * 0.6, v_brk_uv.y * 0.35 + st * 0.15)).r);
 		col = mix(col, breaker_tube.rgb * lit_water, inside * wd * 0.8);
-		col = mix(col, surf_glow.rgb * lit_water * 0.8, inside * wd * streaks * 0.35 * (1.0 - smoothstep(0.9, 1.05, st)));
+		col = mix(col, surf_glow.rgb * lit_water * 0.8, inside * wd * streaks * 0.2 * (1.0 - smoothstep(0.9, 1.05, st)));
 		vec3 to_frag = normalize(v_world - CAMERA_POSITION_WORLD);
 		float towards_sun = pow(max(dot(to_frag, normalize(breaker_sun)), 0.0), 2.0);
 		brk_glow = wd * smoothstep(0.1, 0.7, thin) * smoothstep(0.0, 0.25, st) * (1.0 - smoothstep(0.9, 1.1, st)) * (0.6 + 0.4 * towards_sun);
 		col = mix(col, breaker_lip.rgb * lit_water, brk_glow);
-		// (foam: the lip's very edge feathering as it pitches; the curtain where it lands; white water after)
-		float edge = smoothstep(0.88, 1.0, thin) * smoothstep(0.15, 0.4, st);
-		float curtain = smoothstep(0.78, 0.95, st) * smoothstep(0.45, 0.9, thin);
-		float crash = smoothstep(0.95, 1.12, st);
-		brk_white = max(step(0.55, edge * (0.5 + 0.8 * bn)), step(0.5, curtain * (0.4 + 0.9 * bn)));
-		brk_white = max(brk_white, step(0.4, crash * (0.35 + 0.9 * bn) * (1.0 - 0.4 * inside)));
-		brk_white *= step(0.15, wd);
+		// (second round: the foam is painted in two tones, a pale lit aqua and white, in strokes broken along
+		// the lip by a big slow blotch as well as the fine one, never one hard white line; white water is
+		// shaded by the sun on its own shape, so a collapsing mound reads as a heap and not a flat sheet)
+		float blotch = texture(foam_texture, vec2(v_brk_uv.x * 0.06 + 0.31, v_brk_uv.y * 0.9 + st * 0.12)).r;
+		float lit_side = clamp(dot(normalize(v_air), normalize(breaker_sun)) * 0.5 + 0.5, 0.0, 1.0);
+		vec3 foam_lit = mix(breaker_foam_shade.rgb, foam_color.rgb, smoothstep(0.25, 0.8, lit_side)) * lit_water;
+		vec3 foam_pale = mix(breaker_lip.rgb, foam_color.rgb, 0.55) * lit_water;
+		// the lip's edge feathering as it pitches: a soft pale band, white strokes in it here and there
+		float edge = smoothstep(0.78, 1.0, thin) * smoothstep(0.12, 0.38, st) * (1.0 - smoothstep(0.98, 1.08, st));
+		float feather = edge * (0.25 + 0.75 * bn) * (0.55 + 0.9 * blotch);
+		float pale = smoothstep(0.32, 0.55, feather);
+		float stroke = step(0.72, feather);
+		// the curtain: white streaks pouring down the falling lip; then the landing and the white water
+		float curtain = smoothstep(0.78, 0.97, st) * smoothstep(0.6, 0.95, thin);
+		float pour = texture(foam_texture, vec2(v_brk_uv.x * 0.8, v_brk_uv.y * 0.5 + st * 0.6)).r;
+		// (the white water: from the landing forward and over the collapsing crest, not down its back, which
+		// stays green with a little foam; broken into heaps and holes)
+		float ahead = smoothstep(0.3, 0.42, v_brk_uv.y) * (1.0 - smoothstep(0.93, 0.99, v_brk_uv.y));
+		float crash = smoothstep(0.92, 1.1, st) * (1.0 - 0.35 * inside) * mix(0.25, 1.0, ahead);
+		float heap = crash * (0.1 + 0.95 * bn) * (0.45 + 0.85 * blotch);
+		pale = max(pale, max(smoothstep(0.4, 0.62, curtain * (0.35 + 0.9 * pour)), smoothstep(0.3, 0.45, heap)));
+		stroke = max(stroke, max(step(0.75, curtain * (0.3 + 0.9 * pour) * (0.6 + 0.6 * bn)), step(0.55, heap)));
+		pale *= step(0.15, wd);
+		stroke *= step(0.15, wd);
+		col = mix(col, foam_pale, pale * 0.8);
+		col = mix(col, foam_lit, stroke);
+		brk_white = max(stroke, pale * 0.6);
 		white = max(white, brk_white);
-		col = mix(col, foam_color.rgb, brk_white);
 	}
 	// and faint pale lines wander over it, like light on the surface
 	vec2 lp = at * 0.3 + (vec2(vnoise(at * 0.2 + 1.0), vnoise(at * 0.2 + 7.0)) - 0.5) * 2.0;
@@ -781,12 +808,24 @@ void fragment() {
 		EMISSION *= 1.0 - 0.6 * rogue_face;
 		// (Gulp: the underside of a breaker seen from under the water: its lip and curtain glow green-white
 		// with the light through them; the barrel's body is darker)
-		ALBEDO = mix(ALBEDO, mix(surf_body.rgb * lit_water, surf_glow.rgb * lit_water * 1.3, brk_glow), brk_bend * (1.0 - white) * 0.7);
-		EMISSION += surf_glow.rgb * lit_water * brk_glow * 0.5;
+		// (second round: the wave's own body from below is lit water, as bright as the surface round it and
+		// greener, the lip brightest; under a breaking section the foam roof is mostly taken away, so the
+		// curl reads, and what white there is is the curtain and the white water where the lip lands)
+		float sect_on = v_sect.x * step(0.5, v_kind);
+		ALBEDO = mix(ALBEDO, mix(shallow.rgb, vec3(1.0), 0.2), sect_on * 0.6 * (1.0 - brk_white));
+		EMISSION *= 1.0 - 0.5 * sect_on * (1.0 - brk_white);
+		// (the thick body a little darker than the surface round it, so its hump shows against the light;
+		// the thin lip the brightest thing there, lit through)
+		vec3 under_body = mix(mix(shallow.rgb, surf_glow.rgb * lit_water, 0.6) * 0.95, breaker_lip.rgb * lit_water * 1.35, brk_glow);
+		ALBEDO = mix(ALBEDO, under_body, brk_bend * (1.0 - brk_white) * 0.85);
+		EMISSION = mix(EMISSION, under_body * 1.5, brk_bend * (1.0 - brk_white)) + surf_glow.rgb * lit_water * brk_glow * 0.8;
+		ALBEDO = mix(ALBEDO, vec3(1.0), brk_white * 0.7);
+		EMISSION += vec3(0.75, 0.85, 0.9) * brk_white * 0.45;
 		ALPHA = mix(ALPHA, 0.92, brk_bend);
-		// (and the water's surface round a breaking barrel is clearer from below, so the lip and the tube
-		// over it show through as a dark curl against the light)
-		float clear_under = v_sect.x * v_sect.z * (1.0 - brk_bend) * step(0.5, v_kind);
+		// (and the water's surface round a breaking barrel is clearer from below, the tube's floor most, so
+		// the lip and the dark inside of the tube over it show through as a curl against the light)
+		float tube_floor = smoothstep(0.82, 0.88, v_brk_uv.y) * brk_bend * smoothstep(0.2, 0.45, v_brk.y) * (1.0 - smoothstep(0.95, 1.15, v_brk.y));
+		float clear_under = max(v_sect.x * v_sect.z * (1.0 - brk_bend) * step(0.5, v_kind), tube_floor) * (1.0 - brk_white);
 		ALPHA = mix(ALPHA, 0.3, clear_under);
 		EMISSION *= 1.0 - 0.6 * clear_under;
 		ROUGHNESS = 0.9;

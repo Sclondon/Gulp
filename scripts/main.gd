@@ -376,7 +376,7 @@ func _process(delta: float) -> void:
 	delta = minf(delta, 0.05)
 	if _on_deck:
 		_title_step(delta)
-		sea.set_above(camera.global_position.y > Sea.surface_height(camera.global_position.x, camera.global_position.z))
+		sea.set_above(camera.global_position.y > Sea.surface_height(camera.global_position.x, camera.global_position.z, camera.global_position.y))
 		_post.set_shader_parameter(&"underwater", 0.0 if sea.above else 1.0)
 		camera.fov = 72.0 if size.y > size.x else 60.0
 		_finish_frame()
@@ -449,7 +449,7 @@ func _process(delta: float) -> void:
 		else:
 			_on_picked(ways[randi() % ways.size()])
 	# Above the surface the air is clear; under it the water is blue and thick.
-	sea.set_above(camera.global_position.y > Sea.surface_height(camera.global_position.x, camera.global_position.z))
+	sea.set_above(camera.global_position.y > Sea.surface_height(camera.global_position.x, camera.global_position.z, camera.global_position.y))
 	_post.set_shader_parameter(&"underwater", 0.0 if sea.above else 1.0)
 	# (the picture's water tint: green-teal in the kelp forest, Sea.post_tint)
 	_post.set_shader_parameter(&"water_tint", sea.post_tint)

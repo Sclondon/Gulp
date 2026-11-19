@@ -132,12 +132,16 @@ uniform vec4 breaker_b = vec4(1.6, 1.8, 0.1905, 0.8095);
 uniform vec4 breaker_rogue = vec4(0.42, 0.22, 6.0, 0.0);
 // The sheets draw within this far of the eye (m); the water mesh beyond it.
 uniform float breaker_seen = 110.0;
+// Points down each section (Breakers.POINTS).
+uniform float breaker_points = 96.0;
 // Which way the sun is (to it), for the light through a lip.
 uniform vec3 breaker_sun = vec3(0.3, 0.9, 0.3);
 // A breaker's colours: its thin lip with the light through it (a yellow-green, as in the concept and in barrel
 // photographs), and the shadowed inside of its tube.
 uniform vec4 breaker_lip : source_color = vec4(0.45, 0.86, 0.5, 1.0);
 uniform vec4 breaker_tube : source_color = vec4(0.03, 0.2, 0.22, 1.0);
+// The shaded side of a breaker's white water (its lit side is foam_color).
+uniform vec4 breaker_foam_shade : source_color = vec4(0.58, 0.7, 0.78, 1.0);
 
 // The surf's travel s at a shore distance (as surf_wave reckons it), and back.
 float surf_s(float d) {
