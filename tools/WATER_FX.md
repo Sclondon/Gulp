@@ -397,12 +397,92 @@ Teahupo'o):
   and above, as from a deck or the bluff; "high" a drone's view over the shoulder. Each saved line says whether the eye
   is above or under the water.
 
+### Third pass: the crash (2026-11-18)
+
+The user, after the second round's GIFs: "Looking much better, the splash timing and effects when the wave crashes
+needs work". What the second round's frames showed, read stage by stage round the landing: the burst stream was fed
+from a fixed window (stages 0.86 to 1.2) at the lip's tip, so it began about 0.3 s BEFORE the lip touched down and
+played as an even trickle of puffs for 0.7 s, not an explosion; the bubbles the same; the sheet's white water popped
+up across the whole section at stage 0.92 whatever the lip was doing; and once the section's profile ran out
+(stage 1.5) nothing rolled on.
+
+**What a real crash does** (sources): the plunging jet's touchdown forces up a secondary jet, the splash-up, nearly
+upright when the jet lands steeply, which can rise above the crest and falls back onto the front; each splash's impact
+throws another, smaller one ahead of it, and the line of impacts moves forward ("Three-Dimensional Simulations of
+Deep-Water Breaking Waves", https://arxiv.org/pdf/1410.1746; "Two-Dimensional Navier-Stokes Simulation of Breaking
+Waves", https://arxiv.org/pdf/comp-gas/9605002, which counts a first to fourth splash-up). Air is trapped under the jet at the moment of impact and later bursts out on the wave's back ("Plunging
+Breakers, Part 1: Analysis of an Ensemble of Wave Profiles", https://arxiv.org/abs/2210.01925). As a barrel's ceiling collapses it works as a bellows and
+for two or three seconds blows air and water out of the tube's opening, the "spit" (https://www.eos.surf/encyclopedia/spit-spitter;
+https://www.popsci.com/breakdown/article/2008-11/physics-surfing-part-two-tubes-and-barrels). Effects work splits
+breaking water the same way: splash, surface foam (white water) and bubbles as separate layers, whitewater as
+free particles because a surface cannot carry spray and mist (Unity on Avatar: The Way of Water,
+https://unity.com/blog/industry/technology-behind-avatar-the-way-of-water; VFX Apprentice, "Everything to Know About
+the Properties of Water FX in Games", https://www.vfxapprentice.com/blog/everything-know-about-water-fx), and the bubble
+pass is the one that sells an underwater shot. Slow-motion barrel footage (Pipeline, Teahupo'o) shows the same order, which
+is what the frames were compared with (from what such footage shows; no video could be played here): contact, an instant white explosion up and forward running
+along the wave with the peel, mist hanging and blowing back over the wave for seconds, the white water rushing on, spit
+from the tube's end.
+
+**Decision: a crash per section, timed by the profile, drawn by its own shader (Claude's pick).**
+- **When and where**: `Breakers.contact()` reads the landing off the profile itself: for each stage row, the lip tip's
+  height over the water straight under it (`tip_gap`); the landing is the first stage after the throw at which that gap
+  is within 0.03 heights of its least (it never reaches 0: the profile must not cross itself). With the keys now (the
+  tip lowered at stages 0.95 and 1.1 so it comes down on the water: 0.05 heights over it at the landing, 0.14 m on a
+  2.75 m wave) that is stage **1.00**, 2.0 s after the face stands up. `Breakers.landing(site, i, t)` turns it into a
+  time on each section's own break (two Newton steps on the section's stage, which drifts a little from the clock) and
+  `point` gives the tip's place then. So each section's crash starts the moment its own lip lands and the explosion
+  runs along the strip with the peel (11 to 13 m/s). The old burst and curtain streams are gone; the plume off the
+  crest stays as it was (it is before the landing).
+- **How it is drawn**: one MultiMesh a break (`Breakers._make_crash`, `shaders/crash.gdshader`): every other section has
+  59 painted puffs (the same `puff` picture), written ONCE a wave a section, ahead of time (`_land`, every 0.1 s, only
+  what changed): the instance's transform carries the landing's data (time, heading, the floor's height, the wave's
+  height, kind, seed), and the shader flies each puff by a closed sum (linear drag, no state) from the water's clock.
+  So it costs the CPU almost nothing, starts on the exact frame, and is the same with the clock held (pictures) or
+  running. Kinds (`CRASH_KINDS`): the **splash-up** (18: thrown up and forward over the falling lip at sqrt(2 g h)
+  speeds, 0.65 to 1.3 wave heights high, the fast ones smaller, as spray off its top); a **second splash** (6, 0.3 to
+  0.45 s later, 0.75 heights ahead, lower, thrown further forward: the secondary curl); **mist** (6, big faint puffs
+  rising off it and hanging 3.4 to 5 s, drifting back out to sea in the offshore wind); the **spit** (4, on 45% of
+  landings: shot along the tube from its middle at 14 to 22 m/s, faster than the peel, so it leaves the open end);
+  the **bore** (10, white water rolling on towards the beach, slowing over about 7 m, tumbling, flattening and breaking
+  up into trails over 3.4 to 4.8 s); the trapped air **bursting** out on the wave's back (3, 0.45 to 0.8 s later); and
+  **bubbles** under the water (12, a vortex turning round the landing line, driven down and forward, kept above the
+  sand, rising and fading over about 3 s; seen only from below, the rest only from above). White low by the sea is
+  tinted green-white, white higher up (the concept's painted spray); the bore's puffs are shaded blue-grey so a heap
+  reads over flat foam. Mist and the bore fade out within 2 to 9 m of the eye, the rest within 1.5 to 7 m (a crash beside the eye must not white out the screen).
+- **The sheet's own white water** (water.gdshader) now waits for `breaker_contact` and grows out from the tip's place
+  along the piece, a ragged edge spreading about 0.4 of the piece a second, instead of appearing all over the section.
+- **Why**: the timing has to be right to the frame and follow the peel; a stream fed every 0.1 s from a stage window
+  cannot be (it fired early and trickled). A closed-form puff in the vertex shader is the cheapest way to an exact
+  start: no particle simulation on the CPU, no GPU particles (Compatibility on phones), one draw a break.
+- **The practice**: whitewater as separate splash / mist / foam / bubble layers spawned from the breaking event
+  (Avatar's and Houdini's whitewater, VFX Apprentice's three parts); flipbook-style painted sprites, as most games draw
+  splashes; GPU-side particle motion from a spawn time (stateless, closed-form particles, as vertex-animated
+  particle meshes are).
+- **Alternatives**: CPUParticles3D with one-shot bursts (no exact start time; four more nodes a break; Godot's
+  CPUParticles3D has no per-particle emit call), GPUParticles3D sub-emitters (Compatibility supports them on desktop,
+  untried in browsers and phones here), a mesh sheet for the splash-up (one mesh per landing to bend; a curl of puffs
+  read well enough in the frames), a flipbook of a painted splash (needs art drawn first).
+- **Checks**: `checks.gd` "a barrel's crash starts as its lip lands, section by section along the peel" (the landing
+  stage 0.85 to 1.15, the tip within 0.08 heights of the water there, every section's landing time within 0.02 of a stage,
+  later along the strip later). `tests/barrel_shot.gd --run [--run-for=s]` runs the clock instead of holding it and
+  saves every frame (with `--fixed-fps 25`, 0.02 stages a frame); `--view=wide` is from the beach, well back, the whole
+  strip in frame. The views and a real-time clip at 30 fps were read frame by frame round the landing in two passes.
+- **Cost**: CPU: a `crest` a sampled section every 0.1 s, and a `point` a section a wave (about 10 a second at a break).
+  GPU: one more draw a break in sight; at most about 2,000 to 2,300 puffs a break placed, of which those alive at once
+  (the crash runs about 4 s behind the peel) are a few hundred, at half-size resolution. Numbers: below.
+
 ### Rough
 
 - From straight out to sea at the water a barrel is only its back and the plume (as a real one is); the "sea" picture
   is from higher up.
-- The white water is painted heaps on the sheet plus the burst; it does not roll on as a moving foam ball after the
-  section's last stage (the water's own bore takes over).
+- The crash is painted puffs; close up the splash-up still reads as a heap of separate dabs, not one torn sheet. A
+  painted flipbook or a bent sheet for the splash-up would be the next step (concept art first).
+- Looking along the Marina's beach break from the sand, the line of landings stacks up in perspective into a white
+  wall over about half the picture for a second or two (each landing's own puffs are faded within 7 m of the eye).
+- The spit is small and mostly hidden inside the tube; it shows best from the beach looking into the open end.
+- Where a barrel lands in very shallow water (both breaks) the bubble cloud is thin and low, and the "under" camera
+  sees it only along the sand's edge.
+- After the bore's puffs die (about 5 s) the surf's own flat foam carries on, as before.
 - Inside the tube as it closes (stage 1.2 on) the eye is in a jumble of foam faces; the trough under the tube shows
   faint vertical bands where the sections meet at a grazing angle.
 - The rest of the surf's foam (the swash's flat white shapes, the lace on the plain surf) is as it was.

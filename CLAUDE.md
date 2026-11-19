@@ -1013,6 +1013,12 @@ the research (with sources), the numbers, what is checked and what is rough. Con
   bigger, rounder tubes with a thick lip, longer strips that peel faster, shoulders that taper, two-tone painted foam,
   painted spray puffs (plume, burst, bubbles), a clearer look from under the water, and `Sea.surface_height(x, z, y)`
   aware of the lip (in the tube the surface is its floor). `tools/WATER_FX.md`, "Second pass".
+- Barrels, third pass: the crash (2026-11-18, the user: "the splash timing and effects when the wave crashes needs
+  work"; Claude's picks): each section's crash starts when its own lip lands (`Breakers.contact()` reads the landing
+  stage off the profile, 1.00; `Breakers.landing` times it per section), so it runs along with the peel; drawn by
+  `shaders/crash.gdshader` from the water's clock (splash-up, a second splash, mist, spit, a rolling bore, the back's
+  air burst, bubbles), and the sheet's white water grows out from the landing. `tests/barrel_shot.gd --run` runs the
+  clock (frames as the player sees them). `tools/WATER_FX.md`, "Third pass: the crash".
 - Pose sheets and the pose test (the user, 2026-11-18, evening): "Make some concept art of the 3 mains in different
   poses- laughing, shock, swim etc and match the models to the poses as well to make sure the topology is poseablw".
   Sheets: `tools/art_src/concept_captain_poses.jpg`, `concept_brother_poses.jpg`, `concept_boy_poses.jpg`. The test and

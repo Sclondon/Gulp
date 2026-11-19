@@ -11,7 +11,12 @@ extends SceneTree
 ## --at is how far along the strip (0..1) the section is; --view: side (from in front of the shoulder,
 ## looking along into the tube), inside (in the tube looking out along it to its open end), under
 ## (under the water in front of it, looking up at the lip), beach (from the shore), sea (from behind,
-## out at sea), top (from above). The wave's height H scales every distance. Prints a BARREL line each.
+## out at sea), top (from above), high (a drone over the shoulder), wide (from the beach, well back: the whole
+## strip). The wave's height H scales every distance. Prints a BARREL line each.
+##
+## --run [--run-for=9] (third pass): the clock is not held but RUNS from the first stage given to the last (or for
+## that long), and every frame is saved (<tag>_<view>_NNN.png). With --fixed-fps 25 the frames are 0.04 s apart, a
+## stage step of 0.02, so the spray and the crash fly as the player sees them (--fixed-fps 30 for a clip).
 
 var _main: Node
 var _dir := ""
@@ -29,6 +34,12 @@ var _saving := false
 var _settle := 0
 var _follow := false
 var _aimed := false
+var _run := false
+var _seconds := 0.0
+var _run_start := 0.0
+var _run_end := 0.0
+var _frame := 0
+var _recording := false
 
 
 func _initialize() -> void:
@@ -52,11 +63,16 @@ func _initialize() -> void:
 			_debug = int(v)
 		elif arg == "--follow":
 			_follow = true
+		elif arg == "--run":
+			_run = true
+		elif arg.begins_with("--run-for="):
+			_seconds = float(v)
 	DirAccess.make_dir_recursive_absolute(_dir)
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_NO_FOCUS, true)
 	_main = (load("res://main.tscn") as PackedScene).instantiate()
 	root.add_child(_main)
 	RenderingServer.frame_pre_draw.connect(_place)
+	RenderingServer.frame_post_draw.connect(_grab)
 
 
 func _site_data() -> Dictionary:
@@ -138,6 +154,10 @@ func _aim(site: Dictionary, i: int, t: float) -> void:
 		"top":
 			_eye = at + way3 * 3.0 * h + along3 * 3.0 * h + up * 5.0 * h
 			_look = at
+		"wide":
+			# (from the beach and well back, a little up: the whole strip, the peel running across the frame)
+			_eye = at + way3 * 6.5 * h + along3 * 0.5 * h + up * 3.2 * h
+			_look = at - way3 * 0.4 * h + up * 0.2 * h
 		"high":
 			# (a drone's view, high over the shoulder looking down along the break)
 			_eye = at + along3 * 6.0 * h + way3 * 2.0 * h + up * 6.0 * h
@@ -147,7 +167,7 @@ func _aim(site: Dictionary, i: int, t: float) -> void:
 
 func _process(delta: float) -> bool:
 	_clock += delta
-	if Time.get_ticks_msec() > 120000 or _main == null or _main.get_script() == null or (_clock > 1.0 and _main.get(&"player") == null):
+	if Time.get_ticks_msec() > (300000 if _run else 120000) or _main == null or _main.get_script() == null or (_clock > 1.0 and _main.get(&"player") == null):
 		print("BARREL GAVE UP (the game did not start, or took too long)")
 		return true
 	if _clock < 1.5:
@@ -159,6 +179,8 @@ func _process(delta: float) -> bool:
 		return true
 	var site := _site_data()
 	var i := clampi(int(round(_at * (site.points.size() - 1))), 0, site.points.size() - 1)
+	if _run:
+		return _run_on(site, i, delta)
 	if _hold < 0.0 or _settle == 0:
 		var sea: Node = _main.get(&"sea")
 		_hold = _time_for(site, i, _stages[0], maxf(float(sea.get(&"clock")), 2.0))
@@ -215,3 +237,32 @@ func _save(stage: float) -> void:
 	print("BARREL saved %s (eye %s the water: %.2f m, the surface there %.2f)" % [file.get_file(), "above" if _eye.y > Sea.surface_height(_eye.x, _eye.z, _eye.y) else "under", _eye.y, Sea.surface_height(_eye.x, _eye.z, _eye.y)])
 	_settle = 0
 	_saving = false
+
+
+# The running clock (--run): a short run-up before the first stage, so what flies is already in the air; then every
+# frame is saved until the last stage (or --run-for).
+func _run_on(site: Dictionary, i: int, delta: float) -> bool:
+	if _hold < 0.0:
+		var sea: Node = _main.get(&"sea")
+		_run_start = _time_for(site, i, _stages[0], maxf(float(sea.get(&"clock")), 2.0))
+		_run_end = _run_start + (_seconds if _seconds > 0.0 else (_stages[_stages.size() - 1] - _stages[0]) * Breakers.BREAK_TIME)
+		_aim(site, i, _run_start if _view in RIDING else _time_for(site, i, 0.7, _run_start - 1.0))
+		_hold = _run_start - 0.8
+		return false
+	_hold += delta
+	if _view in RIDING or _follow:
+		_aim(site, i, _hold)
+	_recording = _hold >= _run_start - 0.001
+	if _hold > _run_end + 0.001:
+		print("BARREL ran %d frames, the clock from %.2f to %.2f" % [_frame, _run_start, _run_end])
+		return true
+	return false
+
+
+func _grab() -> void:
+	if not _recording:
+		return
+	_recording = false
+	var file := "%s/%s_%s_%03d.png" % [_dir, _tag, _view, _frame]
+	root.get_texture().get_image().save_png(file)
+	_frame += 1

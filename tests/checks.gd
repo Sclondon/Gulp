@@ -263,6 +263,25 @@ func _breakers() -> void:
 	Surf.clock = was
 	_check("in a barrel's tube the surface is the tube's floor, under the lip's top", under_lip < tube_y and lip_top > tube_y,
 			"at %.2f m: floor %.2f, top %.2f" % [tube_y, under_lip, lip_top])
+	# The crash (third pass): each section's crash starts when its own lip's tip meets the water, read off the profile
+	# (the tip within a few hundredths of a height of the water under it), and runs along the strip with the peel.
+	var land_at := Breakers.contact()
+	var land_gap := Breakers.tip_gap(land_at)
+	var worst := 0.0
+	var in_order := true
+	var last_te := -INF
+	for i in range(4, tube_site.points.size() - 4, 6):
+		var sc: Dictionary = tube_site
+		var te := Breakers.landing(sc, i, 300.0)
+		var cr := Breakers.crest(sc.points[i], sc.ways[i], te)
+		worst = maxf(worst, absf((cr.y - float(sc.tb[i])) / Breakers.BREAK_TIME - land_at))
+		# (one wave's landings: each later along the strip, the peel)
+		if last_te > -INF and absf(te - last_te) < Surf.PERIOD * 0.5 and te < last_te:
+			in_order = false
+		last_te = te
+	_check("a barrel's crash starts as its lip lands, section by section along the peel", land_at > 0.85 and land_at < 1.15
+			and land_gap < 0.08 and worst < 0.02 and in_order,
+			"lands at stage %.2f (tip %.2f heights over the water), timed within %.3f of a stage, in order %s" % [land_at, land_gap, worst, in_order])
 	var zone_far := Breakers.zone(Vector2(-40.0, -55.0), Bay.shore_distance(Vector2(-40.0, -55.0)))
 	var site: Dictionary = Breakers.sites()[0]
 	var mid: Vector2 = site.points[site.points.size() / 2]

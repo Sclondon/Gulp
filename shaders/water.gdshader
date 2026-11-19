@@ -724,7 +724,13 @@ void fragment() {
 		// (the white water: from the landing forward and over the collapsing crest, not down its back, which
 		// stays green with a little foam; broken into heaps and holes)
 		float ahead = smoothstep(0.3, 0.42, v_brk_uv.y) * (1.0 - smoothstep(0.93, 0.99, v_brk_uv.y));
-		float crash = smoothstep(0.92, 1.1, st) * (1.0 - 0.35 * inside) * mix(0.25, 1.0, ahead);
+		// (third pass: none before this section's lip lands, then growing out from where the tip came down, a
+		// ragged edge spreading both ways along the piece over the next second or so: foam does not pop up all
+		// over the wave at once)
+		float since = (st - breaker_contact) * breaker_a.x;
+		float spread = (0.03 + 0.42 * since) * (0.7 + 0.6 * bn);
+		float grown = step(0.0, since) * (1.0 - smoothstep(spread * 0.75, spread, abs(v_brk_uv.y - 0.529)));
+		float crash = grown * smoothstep(0.0, 0.25, since) * (1.0 - 0.35 * inside) * mix(0.25, 1.0, ahead);
 		float heap = crash * (0.1 + 0.95 * bn) * (0.45 + 0.85 * blotch);
 		pale = max(pale, max(smoothstep(0.4, 0.62, curtain * (0.35 + 0.9 * pour)), smoothstep(0.3, 0.45, heap)));
 		stroke = max(stroke, max(step(0.75, curtain * (0.3 + 0.9 * pour) * (0.6 + 0.6 * bn)), step(0.55, heap)));

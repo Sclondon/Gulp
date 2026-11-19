@@ -81,8 +81,8 @@ const KEYS := [
 	[0.28, [-1.6, -0.2, -1.15, -0.03, -0.8, 0.2, -0.5, 0.45, -0.25, 0.7, 0.0, 0.88, 0.28, 0.98, 0.55, 0.95, 0.76, 0.84, 0.88, 0.66, 0.78, 0.6, 0.6, 0.6, 0.45, 0.53, 0.36, 0.38, 0.33, 0.18, 0.38, -0.06, 1.1, -0.22, 2.6, -0.22]],
 	[0.55, [-1.6, -0.2, -1.15, -0.02, -0.8, 0.24, -0.5, 0.52, -0.22, 0.8, 0.08, 1.02, 0.45, 1.12, 0.88, 1.06, 1.22, 0.84, 1.42, 0.48, 1.25, 0.56, 0.96, 0.8, 0.55, 0.83, 0.25, 0.66, 0.1, 0.32, 0.12, -0.1, 1.0, -0.24, 2.6, -0.22]],
 	[0.8, [-1.6, -0.2, -1.15, 0.0, -0.8, 0.28, -0.5, 0.58, -0.2, 0.88, 0.12, 1.1, 0.55, 1.2, 1.02, 1.08, 1.42, 0.74, 1.62, 0.1, 1.42, 0.4, 1.06, 0.8, 0.58, 0.9, 0.22, 0.72, 0.04, 0.36, 0.06, -0.12, 0.9, -0.26, 2.6, -0.24]],
-	[0.95, [-1.6, -0.2, -1.15, -0.01, -0.8, 0.26, -0.5, 0.54, -0.2, 0.82, 0.12, 1.02, 0.55, 1.1, 1.05, 0.98, 1.5, 0.62, 1.74, -0.06, 1.52, 0.26, 1.12, 0.7, 0.62, 0.8, 0.24, 0.64, 0.07, 0.3, 0.09, -0.12, 1.3, -0.16, 2.6, -0.22]],
-	[1.1, [-1.6, -0.2, -1.15, -0.04, -0.8, 0.16, -0.5, 0.38, -0.2, 0.56, 0.15, 0.68, 0.55, 0.72, 1.0, 0.66, 1.45, 0.46, 1.8, -0.02, 1.6, 0.12, 1.2, 0.36, 0.75, 0.42, 0.38, 0.34, 0.2, 0.16, 0.24, -0.06, 1.6, -0.1, 2.6, -0.2]],
+	[0.95, [-1.6, -0.2, -1.15, -0.01, -0.8, 0.26, -0.5, 0.54, -0.2, 0.82, 0.12, 1.02, 0.55, 1.1, 1.05, 0.98, 1.5, 0.62, 1.74, -0.12, 1.52, 0.26, 1.12, 0.7, 0.62, 0.8, 0.24, 0.64, 0.07, 0.3, 0.09, -0.12, 1.3, -0.16, 2.6, -0.22]],
+	[1.1, [-1.6, -0.2, -1.15, -0.04, -0.8, 0.16, -0.5, 0.38, -0.2, 0.56, 0.15, 0.68, 0.55, 0.72, 1.0, 0.66, 1.45, 0.46, 1.8, -0.08, 1.6, 0.12, 1.2, 0.36, 0.75, 0.42, 0.38, 0.34, 0.2, 0.16, 0.24, -0.06, 1.6, -0.1, 2.6, -0.2]],
 	[1.35, [-1.6, -0.18, -1.15, -0.08, -0.8, 0.02, -0.5, 0.12, -0.2, 0.2, 0.15, 0.26, 0.55, 0.29, 1.0, 0.27, 1.45, 0.18, 1.85, -0.04, 1.65, 0.04, 1.25, 0.12, 0.85, 0.15, 0.5, 0.12, 0.3, 0.04, 0.3, -0.06, 1.6, -0.1, 2.6, -0.2]],
 ]
 ## How thin and lit through each point is (the lip), and how far inside the tube (the face and ceiling).
@@ -100,6 +100,9 @@ var _meshes: Array[MeshInstance3D] = []
 var _rogue_mesh: MeshInstance3D
 var _spray: Array[Dictionary] = []
 var _spray_wait := 0.0
+var _crash: Array[MultiMeshInstance3D] = []
+## each site's landings drawn now, one a sampled section (s on the water's clock)
+var _landed: Array[PackedFloat32Array] = []
 
 
 # The surf's travel s at a shore distance (Surf.wave's), and back.
@@ -206,6 +209,61 @@ static func stage_weight(stage: float) -> float:
 
 static func piece_weight(t: float) -> float:
 	return smoothstep(0.0, 0.05, t) * (1.0 - smoothstep(0.94, 1.0, t))
+
+
+## The stage at which the lip's tip comes down on the water ahead of it (third pass, the crash; tools/WATER_FX.md),
+## read off the profile itself: for each row, the tip's height over the floor straight under it (the last time the
+## profile's line passes under the tip's x); the landing is the first stage after the lip is thrown at which that gap
+## is within CONTACT_GAP heights of the least it ever gets (the tip never quite meets the water: the profile must not
+## cross itself). Everything the crash does starts then, section by section (`_land`), and the shader's white water
+## grows from there (`breaker_contact`).
+const CONTACT_GAP := 0.03
+static var _contact := -1.0
+
+
+static func contact() -> float:
+	if _contact >= 0.0:
+		return _contact
+	profile()
+	var gaps := PackedFloat32Array()
+	var stages := PackedFloat32Array()
+	var least := INF
+	for r in ROWS:
+		var stage := LAST_STAGE * r / float(ROWS - 1)
+		if stage < 0.6 or stage > 1.3:
+			continue
+		var gap := tip_gap(stage)
+		gaps.append(gap)
+		stages.append(stage)
+		least = minf(least, gap)
+	_contact = stages[stages.size() - 1]
+	for k in gaps.size():
+		if gaps[k] <= least + CONTACT_GAP:
+			# (between this row and the one before, where the gap crossed the line)
+			if k > 0 and gaps[k - 1] > gaps[k]:
+				var f := clampf((gaps[k - 1] - (least + CONTACT_GAP)) / (gaps[k - 1] - gaps[k]), 0.0, 1.0)
+				_contact = lerpf(stages[k - 1], stages[k], f)
+			else:
+				_contact = stages[k]
+			break
+	return _contact
+
+
+## The lip's tip's height over the water under it at a stage (wave heights; profile_at's reading).
+static func tip_gap(stage: float) -> float:
+	var tip := Vector2(-INF, 0.0)
+	for c in range(int(COLUMNS * 0.4), int(COLUMNS * 0.66)):
+		var p := profile_at(c / float(COLUMNS - 1), stage)
+		if p.x > tip.x:
+			tip = Vector2(p.x, p.y)
+	var floor_y := NAN
+	var prev := profile_at(0.0, stage)
+	for c in range(1, COLUMNS):
+		var q := profile_at(c / float(COLUMNS - 1), stage)
+		if c > int(COLUMNS * 0.66) and (prev.x - tip.x) * (q.x - tip.x) <= 0.0 and prev.x != q.x:
+			floor_y = lerpf(prev.y, q.y, (tip.x - prev.x) / (q.x - prev.x))
+		prev = q
+	return tip.y - floor_y if not is_nan(floor_y) else INF
 
 
 # ---------------------------------------------------------------- the sites
@@ -501,7 +559,12 @@ func _ready() -> void:
 		mesh.custom_aabb = AABB(Vector3(lo.x - 40.0, -8.0, lo.y - 40.0), Vector3(hi.x - lo.x + 80.0, 16.0, hi.y - lo.y + 80.0))
 		add_child(mesh)
 		_meshes.append(mesh)
-		_spray.append({"plume": _make_stream("plume"), "burst": _make_stream("burst"), "curtain": _make_stream("curtain")})
+		_spray.append({"plume": _make_stream("plume")})
+		_crash.append(_make_crash(site))
+		var never := PackedFloat32Array()
+		never.resize(_crash_sections(site))
+		never.fill(-1.0e6)
+		_landed.append(never)
 	_rogue_mesh = MeshInstance3D.new()
 	_rogue_mesh.name = "Breaker_rogue"
 	_rogue_mesh.mesh = _rogue_sheet()
@@ -523,6 +586,7 @@ static func dress(material: ShaderMaterial) -> void:
 	material.set_shader_parameter(&"breaker_rogue", Vector4(ROGUE_FROM, ROGUE_STAGE, ROGUE_WINDOW, 0.0))
 	material.set_shader_parameter(&"breaker_seen", SEEN)
 	material.set_shader_parameter(&"breaker_points", float(POINTS))
+	material.set_shader_parameter(&"breaker_contact", contact())
 
 
 # A site's strip: POINTS points down each section, the sections side by side. Each point carries its
@@ -612,12 +676,10 @@ static func _strip(verts: PackedVector3Array, uvs: PackedVector2Array, uv2s: Pac
 	return mesh
 
 
-## Spray (second round: painted puffs, not drops; tools/WATER_FX.md, "Barrels"). Three streams a break, each
-## one CPUParticles3D of billboards cut from one small painted puff (`puff`), fed points along the lips
-## every SPRAY_EVERY s from the CPU copy of the sums: the PLUME, mist feathering back off the crest as an
-## offshore wind blows it (the tell of a breaking wave from out at sea) and spray thrown off the lip as it
-## pitches; the BURST, an explosion of white where the lip lands; and the CURTAIN, a cloud of bubbles
-## under the water where it lands, for the view from below.
+## Spray (second round: painted puffs, not drops; tools/WATER_FX.md, "Barrels"). The PLUME: one CPUParticles3D a
+## break of billboards cut from one small painted puff (`puff`), fed points along the crests every SPRAY_EVERY s from
+## the CPU copy of the sums: mist feathering back off the crest as an offshore wind blows it (the tell of a breaking
+## wave from out at sea) and spray thrown off the lip as it pitches. The crash where the lip lands is below (`_land`).
 const SPRAY_EVERY := 0.1
 const SPRAY_SEEN := 90.0
 
@@ -664,65 +726,25 @@ func _make_stream(stream: String) -> CPUParticles3D:
 	p.angle_max = 180.0
 	p.angular_velocity_min = -40.0
 	p.angular_velocity_max = 40.0
-	var size := 1.0
 	var curve := Curve.new()
 	var ramp := Gradient.new()
-	match stream:
-		"plume":
-			p.amount = 400
-			p.lifetime = 1.3
-			p.spread = 18.0
-			p.initial_velocity_min = 2.5
-			p.initial_velocity_max = 6.0
-			p.gravity = Vector3(0.0, -1.0, 0.0)
-			p.damping_min = 0.8
-			p.damping_max = 1.8
-			p.scale_amount_min = 0.45
-			p.scale_amount_max = 1.0
-			size = 1.3
-			curve.add_point(Vector2(0.0, 0.35))
-			curve.add_point(Vector2(0.4, 1.0))
-			curve.add_point(Vector2(1.0, 1.4))
-			ramp.set_color(0, Color(1.0, 1.0, 1.0, 0.0))
-			ramp.set_color(1, Color(1.0, 1.0, 1.0, 0.0))
-			ramp.add_point(0.12, Color(1.0, 1.0, 1.0, 0.6))
-			ramp.add_point(0.45, Color(0.96, 0.98, 1.0, 0.3))
-		"burst":
-			p.amount = 180
-			p.lifetime = 1.3
-			p.spread = 38.0
-			p.initial_velocity_min = 3.0
-			p.initial_velocity_max = 7.5
-			p.gravity = Vector3(0.0, -6.0, 0.0)
-			p.damping_min = 1.0
-			p.damping_max = 2.2
-			p.scale_amount_min = 0.7
-			p.scale_amount_max = 1.4
-			size = 1.7
-			curve.add_point(Vector2(0.0, 0.45))
-			curve.add_point(Vector2(0.3, 1.0))
-			curve.add_point(Vector2(1.0, 1.3))
-			ramp.set_color(0, Color(1.0, 1.0, 1.0, 0.95))
-			ramp.set_color(1, Color(1.0, 1.0, 1.0, 0.0))
-			ramp.add_point(0.6, Color(0.97, 0.99, 1.0, 0.75))
-		_:
-			# (bubbles: pale, slow, drifting down and forward with the plunge, then rising)
-			p.amount = 150
-			p.lifetime = 2.4
-			p.spread = 40.0
-			p.initial_velocity_min = 0.6
-			p.initial_velocity_max = 2.0
-			p.gravity = Vector3(0.0, 0.9, 0.0)
-			p.damping_min = 1.5
-			p.damping_max = 2.5
-			p.scale_amount_min = 0.5
-			p.scale_amount_max = 1.1
-			size = 1.2
-			curve.add_point(Vector2(0.0, 0.5))
-			curve.add_point(Vector2(0.5, 1.0))
-			curve.add_point(Vector2(1.0, 1.2))
-			ramp.set_color(0, Color(0.85, 0.95, 1.0, 0.75))
-			ramp.set_color(1, Color(0.85, 0.95, 1.0, 0.0))
+	p.amount = 400
+	p.lifetime = 1.3
+	p.spread = 18.0
+	p.initial_velocity_min = 2.5
+	p.initial_velocity_max = 6.0
+	p.gravity = Vector3(0.0, -1.0, 0.0)
+	p.damping_min = 0.8
+	p.damping_max = 1.8
+	p.scale_amount_min = 0.45
+	p.scale_amount_max = 1.0
+	curve.add_point(Vector2(0.0, 0.35))
+	curve.add_point(Vector2(0.4, 1.0))
+	curve.add_point(Vector2(1.0, 1.4))
+	ramp.set_color(0, Color(1.0, 1.0, 1.0, 0.0))
+	ramp.set_color(1, Color(1.0, 1.0, 1.0, 0.0))
+	ramp.add_point(0.12, Color(1.0, 1.0, 1.0, 0.6))
+	ramp.add_point(0.45, Color(0.96, 0.98, 1.0, 0.3))
 	p.scale_amount_curve = curve
 	p.color_ramp = ramp
 	var mat := StandardMaterial3D.new()
@@ -738,12 +760,135 @@ func _make_stream(stream: String) -> CPUParticles3D:
 	mat.distance_fade_min_distance = 0.6
 	mat.distance_fade_max_distance = 5.0
 	var quad := QuadMesh.new()
-	quad.size = Vector2(size, size)
+	quad.size = Vector2(1.3, 1.3)
 	quad.material = mat
 	p.mesh = quad
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(p)
 	return p
+
+
+# ---------------------------------------------------------------- the crash (third pass)
+
+## The crash where the lip lands (third pass, 2026-11-18; tools/WATER_FX.md, "Third pass: the crash"). The user:
+## "the splash timing and effects when the wave crashes needs work". Every CRASH_EVERY-th section of a strip has a
+## set of painted puffs of its own, one MultiMesh a break, drawn and moved entirely by shaders/crash.gdshader from
+## the water's clock: the CPU only says, once a wave, WHEN and WHERE that section's lip comes down (`contact()`, the
+## stage read off the profile, turned into a time on the section's own break, and the tip's place then from
+## `point`), so each section's crash starts the moment its own lip touches the water and the explosion runs along
+## the strip with the peel. Being a function of the clock, it is the same held still (the pictures) as running.
+## The kinds of puff a landing throws, in this order (how many of each):
+## 0 the SPLASH-UP, thrown up and forward over the falling lip, about as high as the wave;
+## 1 a SECOND splash a moment later, ahead of the first and lower, curling forward (the "secondary jet");
+## 2 MIST, big faint puffs that rise and hang for seconds, drifting back out to sea in the offshore wind;
+## 3 the SPIT, a blast of air and spray shot along the tube and out of its open end (not every landing);
+## 4 the BORE, the white water rolling on towards the beach as a tumbling heap for a few seconds, then thinning into
+##   trails and gone;
+## 5 the trapped air BURSTING out on the wave's back half a second later;
+## 6 BUBBLES under the water, a white vortex driven down and forward, turning, fading (seen only from below).
+const CRASH_KINDS := [18, 6, 6, 4, 10, 3, 12]
+const CRASH_EVERY := 2
+## How long one landing's puffs can live (s); the next wave's landing is drawn only once they are all gone.
+const CRASH_LIFE := 5.5
+## The share of landings that spit out of the tube.
+const SPIT_SHARE := 0.45
+
+static var _crash_shader: Shader
+
+
+static func _crash_per() -> int:
+	var n := 0
+	for k: int in CRASH_KINDS:
+		n += k
+	return n
+
+
+static func _crash_sections(site: Dictionary) -> int:
+	return int(ceil((site.points as PackedVector2Array).size() / float(CRASH_EVERY)))
+
+
+func _make_crash(site: Dictionary) -> MultiMeshInstance3D:
+	if _crash_shader == null:
+		_crash_shader = load("res://shaders/crash.gdshader")
+	var mat := ShaderMaterial.new()
+	mat.shader = _crash_shader
+	mat.set_shader_parameter(&"puff", puff())
+	var quad := QuadMesh.new()
+	quad.size = Vector2.ONE
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = quad
+	mm.instance_count = _crash_sections(site) * _crash_per()
+	# (born long ago: nothing shows until a landing is written)
+	var never := Transform3D(Basis(Vector3(0.0, 0.0, -1.0e6), Vector3.ZERO, Vector3.ZERO), Vector3.ZERO)
+	for i in mm.instance_count:
+		mm.set_instance_transform(i, never)
+	var box: Rect2 = site.box
+	mm.custom_aabb = AABB(Vector3(box.position.x, Sea.SURFACE - 8.0, box.position.y), Vector3(box.size.x, 20.0, box.size.y))
+	var mi := MultiMeshInstance3D.new()
+	mi.name = "Breaker_crash_%s" % site.name
+	mi.multimesh = mm
+	mi.material_override = mat
+	mi.custom_aabb = mm.custom_aabb
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	return mi
+
+
+# Each sampled section's landing: the one now playing, or the next one once the last has died away. Written
+# only when it changes (once a wave a section), ahead of time; the shader starts it on the clock.
+## When a section's lip lands (s on the water's clock): the landing now playing out (within CRASH_LIFE), or else the
+## next. Exact (to a frame), or only near (within a tenth of a second, for the cheap test of whether it changed).
+static func landing(site: Dictionary, i: int, t: float, exact := true) -> float:
+	var pts: PackedVector2Array = site.points
+	var ways: PackedVector2Array = site.ways
+	var cr := crest(pts[i], ways[i], t)
+	var stage: float = (cr.y - float(site.tb[i])) / BREAK_TIME
+	var te := t + (contact() - stage) * BREAK_TIME
+	# (the wave before's landing is still playing out)
+	if te > t and t - (te - Surf.PERIOD) < CRASH_LIFE:
+		te -= Surf.PERIOD
+	if exact:
+		# (a section's stage does not run exactly with the clock, its crest's phase drifting as it comes in: two
+		# steps of Newton's on the stage at the guess put the landing within a frame)
+		for step in 2:
+			var at_te := crest(pts[i], ways[i], te)
+			te += (contact() - (at_te.y - float(site.tb[i])) / BREAK_TIME) * BREAK_TIME
+	return te
+
+
+func _land(site: Dictionary, crash: MultiMeshInstance3D, landed: PackedFloat32Array) -> void:
+	var t := Surf.clock
+	var pts: PackedVector2Array = site.points
+	var ways: PackedVector2Array = site.ways
+	var mm := crash.multimesh
+	var per := _crash_per()
+	var tip_v := (PIECE.x + (PIECE.y - PIECE.x) * 9.0 / 17.0) / float(POINTS - 1)
+	for n in landed.size():
+		var i := mini(n * CRASH_EVERY + 1, pts.size() - 1)
+		if float(site.fade[i]) < 0.5:
+			continue
+		var te := landing(site, i, t, false)
+		if absf(te - landed[n]) < 0.3:
+			continue
+		te = landing(site, i, t, true)
+		landed[n] = te
+		var way: Vector2 = ways[i]
+		var along := (pts[mini(i + 1, pts.size() - 1)] - pts[maxi(i - 1, 0)]).normalized()
+		var hh: float = float(site.heights[i]) * sets(crest(pts[i], way, te).z)
+		var at: Vector3 = point(site, i, tip_v, te).at
+		var bed := Sea.ground(at.x, at.z)
+		var heading := atan2(way.y, way.x)
+		var seed := fposmod(te * 17.31 + n * 3.7, 97.0)
+		var spits := fposmod(sin(seed * 12.9898) * 43758.5453, 1.0) < SPIT_SHARE
+		var k := 0
+		for kind in CRASH_KINDS.size():
+			for m in int(CRASH_KINDS[kind]):
+				var strength := 0.0 if kind == 3 and not spits else 1.0
+				# (the basis is not a turn: it carries the landing's data to the shader, full floats)
+				var data := Basis(Vector3(heading, bed, te), Vector3(along.x, along.y, hh), Vector3(kind, seed + k * 1.618, strength))
+				mm.set_instance_transform(n * per + k, Transform3D(data, at))
+				k += 1
 
 
 func _process(delta: float) -> void:
@@ -761,6 +906,7 @@ func _process(delta: float) -> void:
 		_meshes[k].visible = near < SEEN + 40.0
 		for each: CPUParticles3D in (_spray[k] as Dictionary).values():
 			each.visible = near < SPRAY_SEEN
+		_crash[k].visible = near < SPRAY_SEEN
 	_rogue_mesh.visible = Surf.rogue_on
 	_spray_wait -= delta
 	if _spray_wait <= 0.0:
@@ -772,18 +918,22 @@ func _process(delta: float) -> void:
 			var shallow: Variant = water.get_shader_parameter(&"shallow")
 			if shallow is Color:
 				lit = clampf(Vector3((shallow as Color).r, (shallow as Color).g, (shallow as Color).b).length() / 0.646, 0.3, 1.0)
+		var above := bool(get_parent().get(&"above"))
 		for k in all.size():
-			_feed_spray(all[k], _spray[k], lit, bool(get_parent().get(&"above")))
+			_feed_spray(all[k], _spray[k], lit, above)
+			if _crash[k].visible:
+				_land(all[k], _crash[k], _landed[k])
+				var mat := _crash[k].material_override as ShaderMaterial
+				mat.set_shader_parameter(&"lit", lit)
+				mat.set_shader_parameter(&"under", 0.0 if above else 1.0)
 
 
-# The streams' points: along the strip every other section, from where each section is in its break.
-# (the plume and the burst are seen only from the air, the bubbles only from under the water: the surf's
-# surface hides each from the other side, so only one side's streams are fed, which halves the cost)
+# The plume's points: along the strip every other section, from where each section is in its break (seen only
+# from the air: the surf's surface hides it from below).
 func _feed_spray(site: Dictionary, streams: Dictionary, lit: float, above: bool) -> void:
 	var plume: CPUParticles3D = streams.plume
-	if not plume.visible:
-		for each: CPUParticles3D in streams.values():
-			each.emitting = false
+	if not plume.visible or not above:
+		plume.emitting = false
 		return
 	var t := Surf.clock
 	var pts: PackedVector2Array = site.points
@@ -791,55 +941,33 @@ func _feed_spray(site: Dictionary, streams: Dictionary, lit: float, above: bool)
 	var top_v := (PIECE.x + (PIECE.y - PIECE.x) * 6.0 / 17.0) / float(POINTS - 1)
 	var plume_at := PackedVector3Array()
 	var plume_way := PackedVector3Array()
-	var burst_at := PackedVector3Array()
-	var burst_way := PackedVector3Array()
-	var curtain_at := PackedVector3Array()
-	var curtain_way := PackedVector3Array()
 	for i in range(2, pts.size() - 2, 2):
 		if float(site.fade[i]) < 0.5:
 			continue
 		var cr := crest(pts[i], site.ways[i], t)
 		var stage: float = (cr.y - float(site.tb[i])) / BREAK_TIME
-		if stage < 0.12 or stage > 1.25:
-			continue
-		if not above and (stage < 0.86 or stage > 1.2):
+		if stage < 0.12 or stage > 0.92:
 			continue
 		var way: Vector2 = site.ways[i]
 		var big: float = float(site.heights[i]) / 3.0
-		var tip: Vector3 = point(site, i, tip_v, t).at
-		if above and stage < 0.92:
-			# (feathering back off the crest, the offshore wind's plume: up and back out to sea)
-			var top: Vector3 = point(site, i, top_v, t).at
-			plume_at.append(top + Vector3(0.0, 0.15, 0.0))
-			plume_way.append(Vector3(-way.x * 0.4, 1.0, -way.y * 0.4).normalized())
-			# (twice from a big crest, the second steeper up, so the plume stands over the crest from behind)
-			if big > 0.75 and stage > 0.2:
-				plume_at.append(top + Vector3(0.0, 0.3, 0.0))
-				plume_way.append(Vector3(-way.x * 0.45, 1.0, -way.y * 0.45).normalized())
-			if stage > 0.3 and stage < 0.6 and i % 4 == 2:
-				# (and a little thrown off the lip as it pitches, forward and down with it: little, or it hides the
-				# tube from the beach)
-				plume_at.append(tip)
-				plume_way.append(Vector3(way.x, 0.25, way.y).normalized())
-		if stage > 0.86 and stage < 1.2:
-			# (where the lip lands: an explosion of white up and back, and bubbles driven down under it)
-			var n := 2 if big > 0.7 else 1
-			for k in n if above else 0:
-				burst_at.append(tip + Vector3(way.x * 0.3, 0.1, way.y * 0.3))
-				# (up and forward, away from the tube, as a landing lip throws its water)
-				burst_way.append(Vector3(way.x * 0.5, 1.0, way.y * 0.5).normalized())
-			if not above:
-				curtain_at.append(Vector3(tip.x, minf(tip.y, Sea.SURFACE) - 0.5 - 0.4 * big, tip.z))
-				curtain_way.append(Vector3(way.x * 0.6, -0.8, way.y * 0.6).normalized())
-	var feeds := {"plume": [plume_at, plume_way], "burst": [burst_at, burst_way], "curtain": [curtain_at, curtain_way]}
-	for stream: String in streams:
-		var p: CPUParticles3D = streams[stream]
-		var where: PackedVector3Array = feeds[stream][0]
-		if where.is_empty():
-			p.emitting = false
-			continue
-		p.emission_points = where
-		p.emission_normals = feeds[stream][1]
-		p.emitting = true
-		var mat := (p.mesh as QuadMesh).material as StandardMaterial3D
-		mat.albedo_color = Color(lit, lit, lit)
+		# (feathering back off the crest, the offshore wind's plume: up and back out to sea)
+		var top: Vector3 = point(site, i, top_v, t).at
+		plume_at.append(top + Vector3(0.0, 0.15, 0.0))
+		plume_way.append(Vector3(-way.x * 0.4, 1.0, -way.y * 0.4).normalized())
+		# (twice from a big crest, the second steeper up, so the plume stands over the crest from behind)
+		if big > 0.75 and stage > 0.2:
+			plume_at.append(top + Vector3(0.0, 0.3, 0.0))
+			plume_way.append(Vector3(-way.x * 0.45, 1.0, -way.y * 0.45).normalized())
+		if stage > 0.3 and stage < 0.6 and i % 4 == 2:
+			# (and a little thrown off the lip as it pitches, forward and down with it: little, or it hides the
+			# tube from the beach)
+			plume_at.append(point(site, i, tip_v, t).at)
+			plume_way.append(Vector3(way.x, 0.25, way.y).normalized())
+	if plume_at.is_empty():
+		plume.emitting = false
+		return
+	plume.emission_points = plume_at
+	plume.emission_normals = plume_way
+	plume.emitting = true
+	var mat := (plume.mesh as QuadMesh).material as StandardMaterial3D
+	mat.albedo_color = Color(lit, lit, lit)

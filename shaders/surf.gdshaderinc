@@ -132,6 +132,8 @@ uniform vec4 breaker_b = vec4(1.6, 1.8, 0.1905, 0.8095);
 uniform vec4 breaker_rogue = vec4(0.42, 0.22, 6.0, 0.0);
 // The sheets draw within this far of the eye (m); the water mesh beyond it.
 uniform float breaker_seen = 110.0;
+// The stage at which a lip lands (Breakers.contact(), read off the profile): the white water grows from then.
+uniform float breaker_contact = 0.95;
 // Points down each section (Breakers.POINTS).
 uniform float breaker_points = 96.0;
 // Which way the sun is (to it), for the light through a lip.
