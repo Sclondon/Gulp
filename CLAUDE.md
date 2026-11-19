@@ -1102,3 +1102,9 @@ browser after this push.
   45 mm out and folded five expressions on the boy. Worth changing the rig to take the lip loop from the mesh instead.
 - The boy's late adjustments are `late_adjust` in `tools/build_boy.py` (switches listed near `eye_margins`); trial
   builds go to `--glb <path>` and are viewed with `tests/boy_view.gd -- --glb=... --face`.
+- **One body part at a time** (the user, 2026-11-18, late evening, of the figures): "Target just one body part until it
+  looks correct". A figure's round takes ONE part (a nose, the hands, the eyes), works it as adjustments on the frozen
+  base in the game's light, close up, beside the sheet's same part at the same scale, and repeats (name the biggest
+  remaining difference, fix it, look again) until it reads as the same part as the drawing; only then the next part.
+  No lists of eight things a round. The user is shown that part's rows, iteration by iteration. First parts
+  (Claude's pick): the captain's hands, the brother's nose, the boy's nose.
