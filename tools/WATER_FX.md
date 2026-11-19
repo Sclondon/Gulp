@@ -487,6 +487,28 @@ from the tube's end.
   faint vertical bands where the sections meet at a grazing angle.
 - The rest of the surf's foam (the swash's flat white shapes, the lace on the plain surf) is as it was.
 - At the strips' ends a few thin twisted slivers remain where the shape is faint (307 counted, shown from the right
-  side by `v_air`).
+  side by `v_air`). (They were not the "scan line": see "The hand-over" below.)
+- Where a strip ends (Steamer Lane's east end is in the wide view) the low shoulder of the breaking wave stops
+  over the last few metres, so seen side-on it ends in a short steep edge rather than running out along the beach.
+
+### The hand-over between waves (2026-11-18)
+
+The user, of the real-time clip from the beach: "There also seemse to be some like scan line between each wave". A
+thin white upright sheet ran along the strip for a second or two after each wave, before the next one stood up.
+**Cause**: a section carries one wave and takes the next the moment that one comes in (`crest`: its s wraps from
+s_in - LENGTH back to s_in), and its 96 points are laid out round the crest it carries. So at the hand-over every point
+of a section jumped 14 m out to sea while its neighbour, whose wave comes in a moment later, had not: the two sections'
+points were 13.5 m apart (measured on the CPU copy, `point`, every 0.1 s: up to 13.65 m against 1.3 to 1.8 m otherwise,
+the fan of the sections' back ends) and the triangles between them stood up as a sheet across the surf. The seam ran
+along the strip at the speed of the incoming wave's arrival (sections 16, 34, 50 half a second apart at Steamer Lane).
+The glassy water (`sect`) also switched on at that line, so the colour changed across it too.
+**Fix** (Claude's pick): while neither wave is breaking (the old one past stage LAST_STAGE, the new one before stage
+-0.05: 3.9 s of each 7 s, at every section) the points slide from the old wave's layout (its crest where it settled, its
+last profile row) to the new one's (its crest where it will stand up, profile row 0), eased (`Breakers.handover`,
+`_lay`; water.gdshader's `breaker_lay`). Both waves are plain water then (the breaking shape's weight is exactly 0), so
+only where the samples lie moves, never the surface; at both ends the layout is exactly what it was. Neighbouring
+sections now stay within the usual 1.6 m at all times. The glassy water is summed over the wave before, the one carried
+and the next (`breaker_sect`, `breaker_near`), so it carries on through the hand-over. Not a cover-up: the seam is gone
+from the geometry, not hidden.
 - Only two breaks. Nobody has swum one by hand; a fish in the tube now leaps there (the surface is the floor), which
   is untried in play.

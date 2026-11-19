@@ -1019,6 +1019,9 @@ the research (with sources), the numbers, what is checked and what is rough. Con
   `shaders/crash.gdshader` from the water's clock (splash-up, a second splash, mist, spit, a rolling bore, the back's
   air burst, bubbles), and the sheet's white water grows out from the landing. `tests/barrel_shot.gd --run` runs the
   clock (frames as the player sees them). `tools/WATER_FX.md`, "Third pass: the crash".
+- The "scan line between each wave" (the user, 2026-11-18) was each breaker section jumping to the next wave's layout
+  while its neighbour had not (a 13 m seam standing up between them); the points now slide from one wave's layout to
+  the next while neither breaks (`Breakers.handover`, water.gdshader `breaker_lay`). `tools/WATER_FX.md`, "The hand-over".
 - Pose sheets and the pose test (the user, 2026-11-18, evening): "Make some concept art of the 3 mains in different
   poses- laughing, shock, swim etc and match the models to the poses as well to make sure the topology is poseablw".
   Sheets: `tools/art_src/concept_captain_poses.jpg`, `concept_brother_poses.jpg`, `concept_boy_poses.jpg`. The test and

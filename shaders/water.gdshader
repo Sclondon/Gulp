@@ -273,6 +273,34 @@ float fine_at(vec2 still, vec3 eye) {
 	return 1.0 - smoothstep(45.0, 80.0, length(still - eye.xz));
 }
 
+// Where a shore breaker's point v lies down its section (its shore distance d) for a crest at sc (the surf's s), a
+// wave hh high, its profile's row at `row`; t_piece and b as breaker_point's (Breakers._lay).
+float breaker_lay(float v, float sc, float hh, float row, float win, out float t_piece, out vec4 b) {
+	float dc = surf_d(sc);
+	b = vec4(0.0);
+	t_piece = v < breaker_b.z ? 0.0 : 1.0;
+	if (v < breaker_b.z) {
+		return surf_d(mix(sc + win, surf_s(dc + breaker_b.x * hh), v / breaker_b.z));
+	} else if (v > breaker_b.w) {
+		float f = (v - breaker_b.w) / (1.0 - breaker_b.w);
+		return surf_d(mix(surf_s(max(dc - breaker_b.y * hh, 0.25)), max(sc - win, surf_s(0.25)), f));
+	}
+	t_piece = (v - breaker_b.z) / (breaker_b.w - breaker_b.z);
+	b = breaker_shape(t_piece, row);
+	return dc - b.x * hh;
+}
+
+// How much a section carrying a wave at `stage` stands for a barrel (its glassy water), from well before its face
+// stands up, so the shoulder still to break is glassy too, to the white water settling.
+float breaker_sect(float stage) {
+	return smoothstep(-1.2, -0.2, stage) * (1.0 - smoothstep(1.2, 1.5, stage));
+}
+
+// How near a wave's crest at sc a point at d is, a wave's length either side (its glassy water and clear underside).
+float breaker_near(float d, float sc) {
+	return 1.0 - smoothstep(0.35, 0.6, abs(surf_s(d) - sc) / surf_a.y * (d < surf_d(sc) ? 0.6 : 1.0));
+}
+
 // A point of a breaker's section (scripts/breakers.gd, Breakers.point): v is how far down the section
 // (0 the back end out at sea, 1 the front end at the shore). The section stands at `base`, running in
 // along `way`; for the rogue wave, `base` and `way` are its own. Its place (world x, z; y from the still
@@ -285,6 +313,8 @@ vec3 breaker_point(vec2 base, vec2 way, float line_d, float tb, float site_h, fl
 	float sc;
 	float dc;
 	float win;
+	float cr_tau = 0.0;
+	float cr_phase = 0.0;
 	if (rogue) {
 		// (the rogue wave: its crest goes on along its way; it curls as it grows to its highest)
 		float grow = pow(sin(3.14159265 * clamp(rogue_b.x / rogue_c.z, 0.0, 1.0)), 1.5);
@@ -298,6 +328,8 @@ vec3 breaker_point(vec2 base, vec2 way, float line_d, float tb, float site_h, fl
 		vec3 cr = breaker_crest(base, way, line_d, water_clock);
 		hh = site_h * (0.92 + 0.18 * sin(cr.z * 0.27 + 1.0)) / 1.1;
 		stage = (cr.y - tb) / breaker_a.x;
+		cr_tau = cr.y;
+		cr_phase = cr.z;
 		sc = cr.x;
 		dc = surf_d(sc);
 		win = breaker_a.w * surf_a.y;
@@ -306,26 +338,61 @@ vec3 breaker_point(vec2 base, vec2 way, float line_d, float tb, float site_h, fl
 	vec4 b = vec4(0.0);
 	float wd = 0.0;
 	info = vec4(0.0, stage, 0.0, 0.0);
-	// (sect.x: how much this section carries a barrel wave, from well before its face stands up, so the
-	// shoulder still to break is glassy too, to the white water settling)
-	sect = vec3(smoothstep(-1.2, -0.2, stage) * (1.0 - smoothstep(1.2, 1.5, stage)) * fade, hh, 0.0);
-	t_piece = v < breaker_b.z ? 0.0 : 1.0;
-	if (v < breaker_b.z) {
-		float f = v / breaker_b.z;
-		d = rogue ? mix(win, breaker_b.x * hh, f) : surf_d(mix(sc + win, surf_s(dc + breaker_b.x * hh), f));
-	} else if (v > breaker_b.w) {
-		float f = (v - breaker_b.w) / (1.0 - breaker_b.w);
-		d = rogue ? mix(-breaker_b.y * hh, -win, f) : surf_d(mix(surf_s(max(dc - breaker_b.y * hh, 0.25)), max(sc - win, surf_s(0.25)), f));
+	sect = vec3(breaker_sect(stage) * fade, hh, 0.0);
+	if (rogue) {
+		t_piece = v < breaker_b.z ? 0.0 : 1.0;
+		if (v < breaker_b.z) {
+			d = mix(win, breaker_b.x * hh, v / breaker_b.z);
+		} else if (v > breaker_b.w) {
+			d = mix(-breaker_b.y * hh, -win, (v - breaker_b.w) / (1.0 - breaker_b.w));
+		} else {
+			t_piece = (v - breaker_b.z) / (breaker_b.w - breaker_b.z);
+			b = breaker_shape(t_piece, max(stage, 0.0));
+			d = dc - b.x * hh;
+		}
 	} else {
-		t_piece = (v - breaker_b.z) / (breaker_b.w - breaker_b.z);
-		b = breaker_shape(t_piece, max(stage, 0.0));
-		d = dc - b.x * hh;
+		d = breaker_lay(v, sc, hh, max(stage, 0.0), win, t_piece, b);
+		// (the hand-over (the user, 2026-11-18: "some like scan line between each wave"): a section carries one wave
+		// and takes the next the moment it comes in, its crest a wavelength further out, so its points all jumped
+		// 14 m out to sea while its neighbour's had not yet: for a second or two a 13 m seam ran along the strip,
+		// stood up as a thin white sheet between the two. Now, while neither wave breaks (the old one settled,
+		// stage 1.5 on; the new one not yet standing, before stage -0.05), the points slide from the old wave's
+		// layout to the new one's, so a section and its neighbour are never more than a step apart.)
+		float period = surf_a.z;
+		float done = tb + breaker_a.y * breaker_a.x;
+		float yet = tb - 0.05 * breaker_a.x;
+		float since_done = cr_tau >= done ? cr_tau - done : (cr_tau <= yet ? cr_tau + period - done : -1.0);
+		if (since_done >= 0.0) {
+			float f = smoothstep(0.0, period - done + yet, since_done);
+			bool was_old = cr_tau >= done;
+			float hh_old = was_old ? hh : site_h * (0.92 + 0.18 * sin((cr_phase + 6.2831853) * 0.27 + 1.0)) / 1.1;
+			float hh_new = was_old ? site_h * (0.92 + 0.18 * sin((cr_phase - 6.2831853) * 0.27 + 1.0)) / 1.1 : hh;
+			float s_in = breaker_a.z;
+			float tp;
+			vec4 bb;
+			float d_old = breaker_lay(v, s_in - done / period * surf_a.y, hh_old, breaker_a.y, win, tp, bb);
+			float d_new = breaker_lay(v, s_in - yet / period * surf_a.y, hh_new, 0.0, win, tp, bb);
+			d = mix(d_old, d_new, f);
+		}
+	}
+	if (v >= breaker_b.z && v <= breaker_b.w) {
 		wd = breaker_piece_weight(t_piece) * breaker_stage_weight(stage) * fade;
 		info = vec4(wd, stage, b.z, b.w);
 	}
 	still = base + (line_d - d) * way;
-	// (how near the crest this water is, a wave's length either side: its glassy water and clear underside)
-	sect.z = 1.0 - smoothstep(0.35, 0.6, rogue ? abs(d) / win : abs(surf_s(d) - sc) / surf_a.y * (d < dc ? 0.6 : 1.0));
+	// (how near the crest this water is, a wave's length either side: its glassy water and clear underside; for a
+	// shore section summed over the wave before, this one and the next, so it carries on smoothly when the section
+	// takes the next wave)
+	if (rogue) {
+		sect.z = 1.0 - smoothstep(0.35, 0.6, abs(d) / win);
+	} else {
+		float step_stage = surf_a.z / breaker_a.x;
+		float x_prev = breaker_sect(stage + step_stage) * fade;
+		float x_next = breaker_sect(stage - step_stage) * fade;
+		float glassy = sect.x * breaker_near(d, sc) + x_prev * breaker_near(d, sc - surf_a.y) + x_next * breaker_near(d, sc + surf_a.y);
+		sect.x += x_prev + x_next;
+		sect.z = glassy / max(sect.x, 0.0001);
+	}
 	float fine = fine_at(still, eye);
 	wd *= fine;
 	info.x = wd;

@@ -418,6 +418,45 @@ static func water_at(still: Vector2, t: float, fine: float) -> Array:
 	return [Vector3(xz.x, Sea.SURFACE + level + surf[0] * fine, xz.y), level]
 
 
+## Where point v lies down a shore section for a crest at sc (the surf's s), a wave hh high, its profile's row at
+## `row` (water.gdshader's breaker_lay): [its shore distance d, its share of the breaking piece, the profile there].
+static func _lay(v: float, sc: float, hh: float, row: float, win: float) -> Array:
+	var vb := PIECE.x / float(POINTS - 1)
+	var vf := PIECE.y / float(POINTS - 1)
+	var dc := d_of(sc)
+	if v < vb:
+		return [d_of(lerpf(sc + win, s_of(dc + BACK * hh), v / vb)), 0.0, Vector4.ZERO]
+	if v > vf:
+		return [d_of(lerpf(s_of(maxf(dc - FRONT * hh, 0.25)), maxf(sc - win, s_of(0.25)), (v - vf) / (1.0 - vf))), 1.0, Vector4.ZERO]
+	var tt := (v - vb) / (vf - vb)
+	var b := profile_at(tt, row)
+	return [dc - b.x * hh, tt, b]
+
+
+## The hand-over from one wave to the next (the user, 2026-11-18: "some like scan line between each wave"). A section
+## takes the next wave the moment it comes in, its crest a wavelength further out; with the points laid out round the
+## crest they all jumped 14 m out to sea while the neighbouring section's had not yet, and for a second or two a 13 m
+## seam ran along the strip, standing up as a thin white sheet between the two sections. So while neither wave breaks
+## (the old one settled from stage LAST_STAGE, the new one not yet standing, before stage -0.05) the points slide
+## from the old layout to the new one: this is how far through that they are (0..1; -1 outside it), from the
+## section's break time and how long since its wave came in.
+static func handover(tb: float, tau: float) -> float:
+	var done := _done(tb)
+	var yet := _yet(tb)
+	var since := tau - done if tau >= done else (tau + Surf.PERIOD - done if tau <= yet else -1.0)
+	if since < 0.0:
+		return -1.0
+	return smoothstep(0.0, Surf.PERIOD - done + yet, since)
+
+
+static func _done(tb: float) -> float:
+	return tb + LAST_STAGE * BREAK_TIME
+
+
+static func _yet(tb: float) -> float:
+	return tb - 0.05 * BREAK_TIME
+
+
 ## A point of a shore section at v (0..1 down it), at time t (water.gdshader's breaker_point): its place
 ## (world) and [weight of the breaking shape, stage, lip, inside], and the undisplaced water it stands for.
 static func point(site: Dictionary, i: int, v: float, t: float, fine := 1.0) -> Dictionary:
@@ -426,22 +465,27 @@ static func point(site: Dictionary, i: int, v: float, t: float, fine := 1.0) -> 
 	var cr := crest(base, way, t)
 	var hh: float = float(site.heights[i]) * sets(cr.z)
 	var stage: float = (cr.y - site.tb[i]) / BREAK_TIME
-	var dc := d_of(cr.x)
 	var win := WINDOW * Surf.LENGTH
 	var vb := PIECE.x / float(POINTS - 1)
 	var vf := PIECE.y / float(POINTS - 1)
-	var d: float
 	var b := Vector4.ZERO
 	var wd := 0.0
 	var info := Vector4(0.0, stage, 0.0, 0.0)
-	if v < vb:
-		d = d_of(lerpf(cr.x + win, s_of(dc + BACK * hh), v / vb))
-	elif v > vf:
-		d = d_of(lerpf(s_of(maxf(dc - FRONT * hh, 0.25)), maxf(cr.x - win, s_of(0.25)), (v - vf) / (1.0 - vf)))
-	else:
-		var tt := (v - vb) / (vf - vb)
-		b = profile_at(tt, maxf(stage, 0.0))
-		d = dc - b.x * hh
+	var lay := _lay(v, cr.x, hh, maxf(stage, 0.0), win)
+	var d: float = lay[0]
+	# (the hand-over between one wave and the next, while neither breaks: the points slide from the old wave's
+	# layout to the new one's; water.gdshader's breaker_point has why)
+	var h := handover(float(site.tb[i]), cr.y)
+	if h >= 0.0:
+		var hh_old := hh if cr.y >= _done(float(site.tb[i])) else float(site.heights[i]) * sets(cr.z + TAU)
+		var hh_new := hh if cr.y < _done(float(site.tb[i])) else float(site.heights[i]) * sets(cr.z - TAU)
+		var s_in := s_of(ENTRY)
+		var d_old: float = _lay(v, s_in - _done(float(site.tb[i])) / Surf.PERIOD * Surf.LENGTH, hh_old, LAST_STAGE, win)[0]
+		var d_new: float = _lay(v, s_in - _yet(float(site.tb[i])) / Surf.PERIOD * Surf.LENGTH, hh_new, 0.0, win)[0]
+		d = lerpf(d_old, d_new, h)
+	if v >= vb and v <= vf:
+		var tt: float = lay[1]
+		b = lay[2]
 		wd = piece_weight(tt) * stage_weight(stage) * float(site.fade[i]) * fine
 		info = Vector4(wd, stage, b.z, b.w)
 	var still := base + (DEPTH_LINE - d) * way
