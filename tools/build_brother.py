@@ -128,8 +128,10 @@ FIGURES = {
                              "NOSE_WINGS": ((1105, 0.0), (1115, 0.12), (1124, 0.2), (1133, 0.15)),
                              "JAW_ANGLE": (1408.0, 1158.0), "CHIN_BOTTOM": (1560.0, 1250.0), "NECK_ROW": 1270,
                              "SMILE": (1168.0, 6.0, 62.0, -0.0025),
-                             "BASE_FACE_FORMS": ((1100, 84, 20, 24, 0.005), (1140, 52, 9, 7, -0.002),
-                                                 (985, 125, 18, 14, -0.002), (1010, 62, 6, 22, 0.0018),
+                             # (tenth round: fuller cheeks, no fold from the nose's wings, temples full, not hollow:
+                             # all three read as age, the critic)
+                             "BASE_FACE_FORMS": ((1100, 84, 22, 28, 0.011), (1140, 52, 9, 7, 0.0),
+                                                 (985, 125, 18, 14, 0.001), (1010, 62, 6, 22, 0.0012),
                                                  (1158, 0, 5, 24, 0.0016), (1180, 0, 4, 20, 0.0022),
                                                  (1163, 60, 4, 4, -0.0016), (1132, 15, 3, 6, -0.0025)),
                              "JAW_FIRM": (1162.0, 0.0012, (1162.0, 1255.0), (0.03, 0.095)),
@@ -145,12 +147,22 @@ FIGURES = {
                            "HAND_LEN": 0.236, "TATTOO_CLOSE": 2,   # (tpose8 draws a 24 to 25 cm hand (its side view, wrist crease to fingertip), the hands sheet 21: ninth round, toward the body sheet)
                            # (the side view: the arm hangs further back, its deltoid's middle 5.5 cm and its wrist 2 cm
                            # behind the side view's middle; the back behind it read 10 px further back than tpose6's)
-                           "ARM_Y": (0.07, 0.02), "TRAPS": 0.012, "TOP_DROP": {368: 0.02, 345: 0.04, 318: 0.012}, "HEAD_BACK": 0.022, "EAR_SHAPE": (0.93, -8.0, 0.003, 0.0045), "JAW_WIDEN": 0.007, "CHIN_BROAD": (0.18, 0.003),
+                           "ARM_Y": (0.07, 0.02), "TRAPS": 0.012, "TOP_DROP": {368: 0.02, 345: 0.04, 318: 0.012}, "HEAD_BACK": 0.022, "EAR_SHAPE": (0.93, -18.0, 0.0035, 0.0045), "JAW_WIDEN": 0.007, "CHIN_BROAD": (0.18, 0.003),
                            # (his neck: tpose8 draws it 14 cm across under the jaw: the torso's top ring and the
                            # jaw's neck column widened to it, from 0.088 and 0.092 m half widths)
                            "TORSO_UNDER_ARMS": {538: 0.272, 490: 0.284, 442: 0.268, 398: 0.226, 368: 0.2, 345: 0.162,
                                                 318: 0.098},
                            "NECK_HALF": 0.097,
+                           # (tenth round: his face younger and broader, as tpose8 draws it; see youth_head)
+                           "HEAD_WIDEN": ((1.62, 1.0), (1.665, 1.1), (1.69, 1.14), (1.73, 1.19), (1.765, 1.17), (1.79, 1.13),
+                                          (1.83, 1.09), (1.89, 1.07), (1.95, 1.05)),
+                           "CROWN_ROUND": (3, 1.86), "NOSE_SHORT": 0.15, "PEC_PROUD": 0.02,
+                           # (tenth round: a broader palm; a bigger big toe, a higher arch, the feet lighter; the shorts'
+                           # band halved and their hems nearer the thighs)
+                           "HAND_WIDE": 1.14, "HAND_TAUBIN": 5, "HAND_DESPIKE": 0.006, "TOE_BIG": 0.8, "ARCH": 0.012,
+                           "BOXER_BAND_TALL": 15.0,
+                           "SHORTS_STAND": {"band_lip": 0.0015, "band": 0.004, "cloth": 0.01, "leg_in": 0.003,
+                                            "leg_out": 0.005, "hug": 0.0025}, "DOME_FROM": 1.83, "DOME_DROP": 0.004, "NECK_EASE": 6,
                            "SIDE_BACK": {368: 1342, 398: 1332, 442: 1328, 490: 1327, 538: 1329, 580: 1331, 610: 1334,
                                          640: 1337, 665: 1340}},
                 "side_hand": ((1385, 775), (1530, 962)), "belly": 0.5, "nose_red": 0.35,
@@ -159,17 +171,26 @@ FIGURES = {
                 "side_hand_skin": ((1378, 760), (1535, 1008)),
                 # (his eyes, the user: "a bit down turned eyes and more prominent world weary bags": the outer corners
                 # 6 px (about 4 mm) lower, a pouch of 1.8 mm under each; the townsmen keep the plain eyes)
-                "eye_down": 4.0, "lid_drop": 6.0, "bags": 0.003, "iris": "hazel"},
+                # (tenth round: lid_drop 6 -> 0: on head3's top row the upper lid just meets the iris's top (the
+                # sheet's EYE_TOP is the iris's top, row 1035): the opening 25 px high against 19, a third taller;
+                # the bags softer, a form without the crease under them)
+                "eye_down": 4.0, "lid_drop": 0.0, "bags": 0.0025, "bag_crease": 0.0, "iris": "hazel",
+                # (tenth round: his face and body painted by rule on clean young skin (rule_face, young_skin); his tone
+                # warm peach, red up and a little more saturated than the ninth round's 0.9, 0.755, 0.635)
+                "rule_paint": True, "skin_tone": (0.92, 0.745, 0.6), "iris_k": 1.15},
     "man_big": {"sheet": "concept_brother_tpose6.jpg", "warp": None,
                 "glb": ("models", "npc", "man_big.glb"), "tex": ("textures", "npc", "man_big"),
                 "blend": ("blend", "npc", "man_big.blend"),
-                "tattoos": (), "side_hand": None, "belly": 1.0, "nose_red": 1.0},
+                "tattoos": (), "side_hand": None, "belly": 1.0, "nose_red": 1.0,
+                # (tenth round: their own tone, the SKIN_TONE they had before the ninth round lightened the brother)
+                "skin_tone": (0.665, 0.5, 0.39)},
     "man_trim": {"sheet": "concept_brother_tpose7.jpg",
                  "warp": {"chin": 332.0, "sole": 1500.0, "mid": {"front": 579.0, "side": 1393.0, "back": 2210.0},
                           "ground_cols": (1040, 1260)},
                  "glb": ("models", "npc", "man_trim.glb"), "tex": ("textures", "npc", "man_trim"),
                  "blend": ("blend", "npc", "man_trim.blend"),
                  "tattoos": (), "side_hand": ((1400, 790), (1540, 1000)), "belly": 0.0, "nose_red": 1.0,
+                 "skin_tone": (0.665, 0.5, 0.39),
                  # (eighth round: its silhouette gap of 12.5 cm was its hands: tpose7 hangs the forearm as long as tpose8
                  # does, so the brother's tpose8 arm rows and hand length)
                  "consts": {"SHOULDER_ROW": 400, "ELBOW_ROW": 630, "WRIST_ROW": 790, "ARM_SAMPLE": (560, 786),
@@ -2163,12 +2184,12 @@ HAND_UNSUBDIV = int(arg("--unsub", "0"))
 # (ninth round: un-subdivided twice the fingers are four points round, square pegs with a four-point cap that the
 # tip domes pulled to a spike; un-subdivided once the result is irregular (saw-toothed fingers). So the full base hand
 # is collapsed (Decimate COLLAPSE) to 40%: about 650 triangles a hand, fingers round and smooth)
-HAND_COLLAPSE = float(arg("--collapse", "0.4"))
+HAND_COLLAPSE = float(arg("--collapse", "0.34"))   # (tenth round: 0.4 -> 0.34, the brief's budget of about 1,150 for both hands)
 # The base head's own landmarks on its middle line (the bundle's coordinates, y and z, at HEAD_MIX), read off it.
 HEAD_BASE_MARKS = {"chin_bottom": (-0.141, -0.039), "chin": (-0.148, -0.027), "mouth": (-0.149, 0.006),
                    "tip": (-0.166, 0.035), "nasion": (-0.143, 0.073), "brow": (-0.148, 0.094)}
 HEAD_FIT_PASSES = int(arg("--headrounds", "10"))
-HEAD_SPLIT_BACK = 0.05             # metres in front of the head's middle (front to back) where the refine stops
+HEAD_SPLIT_BACK = float(arg("--splitback", "0.05"))   # metres in front of the head's middle (front to back) where the refine stops (a figure's "consts" may set it)
 
 
 def load_base(kind):
@@ -2854,6 +2875,24 @@ def digit_axis(C, ids):
     return c, d
 
 
+def finger_parts(C, adj, z_web):
+    """The hand's points beyond z_web split into connected parts (more than 8 points each)."""
+    far = set(np.where(C[:, 2] > z_web)[0].tolist())
+    comps = []
+    while far:
+        s = far.pop()
+        st, comp = [s], [s]
+        while st:
+            v = st.pop()
+            for w in adj.get(v, ()):
+                if w in far:
+                    far.remove(w)
+                    st.append(w)
+                    comp.append(w)
+        comps.append(comp)
+    return [c for c in comps if len(c) > 8]
+
+
 def base_hand_fit(sh):
     """The base hand in its own frame, fitted to the hands sheet's back view in the sheet's pose; kept in HB; the
     back, palm and thumb-side silhouettes compared."""
@@ -2878,19 +2917,13 @@ def base_hand_fit(sh):
             a, b = f[i], f[(i + 1) % len(f)]
             adj.setdefault(a, set()).add(b)
             adj.setdefault(b, set()).add(a)
-    far = set(np.where(C[:, 2] > 0.145)[0].tolist())
-    comps = []
-    while far:
-        s = far.pop()
-        st, comp = [s], [s]
-        while st:
-            v = st.pop()
-            for w in adj.get(v, ()):
-                if w in far:
-                    far.remove(w)
-                    st.append(w)
-                    comp.append(w)
-        comps.append(comp)
+    # (tenth round: collapsed harder, an edge can cross a web at 0.145: the line is raised until four fingers part)
+    for z_web in (0.145, 0.15, 0.155, 0.16, 0.165):
+        comps = finger_parts(C, adj, z_web)
+        if len(comps) == 4:
+            break
+    if z_web != 0.145:
+        print("BROTHER base hand: fingers parted at %.3f" % z_web)
     comps = sorted([c for c in comps if len(c) > 8], key=lambda c: C[c, 0].mean())
     if len(comps) != 4:
         raise RuntimeError("base hand: %d fingers found" % len(comps))
@@ -5882,6 +5915,139 @@ def square_jaw(R):
         WHO, JAW_WIDEN * 1000, int((w > 0.3).sum()), CHIN_BROAD[0] * 100, CHIN_BROAD[1] * 1000, int((wc > 0.3).sum())))
 
 
+# Tenth round (the critic: "he reads 35 to 45, not 19 ... a long, narrow, egg-shaped face"; "seen front-on, the head is
+# barely wider than the neck"). Measured on tpose8's front view (scratchpad brother10/ratios.py, 1.39 mm a pixel, chin
+# row 330): the face 0.229 m across at the mouth's height (z 1.69), the neck 0.195 under the jaw, the shoulders 0.62;
+# the ninth model 0.171 at the mouth, 0.165 under the jaw, 0.61 at the shoulders. So his shoulders and his head's
+# height were right (1/6.5 of him) and his FACE was too narrow: the head is widened across only (x, about its middle
+# line), most at the jaw and mouth, less at the cheeks and temples, a little at the crown, none at the neck's base;
+# the ears are moved out with the skull at their roots but not grown; then the crown evened (Taubin) so the egg's
+# point and facets round off. The shaved sheet's front outline is narrower than this (its painting also reads older):
+# tpose8, his own body sheet, wins. HEAD_WIDEN: ((z, factor), ...); CROWN_ROUND: (rounds, from z).
+HEAD_WIDEN = ()
+CROWN_ROUND = (0, 1.84)
+NOSE_SHORT = 0.0
+DOME_FROM = 0.0       # youth_head: the level (z, m) the skull's dome stands on (0: none), and how far the crown comes down
+DOME_DROP = 0.0
+NECK_EASE = 0         # youth_head: Taubin rounds over the neck's two joins
+
+
+def youth_head(R):
+    global EYE_INNER, EYE_OUTER, EYE_TOP, EYE_LOW, EYE_IRIS, EYE_ZONE, EYE_RX, EYE_RAD, SMILE
+    P = np.array(R.P)
+    zs, ks = (np.array(v, float) for v in zip(*HEAD_WIDEN))
+    kz = lambda z: np.interp(z, zs, ks)
+    ears = set(R.tag["ear_l"]) | set(R.tag["ear_r"])
+    ids = [v for v in R.tag["base_head_pts"] if v not in ears]
+    ids += [v for ring in R.tag.get("neck_rings", []) for v in ring if v not in ears]
+    ids = np.array(sorted(set(ids)))
+    P[ids, 0] *= kz(P[ids, 2])
+    for key in ("ear_l", "ear_r"):
+        e = np.array(R.tag[key])
+        ax = np.abs(P[e, 0])
+        root = e[ax <= np.quantile(ax, 0.3)]
+        x_r = float(P[root, 0].mean())
+        P[e, 0] += x_r * (float(kz(P[root, 2].mean())) - 1.0)
+    # (the nose, the critic: "shorten the projection by about 15%": every point of the nose's zone standing forward of
+    # the cheeks beside it is brought back by NOSE_SHORT of that, most on the middle line)
+    if NOSE_SHORT:
+        hpa = np.array([v for v in R.tag["base_head_pts"] if v not in ears])
+        z_lo, z_hi = float(head_z(NOSE[-1][0] + 6)), float(head_z(NOSE[0][0]))
+        side = hpa[(np.abs(P[hpa, 0]) > 0.03) & (np.abs(P[hpa, 0]) < 0.04) & (P[hpa, 1] < -0.05)]
+        moved = 0.0
+        for v in hpa:
+            x, y, z = P[v]
+            if abs(x) > 0.032 or z < z_lo - 0.004 or z > z_hi or y > -0.05:
+                continue
+            near = side[np.abs(P[side, 2] - z) < 0.006]
+            if not len(near):
+                continue
+            d = float(P[near, 1].min()) - y
+            if d > 0:
+                dd = NOSE_SHORT * d * (1.0 - float(smooth01(0.012, 0.032, abs(x)))) * float(smooth01(z_lo - 0.004, z_lo + 0.004, z))
+                P[v, 1] += dd
+                moved = max(moved, dd)
+        print("%s NOSE shortened: at most %.1f mm back" % (WHO, moved * 1000))
+    R.P = [p for p in P]
+    # (the dome: the head's points above DOME_FROM laid onto a half ellipsoid standing on that level (as wide and deep
+    # as the head is there, as high as the crown), faded in over 2.5 cm: an even round skull, no egg point, no flat top
+    # with corners. The sheets (both rows of head3) draw one smooth arc from temple to temple.)
+    if DOME_FROM:
+        hpa = np.array([v for v in R.tag["base_head_pts"] if v not in ears])
+        Q = P[hpa]
+        band = np.abs(Q[:, 2] - DOME_FROM) < 0.006
+        a_ = float(np.abs(Q[band, 0]).max())
+        y0, y1 = float(Q[band, 1].min()), float(Q[band, 1].max())
+        top = float(Q[:, 2].max()) - DOME_DROP
+        C_ = np.array((0.0, (y0 + y1) / 2.0, DOME_FROM))
+        rad = np.array((a_, (y1 - y0) / 2.0, top - DOME_FROM))
+        up = Q[:, 2] > DOME_FROM - 0.03
+        d = (Q - C_) / rad
+        n_ = np.linalg.norm(d, axis=1, keepdims=True)
+        on_ = C_ + d / np.maximum(n_, 1e-9) * rad
+        w = (smooth01(DOME_FROM - 0.005, DOME_FROM + 0.025, Q[:, 2]) * up)[:, None]
+        P[hpa] = Q * (1 - w) + on_ * w
+        print("%s DOME: from z %.3f, half width %.3f, half depth %.3f, height %.3f (crown down %.1f mm)" % (
+            WHO, DOME_FROM, rad[0], rad[1], rad[2], DOME_DROP * 1000))
+        R.P = [p for p in P]
+    # (the crown: Taubin rounds over the head's points above CROWN_ROUND's z, faded in over 3 cm)
+    n_r, z0 = CROWN_ROUND
+    if n_r:
+        hp = np.zeros(len(P), bool)
+        hp[[v for v in R.tag["base_head_pts"] if v not in ears]] = True
+        w = hp * smooth01(z0 - 0.03, z0, P[:, 2])
+        sel = w > 0.02
+        E = edges_of(R.faces)
+        deg = np.bincount(E.ravel(), minlength=len(P)).astype(float)
+        before = P.copy()
+        for _ in range(n_r):
+            for f in (0.5, -0.53):
+                acc = np.zeros_like(P)
+                np.add.at(acc, E[:, 0], P[E[:, 1]])
+                np.add.at(acc, E[:, 1], P[E[:, 0]])
+                avg = acc / np.maximum(deg, 1)[:, None]
+                P[sel] += (avg[sel] - P[sel]) * f
+        P = before + (P - before) * w[:, None]
+        R.P = [p for p in P]
+    # (the neck's two joins evened, the critic: "a dark line circles the neck at the base of the head" (a lit ridge
+    # where the neck's bridge meets the torso's top ring: Blender close-up, scratchpad brother10/a2/neck.png) and "a
+    # sharp concave notch where the jaw meets the throat": Taubin rounds over the points near the torso's top ring and
+    # near the head's opening loop, the loops themselves included)
+    if NECK_EASE:
+        P = np.array(R.P)
+        topr = np.array(R.tag["torso_rings"][-1])
+        loop = np.array(R.tag["neck_loop"])
+        fams = np.array([part_family(p) for p in R.part])
+        d1 = np.min(np.linalg.norm(P[:, None, :] - P[topr][None, :, :], axis=2), axis=1)
+        d2 = np.min(np.linalg.norm(P[:, None, :] - P[loop][None, :, :], axis=2), axis=1)
+        sel = ((d1 < 0.03) | (d2 < 0.018)) & np.isin(fams, ("torso", "neck", "head", "shoulder"))
+        E = edges_of(R.faces)
+        deg = np.bincount(E.ravel(), minlength=len(P)).astype(float)
+        for _ in range(NECK_EASE):
+            for f in (0.5, -0.53):
+                acc = np.zeros_like(P)
+                np.add.at(acc, E[:, 0], P[E[:, 1]])
+                np.add.at(acc, E[:, 1], P[E[:, 0]])
+                avg = acc / np.maximum(deg, 1)[:, None]
+                P[sel] += (avg[sel] - P[sel]) * f
+        R.P = [p for p in P]
+        print("%s NECK eased: %d points, %d rounds" % (WHO, int(sel.sum()), NECK_EASE))
+    # the face's sheet columns (eyes, smile) widened with it, so the eyes are cut and painted where the face now is
+    ke = float(kz(head_z(EYE_IRIS[1])))
+    km = float(kz(head_z(SMILE[0])))
+    EYE_INNER = (EYE_INNER[0] * ke, EYE_INNER[1])
+    EYE_OUTER = (EYE_OUTER[0] * ke, EYE_OUTER[1])
+    EYE_TOP = (EYE_TOP[0] * ke, EYE_TOP[1])
+    EYE_LOW = (EYE_LOW[0] * ke, EYE_LOW[1])
+    EYE_IRIS = (EYE_IRIS[0] * ke, EYE_IRIS[1], EYE_IRIS[2])
+    EYE_ZONE = (EYE_ZONE[0] * ke, EYE_ZONE[1])
+    EYE_RX = EYE_RX * ke
+    EYE_RAD = np.array((EYE_RX, EYE_R, EYE_R))
+    SMILE = (SMILE[0], SMILE[1], SMILE[2] * km, SMILE[3])
+    print("%s HEAD widened (youth): x times %s at z %s; eyes' columns times %.3f, mouth's %.3f; crown %d rounds above %.2f m" % (
+        WHO, list(ks), list(zs), ke, km, n_r, z0))
+
+
 def refine_base_head(M, face_uv, weights, under, sh):
     """Third build: the base head's face (brow to chin, the faces turned forward) split once, the new points placed
     on the curved surface (refine); then two more outline rounds on the denser face."""
@@ -5946,6 +6112,9 @@ def refine_base_head(M, face_uv, weights, under, sh):
     symmetrize(R, mir)
     if JAW_WIDEN or CHIN_BROAD:
         square_jaw(R)
+        symmetrize(R, mir)
+    if HEAD_WIDEN:
+        youth_head(R)
         symmetrize(R, mir)
     print("BROTHER refined: face %d faces split; %d triangles now; folded after the refit %d" % (len(sel), len(R.tris()), folded_faces(R, R.tag["base_head_faces"], N0)))
     return R, uv1, W1, under2
@@ -6021,6 +6190,9 @@ def inside_poly(pts, poly):
     return ins
 
 
+PEC_PROUD = 0.010   # refine_forms: metres the pecs stand proud (the brother's "consts" set 0.02, tenth round)
+
+
 def refine_forms(M, face_uv, weights, under, joints):
     """Fifth round (the critic: no deltoid caps or collarbones, flat pecs with a hard crease under them, a banded
     cylinder of a back with no spine groove, shoulder blades or lats). The torso's 16 columns cannot hold those forms,
@@ -6059,7 +6231,10 @@ def refine_forms(M, face_uv, weights, under, joints):
     g = lambda d, s: np.exp(-(d / s) ** 2)
     d = np.zeros(len(P))
     # the pecs: two masses, fullest over the nipples' row, their lower edges a soft fold, the breastbone between
-    d += 0.010 * g(ax_ - 0.105, 0.055) * g(z - Z(470), 0.045) * front
+    # (tenth round, the critic: "the chest is a flat slab with no pectoral mass"; tpose8 draws heavy soft pecs: 2 cm
+    # proud, fuller toward their lower edge, which falls off faster than the top rises)
+    zp = z - Z(480)
+    d += PEC_PROUD * g(ax_ - 0.1, 0.06) * np.where(zp < 0, g(zp, 0.03), g(zp, 0.055)) * front
     # (sixth round: the fold under the pecs is gone, the critic read it as a hard shelf across the whole torso; the
     # pecs' lower edge is their own mass fading)
     zf = Z(522) + 0.018 * ((ax_ - 0.1) / 0.08) ** 2
@@ -6084,7 +6259,7 @@ def refine_forms(M, face_uv, weights, under, joints):
     # (the groove made by raising the long muscles either side of the spine, not by cutting the middle in: the middle
     # line is the side view's outline, which the sheet sets)
     d += 0.007 * g(ax_ - 0.035, 0.018) * (z < Z(385)) * (z > Z(720)) * back
-    d += 0.007 * g(ax_ - 0.085, 0.045) * g(z - Z(452), 0.05) * back
+    d += 0.004 * g(ax_ - 0.085, 0.045) * g(z - Z(452), 0.05) * back    # (tenth round: 0.007 -> 0.004, "a hump behind each shoulder")
     d -= 0.003 * g(ax_ - 0.05, 0.012) * g(z - Z(470), 0.06) * back
     # the trapezius (sixth round; the critic: "the neck a straight column ... no trapezius slopes"; the sheet's front
     # view is 0.33 m wide at row 330, between the 0.2 m neck and the shoulders): the top of each shoulder raised into
@@ -6249,7 +6424,7 @@ def open_eyes(M, face_uv, weights, under):
                 # outer half, and a crease under it)
                 outer = 0.6 + 0.4 * float(np.clip(t, 0, 1))
                 push += bags * outer * math.exp(-((below - 9.0) / 4.0) ** 2)
-                push -= bags * 0.7 * outer * math.exp(-((below - 16.5) / 2.2) ** 2)
+                push -= bags * FIGURE.get("bag_crease", 0.7) * outer * math.exp(-((below - 16.5) / 2.2) ** 2)
             P[i] = P[i] + n_ * push * fade
         # 5b. (seventh round, the critic: "the eye sockets are holes ringed by jagged, spiky lid geometry") the two rings
         # of skin round the margin evened out (Taubin), the margin held, then kept outside the ball again
@@ -6334,7 +6509,7 @@ def eye_texture(path, size=256):
     k = (np.arange(size) + 0.5) / size * 2.0 - 1.0
     X, Y = np.meshgrid(k, k)
     r = np.hypot(X * EYE_RX / EYE_R, Y)    # (the ball is wider than tall: the iris round on it, an ellipse here)
-    ri = EYE_IRIS[2] * HEAD_SX / EYE_R           # the iris's radius over the ball's height radius
+    ri = EYE_IRIS[2] * HEAD_SX / EYE_R * FIGURE.get("iris_k", 1.0)   # the iris's radius over the ball's height radius
     rp = ri * 0.36
     img = np.zeros((size, size, 3))
     sclera = np.array((0.93, 0.9, 0.86))
@@ -6348,8 +6523,10 @@ def eye_texture(path, size=256):
         # pupil shading to a soft green toward the rim, a darker limbal edge; the highlight below)
         # (ninth round, the critic: "bright green with an orange ring"; the brief: amber-brown at the pupil to green at
         # the rim, about 15% darker: the amber now holds to 0.6 of the radius, an olive green only in the outer band)
-        amber, green = np.array((0.5, 0.31, 0.13)), np.array((0.35, 0.39, 0.21))
-        g = np.clip((t - 0.6) / 0.32, 0, 1)[..., None] ** 1.3
+        # (tenth round, the brief: "reading hazel-green overall, not orange": the amber a ring round the pupil only,
+        # out to 0.42 of the radius, browner; green from there out)
+        amber, green = np.array((0.45, 0.32, 0.15)), np.array((0.4, 0.4, 0.22))
+        g = np.clip((t - 0.4) / 0.3, 0, 1)[..., None] ** 1.1
         iris = amber * (1 - g) + green * g
         iris = iris * (1.0 - 0.18 * np.clip((0.5 - t) / 0.5, 0, 1))[..., None]
         iris = iris * (1.0 + rays[..., None] * (t[..., None] > 0.3))
@@ -6488,6 +6665,35 @@ def apply_figure():
     print("%s FIGURE %s: sheet %s, %d tattoos, out %s" % (WHO, FIGURE_NAME, FIGURE["sheet"], len(TATTOOS), GLB))
 
 
+HAND_DESPIKE = 0.0    # despike_hands: metres a hand point may stand off its neighbours' middle (0: off)
+
+
+def despike_hands(M, rounds=3):
+    """(tenth round, the critic: "a sharp triangular flap sticks out at the heel of the palm on the thumb side") Every
+    hand point standing more than HAND_DESPIKE off the middle of its neighbours (a flap or a shard: smooth skin there
+    stands a millimetre or two off) is drawn onto that middle, round by round."""
+    P = np.array(M.P)
+    fams = np.array([part_family(p) for p in M.part])
+    # (the palm and the back of the hand only: fingers and the thumb are thin, their points stand well off by nature)
+    on = np.isin(np.array(M.part), ("hand_l", "hand_r"))
+    E = edges_of(M.faces)
+    deg = np.bincount(E.ravel(), minlength=len(P)).astype(float)
+    total = 0
+    for _ in range(rounds):
+        acc = np.zeros_like(P)
+        np.add.at(acc, E[:, 0], P[E[:, 1]])
+        np.add.at(acc, E[:, 1], P[E[:, 0]])
+        avg = acc / np.maximum(deg, 1)[:, None]
+        off = np.linalg.norm(P - avg, axis=1)
+        bad = on & (off > HAND_DESPIKE)
+        if not bad.any():
+            break
+        total += int(bad.sum())
+        P[bad] = avg[bad] * 0.8 + P[bad] * 0.2
+    M.P = [p for p in P]
+    print("%s HAND despiked: %d moves of points more than %.1f mm off their neighbours" % (WHO, total, HAND_DESPIKE * 1000))
+
+
 def main():
     # (an empty scene: the factory start-up's cube, camera and light removed)
     for o in list(bpy.data.objects):
@@ -6544,6 +6750,8 @@ def main():
     taper_forearms(M, joints)
     smooth_ankles(M, joints)
     smooth_wrists(M, joints)
+    if HAND_DESPIKE:
+        despike_hands(M)
     back_forms(M)
     finish(M, T, joints, sh)
 
@@ -6554,7 +6762,7 @@ def main():
 # triangle is added: (centre |x| m, body-sheet row, side (-1 front, 1 back, 0 either), spread across, spread up above
 # the centre, spread below it (m), metres along the normal).
 BACK_FORMS = (
-    (0.10, 470.0, 1, 0.055, 0.06, 0.07, 0.010),     # the shoulder blades under the padding
+    (0.10, 470.0, 1, 0.055, 0.06, 0.07, 0.005),     # the shoulder blades under the padding (tenth round: 0.010 -> 0.005, the hump)
     (0.0, 560.0, 1, 0.02, 0.17, 0.17, -0.009),      # the spine's soft groove, shoulders to waist
     (0.17, 540.0, 1, 0.05, 0.07, 0.06, 0.006),      # the lats' flare under the arms
     (0.075, 845.0, 1, 0.06, 0.06, 0.04, 0.018),     # the glutes, rounding the seat (the shorts follow the body)
@@ -6584,6 +6792,226 @@ def back_forms(M):
     print("%s BACK forms laid on: out %.1f mm, in %.1f mm" % (WHO, 1000 * float(d.max()), -1000 * float(d.min())))
 
 
+# ------------------------------------------------------------------------------------------------------------------
+# Tenth round: paint for youth (the critic: "he reads 35 to 45, not 19": "deep painted nasolabial folds plus crow's-feet
+# and under-eye lines drawn as hard dark strokes", "hands and legs covered in brown vein and scratch strokes", "dark
+# anatomy-chart contour lines", hair "drawn as dark scratch strokes"; the user twice: boyish). The sheets' painting
+# carries their line work and shading, which projected onto him read as age and dirt. So, as the younger boy's build
+# does (tools/build_boy.py, RULE_PAINT; read, not imported):
+# - the FACE is painted by rule on clean skin in his own tone (FACE_BY_RULE): soft brown brows, a lash line, a soft
+#   lid crease, soft bags as a light rose shade (no line), rosy cheeks, a nose flush no stronger than the cheeks,
+#   the lips on the modelled mouth line, nostrils, rosy ear rims, a faint cool stubble shadow on the jaw. No folds,
+#   no crow's-feet, no forehead lines. `--sheet-face` brings back the projected face.
+# - the BODY keeps only the sheet's broad tone (a 3D low pass) brought to his tone, and its hair where the sheet's
+#   dark strokes are DENSE (the hair's places: chest, belly line, forearms, legs), redrawn as soft clumps with a few
+#   strands; thin isolated strokes (contours, veins, scratches) are dropped. The hands are plain skin with the
+#   rule's knuckles, creases and nails (no projection from the hands sheet: its streaks read as veins).
+# ------------------------------------------------------------------------------------------------------------------
+
+FACE_BY_RULE = "--sheet-face" not in ARGS
+YOUNG_SKIN = "--sheet-skin" not in ARGS
+ROSE = np.array((1.03, 0.84, 0.81))
+SOFT_SHADE = np.array((0.93, 0.83, 0.81))
+HAIR_BROWN = np.array((0.30, 0.2, 0.14))
+
+
+PAD = 6
+
+
+def grown_by(valid, n=PAD):
+    g = valid.copy()
+    for _ in range(n):
+        g = g | np.roll(g, 1, 0) | np.roll(g, -1, 0) | np.roll(g, 1, 1) | np.roll(g, -1, 1)
+    return g
+
+
+def pad_edges(rgb, valid, n=PAD):
+    """(tenth round, the critic: "a dark line circles the neck"; in a close-up a thin light-and-dark line along the
+    island edge: the margins were filled from a coarse average of the atlas round them, other islands included, and
+    bilinear sampling drew it in) Each island's edge colour carried out n texels, ring by ring, from its own texels."""
+    out = rgb.copy()
+    v = valid.copy()
+    for _ in range(n):
+        acc = np.zeros_like(out)
+        cnt = np.zeros(v.shape)
+        for ax, sh_ in ((0, 1), (0, -1), (1, 1), (1, -1)):
+            acc += np.roll(out * v[..., None], sh_, ax)
+            cnt += np.roll(v.astype(float), sh_, ax)
+        new = ~v & (cnt > 0)
+        out[new] = acc[new] / cnt[new][:, None]
+        v = v | new
+    return out
+
+
+def lowpass3d(rgb, pos, hit, cell=0.05, spread=2):
+    lo_ = pos[hit].min(0) - cell * 4
+    idx = np.floor((pos - lo_) / cell).astype(int)
+    shape = tuple(idx[hit].max(0) + 5)
+    s = np.zeros(shape + (3,))
+    n = np.zeros(shape)
+    ih = idx[hit]
+    np.add.at(s, (ih[:, 0], ih[:, 1], ih[:, 2]), rgb[hit])
+    np.add.at(n, (ih[:, 0], ih[:, 1], ih[:, 2]), 1.0)
+    for _ in range(spread):
+        for ax in range(3):
+            s = s + np.roll(s, 1, ax) + np.roll(s, -1, ax)
+            n = n + np.roll(n, 1, ax) + np.roll(n, -1, ax)
+    out = rgb.copy()
+    out[hit] = (s / np.maximum(n, 1e-6)[..., None])[ih[:, 0], ih[:, 1], ih[:, 2]]
+    return out
+
+
+def young_skin(M, face_uv, skin, spos, shit, tone):
+    """The body's picture rebuilt (see above). Gives the new picture."""
+    P = np.array(M.P)
+    _, nrm, _, fid = texel_geometry(M, face_uv, "skin", P, normals_of(P, M.tris()))
+    fam = np.array([part_family(p) for p in M.fpart] + ["none"])[fid]
+    hands = shit & (fam == "hand")
+    body = shit & ~hands
+    low = lowpass3d(skin, spos, body, 0.06, 2)
+    med = np.median(low[body], 0)
+    broad = np.clip((low / np.maximum(med, 1e-3)) ** 0.35, 0.92, 1.06)
+    out = np.where(body[..., None], tone * broad, skin)
+    # the sheet's dark strokes: darker than a soft local mean
+    soft = blur(fill_out(skin, shit, 8), 3)
+    dev = (skin - soft).mean(-1)
+    dark = np.clip((-dev - 0.015) / 0.06, 0, 1) * body
+    # their density over about 2.5 cm of skin: hair lies in dense fields, contours and veins are thin lines
+    dens = blur(dark, 6)
+    clump = smooth01(0.1, 0.26, dens) * body
+    # (no hair on his back, the backs of his upper arms, his face side of the neck: the sheet paints none; its
+    # back's muscle shading counted as dense there)
+    clump *= 1.0 - smooth01(0.2, 0.5, nrm[..., 1]) * np.isin(fam, ("torso", "shoulder"))
+    clump = blur(clump, 5)
+    # soft clumps: an under-layer of soft brown, broken by a slow noise so it lies in tufts, then strands over it
+    rng = np.random.default_rng(5)
+    noise = blur(rng.random(clump.shape), 3)
+    noise = (noise - noise.mean()) / max(float(noise.std()), 1e-6)
+    tufts = np.clip(clump * (0.85 + 0.15 * noise), 0, 1)
+    out = out * (1 - 0.2 * tufts[..., None]) + HAIR_BROWN * 0.2 * tufts[..., None]
+    strands = dark * clump
+    out = out * (1 - 0.3 * strands[..., None]) + HAIR_BROWN * 0.3 * strands[..., None]
+    # the hands: their rule paint (creases, nails, knuckles: ratios against their flat colour) on his tone
+    if hands.any():
+        hb = np.median(skin[hands], 0)
+        rel = np.clip(skin / np.maximum(hb, 1e-3), 0.6, 1.25)
+        out[hands] = tone * rel[hands] * np.array((1.02, 0.98, 0.97))
+    print("%s SKIN young: tone %s, hair clumps on %d texels, strands %d; dropped thin strokes on %d" % (
+        WHO, np.round(tone, 3), int((tufts > 0.3).sum()), int((strands > 0.3).sum()),
+        int(((dark > 0.3) & (clump < 0.2)).sum())))
+    return np.clip(out, 0, 1)
+
+
+def rule_face(M, face_uv, tone):
+    """The face picture painted by rule on his own landmarks (see above). Gives (rgb, pos, hit, skin tone)."""
+    P = np.array(M.P)
+    pos, nrm, hit, fid = texel_geometry(M, face_uv, "face", P, normals_of(P, M.tris()))
+    bad = ~(np.isfinite(pos).all(-1) & np.isfinite(nrm).all(-1))
+    hit = hit & ~bad
+    pos = np.nan_to_num(pos)
+    nrm = np.nan_to_num(nrm)
+    fam = np.array([part_family(p) for p in M.fpart] + ["none"])[fid]
+    x, y, z = pos[..., 0], pos[..., 1], pos[..., 2]
+    ax = np.abs(x)
+    col = ax / HEAD_SX
+    row = head_row(z)
+    rgb = np.tile(tone, pos.shape[:-1] + (1,)).astype(float)
+    rng = np.random.default_rng(11)
+    v = np.zeros(pos.shape[:-1])
+    for _ in range(6):
+        k = rng.normal(size=3)
+        k *= math.tau / 0.08 / np.linalg.norm(k)
+        v += np.sin(pos @ k + rng.uniform(0, math.tau))
+    rgb = rgb * (1.0 + 0.012 * v[..., None] * np.array((0.6, 1.0, 1.3)))
+    face = hit & np.isin(fam, ("head", "nose")) & (y < -0.03)
+    fwd = smooth01(0.05, 0.4, -nrm[..., 1])
+    eyes_on = face & (fwd > 0.3) & (col < EYE_OUTER[0] * 1.4)
+
+    def tint(w, c, a=1.0):
+        nonlocal rgb
+        w = np.clip(w, 0, 1)[..., None] * a
+        rgb = rgb * (1.0 - w) + np.asarray(c, float) * w
+
+    def mult(w, m):
+        nonlocal rgb
+        rgb = rgb * (1.0 + (np.asarray(m, float) - 1.0) * np.clip(w, 0, 1)[..., None])
+    poly = eye_outline()
+    up = poly[:25]
+    low = poly[24:][::-1]
+    lt = np.interp(col, up[:, 0], up[:, 1], left=np.nan, right=np.nan)
+    lb = np.interp(col, low[:, 0], low[:, 1], left=np.nan, right=np.nan)
+    inside = np.isfinite(lt)
+    t = np.clip((col - EYE_INNER[0]) / (EYE_OUTER[0] - EYE_INNER[0]), 0, 1)
+    d_up = np.where(inside, lt - row, 99.0)
+    d_low = np.where(inside & np.isfinite(lb), row - lb, 99.0)
+    span = EYE_OUTER[0] - EYE_INNER[0]
+    # the stubble: a faint cool shadow over the jaw, chin and upper lip (head3's top row: light stubble), never a line
+    r_m = float(SMILE[0])
+    stub = (smooth01(r_m - 30.0, r_m - 18.0, row) * (1.0 - smooth01(r_m - 6.0, r_m + 4.0, row)) * (col < SMILE[2] * 0.9)
+            + smooth01(r_m + 8.0, r_m + 24.0, row) * (1.0 - smooth01(float(HEAD_CHIN) + 10.0, float(HEAD_CHIN) + 30.0, row)))
+    stub = np.clip(stub, 0, 1) * (1.0 - smooth01(EYE_OUTER[0] * 1.5, EYE_OUTER[0] * 1.9, col)) * face
+    mult(blur(stub, 3) * 0.55, (0.94, 0.94, 0.97))
+    # cheeks: rose, soft, high under the outer eye (as head3's top row)
+    for s in (1.0, -1.0):
+        cx = s * (EYE_IRIS[0] + 0.25 * span)
+        w = np.exp(-(((x / HEAD_SX - cx) / (0.55 * span)) ** 2 + ((row - (EYE_LOW[1] + 42.0)) / 26.0) ** 2))
+        mult(w * 0.55 * face, ROSE)
+    # the nose: a flush on its tip no stronger than the cheeks
+    hp = np.array(M.tag["base_head_pts"])
+    nz = hp[(np.abs(P[hp, 0]) < 0.006)]
+    tip = P[nz[np.argmin(P[nz, 1])]]
+    w = np.exp(-(np.linalg.norm(pos - tip, axis=-1) / 0.014) ** 2)
+    mult(w * 0.45 * face, ROSE)
+    # nostrils: the underside of the nose's base, either side
+    for s in (1.0, -1.0):
+        c_ = tip + np.array((s * 0.0085, 0.012, -0.012))
+        w = np.exp(-(np.linalg.norm((pos - c_) * np.array((1.0, 0.7, 1.4)), axis=-1) / 0.0035) ** 2)
+        mult(w * smooth01(-0.1, 0.4, -nrm[..., 2]) * face, (0.62, 0.45, 0.42))
+    # brows: soft brown arcs over each eye, fuller inside, a little higher than the eye's top and tapering down outward
+    tb = np.clip((col - (EYE_INNER[0] - 6.0)) / (span + 16.0), 0, 1)
+    brow_row = EYE_TOP[1] - 21.0 - 6.5 * np.sin(np.pi * np.clip(tb * 0.9 + 0.05, 0, 1)) + 6.0 * tb ** 2
+    half = 5.0 - 2.0 * tb
+    ends = smooth01(EYE_INNER[0] - 8.0, EYE_INNER[0] - 2.0, col) * (1.0 - smooth01(EYE_OUTER[0] + 4.0, EYE_OUTER[0] + 12.0, col))
+    strokes = 1.0
+    tint(np.exp(-((row - brow_row) / half) ** 4) * ends * strokes * fwd * face, (0.32, 0.21, 0.14), 0.72)
+    # the lash line, thin, thickest at the outer end, on the margin only
+    lash = np.exp(-((d_up - 0.5) / (0.9 + 0.6 * t)) ** 2) * (0.6 + 0.4 * t) * smooth01(-0.6, 0.2, d_up)
+    tint(lash * eyes_on, (0.22, 0.14, 0.11), 0.75)
+    # the lid crease, soft, and a soft heavy outer lid
+    mult(np.exp(-((d_up - 9.0) / 2.6) ** 2) * (0.35 + 0.25 * t) * eyes_on, SOFT_SHADE)
+    # the lower lid: a faint warm line; the bags: a soft rose shade under it (no line), toward the outer half
+    mult(np.exp(-((d_low - 1.5) / 1.8) ** 2) * 0.3 * eyes_on, (0.98, 0.88, 0.86))
+    mult(np.exp(-((d_low - 9.0) / 5.0) ** 2) * (0.35 + 0.25 * t) * eyes_on, (0.98, 0.88, 0.88))
+    # the mouth: a soft line on the modelled lips' meeting loop, a rose lower lip, the upper lip a little rose
+    loop = M.tag.get("mouth_loop")
+    if loop:
+        L = P[loop]
+        o = np.argsort(L[:, 0])
+        lx, lz = L[o, 0], L[o, 2]
+        xc = float(np.abs(lx).max())
+        zl = np.interp(x, lx, lz)
+        zm = float(np.interp(0.0, lx, lz))
+        ym = float(L[:, 1].min())
+        near = face & (y < ym + 0.012)
+        xr = x / max(xc, 1e-4)
+        line = np.exp(-((z - zl) / 0.0008) ** 2) * (1.0 - smooth01(0.65, 0.92, np.abs(xr)))
+        tint(line * near, (0.58, 0.37, 0.36), 0.5)
+        lip = np.exp(-(((z - (zl - 0.0045)) / 0.0035) ** 2 + (x / (0.7 * xc)) ** 4))
+        mult(lip * near * 0.7, (1.0, 0.83, 0.81))
+        ulip = np.exp(-(((z - (zl + 0.003)) / 0.0022) ** 2 + (x / (0.75 * xc)) ** 4))
+        mult(ulip * near * 0.45, (1.0, 0.85, 0.83))
+        for s in (1.0, -1.0):
+            c_ = np.array((s * xc * 0.98, ym + 0.006, float(np.interp(s * xc, lx, lz))))
+            w = np.exp(-(np.linalg.norm(pos - c_, axis=-1) / 0.0025) ** 2)
+            mult(w * near * 0.35, SOFT_SHADE)
+    # the ears: rosy toward the rim
+    ear = hit & (fam == "ear")
+    mult(ear * (0.15 + 0.35 * smooth01(0.08, 0.12, ax)), ROSE)
+    # (no shade anywhere else: the game's light models his forms)
+    print("%s FACE painted by rule: tone %s, nose tip at %s" % (WHO, np.round(tone, 3), np.round(tip, 3)))
+    return np.clip(rgb, 0, 1), pos, hit, np.array(tone, float)
+
+
 def finish(M, T, joints, sh):
     H = M.tag["head_rings"]
     bones = skeleton_joints(M, T, joints)
@@ -6608,15 +7036,20 @@ def finish(M, T, joints, sh):
         return np.zeros(len(rows), bool)
 
     skin, spos, shit = paint_skin(M, face_uv, sh, tris_all, Pc, no_arms_c, reject_skin, joints)
-    skin = delight(skin, spos, shit)
-    # (ninth round, the critic: "the chest hair ... drawn as black scratches", "muscle definition ... painted as hard
-    # dark lines", "dark stains": the fine detail's contrast taken down to SKIN_DETAIL of itself round a soft local
-    # mean, and what stays darker than that mean turned from near black toward the hair's dark brown)
-    soft = blur(fill_out(skin, shit, 8), 3)
-    dev = skin - soft
-    skin = np.where(shit[..., None], soft + dev * SKIN_DETAIL, skin)
-    dark = np.clip(-dev.mean(-1) / 0.12, 0, 1)[..., None] * shit[..., None]
-    skin = skin * (1 - 0.35 * dark) + (soft * np.array((0.62, 0.48, 0.36))) * 0.35 * dark
+    tone = np.array(FIGURE.get("skin_tone", SKIN_TONE), float)
+    skin = delight(skin, spos, shit, target=tone)
+    rule = FIGURE.get("rule_paint", False)
+    if rule and YOUNG_SKIN:
+        skin = young_skin(M, face_uv, skin, spos, shit, tone)
+    else:
+        # (ninth round, the critic: "the chest hair ... drawn as black scratches", "muscle definition ... painted as hard
+        # dark lines", "dark stains": the fine detail's contrast taken down to SKIN_DETAIL of itself round a soft local
+        # mean, and what stays darker than that mean turned from near black toward the hair's dark brown)
+        soft = blur(fill_out(skin, shit, 8), 3)
+        dev = skin - soft
+        skin = np.where(shit[..., None], soft + dev * SKIN_DETAIL, skin)
+        dark = np.clip(-dev.mean(-1) / 0.12, 0, 1)[..., None] * shit[..., None]
+        skin = skin * (1 - 0.35 * dark) + (soft * np.array((0.62, 0.48, 0.36))) * 0.35 * dark
     if BASE_FEET:
         Pp = np.array(M.P)
         _, snrm, _, sfid = texel_geometry(M, face_uv, "skin", Pp, normals_of(Pp, M.tris()))
@@ -6633,16 +7066,21 @@ def finish(M, T, joints, sh):
             legs = shit & (fparts == "leg" + sfx)
             skin = paint_feet(skin, spos, snrm, shit, mine, (o, f_, l_), M.tag["foot_toes" + sfx], base_c, shin=legs, ring_z=ring_z)
             print("%s FEET painted%s: %d texels, the shin's tone %s" % (WHO, sfx, int(mine.sum()), np.round(base_c, 3)))
-    face, fpos, fhit, fskin = paint_head(M, face_uv, sh)
-    face0 = face
-    face = delight(face, fpos, fhit, k=0.55, cell=0.012, spread=3, lum_only=True)
-    fskin = fskin * np.median(face[fhit], 0) / np.maximum(np.median(face0[fhit], 0), 1e-3)
+    if rule and FACE_BY_RULE:
+        face, fpos, fhit, fskin = rule_face(M, face_uv, tone)
+    else:
+        face, fpos, fhit, fskin = paint_head(M, face_uv, sh)
+        face0 = face
+        face = delight(face, fpos, fhit, target=tone, k=0.55, cell=0.012, spread=3, lum_only=True)
+        fskin = fskin * np.median(face[fhit], 0) / np.maximum(np.median(face0[fhit], 0), 1e-3)
     # The two sheets paint his skin differently (the head sheet a little cooler than the body sheet): the whole face picture
     # is brought to the body's tone (the median of its plain skin to the median of the body's chest and neck), then
     # the neck is matched where the two pictures meet (the torso's top ring), so no step shows.
     zt = float(np.mean([M.P[i][2] for i in T[-1]]))
     body_ref = np.median(skin[shit & (spos[..., 2] > zt - 0.25) & (spos[..., 2] < zt - 0.03)], axis=0)
     gain0 = body_ref / np.maximum(fskin, 1e-3)
+    if rule and FACE_BY_RULE:
+        gain0 = np.ones(3)    # (both pictures are painted in the one tone; the chest's hair would darken the face)
     # (only on skin: the eyes' blue and whites keep their colour)
     skinw = np.clip((face[..., 0] - face[..., 2] - 0.03) * 12.0, 0, 1)[..., None]
     face = np.clip(face * (1 + (gain0 - 1) * skinw), 0, 1)
@@ -6656,10 +7094,12 @@ def finish(M, T, joints, sh):
         w = (1.0 - smooth01(zt, zt + 0.1, fpos[..., 2])) * fhit
         face = face * (1 + (gain - 1) * w[..., None])
         print("BROTHER face tone: times %s, then the neck times %s" % (np.round(gain0, 3), np.round(gain, 3)))
-    face = calm_nose(face, fpos, fhit)
-    face = heal_seams(M, face_uv, "face", face, fpos, fhit, others=((skin, spos, shit, "skin"),))
+    if not (rule and FACE_BY_RULE):
+        face = calm_nose(face, fpos, fhit)
+    if not (rule and FACE_BY_RULE):   # (tenth round: the rule face is one tone; healing drew the body's broad tone into it as blotches)
+        face = heal_seams(M, face_uv, "face", face, fpos, fhit, others=((skin, spos, shit, "skin"),))
     # (the islands' margins filled again from their healed edges: the old margins drew a thin line along each seam)
-    face = fill_out(face, fhit, 8)
+    face = fill_out(pad_edges(face, fhit), fhit | grown_by(fhit), 8)
     save_rgb(os.path.join(TEX, "brother_skin.png"), skin[::-1])
     save_rgb(os.path.join(TEX, "brother_face.png"), face[::-1])
     armature = make_armature(bones)
@@ -6715,8 +7155,9 @@ def finish(M, T, joints, sh):
         skin = skin * (1 - m) + np.maximum(skin, soft) * m
     print("%s SKIN purple turned on %d texels; hair lifted under the tattoos on %d" % (
         WHO, int((pw[..., 0] > 0.5).sum()), int((m[..., 0] > 0.5).sum()) if ta is not None else 0))
-    skin = heal_seams(M, face_uv, "skin", skin, spos, shit, others=((face, fpos, fhit, "face"),))
-    skin = fill_out(skin, shit, 8)
+    if not (rule and YOUNG_SKIN):   # (tenth round: the young skin is a 3D field already, alike either side of a seam)
+        skin = heal_seams(M, face_uv, "skin", skin, spos, shit, others=((face, fpos, fhit, "face"),))
+    skin = fill_out(pad_edges(skin, shit), shit | grown_by(shit), 8)
     save_rgb(os.path.join(TEX, "brother_skin.png"), skin[::-1])
     for im in bpy.data.images:
         if os.path.normcase(bpy.path.abspath(im.filepath)) == os.path.normcase(os.path.join(TEX, "brother_skin.png")):
@@ -7095,7 +7536,7 @@ def build_boxers(M, T, sh, weights, under, armature):
     lower = sum(1 for r in TORSO_ROWS if r >= 835)
     Bx, src, islands, info = knit_shorts(P, N, M.tag["torso_rings"][:12], {s: M.tag["leg_rings" + s] for s in ("_l", "_r")},
                                          crotch, band_z, BOXER_BAND_TALL * S, mid_zs, float(body_z(SHORTS_HEM)),
-                                         side_cols, lower_rings=lower)
+                                         side_cols, stand=SHORTS_STAND, lower_rings=lower)
     # every face turned the way it must look: out from the body, the hem's lip down, its inside in
     Q = np.array(Bx.P)
     flipped = 0
@@ -7145,7 +7586,7 @@ def build_boxers(M, T, sh, weights, under, armature):
     # the sheet's painted shade mostly taken out, to clean cream cotton; its folds' small changes kept (sixth round:
     # #E6DAC0, warmer than the #E9E2CF before, which read white or grey under the lights: the sheet's lit cloth measures
     # 213,200,177 and the critic asked for about #E8DFC8)
-    rgb = delight(rgb, pos_b, hit_b & hit, target=np.array((0.902, 0.855, 0.753)), k=0.85, cell=0.025, spread=3)
+    rgb = delight(rgb, pos_b, hit_b & hit, target=np.array((0.94, 0.905, 0.82)), k=0.85, cell=0.025, spread=3)
     # (and most of the way to the plain cream: the sheet's cloth is clean, its smudges and grey were not wanted)
     cream = np.array((0.902, 0.855, 0.753))
     rgb[hit_b] = cream * 0.55 + rgb[hit_b] * 0.45
@@ -7690,7 +8131,8 @@ def paint_skin(M, face_uv, sh, tris_all, Pc, no_arms_c, reject, joints=None):
         fid_parts = np.array(list(M.fpart) + ["none"])[fid]
         finger = hands & np.char.count(fid_parts.astype(str), "_") >= 2
         flat = np.ones_like(rgb) * base_c
-        rgb[hands] = flat[hands] * 0.75 + blur(rgb, 6)[hands] * 0.25
+        hk = 1.0 if (YOUNG_SKIN and FIGURE.get("rule_paint")) else 0.75   # (tenth round: plain, no sheet streaks)
+        rgb[hands] = flat[hands] * hk + blur(rgb, 6)[hands] * (1.0 - hk)
         # (the forearm's last few centimetres fade into the hands' colour: no edge at the wrist)
         if joints is not None:
             for sfx in ("_l", "_r"):
@@ -7746,7 +8188,7 @@ def paint_skin(M, face_uv, sh, tris_all, Pc, no_arms_c, reject, joints=None):
                     k0 = np.array(joints[name + sfx][0], float)
                     top = mine & (back > 0.5) & (np.linalg.norm(pos - k0, axis=-1) < 0.011)
                     rgb[top] *= 1.06
-    if hands.any():
+    if hands.any() and not (YOUNG_SKIN and FIGURE.get("rule_paint")):
         rgb, _ = paint_hands(M, face_uv, rgb, hit, fid, sh, base_c)
     print("BROTHER paint skin: %.0f%% of its texels seen by a view" % (100.0 * (good & hit).sum() / max(hit.sum(), 1)))
     return rgb, pos, hit

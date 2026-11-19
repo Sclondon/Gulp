@@ -7,7 +7,7 @@
    "picture": "brother_anchor",
    "part": "arm_l",
    "x": 0.5793,
-   "y": 0.6968,
+   "y": 0.6966,
    "size": 0.153,
    "turn": 32.4,
    "mirror": true,
@@ -16,20 +16,20 @@
   {
    "picture": "brother_forearm_l",
    "part": "arm_l",
-   "x": 0.6004,
-   "y": 0.2602,
+   "x": 0.601,
+   "y": 0.2596,
    "size": 0.1411,
-   "turn": 25.6,
+   "turn": 26.2,
    "mirror": true,
    "strength": 1.0
   },
   {
    "picture": "brother_forearm_r",
    "part": "arm_r",
-   "x": 0.6062,
-   "y": 0.2692,
+   "x": 0.6068,
+   "y": 0.2686,
    "size": 0.1053,
-   "turn": 26.5,
+   "turn": 27.0,
    "mirror": false,
    "strength": 1.0
   }

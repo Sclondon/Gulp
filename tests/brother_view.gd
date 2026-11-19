@@ -94,6 +94,11 @@ func _initialize() -> void:
 			_shots.append({"name": "p_head_grey", "dir": Vector3(-0.6, 0, 0.8), "at": Vector3(0, 1.72, 0.05), "dist": 1.35, "eye": 1.76, "pose": "", "grey": true})
 			_shots.append({"name": "p_headf_grey", "dir": Vector3(0, 0, 1), "at": Vector3(0, 1.79, 0.06), "dist": 1.0, "eye": 1.8, "pose": "", "grey": true})
 			_shots.append({"name": "p_heads_grey", "dir": Vector3(-1, 0, 0.05), "at": Vector3(0, 1.79, 0.06), "dist": 1.0, "eye": 1.8, "pose": "", "grey": true})
+			# (tenth round: large lit head views, painted and grey, front, three-quarter and side, to set beside the
+			# head sheet's top row)
+			for v in [["p_bigf", Vector3(0, 0, 1)], ["p_bigq", Vector3(-0.6, 0, 0.8)], ["p_bigs", Vector3(-1, 0, 0.02)]]:
+				_shots.append({"name": v[0], "dir": v[1], "at": Vector3(0, 1.775, 0.06), "dist": 0.8, "eye": 1.79, "pose": "", "grey": false})
+				_shots.append({"name": v[0] + "_grey", "dir": v[1], "at": Vector3(0, 1.775, 0.06), "dist": 0.8, "eye": 1.79, "pose": "", "grey": true})
 			_shots.append({"name": "p_eyes", "dir": Vector3(-0.25, 0, 1), "at": Vector3(0, 1.81, 0.12), "dist": 0.42, "eye": 1.82, "pose": "", "grey": false})
 			_shots.append({"name": "p_eyes_grey", "dir": Vector3(-0.25, 0, 1), "at": Vector3(0, 1.81, 0.12), "dist": 0.42, "eye": 1.82, "pose": "", "grey": true})
 			_shots.append({"name": "p_feet", "dir": Vector3(-0.6, 0, 0.8), "at": Vector3(0.0, 0.1, 0.0), "dist": 1.25, "eye": 0.75, "pose": "", "grey": true})
