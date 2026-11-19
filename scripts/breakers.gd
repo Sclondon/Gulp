@@ -728,7 +728,8 @@ func _make_stream(stream: String) -> CPUParticles3D:
 	p.angular_velocity_max = 40.0
 	var curve := Curve.new()
 	var ramp := Gradient.new()
-	p.amount = 400
+	# (more than before: the plume has PLUME_SLOTS points, most hidden until the crest is fully feathering)
+	p.amount = 560
 	p.lifetime = 1.3
 	p.spread = 18.0
 	p.initial_velocity_min = 2.5
@@ -928,6 +929,18 @@ func _process(delta: float) -> void:
 				mat.set_shader_parameter(&"under", 0.0 if above else 1.0)
 
 
+## How strong a section's crest plume is at a stage of its break: none while the swell is still rounded, growing as
+## the face stands up and the lip starts to feather (0.25 to 0.55), full while it pitches, gone just before it lands
+## (the crash takes over there).
+static func _plume_weight(stage: float) -> float:
+	return smoothstep(0.25, 0.55, stage) * (1.0 - smoothstep(0.82, 0.96, stage))
+
+
+## The plume stream's points: PLUME_PER at most a section, PLUME_SLOTS in all (the unused ones hidden).
+const PLUME_PER := 3
+const PLUME_SLOTS := 60
+
+
 # The plume's points: along the strip every other section, from where each section is in its break (seen only
 # from the air: the surf's surface hides it from below).
 func _feed_spray(site: Dictionary, streams: Dictionary, lit: float, above: bool) -> void:
@@ -939,6 +952,12 @@ func _feed_spray(site: Dictionary, streams: Dictionary, lit: float, above: bool)
 	var pts: PackedVector2Array = site.points
 	var tip_v := (PIECE.x + (PIECE.y - PIECE.x) * 9.0 / 17.0) / float(POINTS - 1)
 	var top_v := (PIECE.x + (PIECE.y - PIECE.x) * 6.0 / 17.0) / float(POINTS - 1)
+	# (the user, 2026-11-18: "The spray at the top of the crest all spawns in at once as well so it doesn't make
+	# sense". It came on whole the moment a section passed stage 0.12, and a particle system's rate is the same
+	# however many points it has, so the first section on got the whole stream at once. Now each section's spray
+	# grows as its face steepens (`_plume_weight`) and the stream has PLUME_SLOTS points always: a section takes
+	# slots by its weight, the rest are hidden far below, so each section's share of the stream is its own weight
+	# and the plume builds along the crest as the wave peels, then dies off before the lip lands.)
 	var plume_at := PackedVector3Array()
 	var plume_way := PackedVector3Array()
 	for i in range(2, pts.size() - 2, 2):
@@ -946,19 +965,19 @@ func _feed_spray(site: Dictionary, streams: Dictionary, lit: float, above: bool)
 			continue
 		var cr := crest(pts[i], site.ways[i], t)
 		var stage: float = (cr.y - float(site.tb[i])) / BREAK_TIME
-		if stage < 0.12 or stage > 0.92:
+		var weight := _plume_weight(stage) * float(site.fade[i])
+		if weight <= 0.01:
 			continue
 		var way: Vector2 = site.ways[i]
 		var big: float = float(site.heights[i]) / 3.0
-		# (feathering back off the crest, the offshore wind's plume: up and back out to sea)
 		var top: Vector3 = point(site, i, top_v, t).at
-		plume_at.append(top + Vector3(0.0, 0.15, 0.0))
-		plume_way.append(Vector3(-way.x * 0.4, 1.0, -way.y * 0.4).normalized())
-		# (twice from a big crest, the second steeper up, so the plume stands over the crest from behind)
-		if big > 0.75 and stage > 0.2:
-			plume_at.append(top + Vector3(0.0, 0.3, 0.0))
-			plume_way.append(Vector3(-way.x * 0.45, 1.0, -way.y * 0.45).normalized())
-		if stage > 0.3 and stage < 0.6 and i % 4 == 2:
+		# (feathering back off the crest, the offshore wind's plume: up and back out to sea; one slot at a little
+		# weight, up to PLUME_PER at full, the higher ones steeper up so a full plume stands over the crest)
+		var slots := int(round(weight * PLUME_PER * clampf(big, 0.6, 1.0)))
+		for s in slots:
+			plume_at.append(top + Vector3(0.0, 0.15 + 0.12 * s, 0.0))
+			plume_way.append(Vector3(-way.x * (0.4 + 0.03 * s), 1.0, -way.y * (0.4 + 0.03 * s)).normalized())
+		if stage > 0.35 and stage < 0.6 and i % 4 == 2:
 			# (and a little thrown off the lip as it pitches, forward and down with it: little, or it hides the
 			# tube from the beach)
 			plume_at.append(point(site, i, tip_v, t).at)
@@ -966,6 +985,11 @@ func _feed_spray(site: Dictionary, streams: Dictionary, lit: float, above: bool)
 	if plume_at.is_empty():
 		plume.emitting = false
 		return
+	# (the rest of the slots far under the sand: what is emitted there is never seen)
+	var hidden := Vector3(pts[0].x, -500.0, pts[0].y)
+	while plume_at.size() < PLUME_SLOTS:
+		plume_at.append(hidden)
+		plume_way.append(Vector3.DOWN)
 	plume.emission_points = plume_at
 	plume.emission_normals = plume_way
 	plume.emitting = true
