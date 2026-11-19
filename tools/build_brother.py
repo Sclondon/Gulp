@@ -6382,6 +6382,17 @@ R7_ADJUST = [("face_delight", True, 1.0),        # kept: the old painted light d
              ("iris_low", True, 3.0),            # kept: the iris 3 sheet px lower on the ball, its foot on the lower lid: a soft gaze
              ("sclera_lit", True, 0.35),         # kept: the eye a third self-lit (warm off-white, not grey-blue), the lid's soft shadow painted on the ball's top, a smaller pupil, the highlight upper left
              ("lid_fold", True, 1.0),            # kept, small: the fold over the upper lid twice as deep
+             # Fifteenth round (scratchpad brother15/eyes.png, game light; tests/brother_view.gd's p_eyez for one eye close):
+             ("lash_bold", True, 1.0),           # kept: the lash strip laid ON the lid's skin (it lay up to 1 mm inside it: only a hair showed), three points across, evened along its line, 0.9 to 3.6 mm thick over the outer half, tapering to both corners, no flick (it stood off as a flap), a deeper brown
+             ("lid_seat", True, 3.0),            # kept: the upper lid's band (it overhung the margin, facing down, dark) laid back onto the ball 3 mm thick up to 4 mm over the margin: a lit lid band with the fold's step above it
+             ("lid_line", True, 1.0),            # kept: a soft warm-brown fold line 5.8 to 7 mm over the margin, heavier outward (LID_LINE)
+             ("bag_pouch", True, 1.0),           # kept: a lighter swell under the lower lid and a curved warm line 4 to 6 mm under it (BAG_POUCH)
+             ("lid_band", False, 1.2),           # dropped: a groove and swell on the vertices there: no visible change (too few points)
+             ("lid_roll", False, 2.0),           # dropped: wrong way round (the lid already stood forward of the ball)
+             ("corner_tuck", False, 2.0),        # dropped: the side's sliver of white unchanged, and the lash strip stood off the corner
+             ("tear_duct", False, 1.0),          # dropped: a pink spot at the inner corner: not visible in the pictures
+             ("lower_rim", False, 1.0),          # dropped: not visible
+             ("corner_clean", False, 1.0),       # dropped: the grey-green by his left eye is not cold enough to be picked (93 texels), no visible change
              ("lid_uv", False, 0.6),             # dropped: more picture round the margins by moving the margins' places; the faces folded over each other
              ("iris_big", False, 0.25),          # dropped: with eyes_big the iris is already 0.25 of the distance between the pupils (head3: 0.24)
              ("brows_thin", False, 0.2),         # (see below)
@@ -6723,6 +6734,8 @@ R7_PAINT_ADJ = ("nose_less_red", "face_delight", "forehead_bands", "socket_clean
 R7_EYE_ADJ = ("eyes_downturn", "eye_bags", "lid_heavy", "eyes_open", "socket_fill", "eyes_big", "eyes_forward")
 R7_PAINT_ADJ = R7_PAINT_ADJ + ("socket_skin", "lash_line", "bag_line", "iris_big", "lid_uv", "lash_ribbon", "iris_warm")
 R7_EYE_ADJ = R7_EYE_ADJ + ("lid_almond", "iris_low", "lid_cover", "lid_fold", "sclera_lit", "iris_light", "lash_rig")   # (fourteenth round)
+R7_PAINT_ADJ = R7_PAINT_ADJ + ("lid_line", "lash_bold", "tear_duct", "corner_clean", "bag_pouch", "lower_rim")   # (fifteenth round)
+R7_EYE_ADJ = R7_EYE_ADJ + ("lid_band", "corner_tuck", "bag_form", "lid_roll", "lid_seat")   # (fifteenth round)
 
 
 def r7_eye_adjust():
@@ -6776,7 +6789,7 @@ def r7_eye_warp(M, eyes):
     opn = r7_amount("eyes_open")
     fill = 0.001 * r7_amount("socket_fill")
     fwd = 0.001 * r7_amount("eyes_forward")
-    if down <= 0 and heavy <= 0 and opn <= 0 and fill <= 0 and fwd <= 0:
+    if down <= 0 and heavy <= 0 and opn <= 0 and fill <= 0 and fwd <= 0 and r7_amount("lid_band") <= 0 and r7_amount("corner_tuck") <= 0 and r7_amount("bag_form") <= 0:
         return
     P = np.array(M.P)
     M.P_rest = P.copy()
@@ -6844,10 +6857,96 @@ def r7_eye_warp(M, eyes):
             moved += int((fwd * wf > 0.0003).sum())
             C[1] -= fwd
     M.P = [p for p in P]
+    r7_lid_forms(M, eyes)
+    P = np.array(M.P)
+    M.P = [p for p in P]
     M.tag["eyes"] = [(np.array(C, float), s) for C, s in eyes]
     if fwd > 0:
         print("%s R7 adjust eyes_forward %.1f mm: balls now at %s" % (WHO, 1000 * fwd, [np.round(C, 4) for C, _ in eyes]))
     print("%s R7 adjust eyes_downturn %.1f mm, lid_heavy %.1f mm, eyes_open %.2f, socket_fill %.1f mm: %d points moved" % (WHO, 1000 * down, 1000 * heavy, opn, 1000 * fill, moved))
+
+
+LID_BAND = (0.0062, 0.0016, 0.0030, 0.0018, 0.5)   # lid_band: the groove's height over the margin, its spread, the lid's swell's
+LID_ROLL = (0.003, 0.0045, 0.0075)   # lid_roll: the lid's shell full by this height over the margin; it gives way to the skin between these two (m)
+LID_SEAT = (0.004, 0.007)          # lid_seat: the lid's band laid on the ball up to this height over the margin, given way to the skin by this (m)
+CORNER_TUCK = 0.004                 # corner_tuck: how far round the outer corner the skin is brought forward (m)
+TEAR_DUCT = (0.0022, 0.0016, (0.86, 0.52, 0.5), 0.9)   # tear_duct: its half size along and up (m), colour, strength
+BAG_POUCH = (0.0055, 0.002, 0.16, 0.045)   # bag_pouch: the line's distance under the lower lid (m), its spread, its depth, the swell's lift
+# height and spread (m), the swell's share of the groove's depth
+
+
+def r7_lid_forms(M, eyes):
+    """(fifteenth round) Small forms round each opening, after the eye's warp, from the margin as it now lies:
+    "lid_band" (mm): a shallow groove where head3 draws the fold over the upper lid and the lid's band swelling a
+    little forward below it, heavier over the outer half (the kind, slightly heavy-lidded look); the margin itself and
+    the lids' tuck into the socket are not moved."""
+    kb = 0.001 * r7_amount("lid_band")
+    if max(kb, r7_amount("lid_roll"), r7_amount("lid_seat"), r7_amount("corner_tuck")) <= 0 or not M.tag.get("eye_loops"):
+        return
+    P = np.array(M.P)
+    hp = np.array([p == "head" for p in M.part])
+    moved = 0
+    for (C, s), (s2, loop) in zip(eyes, M.tag["eye_loops"]):
+        up, lo, inn, out = eye_chains(M, s, loop)
+        u = s * P[:, 0]
+        t = (u - inn[0]) / (out[0] - inn[0])
+        z_top = np.interp(u, up[0], up[1])
+        h = P[:, 2] - z_top
+        mine = hp & (s * P[:, 0] > 0) & (P[:, 1] < C[1]) & (np.abs(P[:, 0] - C[0]) < 0.04)
+        mine[list(loop)] = False
+        along = smooth01(-0.1, 0.25, t) * (1.0 - smooth01(1.0, 1.25, t)) * (0.6 + 0.5 * np.clip(t, 0, 1))
+        hf = LID_BAND[0] + 0.0006 * np.sin(np.pi * np.clip(t, 0, 1))
+        g = np.exp(-((h - hf) / LID_BAND[1]) ** 2)
+        sw = np.exp(-((h - LID_BAND[2]) / LID_BAND[3]) ** 2) * (h > 0.0003)
+        dy = kb * (g - LID_BAND[4] * sw) * along * mine
+        P[:, 1] += dy
+        moved += int((np.abs(dy) > 0.0002).sum())
+        kr = 0.001 * r7_amount("lid_roll")
+        if kr > 0:
+            # ("lid_roll", mm: close up in grey the upper lid's skin ran straight back from the margin over the ball's
+            # top, so from the front the lid was seen edge-on and the lash strip on it as a hair. The lid made a
+            # shell over the ball that thickens by `kr` from the margin up to LID_ROLL[0] over it, so it faces the
+            # eye; above LID_ROLL[1] to [2] it gives way to the skin as it was, which leaves the fold's step there.
+            # Only forward, never back; the margin itself not moved)
+            k_ = 1.0 - ((P[:, 0] - C[0]) / EYE_RAD[0]) ** 2 - ((P[:, 2] - C[2]) / EYE_RAD[2]) ** 2
+            by = C[1] - EYE_RAD[1] * np.sqrt(np.clip(k_, 0, None))
+            target = by - LID_THICK - kr * smooth01(0.0, LID_ROLL[0], h)
+            w = (1.0 - smooth01(LID_ROLL[1], LID_ROLL[2], h)) * (h > 0) * along / (0.6 + 0.5) * mine
+            w = np.clip(w * 1.1, 0, 1)
+            dy = np.minimum(0.0, target - P[:, 1]) * w
+            P[:, 1] += dy
+            moved += int((np.abs(dy) > 0.0002).sum())
+            print("%s R7 adjust lid_roll %.1f mm: most forward %.2f mm" % (WHO, 1000 * kr, -1000 * dy.min()))
+        kc = 0.001 * r7_amount("corner_tuck")
+        if kc > 0:
+            # ("corner_tuck", mm: from the side the ball showed a sliver of white past the outer corner, and close up
+            # the skin round the corner stood in spikes. The skin round the outer corner (not the margin) brought
+            # forward `kc` at the corner, fading over CORNER_TUCK m, so the lids' outer end wraps round the ball;
+            # then that skin evened once toward its neighbours' middle)
+            d_ = np.hypot(u - out[0], P[:, 2] - out[1])
+            w = np.exp(-(d_ / CORNER_TUCK) ** 2) * mine * (u > out[0] - 2.5 * CORNER_TUCK)
+            P[:, 1] -= kc * w
+            moved += int((kc * w > 0.0002).sum())
+            print("%s R7 adjust corner_tuck %.1f mm: %d points" % (WHO, 1000 * kc, int((kc * w > 0.0002).sum())))
+        ks = 0.001 * r7_amount("lid_seat")
+        if ks > 0:
+            # ("lid_seat", mm: measured down the eye's middle, the skin above the upper margin ran FORWARD as it rose,
+            # 2.6 mm in front of the margin 1.2 mm up and 7 mm in front by 5 mm up: the lid's band faced down, dark
+            # and edge-on, the whole lid one overhang. head3's upper lid is a band facing the eye with the fold over
+            # it. So the band from the margin up to LID_SEAT[0] laid back onto the ball, `ks` thick over it (from
+            # LID_THICK at the margin), giving way to the skin as it was by LID_SEAT[1]; over the ball only (it
+            # never reaches past the ball's top); only back, never forward. The step left above it is the fold)
+            k_ = 1.0 - ((P[:, 0] - C[0]) / EYE_RAD[0]) ** 2 - ((P[:, 2] - C[2]) / EYE_RAD[2]) ** 2
+            by = C[1] - EYE_RAD[1] * np.sqrt(np.clip(k_, 0, None))
+            target = by - LID_THICK - (ks - LID_THICK) * smooth01(0.0, 0.002, h)
+            w = (1.0 - smooth01(LID_SEAT[0], LID_SEAT[1], h)) * (h > 0) * smooth01(-0.1, 0.05, k_)
+            w = np.clip(w * along / 1.1 * 1.1, 0, 1) * mine
+            dy = np.maximum(0.0, target - P[:, 1]) * w
+            P[:, 1] += dy
+            moved += int((np.abs(dy) > 0.0002).sum())
+            print("%s R7 adjust lid_seat %.1f mm: most back %.2f mm, %d points" % (WHO, 1000 * ks, 1000 * dy.max(), int((dy > 0.0002).sum())))
+    M.P = [p for p in P]
+    print("%s R7 adjust lid_band %.1f mm: %d points moved" % (WHO, 1000 * kb, moved))
 
 
 def r7_marks(M):
@@ -6968,6 +7067,21 @@ def r7_paint_more(face, fpos, fhit, M):
         w = reg * (1.0 - bw) * fhit * amt
         face = face * (1 - w[..., None]) + Lsk * w[..., None]
         print("%s R7 adjust socket_skin: %.2f on %d texels (%d kept as brow)" % (WHO, amt, int((w > 0.5 * amt).sum()), int((reg * bw > 0.5).sum())))
+    amt = r7_amount("corner_clean")
+    if amt > 0 and eyes_:
+        # (fifteenth round, "corner_clean": a faint grey-green cast round his left eye (the viewer's right) and on the
+        # nose's side by it, from the old picture. Round each eye only (to the bridge's side, not the nose), texels
+        # whose green or blue stands up to their red drawn to the plain skin round them, softly)
+        reg = np.zeros(z.shape)
+        for C, s_ in eyes_:
+            reg = np.maximum(reg, (1.0 - smooth01(0.03, 0.04, np.abs(x - C[0]))) * (1.0 - smooth01(0.016, 0.024, np.abs(z - C[2]))) * (y < C[1] + 0.006))
+        reg = reg * smooth01(0.011, 0.016, np.abs(x))
+        cold = np.clip((np.maximum(face[..., 1] * 1.04, face[..., 2] * 1.12) - face[..., 0] * 0.9) / 0.05, 0, 1)
+        cold = np.clip(blur(cold * fhit, 2) * 2.0, 0, 1) * fhit * reg
+        Ls = field3d(face, fpos, fhit & (cold < 0.05) & ~brow & (face.mean(-1) > lu0 * 0.85), fhit, cell=0.008, spread=3)
+        w = cold * amt
+        face = face * (1 - w[..., None]) + Ls * w[..., None]
+        print("%s R7 adjust corner_clean: %.2f on %d texels" % (WHO, amt, int((w > 0.3 * amt).sum())))
     if (r7_amount("lash_line") > 0 or r7_amount("socket_skin") > 0 or r7_amount("bag_line") > 0) and M.tag.get("eye_loops"):
         face = r7_lids_paint(face, fpos, fhit, M)
     amt = r7_amount("neck_patch")
@@ -7106,6 +7220,16 @@ def r7_lids_paint(face, fpos, fhit, M):
             sh = sh + LID_SOFT[2] * smooth01(0.0, LID_SOFT[0], h) * (1.0 - smooth01(LID_SOFT[0], LID_SOFT[1], h))
             sh = sh * along * front * ks * (h > -0.0005)
             face = face * (1 - sh[..., None] * np.array((0.9, 1.05, 1.0)))
+        kf = r7_amount("lid_line")
+        if kf > 0:
+            # (fifteenth round, "lid_line", a share: head3 draws the fold over the upper lid as a soft warm-brown line
+            # following the arch a few millimetres over the lash line, heavier over the outer half, fading at the inner
+            # corner and running a little past the outer one; LID_LINE says where, how soft and how strong)
+            hf = LID_LINE[0] + LID_LINE[1] * np.sin(np.pi * np.clip(t, 0, 1))
+            ln = np.exp(-((h - hf) / LID_LINE[2]) ** 2)
+            ln = ln * smooth01(0.0, 0.3, t) * (1.0 - smooth01(1.0, 1.18, t)) * (0.55 + 0.6 * np.clip(t, 0, 1))
+            ln = np.clip(ln * LID_LINE[3] * kf, 0, 0.8) * front * (np.abs(x - C[0]) < 0.05)
+            face = face * (1 - ln[..., None]) + face * np.array(LID_LINE[4]) * ln[..., None]
         if kl > 0:
             th = R7_LASH[0] + (R7_LASH[1] - R7_LASH[0]) * np.clip(t, 0, 1) ** 1.2
             a_up = (r7_amount("lash_ribbon") <= 0) * (1.0 - smooth01(0.55 * th, th, h)) * (h > -0.0015) * (z > 0.5 * (z_top + z_low)) * smooth01(0.02, 0.12, t) * (t < 1.0)
@@ -7121,6 +7245,33 @@ def r7_lids_paint(face, fpos, fhit, M):
             face = face * (1 - a_[..., None]) + np.array(R7_LASH_RGB) * a_[..., None]
             a_lo = np.clip(a_lo, 0, 1) * front * kl * R7_LASH_LO[0] * (np.abs(x - C[0]) < 0.05)
             face = face * (1 - a_lo[..., None]) + np.array(R7_LASH_LO[1]) * a_lo[..., None]
+        ktd = r7_amount("tear_duct")
+        if ktd > 0:
+            # (fifteenth round, "tear_duct": head3's inner corner is small and rounded with a touch of pink: a soft
+            # pink spot on the skin at the inner corner, a little inside it)
+            d_ = np.hypot((u - (inn[0] - 0.0004)) / TEAR_DUCT[0], (z - inn[1]) / TEAR_DUCT[1])
+            a_ = np.clip(np.exp(-d_ ** 2) * TEAR_DUCT[3] * ktd, 0, 1) * front * (np.abs(x - C[0]) < 0.05)
+            face = face * (1 - a_[..., None]) + np.array(TEAR_DUCT[2]) * a_[..., None]
+        kr_ = r7_amount("lower_rim")
+        if kr_ > 0:
+            # ("lower_rim": the lower lid's wet edge, a thin lighter rim along the margin's underside)
+            hl = z_low - z
+            a_ = np.exp(-((hl - 0.0005) / 0.0005) ** 2) * smooth01(0.08, 0.3, t) * (1.0 - smooth01(0.85, 1.0, t))
+            a_ = np.clip(a_ * 0.12 * kr_, 0, 1) * front * (np.abs(x - C[0]) < 0.05)
+            face = face * (1 - a_[..., None]) + np.array((1.0, 0.86, 0.8)) * a_[..., None]
+        kp = r7_amount("bag_pouch")
+        if kp > 0:
+            # ("bag_pouch": the user's "more prominent world weary bags": head3 draws a pouch under each eye, a
+            # lighter swell under the lower lid and a curved warm shadow line at its foot, 4 to 6 mm under the lid,
+            # deepest under the outer half; added to bag_line's)
+            hl = z_low - z
+            dz_ = BAG_POUCH[0] * (0.75 + 0.35 * np.clip(np.sin(np.pi * np.clip(t, 0, 1)), 0, 1))
+            ln = BAG_POUCH[2] * np.exp(-((hl - dz_) / BAG_POUCH[1]) ** 2)
+            sw = BAG_POUCH[3] * np.exp(-((hl - 0.45 * dz_) / (0.3 * dz_)) ** 2)
+            al = smooth01(0.0, 0.3, t) * (1.0 - smooth01(0.95, 1.2, t)) * (0.7 + 0.4 * np.clip(t, 0, 1))
+            m_ = front * (hl > 0) * kp * al * (np.abs(x - C[0]) < 0.05)
+            face = face * (1 - (ln * m_)[..., None] * np.array((0.8, 1.0, 1.0)))
+            face = face * (1 + (sw * m_)[..., None])
         kb = r7_amount("bag_line")
         if kb > 0:
             # ("bag_line": head3's world-weary bags: under each eye a soft warm shade filling the pouch and, at its
@@ -7139,6 +7290,12 @@ def r7_lids_paint(face, fpos, fhit, M):
 
 LASH_RIBBON = (0.0006, 0.0019, 0.003)   # lash_ribbon: thickness at the inner end and at the outer corner (m), the flick's length
 LASH_RIBBON_RGB = (0.30, 0.19, 0.13)     # lash_ribbon: its colour (head3's medium-dark brown upper line)
+LASH_PROUD = 0.00045                     # lash_bold: the strip this far in front of the lid's skin (m)
+LASH_EVEN = 3                            # lash_bold: rounds of evening the strip along its line
+LASH_BOLD = (0.0009, 0.0036, 0.68, 0.3)  # lash_bold: thickness at the inner end and at its thickest (m), where along it is thickest, the share left at the outer corner
+LASH_BOLD_RGB = (0.24, 0.14, 0.09)          # lash_bold: its colour, a deeper brown (head3's upper line reads darker than the brows)
+LID_LINE = (0.0058, 0.0012, 0.0010, 0.6, (0.55, 0.36, 0.27))   # lid_line: the fold's height over the margin at the corners, more at the arch's
+# middle, its spread (m), its strength, its colour (a soft warm brown, as head3's crease)
 # (fourteenth round: was 1.1 to 3 mm, a 4 mm flick, near-black (0.16, 0.1, 0.075): it outlined the eye like eyeliner)
 
 
@@ -7158,6 +7315,28 @@ def lash_ribbons(M, weights, cut):
             nb.setdefault(a, set()).add(b)
             nb.setdefault(b, set()).add(a)
     out_P, out_F, out_W = [], [], []
+    tree = None
+    if r7_amount("lash_bold") > 0:
+        from mathutils.bvhtree import BVHTree
+        hk = [f for f in kept if all(M.part[v] == "head" for v in f)]
+        tree = BVHTree.FromPolygons([Vector(p) for p in P], hk)
+
+    def lay(q_, nn, edge):
+        """(fifteenth round, with lash_bold: measured on round fourteen's strip, its upper edge lay up to 1 mm inside
+        the lid's skin over the middle and outer half (the lid curves away from a straight strip), so only a hair of
+        it showed.) A strip point laid LASH_PROUD in front of the skin met first from in front along the skin's facing
+        (never the lid's thickness tucked behind it); the margin's edge (`edge`) only pushed out if it is under it, and
+        kept where the ray meets no skin (over the opening)."""
+        loc, n_, _, _ = tree.ray_cast(Vector(q_ + nn * 0.004), Vector(-nn), 0.008)
+        if loc is None:
+            return np.array(q_)
+        n_ = np.array(n_)
+        if n_ @ nn < 0:
+            n_ = -n_
+        loc = np.array(loc)
+        if edge:
+            return q_ + n_ * max(0.0, LASH_PROUD * 0.6 - float((q_ - loc) @ n_))
+        return loc + n_ * LASH_PROUD
     for (C, s), (s2, loop) in zip(M.tag["eyes"], M.tag["eye_loops"]):
         lp = set(loop)
         L = P[loop]
@@ -7210,6 +7389,10 @@ def lash_ribbons(M, weights, cut):
         for k_, f_ in enumerate((0.5, 1.0)):
             q = pts[-1] + tan * LASH_RIBBON[2] * f_ - np.array((0.0, 0.0, 0.0006)) * f_
             flick.append(q)
+        if tree is not None:
+            # (lash_bold: no flick; head3's line tapers into the outer corner, and laid on the skin the flick stood
+            # off the corner as a flap)
+            flick = []
         base = len(out_P)
         rows = []
         allp = list(pts) + flick
@@ -7219,22 +7402,48 @@ def lash_ribbons(M, weights, cut):
         allt = list(t) + [1.0, 1.0]
         for k_, (p, d, nn, w, tt) in enumerate(zip(allp, alld, alln, allw, allt)):
             th = LASH_RIBBON[0] + (LASH_RIBBON[1] - LASH_RIBBON[0]) * min(tt, 1.0) ** 1.3
+            kb_ = r7_amount("lash_bold")
+            if kb_ > 0:
+                # (fifteenth round, "lash_bold", a share: head3's upper line is a clear brown band, thickest over the
+                # outer half (LASH_BOLD[1] m at about LASH_BOLD[2] along) and tapering to both corners)
+                pk = LASH_BOLD[2]
+                sh_ = (min(tt, pk) / pk) ** 0.8 if tt <= pk else 1.0 - (1.0 - LASH_BOLD[3]) * ((min(tt, 1.0) - pk) / (1.0 - pk)) ** 1.5
+                th = th * (1 - kb_) + kb_ * (LASH_BOLD[0] + (LASH_BOLD[1] - LASH_BOLD[0]) * sh_)
             if k_ >= len(pts):
                 th *= (0.55, 0.12)[k_ - len(pts)]
             # (the inner end tapers in over the first tenth)
             th *= 0.35 + 0.65 * smooth01(0.0, 0.12, tt) if k_ < len(pts) else 1.0
             lo = p - d * 0.0004 + nn * 0.0005
             hi = p + d * th + nn * 0.0006
-            out_P += [lo, hi]
-            out_W += [dict(w), dict(w)]
-            rows.append((base + 2 * k_, base + 2 * k_ + 1))
+            if tree is None:
+                row_ = [lo, hi]
+            else:
+                # (fifteenth round, with lash_bold: measured on round fourteen's strip, its upper edge lay up to 1 mm
+                # inside the lid's skin over the middle and outer half (the lid curves away from a straight strip),
+                # so only a hair of it showed. Now three points across, the middle and upper ones laid on the skin
+                # LASH_PROUD in front of it; the lower one only pushed out if it is under the skin)
+                row_ = [lay(q_, nn, j_ == 0) for j_, q_ in enumerate((lo, p + d * th * 0.5 + nn * 0.0006, hi))]
+            ix = len(out_P)
+            out_P += row_
+            out_W += [dict(w) for _ in row_]
+            rows.append(tuple(range(ix, ix + len(row_))))
+        if tree is not None:
+            # (the rows evened along the line, then laid on the skin again: laid one by one on the faceted lid they
+            # zig-zagged and showed as teeth close up)
+            for _ in range(LASH_EVEN):
+                A = np.array([[out_P[i] for i in r_] for r_ in rows])
+                A[1:-1] = A[1:-1] * 0.5 + (A[:-2] + A[2:]) * 0.25
+                for k_, r_ in enumerate(rows):
+                    for c_, i in enumerate(r_):
+                        out_P[i] = lay(A[k_, c_], alln[k_], c_ == 0)
         for k_ in range(len(rows) - 1):
-            f = [rows[k_][0], rows[k_ + 1][0], rows[k_ + 1][1], rows[k_][1]]
-            Q = np.array([out_P[i] for i in f])
-            fn = np.cross(Q[1] - Q[0], Q[3] - Q[0])
-            if fn @ alln[min(k_, len(alln) - 1)] < 0:
-                f = f[::-1]
-            out_F.append(f)
+            for c_ in range(len(rows[k_]) - 1):
+                f = [rows[k_][c_], rows[k_ + 1][c_], rows[k_ + 1][c_ + 1], rows[k_][c_ + 1]]
+                Q = np.array([out_P[i] for i in f])
+                fn = np.cross(Q[1] - Q[0], Q[3] - Q[0])
+                if fn @ alln[min(k_, len(alln) - 1)] < 0:
+                    f = f[::-1]
+                out_F.append(f)
     print("%s R7 lash ribbons: %d points, %d faces" % (WHO, len(out_P), len(out_F)))
     return np.array(out_P), out_F, out_W
 
@@ -8585,7 +8794,7 @@ def finish(M, T, joints, sh):
     if HEAD_ROUTE == "r7" and r7_amount("lash_ribbon") > 0 and M.tag.get("eye_loops"):
         Pl, Fl, Wl = lash_ribbons(M, weights, eye_cut)
         ob = mesh_object("brother_lash", Pl, Fl, armature, Wl)
-        mat_l = plain_material("brother_lash", LASH_RIBBON_RGB, rough=0.8)
+        mat_l = plain_material("brother_lash", LASH_BOLD_RGB if r7_amount("lash_bold") > 0 else LASH_RIBBON_RGB, rough=0.8)
         mat_l.use_backface_culling = False     # (a thin strip: seen from either side)
         ob.data.materials.append(mat_l)
     skin_object("brother_body_under", sorted(under))

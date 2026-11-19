@@ -112,6 +112,9 @@ func _initialize() -> void:
 				for v in [["p_eyef", Vector3(0, 0, 1), Vector3(0, 1.79, 0.13)], ["p_eyeq", Vector3(-0.6, 0, 0.8), Vector3(0, 1.79, 0.13)], ["p_eyesd", Vector3(-1, 0, 0.05), Vector3(-0.046, 1.79, 0.12)]]:
 					_shots.append({"name": v[0], "dir": v[1], "at": v[2], "dist": 0.42, "eye": 1.79, "pose": "", "grey": false})
 					_shots.append({"name": v[0] + "_grey", "dir": v[1], "at": v[2], "dist": 0.42, "eye": 1.79, "pose": "", "grey": true})
+				# (fifteenth round: one eye (his right) close from the front, painted and grey, for the lids' edges)
+				for g in [false, true]:
+					_shots.append({"name": "p_eyez" + ("_grey" if g else ""), "dir": Vector3(0, 0, 1), "at": Vector3(-0.047, 1.79, 0.13), "dist": 0.17, "eye": 1.79, "pose": "", "grey": g})
 				# (thirteenth round: the eyes from the front unlit, the albedo only)
 				_shots.append({"name": "p_eyef_flat", "dir": Vector3(0, 0, 1), "at": Vector3(0, 1.79, 0.13), "dist": 0.42, "eye": 1.79, "pose": "", "grey": false, "unlit": true})
 				# [name, direction, camera height]: front, three-quarter (the sheet's), side, from below
