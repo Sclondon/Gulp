@@ -18,7 +18,7 @@ const FIGS := {
 		"views": [[95, 40, 445, 560], [450, 40, 820, 560], [825, 40, 1200, 560], [1210, 40, 1570, 560],
 				[1575, 40, 1960, 560]],
 		"face": 1.0,
-		"look": {"sheen_gain": 0.3, "rim_gain": 0.35, "gloss_gain": 0.1, "sheen": Color(1.0, 0.5, 0.2)},
+		"look": {"sheen_gain": 0.7, "sheen_power": 2.0, "rim_gain": 0.35, "gloss_gain": 0.12, "sheen": Color(1.0, 0.42, 0.14)},
 	},
 	"boy": {
 		"pieces": ["hair"],
@@ -213,6 +213,15 @@ func _load(fig: String, at: Vector3) -> void:
 			box = b if first else box.merge(b)
 			first = false
 		_hair.append(h)
+	# (a cap is framed too, so it is not cut off at the top)
+	for c: MeshInstance3D in _model.find_children("*_cap*", "MeshInstance3D", true, false):
+		# (walked by local transforms: the model may not be in the tree yet)
+		var t := Transform3D.IDENTITY
+		var n: Node = c
+		while n != _model and n is Node3D:
+			t = (n as Node3D).transform * t
+			n = n.get_parent()
+		box = box.merge(Transform3D(Basis(), at) * t * c.get_aabb())
 	_centre = box.get_center()
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--mark="):
