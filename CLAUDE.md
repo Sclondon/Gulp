@@ -313,8 +313,8 @@ Not started:
   proper V wake does not).
 
 Web build: a browser on Windows compiles each shader in about a second, so (1) animals get their models only when first
-seen (`Creature.become(kind, bare)`, `Life.mark_dressed`), (2) behind the title each kind is shown once to a tiny view
-(`Main._begin_warm`), the start button waiting for the starting waters' kinds. First load is still about a minute and
+seen (`Creature.become(kind, bare)`, `Life.mark_dressed`), (2) every kind and material is shown once to a tiny view,
+nearest first, behind the title and on in play (`scripts/warmer.gd`; "Decision: shaders warmed by nearness" below). First load is still about a minute and
 a half on a Windows desktop browser. Build the web export from the clean worktree `../Gulp-build` (`git checkout
 --detach main` there; `git checkout -- build` first if it refuses), after `sh tools/web_excludes.sh` here.
 
@@ -366,6 +366,30 @@ choices below are Claude's.
   only stepping far ones less often (what it was). Tests that put an animal beside the player call `Life.wake(each)`.
   Not verified on a phone; the crash's cause is not known (memory is the likeliest: every kind's shader is compiled
   behind the title and the pack is 40 MB).
+- **Decision: shaders warmed by nearness** (2026-11-19, after the user: "the game is very stuttery on mobile, with lots of
+  freezes"; Claude's pick). What: `scripts/warmer.gd` (Warmer) shows every animal kind (and its far model) and every
+  other material of the sea once to a 32 px view far under the sea, nearest to the player first (a kind by its nearest
+  animal, a material by its nearest piece; the eelgrass fields, made only as the eye nears, are added by Main). Behind
+  the title as fast as it goes; the start button waits for everything within 75 m of the start (at most 60 s from the
+  first frame); in play it carries on, one thing every 30 frames, only within 110 m (ahead of the 55 m wake and 60 m
+  sight), and fast on the sale, shop, run-over and pause screens and while choosing what to become (those kinds first).
+  Why: the hitch logger (`-- --hitches`, `-- --tour`; tools/PERF.md, "Hitches") showed nearly every freeze was a
+  program compiled at first sight, in bursts (the river: 19 freezes in a row); the old warm-up stopped at the start
+  button. The practice: shader/PSO precaching behind a loading screen plus streaming warm-up ahead of the player
+  (Unreal's PSO precaching, open-world streaming). Alternatives: hold the loading screen until all ~330 are done
+  (minutes on a Windows browser's first visit), fewer programs (a shared creature shader in GameCommon: the real cure,
+  big), WebGL's parallel compile extension (Godot does not use it). Measured: compiles at first sight in play 49 -> 9;
+  on a Windows first visit the total compile time is the same, only spread and out of sight.
+- **Decision: a phone tier** (2026-11-19; Claude's pick of what to turn down). `scripts/tier.gd`: `Tier.phone()` is
+  true on web_android/web_ios, a mobile build, or a phone or tablet user agent (an iPad's Safari says Mac, with touch);
+  `-- --phone` / `-- --desktop` force it. Desktops, in a browser or not, are unchanged. It turns down what costs a phone
+  most (scripts and draw calls, not fill: the sea's picture is 360x779 whatever the phone): the animal bubble and
+  stepping (`Life.PHONE`), sand quality 0, eelgrass (lowest quality, `Scenery.PHONE_GRASS`), kelp and LodField
+  distances (`LodField.PHONE_*`), water rings (`Sea.PHONE_RING_CELL`), breaker spray, the panel's MSAA, and the panel
+  and sonar drawn every other frame. tools/PERF.md lists the numbers. Not verified on a phone. Also:
+  `scripts/still_batch.gd` merges a model's still parts into one mesh a material (the shrimp boats, 45 draws to 16).
+- The web pack leaves out the figures not in the game (tools/web_excludes.sh; 76 MB -> 38 MB); take a figure out of
+  that list when the game uses it, and run `tests/web_deps.gd` after changing the list.
 - **The sky** (2026-11-18, the user: "Whys the sky just gray"): it was one flat background colour, greyed further by
   the fog and the filmic tone map. Now `shaders/sky.gdshader` (Claude's pick of look, no concept art yet): a gradient,
   pale at the horizon and deeper overhead, the sun or moon with a glow, sparse soft clouds drifting; colours from the

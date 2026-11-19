@@ -168,3 +168,99 @@ rocks) and `shaders/fish.gdshader` (the old shark, only for a kind not installed
   ship (186k) and Atlantis (144k with new animals in view).
 - A real browser's frame rate: not driven here. ANGLE on the desktop (`--rendering-driver opengl3_angle`) stood in for
   start-up.
+
+## Hitches, the phone tier and the pack (2026-11-19)
+
+The user: "the game is very stuttery on mobile, with lots of freezes" (and on 2026-11-18: "Gulp's performance on phone is
+still very choppy and it crashed"). Decisions in CLAUDE.md: "Decision: shaders warmed by nearness" and "Decision: a phone
+tier". No phone here: everything below is a Windows desktop (RTX 4080) standing in.
+
+### How the hitches were found
+
+- `-- --hitches` (`scripts/hitches.gd`) prints a `GULP HITCH` line for every frame of 50 ms or more: its length, the
+  scripts' share, what other code noted that frame (`Hitches.note`: an animal dressed, a thing warmed, a jelly shown),
+  which nodes were added, and which materials came into view for the first time (keyed as the warm-up keys them: shader
+  and MultiMesh format). `report()` sums them by stage.
+- `-- --dive --tour` (`tests/tour.gd`) starts the moment the start button is live (as an eager player does), then
+  carries the fish at 6 m/s through every biome: sand, the Steamer Lane barrels, a leap, the beach, trench, river,
+  Marina breakers, docks, kelp, the liner's reef, Atlantis, grass, open ocean, crags, pirate ship (a breadth-first way
+  through the water between them). Then the hitches and frame times.
+- Cold, as a first visit in a browser: `--rendering-driver opengl3_angle` (D3D11 under ANGLE, as Chrome on Windows)
+  with Godot's shader cache (`%APPDATA%/Godot/app_userdata/Gulp/shader_cache`, which also holds ANGLE's own blob cache)
+  moved aside. "Before" is the pushed build's code (2d56cec) with only the logger added.
+
+### What froze it
+
+Nearly every freeze was a shader program compiled the first time something was drawn: 1.5 to 6 s each under ANGLE
+(a browser on a phone compiles faster, but the same programs, at the same moments). The logger's lines named them:
+animal kinds dressed as they came into sight (the river: 19 freezes, 53 s, as walleye, guppies, platies, bettas,
+pike, catfish... came into view together, the worst 10.2 s), kelp, eelgrass fields (made only as the eye nears, so never
+warmed), mangroves, splashes, the fishers' gear, Atlantis. Main's warm-up behind the title covered them, but stopped the
+moment the start button was pressed, which it allowed once the 22 starting kinds were done: everything else (about 280
+programs) was compiled in play, in bursts, in sight. Also seen: a kind's far (`_lo`) model loaded the first time one is
+far off (10 to 25 ms of script on the desktop); the host anemones never loaded at all in the web build (their full model
+is left out of the pack).
+
+The jellies' lamps (OmniLight3D) were a suspect (a material lit by an omni light is another program variant in
+Compatibility); the logger notes each jelly as it is shown, and no hitch fell on one. Not changed.
+
+### Cold tour, before and after (390x844, ANGLE, cache cleared; in play = after the title)
+
+| | before | after |
+| --- | --- | --- |
+| title until start (first frame alone 46 to 52 s) | 118 s | 142 s (start waits up to 60 s more) |
+| in play: frames over 50 ms | 107 | 100 |
+| of those, a program compiled at first sight (or on dressing) | 49 (124 s) | 9 (25 s) |
+| of those, unexplained by the logger | 58 (87 s; most were title-warmed things not yet drawn) | 15 (4 s) |
+| of those, a warm-up out of sight, ahead of the fish | - | 76 (183 s) |
+| worst in play | 10.2 s (river: four kinds at once) | 5.8 s (one program) |
+| frame time over the tour: median / 95th / 99th | 6.5 / 11.6 / 14.4 ms | 6.5 / 11.4 / 14.1 ms |
+
+Read honestly: on a Windows desktop's first visit the compiling costs the same in total (the tour sees nearly the
+whole sea), but it now happens one program at a time, out of sight, before the thing is seen, and never four at
+once. On a phone the same order applies with far shorter compiles. A browser keeps compiled programs for later visits
+(Chrome's GPU program cache), which this cannot measure.
+
+### Steady cost (`--perf`, 390x844, `Sand.quality` 1, native GL)
+
+Frame ms / scripts ms / draws in the sea's picture / triangles (k) / all draws (with the panel and sonar):
+
+| place | before | after, desktop | after, `--phone` |
+| --- | --- | --- | --- |
+| start | 3.9 / 1.9 / 108 / 190 / 300 | 3.5 / 1.7 / 81 / 192 / 272 | 2.8 / 1.4 / 65 / 131 / 226 |
+| kelp | 3.9 / 1.9 / 100 / 166 / 313 | 3.5 / 1.7 / 99 / 165 / 312 | 3.3 / 1.6 / 91 / 96 / 274 |
+| grass | 3.8 / 1.9 / 110 / 190 / 291 | 3.1 / 1.5 / 109 / 190 / 290 | 2.7 / 1.3 / 101 / 110 / 255 |
+| reef (liner) | 8.3 / 3.0 / 109 / 181 / 409 | 6.2 / 2.5 / 90 / 160 / 391 | 5.0 / 2.4 / 143 / 140 / 413 |
+| ruins | 8.9 / 2.0 / 141 / 163 / 328 | 7.0 / 1.8 / 121 / 166 / 307 | 3.2 / 1.5 / 110 / 114 / 266 |
+| beach | 2.4 / 1.1 / 12 / 103 / 192 | 2.1 / 1.0 / 12 / 103 / 192 | 2.5 / 1.0 / 12 / 52 / 163 |
+| barrel | 2.9 / 1.3 / 18 / 118 / 200 | 2.3 / 1.1 / 18 / 118 / 200 | 2.3 / 1.2 / 15 / 66 / 167 |
+| crags | 4.0 / 1.9 / 87 / 162 / 282 | 3.3 / 1.6 / 87 / 162 / 281 | 2.9 / 1.4 / 82 / 97 / 246 |
+| river | 7.1 / 4.2 / 36 / 210 / 290 | 5.8 / 3.5 / 37 / 222 / 293 | 5.5 / 3.4 / 30 / 155 / 257 |
+
+(Draw counts move with what animals happen to be in view; the reef's phone run had more fish in sight.) Animals awake
+on the phone tier: 62 at the start (83 desktop), 47 at the ruins (54), 53 in the grass (78).
+
+- What dominates on a phone (an estimate, no phone measured): scripts are 1 to 3.5 ms here, and GDScript in a phone's
+  browser runs perhaps five to ten times slower; draws are 160 to 410 a frame, each dear in WebGL. Of those, the
+  control panel's SubViewport is 59 and the sonar's scope about 120 (lines and dots): the phone tier draws both every
+  other frame. The shrimp boats were 45 draws each (now 16: `scripts/still_batch.gd`). The panel model was already one
+  mesh a material per housing (59 objects before and after merging was tried: the merge is not used there).
+- The sea's picture is 360x779 on a phone-shaped screen whatever the phone's pixels (half the 720-wide layout): fill
+  rate there is modest. The panel's SubViewport is 720x1558 with 2x MSAA (none on the phone tier).
+- Caustics were kept on phones: one draw and a copy of colour and depth at 360x779; turning them off is a one-line
+  change in `Sea._caustics` if a phone shows them to be dear.
+
+### What the phone tier turns down (`Tier.phone()`; `-- --phone` to try it on a desktop)
+
+Sand quality 0 (GameCommon's own lowest step); eelgrass at its lowest quality and 0.8 of the tufts; kelp's full pieces
+within 3.5 m (5) and light ones to 10.5 m (15), nothing past 50 m (60); the kit's and the reef's full pieces within
+0.6 of their reach and nothing past 50 m; animals drawn within 38 m (45), awake within 48/58 m (55/65), stepped every
+frame within 14 m (20), every other to 24 m (32), one dressed a frame (2); water rings of 1 m squares (0.5: a quarter
+of the 36,000 triangles); half the breaker spray; the panel without MSAA; panel and sonar drawn every other frame.
+
+### The web pack
+
+`index.pck` 76.2 MB -> 37.9 MB. Left out now (`tools/web_excludes.sh`): the figures that are not in the game (models/boy*,
+brother*, captain*, face/, hair/, npc/ and textures/boy, brother, captain, tattoos, face, hair, npc: about 35 MB), the
+first, flat Atlantis (model, atlases, table) and the old rocks' table. `tests/web_deps.gd` (headless) checks that
+nothing kept depends on anything left out. The title's figures (models/title_*) are kept.
