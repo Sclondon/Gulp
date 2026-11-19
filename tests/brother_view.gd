@@ -101,6 +101,13 @@ func _initialize() -> void:
 				_shots.append({"name": v[0] + "_grey", "dir": v[1], "at": Vector3(0, 1.775, 0.06), "dist": 0.8, "eye": 1.79, "pose": "", "grey": true})
 			_shots.append({"name": "p_eyes", "dir": Vector3(-0.25, 0, 1), "at": Vector3(0, 1.81, 0.12), "dist": 0.42, "eye": 1.82, "pose": "", "grey": false})
 			_shots.append({"name": "p_eyes_grey", "dir": Vector3(-0.25, 0, 1), "at": Vector3(0, 1.81, 0.12), "dist": 0.42, "eye": 1.82, "pose": "", "grey": true})
+			# (eleventh round: the head from below, and thrown back (the "up" pose), painted and grey: the jaw's edge
+			# against the neck)
+			for g in [false, true]:
+				var sfx := "_grey" if g else ""
+				_shots.append({"name": "p_below" + sfx, "dir": Vector3(-0.35, -0.75, 0.9), "at": Vector3(0, 1.74, 0.05), "dist": 0.85, "eye": 1.3, "pose": "", "grey": g})
+				_shots.append({"name": "p_up" + sfx, "dir": Vector3(-0.8, -0.1, 0.6), "at": Vector3(0, 1.72, 0.03), "dist": 0.85, "eye": 1.62, "pose": "up", "grey": g})
+			_shots.append({"name": "p_chest", "dir": Vector3(-0.15, 0, 1), "at": Vector3(0, 1.38, 0.1), "dist": 1.0, "eye": 1.45, "pose": "", "grey": false})
 			_shots.append({"name": "p_feet", "dir": Vector3(-0.6, 0, 0.8), "at": Vector3(0.0, 0.1, 0.0), "dist": 1.25, "eye": 0.75, "pose": "", "grey": true})
 			# (fifth round: close-ups of his left foot, painted and in grey from a low three-quarter and above, and of the
 			# shorts from the front and the back)

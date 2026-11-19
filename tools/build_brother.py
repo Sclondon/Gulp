@@ -174,10 +174,15 @@ FIGURES = {
                 # (tenth round: lid_drop 6 -> 0: on head3's top row the upper lid just meets the iris's top (the
                 # sheet's EYE_TOP is the iris's top, row 1035): the opening 25 px high against 19, a third taller;
                 # the bags softer, a form without the crease under them)
-                "eye_down": 4.0, "lid_drop": 0.0, "bags": 0.0025, "bag_crease": 0.0, "iris": "hazel",
+                "eye_down": 4.0, "fresh": {"EYE_R": 0.016, "EYE_RX": 0.0285, "LID_TUCK": (0.0018, 0.0025), "EYE_ZONE": (31.0, 19.0), "LID_EVEN": 10, "LID_RINGS": 3, "EYE_INNER": (33.0, 1047.0), "EYE_OUTER": (99.0, 1053.0), "EYE_TOP": (60.0, 1033.0), "EYE_LOW": (63.0, 1063.0), "EYE_IRIS": (65.0, 1048.0, 16.0), "CHIN_BROAD": (0.18, 0.0), "JAW_WIDEN": 0.006, "SMILE": (1168.0, 9.0, 70.0, -0.0009), "MOUTH_WIDEN": 70.0 / 62.0, "JAW_LINE": 0.004, "EAR_SHAPE": (1.0, -12.0, 0.0035, 0.0045), "FACE_ROSE": (0.7, 0.75), "LASH": 1.6, "BROW_ROW": (16.0, 7.5, 9.0), "EYE_SPLIT": False}, "lid_drop": 0.0, "bags": 0.0025, "bag_crease": 0.0, "iris": "hazel",
                 # (tenth round: his face and body painted by rule on clean young skin (rule_face, young_skin); his tone
                 # warm peach, red up and a little more saturated than the ninth round's 0.9, 0.755, 0.635)
-                "rule_paint": True, "skin_tone": (0.92, 0.745, 0.6), "iris_k": 1.15},
+                "rule_paint": True, "skin_tone": (0.92, 0.745, 0.6), "iris_k": 1.15,
+                # (eleventh round: the head built afresh, see HEAD_MIX_FRESH; `-- --head-route old` for the tenth round's)
+                "head_route": "r7",
+                # (eleventh round: the chest hair a fan by rule, limb hair as fine strokes, plain hands in the
+                # forearm's tone, the shorts cream)
+                "hair_fan": 1.0, "plain_hands": True, "cream_k": 0.85, "cream": (0.93, 0.885, 0.775)},
     "man_big": {"sheet": "concept_brother_tpose6.jpg", "warp": None,
                 "glb": ("models", "npc", "man_big.glb"), "tex": ("textures", "npc", "man_big"),
                 "blend": ("blend", "npc", "man_big.blend"),
@@ -2192,6 +2197,106 @@ HEAD_FIT_PASSES = int(arg("--headrounds", "10"))
 HEAD_SPLIT_BACK = float(arg("--splitback", "0.05"))   # metres in front of the head's middle (front to back) where the refine stops (a figure's "consts" may set it)
 
 
+# Eleventh round (2026-11-18): THE FRESH HEAD (the figure's "head_route": "fresh"; `-- --head-route old` brings back
+# the tenth round's). Ten rounds of nudging a cage-density head left a faceted crown, fin ears, slot eyes and a cut
+# mouth. Now the base head is mixed for a broad young face (HEAD_MIX_FRESH, picked from grey renders of six mixes,
+# scratchpad brother11/mixes.png), Catmull-Clark subdivided ONCE before anything else (316 quads -> about 1,260: the
+# whole head, crown and back included, at one even density that can carry eyes and a nose; the cage's points keep
+# their numbers, so the mouth loop and the marks hold), then placed and fitted to the shaved sheet as before; the
+# later steps that bent a thin head wide (youth_head's widening, square_jaw, the nose shortened) are off for it.
+HEAD_MIX_FRESH = {"Toon_MALE": 0.5, "Real_Kid": 0.3, "Real_MALE": 0.2}
+HEAD_ROUTE = "old"
+BASE_REF = {}
+HEAD_DIFFUSE = 25      # base_head_round: rounds the outline's moves are spread over the head (more on a denser head)
+NOSE_GAIN_MAX = 2.2    # base_head 6: the most the nose is widened by
+FACE_EASE = None       # fresh_face_ease: (rows, |columns|, Taubin rounds) of the lower face evened (None: none)
+FACE_ROSE = (0.55, 0.45)   # rule_face: the cheeks' and the nose's flush
+LASH = 1.0             # rule_face: the lash line's thickness
+BROW_ROW = (21.0, 6.5, 6.0)   # rule_face: the brows' middle line: px over the eye's top, the arch, the outer end's fall
+MOUTH_WIDEN = 1.0      # snap_mouth_line: the mouth's corners moved out this much (its loop and the skin round it)
+JAW_LINE = 0.0         # fresh_jaw_line: metres the jaw's underside is drawn up under its edge
+BROW_PAINT = (5.0, 3.0, 0.72, (0.32, 0.21, 0.14))   # rule_face: the brows' half thickness inside and outside (px), cover, colour
+HEAD_FIT_VIEWS = ("front", "q", "side", "qb", "back")   # the views the outline fit pulls to after its first rounds
+# The fresh route's own values over the figure's (apply_figure). The face's forms in head2-frame rows (EYE_TOP 1035,
+# the iris's middle 1048, the nose's wings 1124, the mouth 1168, the chin 1250) and columns out from the middle:
+# (row, column, spread up/down, spread across, metres along the normal).
+FRESH_CONSTS = {
+    "HEAD_WIDEN": (), "JAW_WIDEN": 0.0, "CHIN_BROAD": (0.0, 0.0), "NOSE_SHORT": 0.0, "DOME_FROM": 0.0,
+    "CROWN_ROUND": (0, 1.86), "HEAD_DIFFUSE": 60, "HEAD_FIT_VIEWS": ("front", "side", "back"), "NOSE_GAIN_MAX": 1.6,
+    "FACE_EASE": ((1092.0, 1236.0), (34.0, 130.0), 8), "LID_CREASE": 0.0007,
+    "BROW_PAINT": (8.5, 4.0, 0.85, (0.25, 0.16, 0.1)),
+    "BASE_FACE_FORMS": (
+        (1100, 84, 22, 28, 0.008),     # the cheeks' apples, full and round
+        (985, 125, 18, 14, 0.001),     # the temples full
+        (1012, 52, 7, 24, 0.0035),     # the brow's ridge, under the brows
+        (1012, 0, 8, 10, 0.0012),      # between the brows (the ridge carried across, a little less)
+        (1158, 0, 5, 24, 0.0014),      # the upper lip's volume
+        (1179, 0, 5, 22, 0.0030),      # the soft full lower lip
+        (1196, 0, 4, 20, -0.0012),     # the dip under the lower lip
+        (1224, 0, 12, 30, 0.0022),     # the chin's broad pad
+        (1110, 0, 9, 15, 0.0030),      # the nose's heavy round tip
+    ),
+    "SMILE_DEPTH": -0.0009,
+}
+
+
+def catmull_clark(P, faces, uvs):
+    """One Catmull-Clark step (open edges by the boundary rules). The old points keep their numbers; then one point a
+    face, then one an edge. UVs per face corner are carried by the same rules without smoothing (bilinear)."""
+    P = np.asarray(P, float)
+    n = len(P)
+    nf = len(faces)
+    fp = np.array([P[f].mean(0) for f in faces])
+    edges = {}
+    for fi, f in enumerate(faces):
+        for i in range(len(f)):
+            e = (min(f[i], f[(i + 1) % len(f)]), max(f[i], f[(i + 1) % len(f)]))
+            edges.setdefault(e, []).append(fi)
+    elist = list(edges)
+    eidx = {e: n + nf + k for k, e in enumerate(elist)}
+    ep = np.zeros((len(elist), 3))
+    bnd_nb = {}
+    for k, e in enumerate(elist):
+        fs = edges[e]
+        if len(fs) == 2:
+            ep[k] = (P[e[0]] + P[e[1]] + fp[fs[0]] + fp[fs[1]]) / 4.0
+        else:
+            ep[k] = (P[e[0]] + P[e[1]]) / 2.0
+            bnd_nb.setdefault(e[0], []).append(e[1])
+            bnd_nb.setdefault(e[1], []).append(e[0])
+    vf = [[] for _ in range(n)]
+    for fi, f in enumerate(faces):
+        for v in f:
+            vf[v].append(fi)
+    ve = [[] for _ in range(n)]
+    for e in elist:
+        ve[e[0]].append(e)
+        ve[e[1]].append(e)
+    V = P.copy()
+    for v in range(n):
+        if v in bnd_nb:
+            a, b = bnd_nb[v][0], bnd_nb[v][-1]
+            V[v] = (6 * P[v] + P[a] + P[b]) / 8.0
+        elif vf[v]:
+            k = len(vf[v])
+            F = fp[vf[v]].mean(0)
+            R = np.mean([(P[e[0]] + P[e[1]]) / 2.0 for e in ve[v]], axis=0)
+            V[v] = (F + 2 * R + (k - 3) * P[v]) / k
+    out_P = np.concatenate([V, fp, ep])
+    out_f, out_uv = [], []
+    for fi, f in enumerate(faces):
+        m = len(f)
+        uv = [np.array(q, float) for q in uvs[fi]]
+        cuv = sum(uv) / m
+        for i in range(m):
+            a, b, c = f[(i - 1) % m], f[i], f[(i + 1) % m]
+            e1 = eidx[(min(a, b), max(a, b))]
+            e2 = eidx[(min(b, c), max(b, c))]
+            out_f.append([b, e2, n + fi, e1])
+            out_uv.append([tuple(uv[i]), tuple((uv[i] + uv[(i + 1) % m]) / 2), tuple(cuv), tuple((uv[(i - 1) % m] + uv[i]) / 2)])
+    return out_P, out_f, out_uv
+
+
 def load_base(kind):
     """A base mesh appended from the bundle: (points in its own frame, faces, UVs per face corner, its place)."""
     key = {"head": "Head-GenericTopology", "hand": "Hand-Stylized"}[kind]
@@ -2226,6 +2331,13 @@ def load_base(kind):
         P = base_k.copy()
         for name, wgt in HEAD_MIX.items():
             P += wgt * (np.array([tuple(p.co) for p in kb[name].data], float) - base_k)
+        if HEAD_ROUTE == "fresh":
+            # (the marks are found on the old mix by place (HEAD_BASE_MARKS were read off it), then read by number
+            # on the fresh mix)
+            BASE_REF["P"] = P.copy()
+            P = base_k.copy()
+            for name, wgt in HEAD_MIX_FRESH.items():
+                P += wgt * (np.array([tuple(p.co) for p in kb[name].data], float) - base_k)
     faces = [list(p.vertices) for p in me.polygons]
     uvl = me.uv_layers[0].data
     uvs = [[tuple(uvl[li].uv) for li in p.loop_indices] for p in me.polygons]
@@ -2435,7 +2547,7 @@ def base_head_round(M, sh, views, step=0.8, reach=40, sel_extra=None, more=(), h
     hold = np.zeros(len(P), bool)
     if hold_loop:
         hold[M.tag["neck_loop"]] = True
-    for _ in range(25):
+    for _ in range(HEAD_DIFFUSE):
         acc = np.zeros_like(D)
         np.add.at(acc, E[:, 0], D[E[:, 1]])
         np.add.at(acc, E[:, 1], D[E[:, 0]])
@@ -2512,7 +2624,7 @@ def snap_mouth_line(M):
     r0, rise, half, _ = SMILE
     want = head_z(r0 - rise * np.clip(col / half, 0, 1.2) ** 2)
     dz = np.zeros(len(P))
-    dz[path] = want[path] - P[path, 2]
+    dz[path] = np.clip(want[path] - P[path, 2], -MOUTH_SNAP_MAX, MOUTH_SNAP_MAX)
     hp = np.array(M.tag["base_head_pts"])
     on = np.zeros(len(P), bool)
     on[hp] = True
@@ -2543,10 +2655,20 @@ def base_head(M, sh, top_ring):
     # (the base is symmetrical to a fraction of a millimetre: made exact)
     mid = np.where(np.abs(P[:, 0]) < 1e-3)[0]
     P[mid, 0] = 0.0
+    ref = BASE_REF.get("P", P)
     B = {}
+    mark_i = {}
     for k, v in HEAD_BASE_MARKS.items():
         yz = np.array(v) - loc[1:]
-        i = mid[np.argmin(np.linalg.norm(P[mid][:, 1:] - yz, axis=1))]
+        mark_i[k] = mid[np.argmin(np.linalg.norm(ref[mid][:, 1:] - yz, axis=1))]
+    if HEAD_ROUTE == "fresh":
+        n_cage = len(P)
+        P, faces, uvs = catmull_clark(P, faces, uvs)
+        mid = np.where(np.abs(P[:, 0]) < 1e-3)[0]
+        P[mid, 0] = 0.0
+        print("%s FRESH head: mix %s, subdivided once: %d cage points -> %d points, %d faces" % (
+            WHO, HEAD_MIX_FRESH, n_cage, len(P), len(faces)))
+    for k, i in mark_i.items():
         B[k] = P[i, 1:].copy()
     B["crown"] = np.array((0.0, P[:, 2].max()))
     S_ = sheet_head_marks(sh)
@@ -2614,6 +2736,7 @@ def base_head(M, sh, top_ring):
     # Into M
     base = len(M.P)
     idx = [M.add(p, "head") for p in P]
+    M.tag["n_cage"] = len(idx)
     f0 = len(M.faces)
     M.base_uv = getattr(M, "base_uv", {})
     # 5. the neck's opening: the underside behind the chin (faces facing down, behind the throat), taken out
@@ -2626,6 +2749,8 @@ def base_head(M, sh, top_ring):
         c = Pn[f].mean(0)
         if n[2] < -0.3 and c[1] > S_["chin_bottom"][0] + 0.05 and abs(c[0]) < 0.07 and c[2] < zc + 0.09:
             hole.add(k)
+    if HEAD_ROUTE == "r7":
+        hole = set(r7_load()["hole"])     # (round seven's own opening for the neck)
     kept = []
     for k, f in enumerate(faces):
         if k in hole:
@@ -2667,7 +2792,7 @@ def base_head(M, sh, top_ring):
         have = float(np.abs(Pm[hp[band], 0]).max()) if band.any() else 0.0
         want = float(np.interp(rows_[k], [a for a, _ in NOSE], [w_ for _, w_ in NOSE])) / 2.0 * HEAD_SX
         if have > 0.004:
-            gain[k] = 1.0 + (float(np.clip(want / have, 0.8, 2.2)) - 1.0) * wnose[k]
+            gain[k] = 1.0 + (float(np.clip(want / have, 0.8, NOSE_GAIN_MAX)) - 1.0) * wnose[k]
     Pm[hp, 0] *= gain
     M.P = [p for p in Pm]
     print("BROTHER nose widened: %d points, most times %.2f" % (int((gain > 1.001).sum()), float(gain.max())))
@@ -2677,7 +2802,7 @@ def base_head(M, sh, top_ring):
     head_silhouettes(M, sh, "placed")
     align_head_views(M, sh, spread=10.0, step=2.0)
     for rnd in range(HEAD_FIT_PASSES):
-        views = ("front", "side", "back") if rnd < 3 else ("front", "q", "side", "qb", "back")
+        views = ("front", "side", "back") if rnd < 3 else HEAD_FIT_VIEWS
         moved, most = base_head_round(M, sh, views, step=0.8)
         symmetrize(M, mir)
         if rnd % 3 == 2:
@@ -5573,6 +5698,33 @@ def head_centre(M, z):
 # (old points keep their numbers, so the rings and tags still hold). Then the forms are moved into the face by sum.
 # ------------------------------------------------------------------------------------------------------------------
 
+# (2026-11-18, the round-seven head restored: every point refine() adds is recorded with its parents, so a head point
+# can be named by how it was made from the base head's cage (head_sigs), the same in any build whatever its shape)
+PARENTS = {}
+
+
+def head_sigs(M, pts):
+    """For each of `pts`, a name by its making: "c<k>" the cage's k-th point, "e(..)" an edge's middle, "f(..)" a face's
+    middle, with their parents' names inside (sorted); None for a point not made from the cage."""
+    loc = {v: k for k, v in enumerate(M.tag["base_head_pts"][:M.tag["n_cage"]])}
+    memo = {}
+
+    def sig(v):
+        if v in memo:
+            return memo[v]
+        s = None
+        if v in loc:
+            s = "c%d" % loc[v]
+        elif v in PARENTS:
+            kind, par = PARENTS[v]
+            subs = [sig(p) for p in par]
+            if all(x is not None for x in subs):
+                s = kind + "(" + ",".join(sorted(subs)) + ")"
+        memo[v] = s
+        return s
+    return {int(v): sig(int(v)) for v in pts}
+
+
 def refine(M, sel, face_uv, weights):
     """Splits the faces in `sel` (a set of face indices) once. Gives (new Mesh, new face_uv, new weights, children:
     {old face: [new faces]})."""
@@ -5593,6 +5745,7 @@ def refine(M, sel, face_uv, weights):
             tb = d - N[b] * np.dot(d, N[b])
             q = (P[a] + P[b]) / 2.0 + (ta - tb) / 8.0
             mid[key] = R.add(q, M.part[a])
+            PARENTS[mid[key]] = ("e", (a, b))
             w = {}
             for src in (weights[a], weights[b]):
                 for k, v in src.items():
@@ -5627,6 +5780,7 @@ def refine(M, sel, face_uv, weights):
                 corners = [P[v] for v in f]
                 cq = sum(R.P[m] for m in ms) / 2.0 - sum(corners) / 4.0
                 c = R.add(cq, M.part[f[0]])
+                PARENTS[c] = ("f", tuple(f))
                 w = {}
                 for v in f:
                     for k, x in weights[v].items():
@@ -5935,7 +6089,7 @@ NECK_EASE = 0         # youth_head: Taubin rounds over the neck's two joins
 def youth_head(R):
     global EYE_INNER, EYE_OUTER, EYE_TOP, EYE_LOW, EYE_IRIS, EYE_ZONE, EYE_RX, EYE_RAD, SMILE
     P = np.array(R.P)
-    zs, ks = (np.array(v, float) for v in zip(*HEAD_WIDEN))
+    zs, ks = (np.array(v, float) for v in zip(*(HEAD_WIDEN or ((0.0, 1.0), (9.0, 1.0)))))
     kz = lambda z: np.interp(z, zs, ks)
     ears = set(R.tag["ear_l"]) | set(R.tag["ear_r"])
     ids = [v for v in R.tag["base_head_pts"] if v not in ears]
@@ -6048,6 +6202,339 @@ def youth_head(R):
         WHO, list(ks), list(zs), ke, km, n_r, z0))
 
 
+def fresh_face_ease(R):
+    """(eleventh round) The lower face between the nose's wings and the jaw evened (Taubin, faded in at the zone's
+    edges), the mouth's loop and its near points held: the base's nasolabial loop, drawn into a hard crease by the
+    outline fit and the widened nose, read as a fold from the nose to the jaw (age)."""
+    (r0, r1), (c0, c1), n = FACE_EASE
+    P = np.array(R.P)
+    hp = np.zeros(len(P), bool)
+    hp[R.tag["base_head_pts"]] = True
+    row = head_row(P[:, 2])
+    col = np.abs(P[:, 0]) / HEAD_SX
+    w = (smooth01(r0, r0 + 12, row) * (1 - smooth01(r1 - 12, r1, row)) * smooth01(c0, c0 + 10, col)
+         * (1 - smooth01(c1 - 12, c1, col)) * (P[:, 1] < -0.04) * hp)
+    loop = R.tag.get("mouth_line") or []
+    if loop:
+        d = np.min(np.linalg.norm(P[:, None, :] - P[loop][None, :, :], axis=2), axis=1)
+        w = w * smooth01(0.004, 0.012, d)
+    sel = w > 0.01
+    E = edges_of(R.faces)
+    deg = np.bincount(E.ravel(), minlength=len(P)).astype(float)
+    before = P.copy()
+    for _ in range(n):
+        for f in (0.5, -0.53):
+            acc = np.zeros_like(P)
+            np.add.at(acc, E[:, 0], P[E[:, 1]])
+            np.add.at(acc, E[:, 1], P[E[:, 0]])
+            avg = acc / np.maximum(deg, 1)[:, None]
+            P[sel] += (avg[sel] - P[sel]) * f
+    P = before + (P - before) * w[:, None]
+    R.P = [p for p in P]
+    print("%s FACE eased: %d points, %d rounds, most moved %.1f mm" % (
+        WHO, int(sel.sum()), n, 1000 * float(np.linalg.norm(P - before, axis=1).max())))
+
+
+# ------------------------------------------------------------------------------------------------------------------
+# The FROZEN head and its adjustments (2026-11-18, the user: "Are you rebuilding the whole head each revision? I'm not
+# seeing improvement, you should just be making adjustments"). The fresh head as refine_base_head leaves it (the
+# head's points and the neck's rings, before the eyes are cut) is saved once to HEAD_FROZEN (`-- --refreeze`) and every
+# later build loads exactly those points in place of what the earlier steps made (`-- --no-frozen` regenerates
+# instead). The earlier head steps are not to be edited any more: changes to his head are the named adjustments below,
+# applied in order on the frozen points, each a local move with a smooth falloff, each with its own switch and amount;
+# each was kept only if a before/after pair beside the sheet showed it moving toward the sheet (scratchpad
+# brother11/adjustments.png).
+# ------------------------------------------------------------------------------------------------------------------
+HEAD_FROZEN = os.path.join(HERE, "blend", "brother_head_base.npz")
+# (name, on, amount in metres); the kinds are in adjust_head
+HEAD_ADJUST = []
+if "--adj" in ARGS:     # (trying adjustments: `-- --adj name=metres,name=metres` in place of the list)
+    HEAD_ADJUST = [(k, True, float(v)) for k, v in (s.split("=") for s in arg("--adj", "").split(",") if s)]
+
+
+def frozen_ids(R):
+    return np.array(sorted(set(R.tag["base_head_pts"]) | {v for ring in R.tag.get("neck_rings", []) for v in ring}))
+
+
+def freeze_or_load_head(R):
+    if HEAD_ROUTE != "fresh" or FIGURE_NAME != "brother" or "--no-frozen" in ARGS:
+        return
+    ids = frozen_ids(R)
+    P = np.array(R.P)
+    if "--refreeze" in ARGS or not os.path.exists(HEAD_FROZEN):
+        np.savez(HEAD_FROZEN, ids=ids, P=P[ids], n=len(P))
+        print("%s HEAD frozen: %d points saved to %s" % (WHO, len(ids), HEAD_FROZEN))
+        return
+    z = np.load(HEAD_FROZEN)
+    if int(z["n"]) != len(P) or not np.array_equal(z["ids"], ids):
+        raise RuntimeError("the frozen head does not fit this build's mesh (%d points, file %d): `-- --no-frozen` or "
+                           "`-- --refreeze`" % (len(P), int(z["n"])))
+    moved = float(np.abs(P[ids] - z["P"]).max())
+    P[ids] = z["P"]
+    R.P = [p for p in P]
+    print("%s HEAD loaded frozen: %d points (the regenerated head differed by at most %.2f mm)" % (WHO, len(ids), moved * 1000))
+
+
+def adjust_head(R):
+    """The named adjustments on the frozen head, in HEAD_ADJUST's order."""
+    if HEAD_ROUTE != "fresh" or FIGURE_NAME != "brother":
+        return
+    P = np.array(R.P)
+    hp = np.zeros(len(P), bool)
+    hp[R.tag["base_head_pts"]] = True
+    ears = np.zeros(len(P), bool)
+    ears[list(R.tag["ear_l"]) + list(R.tag["ear_r"])] = True
+    N = normals_of(P, R.tris())
+    row = head_row(P[:, 2])
+    col = np.abs(P[:, 0]) / HEAD_SX
+    sx = np.sign(P[:, 0])
+    smid = HEAD_VIEWS["side"][1]
+    face = hp & ~ears & (P[:, 1] < -0.02)
+    g = lambda r0, c0, sr, sc: np.exp(-(((row - r0) / sr) ** 2 + ((col - c0) / sc) ** 2))
+    for name, on, amt in HEAD_ADJUST:
+        if not on:
+            continue
+        d = np.zeros_like(P)
+        if name == "jaw_corners_wider":
+            # out sideways round the jaw's angle (the side view's), behind the mouth
+            ya, za = -(JAW_ANGLE[0] - smid) * HEAD_SX, float(head_z(JAW_ANGLE[1]))
+            w = (np.exp(-((P[:, 2] - za) / 0.03) ** 2) * np.exp(-((P[:, 1] - ya) / 0.05) ** 2)
+                 * np.clip((col - 30.0) / 40.0, 0, 1)) * hp * ~ears
+            d[:, 0] = sx * amt * w
+        elif name == "nose_tip_bigger":
+            w = g(1112.0, 0.0, 10.0, 17.0) * face
+            d = N * (amt * w)[:, None]
+        elif name == "nose_wings_wider":
+            w = g(1124.0, 30.0, 8.0, 12.0) * face
+            d[:, 0] = sx * amt * w
+        elif name == "chin_forward":
+            w = g(1228.0, 0.0, 14.0, 34.0) * face
+            d[:, 1] = -amt * w
+        elif name == "cheeks_fuller":
+            w = g(1098.0, 82.0, 20.0, 26.0) * face
+            d = N * (amt * w)[:, None]
+        elif name == "brow_ridge":
+            w = g(1014.0, 50.0, 6.0, 26.0) * face
+            d = N * (amt * w)[:, None]
+        else:
+            raise RuntimeError("no such head adjustment: %s" % name)
+        P += d
+        print("%s HEAD adjust %s: %.1f mm, most moved %.1f mm on %d points" % (
+            WHO, name, amt * 1000, 1000 * float(np.linalg.norm(d, axis=1).max()), int((np.linalg.norm(d, axis=1) > 0.0003).sum())))
+    R.P = [p for p in P]
+
+
+# ------------------------------------------------------------------------------------------------------------------
+# THE ROUND-SEVEN HEAD (2026-11-18, the user: "The brother had a much better earlier head unless I'm mistaken": the
+# head of commit 61a8380, built to concept_brother_head2.jpg, broad skull, strong brows, big nose, full cheeks, kind
+# closed smile; rounds 8 to 10 refitted it to the shaved head3 sheet and lost him). Frozen as the brother's base head
+# (the figure's "head_route": "r7"): tools/blend/brother_head_r7.json holds every head point of that build by how it
+# was made from the base mesh's cage (head_sigs: the same names in any build), the cage faces taken out for the neck,
+# the faces it split, and its eye and mouth landmarks; tools/blend/brother_head_r7_face.npz holds its painted face
+# picture as coloured points on that surface. Made once by running 61a8380's build with a dump added (scratchpad
+# brother11/build_brother_r7.py); this build lays those points on the current body (moved back R7_BACK, the ninth
+# round's HEAD_BACK, so the face stands over tpose8's), bridges the neck to the current torso again, cuts the eyes
+# with round seven's landmarks, and carries the painted face over by nearest point, its skin brought to the current
+# peach tone. The head steps before this are not used for it; changes to it are the named adjustments (adjust_r7).
+# ------------------------------------------------------------------------------------------------------------------
+R7_JSON = os.path.join(HERE, "blend", "brother_head_r7.json")
+R7_FACE = os.path.join(HERE, "blend", "brother_head_r7_face.npz")
+R7_CENTRE = np.array((0.0, -0.02, 1.78))
+R7_BACK = 0.022
+R7 = {}
+# The adjustments, in order: (name, on, amount). Each kept only if its before/after pair beside the sheet showed it
+# moving toward the sheet (scratchpad brother11/adjustments.png).
+R7_ADJUST = [("nose_less_red", True, 0.6),          # kept: the nose no redder than the cheeks (pair_n1)
+             ("nose_bridge_straight", False, 0.004),  # dropped: no visible change at game distance (pair_n4)
+             ("nose_tip_planes", False, 0.0015),      # dropped: moved two points only
+             ("eyes_downturn", False, 3.0),           # dropped: the cut no longer met round seven's painted lids (e1)
+             ("eye_bags", False, 0.0008)]             # dropped with it
+if "--r7adj" in ARGS:     # (trying adjustments: `-- --r7adj name=amount,name=amount` in place of the list)
+    R7_ADJUST = [(k, True, float(v)) for k, v in (s.split("=") for s in arg("--r7adj", "").split(",") if s)]
+MOUTH_SNAP_MAX = 1.0      # snap_mouth_line: the most (m) the lips' loop is moved (the r7 head: a few millimetres)
+
+
+def r7_load():
+    if not R7:
+        R7.update(json.load(open(R7_JSON)))
+    return R7
+
+
+def r7_place(R):
+    """The round-seven head's points laid on R (after refine_base_head's split, which took round seven's own faces),
+    then the neck's two bridge rings remade between its opening and the torso's top ring."""
+    d = r7_load()
+    pts = d["pts"]
+    sig = head_sigs(R, R.tag["base_head_pts"])
+    P = np.array(R.P)
+    miss = 0
+    for v, s in sig.items():
+        if s in pts:
+            P[v] = np.array(pts[s]) + np.array((0.0, R7_BACK, 0.0))
+        else:
+            miss += 1
+    # the neck's bridge again (as base_head step 8 makes it), from the laid head's opening to the torso's top ring
+    loop = list(R.tag["neck_loop"])
+    top = list(R.tag["torso_rings"][-1])
+    seg = np.linalg.norm(P[loop] - P[loop[1:] + loop[:1]], axis=1)
+    uL = np.concatenate([[0.0], np.cumsum(seg)[:-1]]) / seg.sum()
+    uT = np.arange(len(top)) / float(len(top))
+    Qe = np.concatenate([P[loop], P[loop[:1]]])
+    Lr = np.stack([np.interp(uT, np.append(uL, 1.0), Qe[:, k]) for k in range(3)], 1)
+    Tr = P[top]
+    for t, ring in zip((0.3, 0.65), R.tag["neck_rings"]):
+        Q = Lr * (1 - t) + Tr * t
+        c = Q.mean(0)
+        Q[:, :2] = c[:2] + (Q[:, :2] - c[:2]) * (1.0 + 0.04 * math.sin(math.pi * t))
+        P[ring] = Q
+    R.P = [p for p in P]
+    print("%s R7 head laid: %d points, %d not named in the file (kept as made)" % (WHO, len(sig) - miss, miss))
+
+
+def r7_face(M, face_uv, tone):
+    """The round-seven painted face carried onto this build's face picture by nearest point (the same surface), its
+    skin brought to `tone` (the hue and lightness of its own plain skin moved onto the current peach; reds, browns and
+    whites keep their difference from it)."""
+    z = np.load(R7_FACE)
+    cpos = z["pos"].astype(float) + R7_CENTRE + np.array((0.0, R7_BACK, 0.0))
+    crgb = z["rgb"].astype(float) / 255.0
+    P = np.array(M.P)
+    pos, nrm, hit, fid = texel_geometry(M, face_uv, "face", P, normals_of(P, M.tris()))
+    bad = ~(np.isfinite(pos).all(-1))
+    hit = hit & ~bad
+    kd = kdtree.KDTree(len(cpos))
+    for i, p in enumerate(cpos):
+        kd.insert(Vector(p), i)
+    kd.balance()
+    out = np.zeros(pos.shape)
+    dist = np.zeros(pos.shape[:2])
+    ii = np.argwhere(hit)
+    for r_, c_ in ii:
+        _, k, dd = kd.find(Vector(pos[r_, c_]))
+        out[r_, c_] = crgb[k]
+        dist[r_, c_] = dd
+    far = int((dist > 0.004).sum())
+    skin = np.median(crgb, 0)
+    lum = lambda x: x.mean(-1, keepdims=True)
+    # (the colour's ratio to the old plain skin, laid on the new one: a texel as red as the old cheeks stays as red
+    # against the new skin)
+    out = np.where(hit[..., None], np.clip(out / np.maximum(skin, 1e-3) * tone, 0, 1), 0.0)
+    # (where this surface is not the old one (the neck's bridge to the new body, the lids' cut), plain skin)
+    wf = smooth01(0.003, 0.01, dist)[..., None]
+    out = np.where(hit[..., None], out * (1 - wf) + np.asarray(tone) * wf, 0.0)
+    print("%s R7 face carried: %d texels (%d more than 4 mm from the old surface), old skin %s -> %s" % (
+        WHO, len(ii), far, np.round(skin, 3), np.round(tone, 3)))
+    return out, pos, hit, np.array(tone, float)
+
+
+def adjust_r7(R):
+    """The named adjustments on the laid round-seven head (geometry); the paint ones are in r7_paint_adjust."""
+    if HEAD_ROUTE != "r7":
+        return
+    P = np.array(R.P)
+    hp = np.zeros(len(P), bool)
+    hp[R.tag["base_head_pts"]] = True
+    N = normals_of(P, R.tris())
+    row = head_row(P[:, 2] - 0.0)
+    col = np.abs(P[:, 0]) / HEAD_SX
+    face = hp & (P[:, 1] < -0.02)
+    g = lambda r0, c0, sr, sc: np.exp(-(((row - r0) / sr) ** 2 + ((col - c0) / sc) ** 2))
+    for name, on, amt in R7_ADJUST:
+        if not on or name in R7_PAINT_ADJ or name in R7_EYE_ADJ:
+            continue
+        d = np.zeros_like(P)
+        if name == "nose_bridge_straight":
+            # (the user: "a tad angular": the bridge's dip filled toward a straight line from the brow to the tip, the
+            # bridge's middle only)
+            w = g(1062.0, 0.0, 22.0, 13.0) * face
+            d[:, 1] = -amt * w
+        elif name == "nose_tip_planes":
+            # (the tip less of a round button: its front pressed flatter, its sides kept)
+            w = g(1100.0, 0.0, 10.0, 11.0) * face
+            d = -N * (amt * w)[:, None]
+        else:
+            raise RuntimeError("no such head adjustment: %s" % name)
+        P += d
+        print("%s R7 adjust %s: %.1f mm, %d points moved" % (WHO, name, amt * 1000, int((np.linalg.norm(d, axis=1) > 0.0003).sum())))
+    R.P = [p for p in P]
+
+
+R7_PAINT_ADJ = ("nose_less_red",)
+R7_EYE_ADJ = ("eyes_downturn", "eye_bags")
+
+
+def r7_eye_adjust():
+    for name, on, amt in R7_ADJUST:
+        if on and name == "eyes_downturn":
+            FIGURE["eye_down"] = FIGURE.get("eye_down", 0.0) + amt
+        elif on and name == "eye_bags":
+            FIGURE["bags"] = FIGURE.get("bags", 0.0) + amt
+        else:
+            continue
+        print("%s R7 adjust %s: %+.4f (eye_down %.1f px, bags %.1f mm)" % (WHO, name, amt, FIGURE.get("eye_down", 0.0), 1000 * FIGURE.get("bags", 0.0)))
+
+
+def r7_paint_adjust(face, fpos, fhit, M):
+    for name, on, amt in R7_ADJUST:
+        if not (on and name == "nose_less_red"):
+            continue
+        # (the user: "a bit too red button nosed": the nose's flush taken toward the cheeks' level: within 2 cm of the
+        # tip, the red's excess over the skin's own red/green balance cut by `amt`)
+        P = np.array(M.P)
+        hp = np.array(M.tag["base_head_pts"])
+        nz = hp[np.abs(P[hp, 0]) < 0.006]
+        tip = P[nz[np.argmin(P[nz, 1])]]
+        w = np.exp(-(np.linalg.norm(fpos - tip, axis=-1) / 0.02) ** 2) * fhit
+        skin = np.median(face[fhit], 0)
+        ratio = skin[1] / skin[0]
+        g_ = face[..., 0] * ratio
+        excess = np.clip(g_ - face[..., 1], 0, None)
+        face = face.copy()
+        face[..., 1] += excess * amt * w
+        face[..., 2] += excess * amt * w * (skin[2] / skin[1])
+        print("%s R7 adjust nose_less_red: %.2f of the nose's extra red taken out" % (WHO, amt))
+    return np.clip(face, 0, 1)
+
+
+def fresh_mouth_widen(R):
+    """(eleventh round) The mouth's corners moved out by MOUTH_WIDEN (head3's top row draws a mouth well over half the
+    face's width, the base's is narrower): every head point forward of the cheeks within the mouth's rows is moved out
+    in proportion to how far out it is, most at the corners, fading to nothing beyond them and above and below."""
+    P = np.array(R.P)
+    hp = np.zeros(len(P), bool)
+    hp[R.tag["base_head_pts"]] = True
+    line = R.tag["mouth_line"]
+    xc = float(np.abs(P[line, 0]).max())
+    zm = float(np.mean(P[line, 2]))
+    ax = np.abs(P[:, 0])
+    t = np.clip(ax / xc, 0, None)
+    w = np.where(t <= 1.0, t, np.exp(-((t - 1.0) / 0.45) ** 2)) * np.exp(-((P[:, 2] - zm) / 0.016) ** 2) * hp * (P[:, 1] < -0.06)
+    P[:, 0] += np.sign(P[:, 0]) * xc * (MOUTH_WIDEN - 1.0) * w
+    R.P = [p for p in P]
+    print("%s MOUTH widened: corners %.1f -> %.1f mm out" % (WHO, xc * 1000, xc * MOUTH_WIDEN * 1000))
+
+
+def fresh_jaw_line(R):
+    """(eleventh round, the critic: "under the chin the jaw melts into the neck") The jaw's underside, from the chin back
+    toward the angle, drawn up along its normal under the jaw's edge, and the neck's first ring there drawn in, so the
+    jaw has an edge from ear to chin that holds when the head tilts back."""
+    P = np.array(R.P)
+    N = normals_of(P, R.tris())
+    fams = np.array([part_family(p) for p in R.part])
+    zc = float(head_z(CHIN_BOTTOM[1]))
+    za = float(head_z(JAW_ANGLE[1]))
+    down = np.clip((-N[:, 2] - 0.25) / 0.4, 0, 1)
+    band = np.exp(-((P[:, 2] - (zc + 0.008)) / 0.022) ** 2)
+    front = smooth01(0.03, -0.05, P[:, 1])
+    on = np.isin(fams, ("head", "neck"))
+    d = JAW_LINE * down * band * front * on
+    loop = R.tag["neck_loop"]
+    d[loop] *= 1.0
+    P -= N * d[:, None]
+    R.P = [p for p in P]
+    print("%s JAW line: underside drawn up, most %.1f mm on %d points" % (WHO, 1000 * float(d.max()), int((d > 0.0005).sum())))
+
+
 def refine_base_head(M, face_uv, weights, under, sh):
     """Third build: the base head's face (brow to chin, the faces turned forward) split once, the new points placed
     on the curved surface (refine); then two more outline rounds on the denser face."""
@@ -6059,6 +6546,15 @@ def refine_base_head(M, face_uv, weights, under, sh):
     # and crown keep the cage's loops, which hold its round outline once smoothed)
     yc = float(np.mean([P[v][1] for v in M.tag["base_head_pts"]]))
     sel = {fi for fi in sel if P[M.faces[fi]].mean(0)[1] < yc - HEAD_SPLIT_BACK}
+    if HEAD_ROUTE == "fresh":
+        sel = set()     # (the fresh head is subdivided whole already: base_head)
+    if HEAD_ROUTE == "r7":
+        # (round seven's own split faces, by their cage corners)
+        loc = {v: k for k, v in enumerate(M.tag["base_head_pts"][:M.tag["n_cage"]])}
+        want = {tuple(s) for s in r7_load()["sel"]}
+        sel = {fi for fi in M.tag["base_head_faces"]
+               if all(v in loc for v in M.faces[fi]) and tuple(sorted(loc[v] for v in M.faces[fi])) in want}
+        print("%s R7 split: %d of round seven's %d faces found" % (WHO, len(sel), len(want)))
     n_old = len(M.P)
     R, uv1, W1, ch = refine(M, sel, face_uv, weights)
     R.base_uv = {}
@@ -6070,18 +6566,28 @@ def refine_base_head(M, face_uv, weights, under, sh):
     under2 = set()
     for fi in under:
         under2 |= set(ch.get(fi, []))
+    if HEAD_ROUTE == "r7":
+        r7_place(R)
+        adjust_r7(R)
+        return R, uv1, W1, under2
     mir = head_mirror(R)
     N0 = {fi: face_normal(R.P, R.faces[fi]) for fi in R.tag["base_head_faces"]}
     neck = [v for ring in R.tag["neck_rings"] for v in ring]
     for rnd in range(4):
         # (the neck too, and the opening's loop: the head sheet's nape and throat)
-        base_head_round(R, sh, ("front", "q", "side", "qb", "back"), step=0.8 if rnd < 2 else 0.5, reach=70,
+        base_head_round(R, sh, HEAD_FIT_VIEWS, step=0.8 if rnd < 2 else 0.5, reach=70,
                         more=neck, hold_loop=False)
         symmetrize(R, mir)
     head_smooth(R, 1, lam=0.3, mu=-0.32)
     symmetrize(R, mir)
+    if MOUTH_WIDEN != 1.0:
+        fresh_mouth_widen(R)
+        symmetrize(R, mir)
     base_face_forms(R)
     symmetrize(R, mir)
+    if FACE_EASE:
+        fresh_face_ease(R)
+        symmetrize(R, mir)
     # (where the neck's bridge meets the jaw's underside the two met at an angle, a crease from the ear to the chin:
     # the points of the opening's loop, the neck's rings and the head within 2 cm of the loop smoothed together)
     Pn = np.array(R.P)
@@ -6108,14 +6614,19 @@ def refine_base_head(M, face_uv, weights, under, sh):
     symmetrize(R, mir)
     firm_jaw(R)
     symmetrize(R, mir)
+    if JAW_LINE:
+        fresh_jaw_line(R)
+        symmetrize(R, mir)
     shape_ears(R)
     symmetrize(R, mir)
     if JAW_WIDEN or CHIN_BROAD:
         square_jaw(R)
         symmetrize(R, mir)
-    if HEAD_WIDEN:
+    if HEAD_WIDEN or NECK_EASE:
         youth_head(R)
         symmetrize(R, mir)
+    freeze_or_load_head(R)
+    adjust_head(R)
     print("BROTHER refined: face %d faces split; %d triangles now; folded after the refit %d" % (len(sel), len(R.tris()), folded_faces(R, R.tag["base_head_faces"], N0)))
     return R, uv1, W1, under2
 
@@ -6142,6 +6653,10 @@ EYE_RAD = np.array((EYE_RX, EYE_R, EYE_R))
 EYE_BACK = 0.0015            # the ball's front this far behind where the closed lids were
 LID_THICK = 0.0013           # the lids' margins stand this far in front of the ball
 LID_EVEN = 6                 # open_eyes 5b: Taubin rounds over the two skin rings round each margin (0: none)
+EYE_SPLIT = "--no-eye-split" not in ARGS           # open_eyes 1: the faces round each eye split once more first
+LID_CREASE = 0.0014          # open_eyes 5: metres the crease over the upper lid is sunk
+LID_RINGS = 2                # open_eyes 5b: how many rings of skin round each margin are evened
+LID_TUCK = (0.0012, 0.0008)  # open_eyes 6: the lids' inner edge this far in from the margin and this far behind the ball's front (m)
 
 
 def ball_y(x, z, C):
@@ -6297,7 +6812,7 @@ def open_eyes(M, face_uv, weights, under):
         f = M.faces[fi]
         c = P[f].mean(0)
         col, row = abs(c[0]) / HEAD_SX, float(head_row(c[2]))
-        if c[1] < 0 and ((col - EYE_IRIS[0] - 2.0) / EYE_ZONE[0]) ** 2 + ((row - EYE_IRIS[1]) / EYE_ZONE[1]) ** 2 < 1.0:
+        if EYE_SPLIT and c[1] < 0 and ((col - EYE_IRIS[0] - 2.0) / EYE_ZONE[0]) ** 2 + ((row - EYE_IRIS[1]) / EYE_ZONE[1]) ** 2 < 1.0:
             sel.add(fi)
     n_old = len(M.P)
     R, face_uv, weights, ch = refine(M, sel, face_uv, weights)
@@ -6415,7 +6930,7 @@ def open_eyes(M, face_uv, weights, under):
             push = 0.0
             if 0 < above < 12:
                 push += 0.0006 * math.exp(-((above - 3.0) / 2.5) ** 2)       # the lid's own fullness
-                push -= 0.0014 * math.exp(-((above - 8.0) / 2.2) ** 2)       # the crease
+                push -= LID_CREASE * math.exp(-((above - 8.0) / 2.2) ** 2)       # the crease
             if 0 < below < 14:
                 push += 0.0006 * math.exp(-((below - 7.0) / 3.0) ** 2)       # the soft bag
             bags = FIGURE.get("bags", 0.0)
@@ -6432,7 +6947,7 @@ def open_eyes(M, face_uv, weights, under):
             kept = [fi for fi in range(len(M.faces)) if fi not in hole]
             Ek = edges_of([M.faces[fi] for fi in kept])
             ring_pts = set(loop)
-            for _ in range(2):
+            for _ in range(LID_RINGS):
                 grow = set(ring_pts)
                 for a_, b_ in Ek:
                     if a_ in ring_pts:
@@ -6471,8 +6986,8 @@ def open_eyes(M, face_uv, weights, under):
         for v in loop:
             xz = P[v][[0, 2]]
             dvec = mid - xz
-            xz2 = xz + dvec / max(np.linalg.norm(dvec), 1e-9) * 0.0012
-            y2 = ball_y(xz2[0], xz2[1], C) + 0.0008
+            xz2 = xz + dvec / max(np.linalg.norm(dvec), 1e-9) * LID_TUCK[0]
+            y2 = ball_y(xz2[0], xz2[1], C) + LID_TUCK[1]
             P = np.vstack([P, (xz2[0], y2, xz2[1])])
             M.P.append(P[-1].copy())
             M.part.append("head")
@@ -6643,6 +7158,30 @@ def apply_figure():
     if FIGURE.get("head"):
         globals().update(FIGURE["head"]["marks"])
     globals().update(FIGURE.get("consts", {}))
+    global HEAD_ROUTE, SMILE
+    HEAD_ROUTE = arg("--head-route", FIGURE.get("head_route", "old"))
+    if HEAD_ROUTE == "fresh":
+        fc = dict(FRESH_CONSTS)
+        sd = fc.pop("SMILE_DEPTH")
+        globals().update(fc)
+        SMILE = (SMILE[0], SMILE[1], SMILE[2], sd)
+        globals().update(FIGURE.get("fresh", {}))
+        globals()["EYE_RAD"] = np.array((EYE_RX, EYE_R, EYE_R))
+    if HEAD_ROUTE == "r7":
+        # (round seven's own eye and mouth landmarks (concept_brother_head2.jpg's frame), eye settings and iris)
+        d = r7_load()
+        for k, v in d["glob"].items():
+            globals()[k] = tuple(tuple(x) if isinstance(x, list) else x for x in v) if isinstance(v, list) else v
+        for k, v in d["fig"].items():
+            if v is not None:
+                FIGURE[k] = v
+        globals()["EYE_RAD"] = np.array((EYE_RX, EYE_R, EYE_R))
+        globals()["EYE_ZONE"] = (36.0, 20.0)
+        globals()["MOUTH_SNAP_MAX"] = 0.003
+        globals()["HEAD_WIDEN"] = ()
+        globals()["NECK_EASE"] = 0
+        r7_eye_adjust()
+    print("%s HEAD route: %s" % (WHO, HEAD_ROUTE))
     # (ninth round: the head moved back on the body by HEAD_BACK metres (the critic: "the neck ... leans forward like
     # a vulture's"; laid over tpose8's side view his face stood 1.4 cm in front of the drawn face, scratchpad
     # brother9/ov_side_top.png). The head sheet's side view is resampled with its middle that much further forward, so
@@ -6887,15 +7426,50 @@ def young_skin(M, face_uv, skin, spos, shit, tone):
     rng = np.random.default_rng(5)
     noise = blur(rng.random(clump.shape), 3)
     noise = (noise - noise.mean()) / max(float(noise.std()), 1e-6)
-    tufts = np.clip(clump * (0.85 + 0.15 * noise), 0, 1)
-    out = out * (1 - 0.2 * tufts[..., None]) + HAIR_BROWN * 0.2 * tufts[..., None]
-    strands = dark * clump
-    out = out * (1 - 0.3 * strands[..., None]) + HAIR_BROWN * 0.3 * strands[..., None]
+    fan = FIGURE.get("hair_fan")
+    if fan:
+        # (eleventh round, the critic: the chest hair "a dark branching tree up the middle ... a stain"; limb hair
+        # "smudges that read as mud". The torso's hair by rule: a fan over both pecs, a thin trail down the belly to the
+        # navel, fuller again below it; the limbs keep the sheet's places. Both drawn as fine strokes that run down the
+        # body (3D noise stretched along z), warm brown, over a faint under-layer)
+        x_, y_, z_ = spos[..., 0], spos[..., 1], spos[..., 2]
+        Zb = lambda r: float(body_z(r))
+        front_t = smooth01(0.1, 0.45, -nrm[..., 1]) * np.isin(fam, ("torso",)) * body
+        pecs = np.exp(-((np.abs(x_) - 0.075) / 0.075) ** 2 - ((z_ - Zb(470)) / 0.07) ** 2)
+        mid_ = np.exp(-((z_ - Zb(470)) / 0.05) ** 2 - (x_ / 0.05) ** 2) * 0.8
+        trail = np.exp(-(x_ / 0.016) ** 2) * smooth01(Zb(660), Zb(520), z_) * 0.75
+        below = np.exp(-(x_ / 0.03) ** 2) * smooth01(Zb(640), Zb(700), z_) * 0.85
+        field = np.clip(pecs + mid_ + trail + below, 0, 1) * front_t
+        clump = clump * (1.0 - front_t) + field * fan
+        streak = np.zeros(clump.shape)
+        for i in range(5):
+            d = rng.normal(size=3)
+            d[2] *= 0.08     # (high frequency across, low along z: streaks that run up and down)
+            d /= np.linalg.norm(d)
+            streak += np.sin(spos @ (d * math.tau / 0.0035) + rng.uniform(0, math.tau))
+        strands_f = smooth01(0.5, 1.9, streak) * clump * (0.6 + 0.4 * smooth01(-0.5, 1.0, noise))
+        hair_c = np.array(FIGURE.get("hair_warm", (0.40, 0.27, 0.17)))
+        tufts = np.clip(clump * (0.85 + 0.15 * noise), 0, 1)
+        out = out * (1 - 0.2 * tufts[..., None]) + hair_c * 0.2 * tufts[..., None]
+        out = out * (1 - 0.7 * strands_f[..., None]) + hair_c * 0.7 * strands_f[..., None]
+        strands = strands_f
+    else:
+        tufts = np.clip(clump * (0.85 + 0.15 * noise), 0, 1)
+        out = out * (1 - 0.2 * tufts[..., None]) + HAIR_BROWN * 0.2 * tufts[..., None]
+        strands = dark * clump
+        out = out * (1 - 0.3 * strands[..., None]) + HAIR_BROWN * 0.3 * strands[..., None]
     # the hands: their rule paint (creases, nails, knuckles: ratios against their flat colour) on his tone
     if hands.any():
         hb = np.median(skin[hands], 0)
         rel = np.clip(skin / np.maximum(hb, 1e-3), 0.6, 1.25)
-        out[hands] = tone * rel[hands] * np.array((1.02, 0.98, 0.97))
+        if FIGURE.get("plain_hands"):
+            # (eleventh round: the hands the forearm's own tone, the rule paint's ratios softened to nails and
+            # knuckles only: no lines across the fingers)
+            arm_t = np.median(out[body & (fam == "arm")], 0)
+            rel = np.clip(blur(np.where(hands[..., None], rel, 1.0), 2), 0.94, 1.04)
+            out[hands] = arm_t * rel[hands]
+        else:
+            out[hands] = tone * rel[hands] * np.array((1.02, 0.98, 0.97))
     print("%s SKIN young: tone %s, hair clumps on %d texels, strands %d; dropped thin strokes on %d" % (
         WHO, np.round(tone, 3), int((tufts > 0.3).sum()), int((strands > 0.3).sum()),
         int(((dark > 0.3) & (clump < 0.2)).sum())))
@@ -6955,13 +7529,13 @@ def rule_face(M, face_uv, tone):
     for s in (1.0, -1.0):
         cx = s * (EYE_IRIS[0] + 0.25 * span)
         w = np.exp(-(((x / HEAD_SX - cx) / (0.55 * span)) ** 2 + ((row - (EYE_LOW[1] + 42.0)) / 26.0) ** 2))
-        mult(w * 0.55 * face, ROSE)
+        mult(w * FACE_ROSE[0] * face, ROSE)
     # the nose: a flush on its tip no stronger than the cheeks
     hp = np.array(M.tag["base_head_pts"])
     nz = hp[(np.abs(P[hp, 0]) < 0.006)]
     tip = P[nz[np.argmin(P[nz, 1])]]
     w = np.exp(-(np.linalg.norm(pos - tip, axis=-1) / 0.014) ** 2)
-    mult(w * 0.45 * face, ROSE)
+    mult(w * FACE_ROSE[1] * face, ROSE)
     # nostrils: the underside of the nose's base, either side
     for s in (1.0, -1.0):
         c_ = tip + np.array((s * 0.0085, 0.012, -0.012))
@@ -6969,13 +7543,13 @@ def rule_face(M, face_uv, tone):
         mult(w * smooth01(-0.1, 0.4, -nrm[..., 2]) * face, (0.62, 0.45, 0.42))
     # brows: soft brown arcs over each eye, fuller inside, a little higher than the eye's top and tapering down outward
     tb = np.clip((col - (EYE_INNER[0] - 6.0)) / (span + 16.0), 0, 1)
-    brow_row = EYE_TOP[1] - 21.0 - 6.5 * np.sin(np.pi * np.clip(tb * 0.9 + 0.05, 0, 1)) + 6.0 * tb ** 2
-    half = 5.0 - 2.0 * tb
+    brow_row = EYE_TOP[1] - BROW_ROW[0] - BROW_ROW[1] * np.sin(np.pi * np.clip(tb * 0.9 + 0.05, 0, 1)) + BROW_ROW[2] * tb ** 2
+    half = BROW_PAINT[0] - (BROW_PAINT[0] - BROW_PAINT[1]) * tb
     ends = smooth01(EYE_INNER[0] - 8.0, EYE_INNER[0] - 2.0, col) * (1.0 - smooth01(EYE_OUTER[0] + 4.0, EYE_OUTER[0] + 12.0, col))
     strokes = 1.0
-    tint(np.exp(-((row - brow_row) / half) ** 4) * ends * strokes * fwd * face, (0.32, 0.21, 0.14), 0.72)
+    tint(np.exp(-((row - brow_row) / half) ** 4) * ends * strokes * fwd * face, BROW_PAINT[3], BROW_PAINT[2])
     # the lash line, thin, thickest at the outer end, on the margin only
-    lash = np.exp(-((d_up - 0.5) / (0.9 + 0.6 * t)) ** 2) * (0.6 + 0.4 * t) * smooth01(-0.6, 0.2, d_up)
+    lash = np.exp(-((d_up - 0.5 * LASH) / ((0.9 + 0.6 * t) * LASH)) ** 2) * (0.6 + 0.4 * t) * smooth01(-0.6, 0.2, d_up)
     tint(lash * eyes_on, (0.22, 0.14, 0.11), 0.75)
     # the lid crease, soft, and a soft heavy outer lid
     mult(np.exp(-((d_up - 9.0) / 2.6) ** 2) * (0.35 + 0.25 * t) * eyes_on, SOFT_SHADE)
@@ -7066,7 +7640,10 @@ def finish(M, T, joints, sh):
             legs = shit & (fparts == "leg" + sfx)
             skin = paint_feet(skin, spos, snrm, shit, mine, (o, f_, l_), M.tag["foot_toes" + sfx], base_c, shin=legs, ring_z=ring_z)
             print("%s FEET painted%s: %d texels, the shin's tone %s" % (WHO, sfx, int(mine.sum()), np.round(base_c, 3)))
-    if rule and FACE_BY_RULE:
+    if HEAD_ROUTE == "r7":
+        face, fpos, fhit, fskin = r7_face(M, face_uv, tone)
+        face = r7_paint_adjust(face, fpos, fhit, M)
+    elif rule and FACE_BY_RULE:
         face, fpos, fhit, fskin = rule_face(M, face_uv, tone)
     else:
         face, fpos, fhit, fskin = paint_head(M, face_uv, sh)
@@ -7588,8 +8165,9 @@ def build_boxers(M, T, sh, weights, under, armature):
     # 213,200,177 and the critic asked for about #E8DFC8)
     rgb = delight(rgb, pos_b, hit_b & hit, target=np.array((0.94, 0.905, 0.82)), k=0.85, cell=0.025, spread=3)
     # (and most of the way to the plain cream: the sheet's cloth is clean, its smudges and grey were not wanted)
-    cream = np.array((0.902, 0.855, 0.753))
-    rgb[hit_b] = cream * 0.55 + rgb[hit_b] * 0.45
+    cream = np.array(FIGURE.get("cream", (0.902, 0.855, 0.753)))
+    ck = FIGURE.get("cream_k", 0.55)
+    rgb[hit_b] = cream * ck + rgb[hit_b] * (1.0 - ck)
     rgb = paint_knit(rgb, pos_b, hit_b, fid_b, Bx, info)
     path = os.path.join(TEX, "brother_shorts.png")
     save_rgb(path, rgb[::-1])
