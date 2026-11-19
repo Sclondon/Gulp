@@ -201,8 +201,8 @@ const HANDS := {
 	"relax": [12.0, 18.0, 24.0, 30.0, 6.0, -12.0, 14.0],
 	"open": [2.0, 2.0, 3.0, 4.0, 10.0, 5.0, 0.0],
 	"spread": [0.0, 0.0, 2.0, 3.0, 22.0, -10.0, 0.0],
-	"fist": [88.0, 90.0, 90.0, 80.0, 0.0, 0.0, 40.0, 0.7],   # (tenth pass: from 66 to 80, which left the fingers hooked like claws below the knuckles)
-	"point": [2.0, 90.0, 90.0, 80.0, 0.0, 0.0, 25.0, 0.4],
+	"fist": [88.0, 90.0, 90.0, 80.0, 0.0, 0.0, 34.0, 0.55, 1.0, 0.0],   # (eleventh pass: the rest fan taken out first, c[8], so the fingers curl side by side; the thumb aimed less hard, 0.7 drove it through the index finger)
+	"point": [2.0, 90.0, 90.0, 80.0, 0.0, 0.0, 25.0, 0.4, 1.0, 0.0],
 	"rest": [18.0, 22.0, 26.0, 30.0, 4.0, -8.0, 18.0],
 	"flat": [0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0],
 }
@@ -213,9 +213,9 @@ const POSES := {
 		"foot_r": Vector3(-10, 0, 0), "spine": Vector3(3, 0, 0), "chest": Vector3(3, 0, 0), "ground": "feet"},
 	"sit": {"arm_l": [Vector3(0.18, -1, 0.22), Vector3(0.05, -0.62, 0.8)], "hand_l": Vector3(0, 0, 0), "fingers_l": "rest",
 		"leg_l": [Vector3(0.08, -0.08, 1), Vector3(0.02, -1, 0.08)], "spine": Vector3(4, 0, 0), "chest": Vector3(6, 0, 0), "head": Vector3(4, 0, 0), "root": Vector3(0, -0.36, 0)},
-	"laugh": {"spine": Vector3(-6, 0, 0), "chest": Vector3(-14, 0, 0), "neck": Vector3(-25, 0, 0), "head": Vector3(-38, 0, 0),
+	"laugh": {"spine": Vector3(6, 0, 0), "chest": Vector3(6, 0, 0), "neck": Vector3(-30, 0, 0), "head": Vector3(-40, 0, 0),   # (eleventh pass, the critic: knees bent, chest forward, then the head back)
 		"arm_l": [Vector3(0.28, -1, 0.12), Vector3(-0.8, -0.3, 0.5), 0.0, -20.0], "hand_l": Vector3(0, 0, 0), "fingers_l": "relax",
-		"leg_l": [Vector3(0.18, -1, 0.3), Vector3(0.0, -1, -0.22)], "ground": "feet"},
+		"leg_l": [Vector3(0.1, -1, 0.38), Vector3(0.02, -1, -0.32)], "ground": "feet"},
 	"shock": {"spine": Vector3(-6, 0, 0), "chest": Vector3(-6, 0, 0), "head": Vector3(-4, 0, 0),
 		"arm_l": [Vector3(0.8, -0.55, 0.3), Vector3(0.1, 1, 0.3), 0.0, -70.0], "fingers_l": "spread", "fingers_r": "spread",
 		"arm_r": [Vector3(-0.8, -0.5, 0.3), Vector3(-0.1, 1, 0.3), 0.0, -70.0],
@@ -225,19 +225,19 @@ const POSES := {
 		"arm_l": [Vector3(0.18, -0.08, 1), Vector3(0.12, -0.12, 1)], "hand_l": Vector3(0, 0, 0), "fingers_l": "flat",
 		"leg_l": [Vector3(0.12, 0.08, -1), Vector3(0.05, 0.1, -1)], "foot_l": Vector3(60, 0, 0),
 		"leg_r": [Vector3(-0.08, 0.15, -1), Vector3(-0.04, 0.75, -0.66)], "foot_r": Vector3(40, 0, 0), "root": Vector3(0, 0.15, 0)},
-	"run": {"spine": Vector3(12, 0, 0), "chest": Vector3(12, 0, 0), "neck": Vector3(-4, 0, 0), "head": Vector3(-6, 0, 0),
+	"run": {"turn": Vector3(12, 0, 0), "spine": Vector3(8, 0, 0), "chest": Vector3(6, 0, 0), "neck": Vector3(-10, 0, 0), "head": Vector3(-12, 0, 0),   # (eleventh pass: the whole body leaning forward about 20 degrees, the lead fist before the chest, not the face)
 		"arm_l": [Vector3(0.12, -0.5, -0.86), Vector3(0.08, -0.85, 0.52)], "fingers_l": "fist",
-		"arm_r": [Vector3(-0.08, -0.25, 1), Vector3(-0.15, 0.85, 0.5)], "fingers_r": "fist",
+		"arm_r": [Vector3(-0.1, -0.55, 0.85), Vector3(-0.35, 0.45, 0.85)], "fingers_r": "fist",
 		"leg_r": [Vector3(-0.04, -0.25, 1), Vector3(-0.02, -1, 0.12)], "foot_r": Vector3(5, 0, 0),
 		"leg_l": [Vector3(0.04, -0.82, -0.58), Vector3(0.03, 0.2, -1)], "foot_l": Vector3(35, 0, 0), "root": Vector3(0, -0.03, 0)},
 	"crouch": {"spine": Vector3(30, 0, 0), "chest": Vector3(22, -8, 0), "neck": Vector3(0, 0, 0), "head": Vector3(8, 12, 0),
 		"leg_l": [Vector3(0.3, 0.45, 1), Vector3(0.05, -1, -0.85)], "foot_l": Vector3(-28, 0, 0),
 		"arm_l": [Vector3(0.25, -0.5, 0.82), Vector3(0.0, -0.85, 0.15)], "hand_l": Vector3(0, 0, 0), "fingers_l": "rest",
 		"arm_r": [Vector3(-0.35, -0.75, 0.6), Vector3(-0.35, -0.65, 0.7)], "fingers_r": "point", "ground": "feet"},
-	"cross": {"spine": Vector3(16, 0, 0), "chest": Vector3(12, 0, 0), "neck": Vector3(-6, 0, 0), "head": Vector3(-10, 0, 0),
+	"cross": {"spine": Vector3(22, 0, 0), "chest": Vector3(18, 0, 0), "neck": Vector3(-14, 0, 0), "head": Vector3(-16, 0, 0),   # (eleventh pass: hunched, cheeks in open hands)
 		"leg_l": [Vector3(0.82, -0.1, 0.56), Vector3(-0.93, -0.08, 0.3)], "foot_l": Vector3(-50, 0, -40),
 		"leg_r": [Vector3(-0.82, -0.1, 0.56), Vector3(0.96, -0.1, 0.1)],
-		"arm_l": [Vector3(0.15, -0.45, 0.88), Vector3(-0.2, 0.92, -0.3)], "hand_l": Vector3(0, 0, 0), "fingers_l": "fist", "ground": "hips"},
+		"arm_l": [Vector3(0.15, -0.45, 0.88), Vector3(-0.2, 0.92, -0.3)], "hand_l": Vector3(0, 0, 0), "fingers_l": "relax", "ground": "hips"},
 	"reach": {"spine": Vector3(-4, 0, 0), "chest": Vector3(-8, 0, 0), "neck": Vector3(-20, 0, 0), "head": Vector3(-34, 0, 0),
 		"arm_l": [Vector3(0.12, 1, 0.12), Vector3(0.06, 1, 0.12)], "fingers_l": "spread",
 		"arm_r": [Vector3(-0.15, -1, -0.12), Vector3(-0.1, -1, 0.08)], "fingers_r": "relax",
@@ -251,7 +251,7 @@ const POSES := {
 	"knee90": {"leg_l": [Vector3(0.03, -1, 0), Vector3(0, 0, -1)]},
 	"knee140": {"leg_l": [Vector3(0.03, -1, 0), Vector3(0, 0.766, -0.643)]},
 	"lookup": {"neck": Vector3(-18, 0, 0), "head": Vector3(-30, 0, 0), "chest": Vector3(-4, 0, 0),
-		"arm_l": [Vector3(0.4, 0.88, 0.38), Vector3(-0.88, 0.5, 0.1), 0.0, -60.0], "hand_l": Vector3(0, 0, 70), "fingers_l": "flat",
+		"arm_l": [Vector3(0.7, 0.68, 0.25), Vector3(-0.8, 0.58, -0.12), 0.0, -60.0], "hand_l": Vector3(0, 0, 70), "fingers_l": "flat",   # (eleventh pass: the hand at the brow, not on the crown)
 		"arm_r": [Vector3(-0.12, -1, 0.02), Vector3(-0.08, -1, 0.15)], "fingers_r": "relax",
 		"leg_l": [Vector3(0.04, -1, 0.0), Vector3(0.03, -1, 0.0)], "ground": "feet"},
 }
@@ -305,6 +305,9 @@ func _apply(spec: Dictionary) -> void:
 		var across := (_rest_g("finger_index_1" + side).origin - _rest_g("finger_little_1" + side).origin).normalized()
 		var along := (_rest_g("finger_middle_1" + side).origin - h).normalized()
 		var palm := along.cross(across).normalized()
+		# (eleventh pass) the curl axis square to the hand's length: the knuckles' line slants 13 degrees off square, and
+		# fingers curled about it swept sideways as they closed, crossing in a fist
+		across = (across - along * across.dot(along)).normalized()
 		axes[side] = [across, along, palm]
 	for i in n:
 		var name := _skel.get_bone_name(i)
@@ -367,6 +370,20 @@ func _apply(spec: Dictionary) -> void:
 				q = Quaternion(ax[0], -deg_to_rad(curl * [1.0, 1.0, 1.1, 0.6][seg]) * sg)
 				if seg == 1:
 					q = Quaternion(ax[2], deg_to_rad(c[4] * [1.0, 0.3, -0.5, -1.0][which]) * sg) * q
+					# (eleventh pass) c[8]: the share of each finger's rest fan taken out about the palm's normal, so the
+					# fingers lie parallel before they curl and curl in parallel planes (a fist's fingers had fanned in
+					# from their rest spread about the one curl axis and crossed like loose sticks); c[9] the fingers'
+					# convergence toward the middle finger's line as they close (degrees at the little finger)
+					if c.size() > 8 and float(c[8]) != 0.0:
+						var fname: String = base.get_slice("_", 1)
+						var d1: Vector3 = _rest_g("finger_" + fname + "_2" + side).origin - rg.origin
+						d1 = (d1 - ax[2] * d1.dot(ax[2])).normalized()
+						var along_p: Vector3 = ((ax[1] as Vector3) - (ax[2] as Vector3) * (ax[1] as Vector3).dot(ax[2])).normalized()
+						var ang := atan2(along_p.cross(d1).dot(ax[2]), along_p.dot(d1))
+						var conv := 0.0
+						if c.size() > 9:
+							conv = float(c[9]) * [-0.6, 0.0, 0.45, 1.0][which] * sg
+						q = Quaternion(ax[2], ang * float(c[8]) + deg_to_rad(conv)) * q
 			else:
 				var seg := int(base.get_slice("_", 1))
 				if seg == 1:

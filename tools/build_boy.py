@@ -1271,6 +1271,8 @@ HB_ROWS = (("chin", CHIN_ROW), ("mouth", 1223.0), ("nose_base", 1195.0), ("nose"
 # many as the torso's top ring, started 11 cm behind the chin: the under-jaw came out as long as a shelf.)
 NECK_HOLE = (-0.040, 0.045, 0.060)
 NECK_RINGS = (0.25, 0.5, 0.75)   # (sixth pass, the budget: three rings, from four)
+if "--old-head" not in ARGS:
+    NECK_RINGS = (0.33, 0.67)    # (eleventh pass, the budget: the subdivided head's hole is a ring of 44, so two rings)
 NECK_FULL = float(arg("--neck-full", "1.0"))    # (seventh pass: from 1.08; the neck is sized to the sheet after)
 NECK_THIN = float(arg("--neck-thin", "1.0"))
 HEAD_UV_M = 0.42             # metres a unit of the base head's UV map (sizes its island beside the others)
@@ -1656,6 +1658,197 @@ def _round_ear(P, ids, root, bins, win):
     return most
 
 
+# (eleventh pass) The head made the way the base mesh is meant to be used: its cage (316 quads) fitted, then ONE
+# Catmull-Clark subdivision of the whole of it (the bundle's own Subdivision modifier at level 1), in place of the
+# earlier split of chosen faces, whose unsplit faces showed as facets and whose many smoothing and carving passes over
+# the split face flattened the jaw into the neck. The base's ears (five-sided blocks) are folded flat into the skull
+# and the bundle's own ear (GEO-ear_male_primitive_stylized.L: rim, bowl, closed back) is set into it instead.
+# --old-head builds the tenth pass's head.
+HEAD2 = "--old-head" not in ARGS
+EAR_BASE = "GEO-ear_male_primitive_stylized.L"
+EAR_ANGLE = float(arg("--ear-angle", "32"))      # degrees the ear's back stands off the skull, seen from above
+EAR_SINK = float(arg("--ear-sink", "0.006"))     # metres its front edge is set into the skull
+EAR_SIZE = float(arg("--ear-size", "1.08"))
+EAR_THIN = float(arg("--ear-thin", "0.42"))     # its thickness against the base's own (the base's is a thick disc)
+EAR_MIN_ANGLE = float(arg("--ear-min-angle", "22"))
+EAR_BOWL = float(arg("--ear-bowl", "0.006"))     # metres the bowl is pressed in
+EAR_TILT = float(arg("--ear-tilt", "12"))        # degrees its top leans back
+EAR_ROUND_TOP = float(arg("--ear-round-top", "0.3"))
+EAR_DOWN = float(arg("--ear-down", "0.011"))     # metres it sits below EAR_ROWS' middle (the front view's lobe is lower)
+EAR_EVEN = int(arg("--ear-even", "3"))
+
+
+def cc_subdivide(P, faces, uvs, flags=None):
+    """One Catmull-Clark step (open edges kept as creases: the neck's hole). The old points keep their numbers; then
+    one point per edge, then one per face. UVs per face corner are carried (corners, edge middles, face middles), and
+    per-point flags (an edge's point is set if both ends are, a face's if all corners are). Gives (points, faces, uvs,
+    flags, edge point of each edge)."""
+    P = np.asarray(P, float)
+    nv = len(P)
+    eid, ef = {}, []
+    for fi, f in enumerate(faces):
+        for i in range(len(f)):
+            a, b = f[i], f[(i + 1) % len(f)]
+            k = (min(a, b), max(a, b))
+            if k not in eid:
+                eid[k] = len(ef)
+                ef.append([])
+            ef[eid[k]].append(fi)
+    ne = len(ef)
+    E = np.array(sorted(eid, key=lambda k: eid[k]))
+    FP = np.array([P[f].mean(0) for f in faces])
+    bnd = np.array([len(x) == 1 for x in ef])
+    EP = (P[E[:, 0]] + P[E[:, 1]]) / 2.0
+    inner = ~bnd
+    EP[inner] = np.array([(P[a] + P[b] + FP[ef[i][0]] + FP[ef[i][1]]) / 4.0 for i, (a, b) in enumerate(E) if inner[i]])
+    # the old points
+    Q = np.zeros((nv, 3))
+    nF = np.zeros(nv)
+    for fi, f in enumerate(faces):
+        for v in f:
+            Q[v] += FP[fi]
+            nF[v] += 1
+    R = np.zeros((nv, 3))
+    nE = np.zeros(nv)
+    bsum = np.zeros((nv, 3))
+    nb = np.zeros(nv)
+    for i, (a, b) in enumerate(E):
+        mid = (P[a] + P[b]) / 2.0
+        R[a] += mid
+        R[b] += mid
+        nE[a] += 1
+        nE[b] += 1
+        if bnd[i]:
+            bsum[a] += P[b]
+            bsum[b] += P[a]
+            nb[a] += 1
+            nb[b] += 1
+    NP = P.copy()
+    for v in range(nv):
+        if nb[v] >= 2:
+            NP[v] = (bsum[v] + 6.0 * P[v]) / 8.0 if nb[v] == 2 else P[v]
+        elif nF[v] > 0:
+            n = nE[v]
+            NP[v] = (Q[v] / nF[v] + 2.0 * R[v] / nE[v] + (n - 3.0) * P[v]) / n
+    Pn = np.concatenate([NP, EP, FP])
+    Fn, Un = [], []
+    for fi, f in enumerate(faces):
+        k = len(f)
+        uv = np.array(uvs[fi], float)
+        um = uv.mean(0)
+        for i in range(k):
+            a, b, c = f[i - 1], f[i], f[(i + 1) % k]
+            e_prev = nv + eid[(min(a, b), max(a, b))]
+            e_next = nv + eid[(min(b, c), max(b, c))]
+            Fn.append([b, e_next, nv + ne + fi, e_prev])
+            Un.append([tuple(uv[i]), tuple((uv[i] + uv[(i + 1) % k]) / 2.0), tuple(um), tuple((uv[i - 1] + uv[i]) / 2.0)])
+    fl = {}
+    for name, arr in (flags or {}).items():
+        arr = np.asarray(arr, bool)
+        fl[name] = np.concatenate([arr, arr[E[:, 0]] & arr[E[:, 1]], np.array([arr[f].all() for f in faces])])
+    return Pn, Fn, Un, fl, {tuple(k): nv + i for k, i in eid.items()}
+
+
+def membrane(P, edges, sel, rounds=300):
+    """The selected points relaxed to the mean of their neighbours (the rest held): a smooth skin over a gap."""
+    P = np.array(P, float)
+    E = np.asarray(edges)
+    deg = np.bincount(E.ravel(), minlength=len(P)).astype(float)
+    for _ in range(rounds):
+        acc = np.zeros_like(P)
+        np.add.at(acc, E[:, 0], P[E[:, 1]])
+        np.add.at(acc, E[:, 1], P[E[:, 0]])
+        P[sel] = acc[sel] / np.maximum(deg[sel], 1)[:, None]
+    return P
+
+
+def bundle_ear():
+    """The bundle's left ear in its own frame: x out of the head (its back, which lies on the skull, at x 0), y toward
+    the back of the head (its front edge at y 0), z up (its middle height at 0). Gives points, faces, uvs."""
+    P, faces, uvs, _ = load_base(EAR_BASE)
+    c = (P.max(0) + P.min(0)) / 2.0
+    ext = P.max(0) - P.min(0)
+    print("BOY bundle ear: %d points, %d faces, extents %s m, middle %s" % (len(P), len(faces), np.round(ext, 4).tolist(), np.round(c, 3).tolist()))
+    # its thinnest axis is the one out of the head (the base sits on the head's left, +X)
+    Q = P - c
+    ax = int(np.argmin(ext))
+    if ax != 0:
+        raise RuntimeError("the bundle ear's thin axis is %d, not x" % ax)
+    Q[:, 0] -= Q[:, 0].min()
+    Q[:, 1] -= Q[:, 1].min()
+    return Q, faces, uvs
+
+
+def place_ears(P, sh, head_tris):
+    """The bundle's ear sized to the bald side view's ear (EAR_ROWS, EAR_COLS), its back set on the skull with its front
+    edge sunk EAR_SINK into it, turned out about its front edge until its rim reaches the front view's stand-out (or
+    EAR_ANGLE at most). Gives the left ear's points, faces, uvs (mirror for the right)."""
+    Q, faces, uvs = bundle_ear()
+    # (its outline is a 16-sided polygon whose uneven corners showed: evened, without shrinking it)
+    Q = smooth_points(Q, edges_of(faces), np.ones(len(Q), bool), rounds=EAR_EVEN)
+    zt, zb = float(hz(EAR_ROWS[0])), float(hz(EAR_ROWS[1]))
+    yf, yb = side_y(EAR_COLS[0]), side_y(EAR_COLS[1])
+    ext = Q.max(0) - Q.min(0)
+    ky = (yb - yf) / ext[1] * EAR_SIZE
+    kz = (zt - zb) / ext[2] * EAR_SIZE
+    kx = 0.5 * (ky + kz) * EAR_THIN
+    Q = Q * np.array((kx, ky, kz))
+    # (the bowl deepened again after the thinning: the outer face's points inside the rim pressed toward the skull,
+    # most at the bowl's middle, so it reads cupped from the side and the front; the rim rolled a little outward)
+    tri_e = np.array(tris_of(faces))
+    Ne = normals_of(Q, tri_e)
+    cyz = (Q[:, 1:].max(0) + Q[:, 1:].min(0)) / 2.0
+    hyz = (Q[:, 1:].max(0) - Q[:, 1:].min(0)) / 2.0
+    rr = np.linalg.norm((Q[:, 1:] - cyz) / hyz, axis=1)
+    vol = float(np.einsum("ij,ij->i", Q[tri_e[:, 0]], np.cross(Q[tri_e[:, 1]], Q[tri_e[:, 2]])).sum())
+    if vol < 0:
+        Ne = -Ne
+    outer = smooth01(0.1, 0.6, Ne[:, 0])
+    print("BOY ear bowl: %d points on its outer face (volume sign %+.0f)" % (int((outer > 0.5).sum()), np.sign(vol)))
+    Q[:, 0] -= EAR_BOWL * outer * (1.0 - smooth01(0.35, 0.78, rr))
+    Q[:, 0] += EAR_BOWL * 0.25 * outer * smooth01(0.8, 0.98, rr)
+    # (the sheet's ear is a round C, broad at the top; the base's an oval pointed at both ends: its top half widened
+    # front to back, most at the top, and the top's crown rounded down a little)
+    u = np.clip((Q[:, 2] - cyz[1]) / hyz[1], -1.0, 1.0)
+    Q[:, 1] = cyz[0] + (Q[:, 1] - cyz[0]) * (1.0 + EAR_ROUND_TOP * smooth01(-0.1, 0.75, u))
+    Q[:, 2] -= hyz[1] * 0.08 * smooth01(0.6, 1.0, u) * (1.0 - np.abs((Q[:, 1] - cyz[0]) / hyz[0]).clip(0, 1))
+    # (the sheet's side view leans the ear's top back) turned about its own middle across the head
+    ta = math.radians(EAR_TILT)
+    d1, d2 = Q[:, 1] - cyz[0], Q[:, 2] - cyz[1]
+    Q[:, 1] = cyz[0] + d1 * math.cos(ta) + d2 * math.sin(ta)
+    Q[:, 2] = cyz[1] - d1 * math.sin(ta) + d2 * math.cos(ta)
+    Q[:, 1] -= Q[:, 1].min()
+    Q[:, 1] += yf - (ky * ext[1] - (yb - yf)) / 2.0
+    Q[:, 2] += (zt + zb) / 2.0 - cyz[1] - EAR_DOWN
+    # the skull's surface beside the ear: the head's furthest point out near the ear's front edge's middle
+    Ph = np.asarray(P)
+    hv = np.unique(np.asarray(head_tris).ravel())
+    near = hv[(np.abs(Ph[hv, 2] - (zt + zb) / 2) < 0.02) & (np.abs(Ph[hv, 1] - (yf + 0.01)) < 0.015) & (Ph[hv, 0] > 0)]
+    x_front = float(Ph[near, 0].max())
+    near = hv[(np.abs(Ph[hv, 2] - (zt + zb) / 2) < 0.02) & (np.abs(Ph[hv, 1] - yb) < 0.015) & (Ph[hv, 0] > 0)]
+    x_back = float(Ph[near, 0].max()) if len(near) else x_front
+    # the front view's stand-out at the ear's middle
+    rmid = int((EAR_ROWS[0] + EAR_ROWS[1]) / 2)
+    runs = run_near(sh.head_mask, rmid, HVIEW["hfront"][1], *HSPAN["hfront"])
+    out_t = (runs[1] + 1 - runs[0]) / 2.0 * HS
+    pivot = np.array((x_front - EAR_SINK, yf, 0.0))
+    best = None
+    for ang in np.arange(EAR_MIN_ANGLE, EAR_ANGLE + 0.1, 1.0):
+        a = math.radians(ang)
+        # turned about the vertical through the front edge: the back swings out
+        d = Q - np.array((0.0, yf, 0.0))
+        X = pivot[0] + d[:, 0] * math.cos(a) + d[:, 1] * math.sin(a)
+        Y = yf - d[:, 0] * math.sin(a) + d[:, 1] * math.cos(a)
+        reach = float(X.max())
+        # (the ear's back must stay on the skull at its back edge too: not turned in)
+        if best is None or abs(reach - out_t) < abs(best[0] - out_t):
+            best = (reach, ang, np.stack([X, Y, Q[:, 2]], 1))
+    reach, ang, Qp = best
+    print("BOY ear (bundle): sized x%.2f y%.2f z%.2f; skull at x %.3f (front) %.3f (back); turned out %.0f degrees, "
+          "its rim %.3f m from his middle (sheet %.3f)" % (kx, ky, kz, x_front, x_back, ang, reach, out_t))
+    return Qp, faces, uvs
+
+
 def make_head(sh):
     """The bald head with its ears, from the base mesh: mixed, cut open for the neck, moved onto his landmarks'
     heights, warped row by row to the bald row's outlines, the ears sized to the sheet's, the face and ears split once,
@@ -1801,6 +1994,25 @@ def make_head(sh):
     kk = 1.0 + (np.interp(rows_p, rr, k) - 1.0) * t
     P[lower, 0] *= kk[lower]
     print("BOY jaw: rows %d to %d narrowed by %.2f to %.2f" % (rr[0], rr[-1], k.min(), k.max()))
+    if HEAD2:
+        # (eleventh pass) the base's ears folded flat into the skull (a smooth skin over their roots); the bundle's ear
+        # is set on after the subdivision (finish_head2)
+        E0 = edges_of(faces)
+        root = np.zeros(len(P), bool)
+        for a, b in E0:
+            if ear[a] != ear[b]:
+                root[a] = root[b] = True
+        flat = ear & ~root
+        P = membrane(P, E0, flat)
+        P = symmetric(P, mir)
+        tris_all = tris_of(faces)
+        stage("3_ears", P, faces)
+        n, _ = folded(P, faces)
+        print("BOY head (cage): the base's ears folded flat (%d points); %d triangles folded" % (int(flat.sum()), n))
+        eye = list(HB_EYE)
+        no_ear = np.zeros(len(P), bool)
+        return {"P": P, "faces": faces, "uvs": uvs, "ear": no_ear, "hole": hole, "marks": marks, "eye": eye, "mir": mir,
+                "tris": tris_all, "tris_head": tris_all, "edges": edges_of(faces), "cage": True, "old_ear": flat}
     # 3. the ears, sized to the sheet's: top, lobe, front and back (side view), how far they stand out (front view)
     for sgn in (1.0, -1.0):
         e = ear & (np.sign(P[:, 0]) == sgn)
@@ -2038,6 +2250,8 @@ def fit_made_head(Hd, sh, rounds):
     P = Hd["P"]
     movable = ~Hd["ear"]
     movable[Hd["hole"]] = False
+    if Hd.get("cage"):
+        return fit_cage_head(Hd, sh, rounds, movable)
     views = {"hfront": sh.head_target, "hside": sh.head_mask, "hback": sh.head_target}
     P = outline_fit(P, Hd["tris"], movable, views, sh, rounds=rounds, mir=Hd["mir"], edges=Hd["edges"],
                     no_ears_tris=Hd["tris_head"], label="head (front, side, back)", head=True, spread=16)
@@ -2058,13 +2272,258 @@ def fit_made_head(Hd, sh, rounds):
     return Hd
 
 
+CAGE_SPREAD = int(arg("--cage-spread", "3"))
+
+
+def fit_cage_head(Hd, sh, rounds, movable):
+    """(eleventh pass) The cage fitted to the bald row's outlines (front, side, back, then all five), a gentle side warp,
+    then subdivided once and given the bundle's ears (finish_head2). The forms are added after (head_forms)."""
+    P = Hd["P"]
+    views = {"hfront": sh.head_target, "hside": sh.head_mask, "hback": sh.head_target}
+    P = outline_fit(P, Hd["tris"], movable, views, sh, rounds=rounds, mir=Hd["mir"], edges=Hd["edges"],
+                    no_ears_tris=Hd["tris_head"], label="cage (front, side, back)", head=True, spread=CAGE_SPREAD,
+                    step=0.003)
+    fit_angled_model([(P, Hd["tris"], ["head"] * len(Hd["tris"]))], sh)
+    views = {"hq": sh.head_mask, "hqb": sh.head_mask, "hfront": sh.head_target, "hside": sh.head_mask,
+             "hback": sh.head_target}
+    P = outline_fit(P, Hd["tris"], movable, views, sh, rounds=max(2, rounds // 2), mir=Hd["mir"], edges=Hd["edges"],
+                    no_ears_tris=Hd["tris_head"], label="cage (all five)", step=0.002, head=True, spread=CAGE_SPREAD)
+    n, _ = folded(P, Hd["faces"])
+    print("BOY cage after the outline fit: %d triangles folded" % n)
+    P = side_warp_final(P, Hd, sh)
+    stage("5_cage", P, Hd["faces"])
+    Hd["P"] = P
+    Hd = finish_head2(Hd, sh)
+    if "--freeze-head" in ARGS:
+        save_head_base(Hd)
+    return Hd
+
+
+HEAD_BASE_FILE = os.path.join(HERE, "blend", "boy_head_base.npz")
+HEAD_FROZEN = HEAD2 and "--refit-head" not in ARGS and "--freeze-head" not in ARGS and os.path.exists(HEAD_BASE_FILE)
+
+
+def save_head_base(Hd):
+    """(eleventh pass) The fitted, subdivided head saved as it stands, before its adjustments: later builds start from
+    exactly this mesh (HEAD_FROZEN) instead of fitting the base mesh again. Remade only with --freeze-head."""
+    F = Hd["faces"]
+    np.savez_compressed(HEAD_BASE_FILE, P=np.asarray(Hd["P"], float), F=np.concatenate([np.asarray(f) for f in F]),
+                        FS=np.array([len(f) for f in F]), U=np.array([q for u in Hd["uvs"] for q in u], float),
+                        hole=np.array(Hd["hole"]), eye=np.array(Hd["eye"]), strip=np.array(Hd["eye_strip"]),
+                        old_ear=np.asarray(Hd["old_ear"]), marks=json.dumps({k: int(v) for k, v in Hd["marks"].items()}))
+    print("BOY head base saved: %s (%d points, %d faces)" % (HEAD_BASE_FILE, len(Hd["P"]), len(F)))
+
+
+def load_head_base():
+    d = np.load(HEAD_BASE_FILE)
+    faces, uvs, k = [], [], 0
+    U = d["U"]
+    for n in d["FS"]:
+        faces.append([int(v) for v in d["F"][k:k + n]])
+        uvs.append([tuple(q) for q in U[k:k + n]])
+        k += n
+    Hd = {"P": d["P"].copy(), "faces": faces, "uvs": uvs, "hole": [int(v) for v in d["hole"]], "eye": [int(v) for v in d["eye"]],
+          "eye_strip": [int(v) for v in d["strip"]], "old_ear": d["old_ear"], "marks": {k_: int(v) for k_, v in json.loads(str(d["marks"])).items()}}
+    print("BOY head base loaded (frozen): %s, %d points, %d faces" % (HEAD_BASE_FILE, len(Hd["P"]), len(faces)))
+    return Hd
+
+
+FORMS = float(arg("--head-forms", "1.0"))
+JAW_PLANE = float(arg("--jaw-plane", "0.8"))       # share of the way the under-jaw is lifted onto its plane
+JAW_RISE = float(arg("--jaw-rise", "0.25"))         # the plane's rise toward the throat (metres a metre back)
+CHEEK_APPLE = float(arg("--apple", "0.0045"))
+CHIN_BALL = float(arg("--chin-ball", "0.0028"))
+NOSE_BALL = float(arg("--nose-ball", "0.0022"))
+LIP_FULL = (float(arg("--lip-up", "0.0")), float(arg("--lip-low", "0.0")))   # (dropped: before/after pairs showed only more lumps at the mouth, not the sheet's lips)
+SMILE_CORNER = float(arg("--smile-corner", "0.0"))   # (dropped: the dents read as lumps)
+FACE_ROUND = float(arg("--face-round", "0.0"))   # (dropped: no visible change in the pairs)
+UNSUB_BACK = float(arg("--unsub-back", "0.0"))   # metres behind the head's middle where the skull is un-subdivided (0: off) (off: merged faces across the head's UV seams drew streaks of other paint on the scalp)
+
+
+def head_forms(P, faces, Hd, hole):
+    """(eleventh pass) The forms the sheet draws, added to the subdivided base head as soft fields, each on its own
+    landmarks: the under-jaw lifted onto a plane from the chin's underside to the throat (so a jawline runs from the
+    chin to below the ear and the neck meets it at an angle; the critic: "the jaw runs straight into the neck"); round
+    cheek apples under and outside each eye; a small round chin; a ball on the nose's tip; a soft upper lip and a
+    fuller lower one, the corners tucked in and up. Then two gentle Taubin rounds over the face."""
+    if FORMS <= 0:
+        return P
+    P = np.array(P, float)
+    mk = Hd["marks"]
+    tris = tris_of(faces)
+    N = normals_of(P, tris)
+    E = edges_of(faces)
+    mir = mirror_pairs(P, 1e-4)
+    P0 = P.copy()
+
+    def near(c, r, scale=(1.0, 1.0, 1.0)):
+        return np.exp(-(np.linalg.norm((P - c) * np.array(scale), axis=1) / r) ** 2)
+    eye_l = P[Hd["eye"]].mean(0)
+    chin = P[mk["chin"]].copy()
+    hole_c = P[hole].mean(0)
+    # 1. the under-jaw: points facing down, in front of the neck's hole's middle and above its front, raised onto a
+    # plane through the chin's underside rising JAW_RISE toward his back; the jaw's angles below the ear included
+    zc = float(chin[2])
+    under = (N[:, 2] < -0.25) & (P[:, 1] < hole_c[1] + 0.01) & (P[:, 2] < float(P[mk["mouth"], 2]) - 0.01)
+    zp = zc + (P[:, 1] - chin[1]) * JAW_RISE
+    lift = np.clip(zp - P[:, 2], 0.0, 0.03)
+    soft = smooth01(-0.25, -0.6, N[:, 2])
+    hold = np.zeros(len(P), bool)
+    hold[hole] = True
+    w = under * soft * ~hold
+    P[:, 2] += lift * w * JAW_PLANE * FORMS
+    n_under = int((w > 0.3).sum())
+    # 2. cheek apples, on the surface's normal
+    for s in (1.0, -1.0):
+        e = eye_l * np.array((s, 1.0, 1.0))
+        c = e + np.array((s * 0.009, -0.004, -0.026))
+        P += N * (near(c, 0.017, (1.0, 1.4, 1.0)) * CHEEK_APPLE * FORMS)[:, None]
+    # 3. the chin: a small ball just above its underside
+    c = P0[mk["lip_low"]] * 0.35 + chin * 0.65
+    P += N * (near(c, 0.011) * CHIN_BALL * FORMS)[:, None]
+    # 4. the nose's ball, a little forward and up
+    tip = P0[mk["nose"]]
+    w = near(tip + np.array((0.0, 0.0, -0.002)), 0.0075)
+    P += N * (w * NOSE_BALL * FORMS)[:, None]
+    P[:, 2] += w * 0.0008 * FORMS
+    # 5. the lips: the upper's soft roll, the lower fuller, the corners in and up (an upturned closed smile)
+    mo = P0[mk["mouth"]]
+    lu, ll = P0[mk["lip_up"]], P0[mk["lip_low"]]
+    P += N * (near(lu * 0.7 + mo * 0.3, 0.008, (0.7, 1.0, 1.4)) * LIP_FULL[0] * FORMS)[:, None]
+    P += N * (near(ll * 0.7 + mo * 0.3, 0.008, (0.7, 1.0, 1.4)) * LIP_FULL[1] * FORMS)[:, None]
+    for s, key in ((1.0, "mouth_l"), (-1.0, "mouth_r")):
+        cm = P0[mk[key]]
+        w = near(cm, 0.006)
+        P -= N * (w * SMILE_CORNER * FORMS)[:, None]
+        P[:, 2] += w * SMILE_CORNER * 0.6 * FORMS
+    # 6. (the grey front read as a narrow front plane between steep flat cheeks: the critic's "boxy lower face") the
+    # lower face's cross-section rounded: each point between the face's middle and its outline brought forward by a
+    # share of the arc between, most half way out, from below the eyes to the chin
+    if FACE_ROUND > 0:
+        z = P[:, 2]
+        zt_, zb_ = float(hz(1120.0)), float(hz(1290.0))
+        band = smooth01(zb_ - 0.01, zb_ + 0.02, z) * (1.0 - smooth01(zt_ - 0.015, zt_ + 0.01, z))
+        cy_ = float(np.median(P[(np.abs(z - (zt_ + zb_) / 2) < 0.03), 1]))
+        front = P[:, 1] < cy_
+        hw = np.zeros(len(P))
+        for i in np.where(front & (band > 0.01))[0]:
+            m_ = (np.abs(z - z[i]) < 0.006) & front & (P[:, 1] < P[i, 1] + 0.06)
+            hw[i] = np.abs(P[m_, 0]).max()
+        u = np.clip(np.abs(P[:, 0]) / np.maximum(hw, 1e-4), 0, 1)
+        P[:, 1] -= FACE_ROUND * FORMS * band * front * np.sin(math.pi * u) ** 1.5 * (hw > 0)
+    # gentle evening over the face (not the hole's ring)
+    face = (P0[:, 1] < hole_c[1] - 0.02) & ~hold
+    P = smooth_points(P, E, face, rounds=2)
+    P = symmetric(P, mir, keep=hold)
+    n, _ = folded(P, faces)
+    dm = np.linalg.norm(P - P0, axis=1)
+    print("BOY head forms: under-jaw %d points lifted (most %.1f mm), most moved %.1f mm; %d folded" % (
+        n_under, 1000 * float((lift * (under * soft)).max()), 1000 * float(dm.max()), n))
+    return P
+
+
+def finish_head2(Hd, sh):
+    # the base's closed lids: the strip of quads between the lids' meeting rows, round each eye (HB_EYE and its mirror);
+    # their children after the subdivision are what open_eyes2 takes out
+    cf = Hd["faces"]
+    el = set(HB_EYE)
+    er = {int(Hd["mir"][v]) for v in HB_EYE}
+    starts = np.concatenate([[0], np.cumsum([len(f) for f in cf])])
+    strip = [fi for fi, f in enumerate(cf) if all(v in el for v in f) or all(v in er for v in f)]
+    Hd["eye_strip"] = [int(j) for fi in strip for j in range(starts[fi], starts[fi + 1])]
+    print("BOY eyes: the base's closed lids are %d quads (%d after the subdivision)" % (len(strip), len(Hd["eye_strip"])))
+    P, faces, uvs, fl, ept = cc_subdivide(Hd["P"], Hd["faces"], Hd["uvs"], {"old_ear": Hd["old_ear"]})
+    hole = []
+    h = Hd["hole"]
+    for i in range(len(h)):
+        a, b = h[i], h[(i + 1) % len(h)]
+        hole += [a, ept[(min(a, b), max(a, b))]]
+    Hd.update({"P": P, "faces": faces, "uvs": uvs, "hole": hole})
+    return Hd
+
+
+def head_adjust(Hd, sh):
+    """(eleventh pass; the user: "you should just be making adjustments") The frozen head (finish_head2, or the saved
+    copy, HEAD_BASE_FILE) given its named adjustments in order (head_forms), then the bundle's ears."""
+    P, faces, uvs, hole = np.array(Hd["P"], float), [list(f) for f in Hd["faces"]], [list(u) for u in Hd["uvs"]], list(Hd["hole"])
+    nh = len(P)
+    tris = tris_of(faces)
+    P = head_forms(P, faces, Hd, hole)
+    Qe, fe, ue = place_ears(P, sh, tris)
+    ear_faces = []
+    base = len(P)
+    P = np.concatenate([P, Qe, Qe * np.array((-1.0, 1.0, 1.0))])
+    ne = len(Qe)
+    for f, u in zip(fe, ue):
+        faces.append([base + v for v in f])
+        uvs.append(list(u))
+    for f, u in zip(fe, ue):
+        faces.append([base + ne + v for v in f][::-1])
+        uvs.append(list(u)[::-1])
+    ear = np.zeros(len(P), bool)
+    ear[nh:] = True
+    mir = mirror_pairs(P, 1e-4)
+    P = symmetric(P, mir)
+    tris = tris_of(faces)
+    tris_head = [t for t in tris if not ear[list(t)].any()]
+    n, _ = folded(P, faces)
+    print("BOY head subdivided: %d points, %d faces, %d triangles (ears %d); hole ring %d; %d folded" % (
+        len(P), len(faces), len(tris), len(tris) - len(tris_head), len(hole), n))
+    Hd.update({"P": P, "faces": faces, "uvs": uvs, "ear": ear, "hole": hole, "mir": mir, "tris": tris,
+               "tris_head": tris_head, "edges": edges_of(faces), "cage": False, "ear_points": (nh, nh + ne, nh + 2 * ne)})
+    return Hd
+
+
+NECK_DEEP = float(arg("--neck-deep", "1.0"))
+NECK_SMOOTH = int(arg("--neck-smooth", "12"))
+NECK_SMOOTH_REACH = float(arg("--neck-smooth-reach", "0.02"))
+
+
+def neck_ellipses(Pm, rings, sh):
+    """(eleventh pass; the critic: "from behind, the neck is a wide funnel with vertical ridges (two tendon-like fins)")
+    The neck's middle rings made smooth ellipses (front and back halves of their own depth) at the sheet's width,
+    throat and nape for their heights, their points at the head's hole ring's angles round it (so nothing twists
+    between them); the ridges were corners in the rings, left where the rings were scaled half by half."""
+    top = Pm[rings[-1]]
+    ct = top.mean(0)
+    th = np.arctan2(top[:, 0] - ct[0], -(top[:, 1] - ct[1]))
+    for ri, rg in enumerate(rings[1:-1]):
+        Q = Pm[rg]
+        c = Q.mean(0)
+        z = float(Q[:, 2].mean())
+        a = float(np.abs(Q[:, 0] - c[0]).max())
+        bf = float(c[1] - Q[:, 1].min())
+        bb = float(Q[:, 1].max() - c[1])
+        r_ = float(hrow(z))
+        run = run_near(sh.head_target, int(r_), HVIEW["hfront"][1], *HSPAN["hfront"])
+        if run and r_ > JAW_ROW + 30:
+            a = (run[1] + 1 - run[0]) / 2.0 * HS * NECK_THIN
+        sd = run_near(sh.head_mask, int(r_), HVIEW["hside"][1], *HSPAN["hside"])
+        if sd and r_ > THROAT_ROW:
+            F, Bk = side_y(sd[1] + 1), side_y(sd[0])
+            mid = (F + Bk) / 2.0
+            half = (Bk - F) / 2.0 * NECK_DEEP
+            c[1] = mid
+            bf = bb = half
+        x = c[0] + a * np.sin(th)
+        y = c[1] - np.where(np.cos(th) > 0, bf, bb) * np.cos(th)
+        Pm[rg, 0] = x
+        Pm[rg, 1] = y
+        Pm[rg, 2] = z + (Q[:, 2] - z) * 0.5
+        print("BOY neck ring %d an ellipse: half width %.3f, front %.3f, back %.3f (row %.0f)" % (ri + 1, a, bf, bb, r_))
+
+
 def build_head(M, sh, T):
     """(third pass) The base-mesh head on his neck: made and fitted (make_head, fit_made_head), added to the body's
     mesh, and a neck of rings bridging the torso's top ring to the head's hole, leaving the torso along its own
     slope and entering the head straight up, then fitted to the front, side and back views below the jaw."""
-    Hd = fit_made_head(make_head(sh), sh, HEAD_FIT_ROUNDS)
+    Hd = load_head_base() if HEAD_FROZEN else fit_made_head(make_head(sh), sh, HEAD_FIT_ROUNDS)
+    if HEAD2:
+        Hd = head_adjust(Hd, sh)
+        stage("5_fit", Hd["P"], Hd["faces"])
     P = Hd["P"]
     base = len(M.P)
+    M.tag["eye_strip"] = [len(M.faces) + j for j in Hd.get("eye_strip", [])]
     for i, p in enumerate(P):
         M.add(p, ("ear_l" if p[0] > 0 else "ear_r") if Hd["ear"][i] else "head")
     uv = {}
@@ -2073,6 +2532,10 @@ def build_head(M, sh, T):
         if Hd["ear"][f].all():
             part = "ear_l" if P[f, 0].mean() > 0 else "ear_r"
         M.face([base + i for i in f], part)
+        if part != "head" and HEAD2:
+            # (eleventh pass) the bundle's ears in islands of their own (their UV map overlaps the head's)
+            M.tag.setdefault("ear_uv", {}).setdefault(part, {})[len(M.faces) - 1] = [(a * 0.12, b * 0.12) for a, b in u]
+            continue
         uv[len(M.faces) - 1] = [(a * HEAD_UV_M, b * HEAD_UV_M) for a, b in u]
     M.tag["head_uv"] = uv
     M.tag["head_points"] = (base, len(M.P))
@@ -2207,6 +2670,24 @@ def build_head(M, sh, T):
         Q[:, 1] = c[1] + (Q[:, 1] - c[1]) * np.where(Q[:, 1] < c[1], ky_[0], ky_[1])
         Pm[rg] = Q
         print("BOY neck ring %d sized to the sheet: across x%.2f, front x%.2f, back x%.2f" % (ri + 1, kx_, ky_[0], ky_[1]))
+    if HEAD2:
+        neck_ellipses(Pm, rings, sh)
+        # the neck's middle rings, the hole's ring behind the jaw and the skull's underside just above it evened
+        # together (the rings' corners and the hole's slant had left ridges up the back of the neck)
+        E_ = edges_of(faces)
+        ct = Pm[top].mean(0)
+        sel = np.zeros(len(Pm), bool)
+        for r in rings[1:-1]:
+            sel[r] = True
+        tb = [v for v in top if Pm[v][1] > ct[1] - 0.015]
+        sel[tb] = True
+        hp = np.array([part_family(p) == "head" for p in M.part[:len(Pm)]] + [False] * max(0, len(Pm) - len(M.part)))
+        Ptb = Pm[tb]
+        dmin = np.array([np.linalg.norm(Ptb - p, axis=1).min() for p in Pm])
+        sel |= hp & (dmin < NECK_SMOOTH_REACH) & (Pm[:, 1] > ct[1] - 0.01) & ~ear_pts
+        Pm = smooth_points(Pm, E_, sel, rounds=NECK_SMOOTH)
+        Pm = symmetric(Pm, mir, keep=~sel)
+        print("BOY neck evened: %d points, %d rounds" % (int(sel.sum()), NECK_SMOOTH))
     M.P = [p for p in Pm]
     n, _ = folded(Pm, faces)
     for ri, rg in enumerate(rings):
@@ -4644,6 +5125,8 @@ def plan_uvs(M, T, H, joints):
     # (third pass) the base head's own UV map, one island (ears in it), and the neck a grid of its rings, seamed at
     # his back, both in the face's picture (painted from the head sheet, which draws the neck down to the shoulders)
     islands["head"] = dict(M.tag["head_uv"])
+    for part, isl in M.tag.get("ear_uv", {}).items():
+        islands[part] = dict(isl)
     nf = [fi for fi, p in enumerate(M.fpart) if p == "neck"]
     islands["neck"] = neck_uvs(M, nf)
     for sfx in ("_l", "_r"):
@@ -5266,6 +5749,8 @@ def unfold_head(M, tries=8):
     for (a, b), c in ec.items():
         if c == 1:
             rim[a] = rim[b] = True
+    for v in M.tag.get("lid_hold", []):
+        rim[v] = True
     eye = np.array(M.P)[M.tag["head_eye"]].mean(0)
     eyes = (eye, eye * np.array((-1.0, 1.0, 1.0)))
     for k in range(tries):
@@ -6449,6 +6934,10 @@ EYE_LOW = (78.0, 1128.0)
 EYE_IRIS = (78.0, 1104.0, float(arg("--iris", "27.0")))   # (tenth pass: from 21; the sheet's iris is about 58 head-sheet pixels across)
 EYE_R = 0.0135
 EYE_RX = 0.0215
+if "--old-head" not in ARGS:
+    # (eleventh pass) a rounder ball, so the lids slide over it (the face rig fits a sphere): 1.18 to 1 from 1.59
+    EYE_R = float(arg("--eye-r", "0.0165"))
+    EYE_RX = float(arg("--eye-rx", "0.0195"))
 EYE_RAD = np.array((EYE_RX, EYE_R, EYE_R))
 # (ninth pass, a note from the face rig: his eyeball is NOT a sphere but this ellipsoid, wider across (21.5 mm) than
 # through (13.5 mm); the rig fits it as a 15.6 mm ball. A rounder ball would let the lids slide over it cleaner, if it
@@ -6715,6 +7204,194 @@ def open_eyes(M, face_uv, weights, under):
     return M, face_uv, weights, under, cut, eyes
 
 
+LID_RINGS = (float(arg("--lid-ring1", "1.16")), float(arg("--lid-ring2", "1.42")))   # the lid's next two rings out, as shares of the opening's reach
+LID_SWELL = (float(arg("--lid-swell1", "0.0012")), float(arg("--lid-swell2", "0.0006")))   # metres those rings stand off the ball beyond the lid's edge
+LID_EVEN = int(arg("--lid-even", "3"))
+LID_ROLL = (float(arg("--lid-roll-in", "0.0012")), float(arg("--lid-roll-back", "0.0008")))   # the margin's roll into the socket: in toward the eye's middle, back
+
+
+def open_eyes2(M, face_uv, weights, under):
+    """(eleventh pass) The eyes opened along the base mesh's own lid loops, not cut through refined triangles (the
+    cut's edge zigzagged and left a ring of shards round each eye: the critic's "ragged lid edges ... spikes"). The
+    strip of quads between the base's closed lids is taken out; its edge, the lids' margin, is set on the sheet's eye
+    outline over the ball; the next two loops out are laid as even rings round it (the lid's thickness, then its
+    fold), every point near the eye kept outside the ball; the margin rolls into the socket by one more ring. Gives
+    (M, face_uv, weights, under, cut faces, eyes)."""
+    def ball_y(x, z, C):
+        k = 1.0 - ((x - C[0]) / EYE_RAD[0]) ** 2 - ((z - C[2]) / EYE_RAD[2]) ** 2
+        return C[1] - EYE_RAD[1] * math.sqrt(max(k, 0.25))
+    poly = eye_outline()
+    ic, ir, irad = EYE_IRIS
+    P = np.array(M.P)
+    hfaces, hpts = head_faces_pts(M)
+    hps = set(hpts)
+    strip = set(M.tag.get("eye_strip", []))
+    mc0 = poly.mean(0)
+    nbr = {}
+    for fi in hfaces:
+        f = M.faces[fi]
+        for i in range(len(f)):
+            nbr.setdefault(f[i], set()).update((f[i - 1], f[(i + 1) % len(f)]))
+    ang_p = np.arctan2(poly[:, 1] - mc0[1], poly[:, 0] - mc0[0])
+    o_ = np.argsort(ang_p)
+    ap = np.concatenate([ang_p[o_] - math.tau, ang_p[o_], ang_p[o_] + math.tau])
+    pc = np.concatenate([poly[o_, 0]] * 3)
+    pr = np.concatenate([poly[o_, 1]] * 3)
+
+    def outline_at(a, k=1.0):
+        a = math.atan2(math.sin(a), math.cos(a))
+        c2, r2 = float(np.interp(a, ap, pc)), float(np.interp(a, ap, pr))
+        return mc0[0] + (c2 - mc0[0]) * k, mc0[1] + (r2 - mc0[1]) * k
+    cut, eyes = set(), []
+    for s in (1, -1):
+        hole = {fi for fi in strip if s * P[M.faces[fi]].mean(0)[0] > 0}
+        if not hole:
+            print("BOY EYES: no lid strip found (%s)" % s)
+            continue
+        cnt = {}
+        for fi in hole:
+            f = M.faces[fi]
+            for i in range(len(f)):
+                e = (min(f[i], f[(i + 1) % len(f)]), max(f[i], f[(i + 1) % len(f)]))
+                cnt[e] = cnt.get(e, 0) + 1
+        bnd = [e for e, c in cnt.items() if c == 1]
+        nxt = {}
+        for a, b in bnd:
+            nxt.setdefault(a, []).append(b)
+            nxt.setdefault(b, []).append(a)
+        start = bnd[0][0]
+        loop, prev_v, cur = [start], None, start
+        while True:
+            nb_ = [w for w in nxt[cur] if w != prev_v]
+            if not nb_ or nb_[0] == start:
+                break
+            prev_v, cur = cur, nb_[0]
+            loop.append(cur)
+            if len(loop) > len(bnd) + 2:
+                break
+        inner = set(v for fi in hole for v in M.faces[fi]) - set(loop)
+        cut |= hole
+        # the ball: at the sheet's eye, its front just behind the closed lid's surface there
+        cx, cz = s * float(mc0[0]) * HS, float(hz(ir))
+        lp_ = np.array(loop)
+        y_s = float(np.median(P[lp_, 1]))
+        C = np.array((cx, y_s + EYE_BACK + EYE_RAD[1], cz))
+        angs = [math.atan2(float(hrow(P[v][2])) - mc0[1], s * P[v][0] / HS - mc0[0]) for v in loop]
+        da = np.angle(np.exp(1j * np.diff(np.array(angs + [angs[0]]))))
+        sg = 1.0 if da.sum() > 0 else -1.0
+        stp = np.maximum(sg * da, 0.0) + 0.02
+        stp = stp / stp.sum() * math.tau
+        # (the loop's points spread evenly by angle round the outline from the inner corner, so the lid's edge is a
+        # clean curve: the corner point is the loop's point nearest the sheet's inner corner)
+        a_in = math.atan2(EYE_INNER[1] - mc0[1], EYE_INNER[0] - mc0[0])
+        k0 = int(np.argmin([abs(math.atan2(math.sin(a - a_in), math.cos(a - a_in))) for a in angs]))
+        n = len(loop)
+        loop = loop[k0:] + loop[:k0]
+        angs = angs[k0:] + angs[:k0]
+        # (spaced evenly along the outline's length, not by angle: by angle the almond's corners got too few points
+        # and the opening came out round)
+        pa = np.arctan2(poly[:, 1] - mc0[1], poly[:, 0] - mc0[0])
+        pdir = 1.0 if np.angle(np.exp(1j * np.diff(np.append(pa, pa[0])))).sum() > 0 else -1.0
+        pl = poly if pdir == sg else np.concatenate([poly[:1], poly[1:][::-1]])
+        seg_ = np.linalg.norm(np.diff(np.vstack([pl, pl[:1]]), axis=0), axis=1)
+        cum = np.concatenate([[0.0], np.cumsum(seg_)])
+        want = np.arange(n) / n * cum[-1]
+        closed = np.vstack([pl, pl[:1]])
+        spots = np.stack([np.interp(want, cum, closed[:, 0]), np.interp(want, cum, closed[:, 1])], 1)
+        lpos = {}
+        for v, (c2, r2) in zip(loop, spots):
+            x, z = s * c2 * HS, float(hz(r2))
+            P[v] = (x, ball_y(x, z, C) - LID_THICK, z)
+            lpos[v] = (c2, r2)
+        # the next two loops out: each point by its own angle round the eye at a fixed share beyond the outline
+        done = set(loop) | inner
+        prev = list(loop)
+        rings = []
+        for k_, sw in zip(LID_RINGS, LID_SWELL):
+            ring = sorted({u for v in prev for u in nbr.get(v, ()) if u not in done and u in hps})
+            for u in ring:
+                col, row = s * P[u][0] / HS, float(hrow(P[u][2]))
+                a = math.atan2(row - mc0[1], col - mc0[0])
+                c2, r2 = outline_at(a, k_)
+                x, z = s * c2 * HS, float(hz(r2))
+                yb = ball_y(x, z, C)
+                P[u] = (x, min(P[u][1], yb - LID_THICK - sw) * 0.5 + (yb - LID_THICK - sw) * 0.5, z)
+            done |= set(ring)
+            rings.append(ring)
+            prev = ring
+        # the lids' rest evened (a ring beyond), and every head point near the eye kept off the ball
+        ring3 = sorted({u for v in prev for u in nbr.get(v, ()) if u not in done and u in hps})
+        for v in inner:
+            dn = (P[v] - C) / EYE_RAD
+            P[v] = C + dn / max(np.linalg.norm(dn), 1e-9) * EYE_RAD * (1.0 - 0.002 / EYE_R)
+        for i in hpts:
+            if i in done or s * P[i][0] <= 0:
+                continue
+            dn = (P[i] - C) / EYE_RAD
+            dd = np.linalg.norm(dn)
+            if dd < 1.0 + 2.5 * LID_THICK / EYE_R:
+                P[i] = C + dn / dd * EYE_RAD * (1.0 + 2.5 * LID_THICK / EYE_R)
+        # (the rings placed by angle stood as flat wedges round the corners: evened with their neighbours, the lid's
+        # edge held)
+        for _ in range(LID_EVEN):
+            for u in [w for r in rings for w in r]:
+                ns = [w for w in nbr.get(u, ()) if w in hps]
+                avg = np.mean([P[w] for w in ns], 0)
+                P[u] = P[u] * 0.6 + avg * 0.4
+        for u in [w for r in rings for w in r]:
+            dn = (P[u] - C) / EYE_RAD
+            dd = np.linalg.norm(dn)
+            if dd < 1.0 + 1.5 * LID_THICK / EYE_R:
+                P[u] = C + dn / dd * EYE_RAD * (1.0 + 1.5 * LID_THICK / EYE_R)
+        for _ in range(3):
+            for u in ring3:
+                ns = [w for w in nbr.get(u, ()) if w in hps]
+                P[u] = P[u] * 0.5 + np.mean([P[w] for w in ns], 0) * 0.5
+        # the upper lid's fold: its second ring a little proud, a soft crease above it
+        for u in rings[1] if len(rings) > 1 else []:
+            if float(hrow(P[u][2])) < mc0[1]:
+                P[u][1] -= 0.0006
+        for u in ring3:
+            if float(hrow(P[u][2])) < mc0[1] - 4:
+                P[u][1] += 0.0005
+        # the margin's roll into the socket
+        ring2 = []
+        mid = np.array((C[0], C[2]))
+        for v in loop:
+            xz = P[v][[0, 2]]
+            dvec = mid - xz
+            xz2 = xz + dvec / max(np.linalg.norm(dvec), 1e-9) * LID_ROLL[0]
+            P = np.vstack([P, (xz2[0], ball_y(xz2[0], xz2[1], C) + LID_ROLL[1], xz2[1])])
+            M.P.append(P[-1].copy())
+            M.part.append("head")
+            weights.append(dict(weights[v]))
+            ring2.append(len(M.P) - 1)
+        M.P = [p for p in P]
+        lid_uv, best = None, None
+        for fi, f in enumerate(M.faces):
+            if fi in cut or fi not in face_uv or face_uv[fi][0] != "face" or M.fpart[fi] != "head":
+                continue
+            for v, q_ in zip(f, face_uv[fi][1]):
+                d = (s * P[v][0] / HS - 80.0) ** 2 + (float(hrow(P[v][2])) - 1060.0) ** 2
+                if P[v][1] < 0 and (best is None or d < best):
+                    best, lid_uv = d, q_
+        for j in range(n):
+            a, b = loop[j], loop[(j + 1) % n]
+            f = [a, b, ring2[(j + 1) % n], ring2[j]]
+            if np.dot(face_normal(P, f), P[f].mean(0) - C) < 0:
+                f = f[::-1]
+            M.face(f, "head")
+            face_uv[len(M.faces) - 1] = ("face", [lid_uv if lid_uv is not None else (0.0, 0.0)] * 4)
+        M.tag.setdefault("lid_hold", []).extend(list(loop) + list(ring2))
+        cols_ = [s * P[v][0] / HS for v in loop]
+        rows_ = [float(hrow(P[v][2])) for v in loop]
+        print("BOY EYES lid edge: columns %.0f to %.0f, rows %.0f to %.0f (outline %.0f to %.0f, %.0f to %.0f)" % (min(cols_), max(cols_), min(rows_), max(rows_), poly[:, 0].min(), poly[:, 0].max(), poly[:, 1].min(), poly[:, 1].max()))
+        eyes.append((C, s))
+        print("BOY EYES %s (lid loops): opening of %d faces, margin %d points, rings %s, ball at %s" % (
+            "left" if s > 0 else "right", len(hole), n, [len(r) for r in rings], np.round(C, 4)))
+    return M, face_uv, weights, under, cut, eyes
+
+
 def eye_texture(path, size=256):
     """The eyeball's picture, planar from its front: white, his olive-green iris (the sheet's: lighter round the pupil,
     a darker rim), the pupil, a small light."""
@@ -6750,7 +7427,7 @@ def eye_texture(path, size=256):
 def eye_balls(eyes):
     """Two balls (16 round, 12 from front to back), their poles straight ahead; UVs planar from the front."""
     P, F = [], []
-    nu, nv = 12, 8
+    nu, nv = (14, 8) if HEAD2 else (12, 8)
     for C, s in eyes:
         base = len(P)
         for i in range(nv + 1):
@@ -6758,6 +7435,9 @@ def eye_balls(eyes):
             for j in range(nu):
                 ph = math.tau * j / nu
                 d = np.array((math.sin(th) * math.cos(ph), -math.cos(th), math.sin(th) * math.sin(ph)))
+                if HEAD2:
+                    # (eleventh pass: the poles up and down, not at the pupil, where the fan showed as a dark star)
+                    d = np.array((math.sin(th) * math.cos(ph), math.sin(th) * math.sin(ph), math.cos(th)))
                 P.append(C + d * EYE_RAD)
         for i in range(nv):
             for j in range(nu):
@@ -6900,7 +7580,10 @@ def body_marks(rgb, pos, nrm, hit, fam, joints):
     # (faded toward the wrist and the ankle so no step shows at the seams there)
     for sfx in ("_l", "_r"):
         kn = np.array(joints["knuckles" + sfx], float)
-        rgb = blush(rgb, (hit & (fam == "hand")) * 0.3 * np.exp(-(np.linalg.norm(pos - kn, axis=-1) / 0.05) ** 2))
+        # (eleventh pass: on the back of the hand only, and less: on the palm it showed as a darker orange patch
+        # ending in an edge at the wrist)
+        Tb_ = np.array(joints["hand_frame" + sfx][0], float)
+        rgb = blush(rgb, (hit & (fam == "hand")) * 0.16 * smooth01(-0.1, 0.5, (nrm * Tb_).sum(-1)) * np.exp(-(np.linalg.norm(pos - kn, axis=-1) / 0.04) ** 2))
     rgb = blush(rgb, (hit & (fam == "foot")) * 0.28 * (1.0 - smooth01(0.025, 0.06, z)))
     for sfx in ("_l", "_r"):
         for name in FINGERS + ("thumb",):
@@ -6914,7 +7597,7 @@ def body_marks(rgb, pos, nrm, hit, fam, joints):
                 Tb /= max(np.linalg.norm(Tb), 1e-6)
             hb = hit & (fam == "hand") & ((nrm * Tb).sum(-1) > 0.35)
             at = nearest_texel(pos, hb, tip - u * 0.0055 + Tb * 0.01)
-            rgb = blush(rgb, (hit & (fam == "hand")) * 0.5 * np.exp(-(np.linalg.norm(pos - tip, axis=-1) / 0.008) ** 2))
+            rgb = blush(rgb, (hit & (fam == "hand")) * 0.3 * np.exp(-(np.linalg.norm(pos - tip, axis=-1) / 0.008) ** 2))
             if at is not None:
                 rgb = spots(rgb, pos, hb, [at], [0.0047 if name != "thumb" else 0.0056], [0.55], (1.06, 0.94, 0.93))
                 rgb = spots(rgb, pos, hb, [at + u * 0.0035], [0.0026], [0.4], (1.08, 1.03, 1.0))
@@ -6973,7 +7656,7 @@ def body_marks(rgb, pos, nrm, hit, fam, joints):
         rgb = blush(rgb, np.exp(-((d - 1.0) / 0.12) ** 2) * (z < bz + 0.02) * back * torso * 0.18, SHADE)
     # more freckles: the upper back, the arms, the tops of the shoulders
     up = torso * back * smooth01(zs - 0.2, zs - 0.05, z)
-    rgb = freckles(rgb, pos, up * hit, 180, 61)
+    rgb = freckles(rgb, pos, up * hit, 260, 61)
     arms = (hit & (fam == "arm")) * smooth01(-0.2, 0.5, nrm[..., 2] + 0.3)
     rgb = freckles(rgb, pos, arms * 1.0, 110, 67, s=(0.15, 0.4))
     return rgb
@@ -6990,7 +7673,7 @@ def rule_paint(M, face_uv, picture, pos, nrm, hit, fam, joints):
     crease = np.clip((0.78 - ao) / 0.45, 0, 1) ** 1.3
     # (eighth pass) on the hands only the truly shut-in places: the vertex shade of each finger's knuckle ring, pulled
     # out a little by the knuckle bump, drew thin dark lines across the fingers in the close-up
-    crease = np.where(fam == "hand", 0.5 * np.clip((0.58 - ao) / 0.4, 0, 1) ** 1.3, crease)
+    crease = np.where(fam == "hand", 0.22 * np.clip((0.58 - ao) / 0.4, 0, 1) ** 1.3, crease)   # (eleventh pass: from 0.5, the cupped palm read as a darker orange patch)
     rgb = blush(rgb, crease, SHADE)
     if picture == "skin" and joints is not None:
         ny = nrm[..., 1]
@@ -7198,7 +7881,7 @@ def face_features(M, rgb, pos, nrm, hit, fam):
     # freckles over the bridge of the nose and the cheeks
     reg = np.exp(-((ac - 58.0) / 46.0) ** 2) * np.exp(-((row - 1148.0) / 20.0) ** 2) * fwd * head
     reg = np.maximum(reg, np.exp(-((ac / 26.0) ** 2 + ((row - 1140.0) / 14.0) ** 2)) * head)
-    out = freckles(out, pos, reg * hit, 110, 53, r=(0.0006, 0.0012), s=(0.25, 0.55))
+    out = freckles(out, pos, reg * hit, 190, 53, r=(0.0007, 0.0014), s=(0.3, 0.6))   # (eleventh pass: from 110, smaller and fainter; the critic: "2-3x denser and slightly larger and darker")
     out = np.where(hit[..., None], np.nan_to_num(out), np.nan_to_num(rgb))
     return np.clip(out, 0, 1)
 
@@ -7302,6 +7985,7 @@ THROAT_IN = float(arg("--throat-in", "0.004"))   # metres the throat under the j
 NAPE_SMOOTH = int(arg("--nape-smooth", "10"))
 CROWN_DOME = float(arg("--crown-dome", "0.6"))   # share of the way the cranium is drawn onto its ellipsoid
 DOME_ROW = float(arg("--dome-row", "985"))         # the ellipsoid's middle (head-sheet row): between the brows and the crown
+DOME_GROW = float(arg("--dome-grow", "0.025"))
 
 
 def nape_polish(M):
@@ -7344,6 +8028,11 @@ def nape_polish(M):
         r = np.linalg.norm(d, axis=1)
         wd = (fams == "head") * smooth01(float(hz(1025.0)), float(hz(965.0)), z) * CROWN_DOME
         P = P + (c + d / np.maximum(r, 1e-6)[:, None] * R - P) * wd[:, None] * (r > 0.3)[:, None]
+        if HEAD2 and DOME_GROW > 0:
+            # (eleventh pass: the bald front and side views' outlines stood 6 to 8 sheet pixels beyond the crown and
+            # the back of the skull) the cranium grown outward from its middle, most at the top and back, not the brow
+            g = (fams == "head") * smooth01(float(hz(1040.0)), float(hz(960.0)), z) * smooth01(c[1] - 0.05, c[1] + 0.01, P[:, 1])
+            P = P + (P - c) * (DOME_GROW * g)[:, None]
     M.P = [p for p in P]
     n, _ = folded(P, M.faces)
     print("BOY nape polish: %d points smoothed, nape %.1f mm in, throat %.1f mm back; %d folded" % (
@@ -7358,7 +8047,9 @@ def finish(M, T, joints, sh):
     placed, face_uv = pack(islands)
     under = boxer_faces(M, T)
     eye_cut, eyes = set(), []
-    if EYES_OPEN:
+    if EYES_OPEN and HEAD2 and M.tag.get("eye_strip"):
+        M, face_uv, weights, under, eye_cut, eyes = open_eyes2(M, face_uv, weights, under)
+    elif EYES_OPEN:
         M, face_uv, weights, under, eye_cut, eyes = open_eyes(M, face_uv, weights, under)
     unfold_head(M)
     if FACE_POLISH:
@@ -7438,6 +8129,17 @@ def finish(M, T, joints, sh):
         # (points no face of this piece uses are dropped, so each piece carries only its own)
         bm = bmesh.new()
         bm.from_mesh(me)
+        if name == "boy_body" and HEAD2 and UNSUB_BACK:
+            # (eleventh pass, the budget) the back of the skull, a smooth dome the subdivision had made four times as
+            # fine as it needs, taken back to the cage's density there (the face, ears, eyes and the neck's seam kept)
+            bm.verts.ensure_lookup_table()
+            hp = [i for i in range(len(P)) if M.part[i] == "head"]
+            zc_ = float(np.mean([M.P[i][2] for i in M.tag["neck_rings"][-1]]))
+            yc_ = float(np.median([M.P[i][1] for i in hp]))
+            sel = [bm.verts[i] for i in hp if M.P[i][1] > yc_ + UNSUB_BACK and M.P[i][2] > zc_ + 0.035 and bm.verts[i].link_faces]
+            n0 = sum(len(f.verts) - 2 for f in bm.faces)
+            bmesh.ops.unsubdivide(bm, verts=sel, iterations=1)
+            print("BOY back of the skull un-subdivided: %d points chosen, %d triangles to %d" % (len(sel), n0, sum(len(f.verts) - 2 for f in bm.faces)))
         loose = [v for v in bm.verts if not v.link_faces]
         bmesh.ops.delete(bm, geom=loose, context="VERTS")
         bm.to_mesh(me)
