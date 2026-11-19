@@ -587,10 +587,9 @@ func _atlas_mesh(mesh: Mesh, region: Rect2, size: int) -> ArrayMesh:
 			arrays[Mesh.ARRAY_COLOR] = colour
 		else:
 			arrays[Mesh.ARRAY_COLOR] = null
-		# (compressed as the model was, if it was)
-		var squeeze := 0
-		if mesh is ArrayMesh:
-			squeeze = (mesh as ArrayMesh).surface_get_format(mini(s, mesh.get_surface_count() - 1)) & Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES
+		# (positions, normals and UVs compressed as Godot's importer does: half the weight; the game
+		# models were imported so, so the values are the same)
+		var squeeze := Mesh.ARRAY_FLAG_COMPRESS_ATTRIBUTES
 		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, (Mesh.ARRAY_CUSTOM_RG_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT) | squeeze)
 		var m := mesh.surface_get_material(mini(s, mesh.get_surface_count() - 1))
 		if m:
