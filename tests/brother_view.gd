@@ -8,6 +8,7 @@ extends SceneTree
 ## (arms down and forward, elbows and knees bent) from the front and the side. Then quits.
 
 const MODEL := "res://models/brother.glb"
+var _model_path := MODEL
 
 var _out := ""
 var _pose := false
@@ -35,6 +36,9 @@ func _initialize() -> void:
 			_persp = true
 		if a == "--posed":
 			_posed = true
+		if a.begins_with("--model="):
+			# (another figure of tools/build_brother.py: --model=res://models/npc/man_big.glb)
+			_model_path = a.get_slice("=", 1)
 	var world := Node3D.new()
 	root.add_child(world)
 	_env = Environment.new()
@@ -48,7 +52,7 @@ func _initialize() -> void:
 	_sun = DirectionalLight3D.new()
 	_sun.basis = Basis.looking_at(Vector3(-0.45, -0.75, -0.5).normalized(), Vector3.UP)
 	world.add_child(_sun)
-	_model = (load(MODEL) as PackedScene).instantiate() as Node3D
+	_model = (load(_model_path) as PackedScene).instantiate() as Node3D
 	world.add_child(_model)
 	if _winding:
 		# Inside-out check (as tests/winding.gd judges the game's meshes): every piece's winding against its normals,
@@ -236,9 +240,16 @@ func _process(_delta: float) -> bool:
 			# (sixth round: measured, the old 0.7 sun and 0.45 ambient lit his chest at about 2.3 times its albedo
 			# (sheet-coloured texture rendered 255,215,173) and left his back at 0.4 (116,92,76): a softer key and
 			# more fill put both sides near the sheet's own peach-tan)
-			_sun.light_energy = 0.24
+			# (seventh round: a light a game would plausibly use, a moderate sun and a sky's fill (the lit side about
+			# twice the shaded), with his skin picture toned so the lit front lands on the sheet's warm peach-tan; the
+			# 0.24 / 0.72 of the sixth round lit him flat and the texture read bleached)
+			# Measured here (linear, his chest square to the camera): each unit of this sun lights his front about 6.8
+			# times his albedo, each unit of this ambient about 1.0 times. 0.12 and 0.55: the lit front about 1.4 times
+			# the albedo, the shaded back about 0.55 (two and a half to one), with the albedo at the sheet's own
+			# painted tone (SKIN_TONE in tools/build_brother.py).
+			_sun.light_energy = 0.12
 			_env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
-			_env.ambient_light_energy = 0.72
+			_env.ambient_light_energy = 0.55
 			_set_pose(d["pose"])
 			for mesh: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
 				if not String(mesh.name).begins_with("brother_body_under"):

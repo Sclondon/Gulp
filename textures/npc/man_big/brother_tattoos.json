@@ -1,0 +1,6 @@
+{
+ "keep": false,
+ "skin": "brother_skin_layout.json",
+ "pictures": "res://textures/tattoos/",
+ "rows": []
+}

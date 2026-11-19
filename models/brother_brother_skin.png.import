@@ -2,13 +2,10 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b8jxsoqu4ar0h"
+uid="uid://ch86r5jd713yu"
 path="res://.godot/imported/brother_brother_skin.png-0917d103ee54ee0ddf1097b873ea7651.ctex"
 metadata={
 "vram_texture": false
-}
-generator_parameters={
-"md5": "1ba05cc00c8ad53ed19558571682a30f"
 }
 
 [deps]
@@ -26,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
