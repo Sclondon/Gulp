@@ -1031,3 +1031,7 @@ the research (with sources), the numbers, what is checked and what is rough. Con
   6:15 PM) even on the upgraded plan after about 25 pictures in the afternoon: draw tpose8 then, in the NPC
   conversation, and tell the brother's builder. `tools/build_brother.py` is to build `brother`, `man_big` and `man_trim`
   by `-- --figure`.
+- The brother's nose (the user, 2026-11-18, 5:45 PM): "hes a bit too red button nosed, needs to be a tad angular": less
+  red, less of a round button; a slightly more angular nose (and, Claude's reading, a touch more definition in the face,
+  still boyish). Goes into `concept_brother_tpose8.jpg` and a new head sheet `concept_brother_head3.jpg` (two rows: with
+  hair, and shaved), both owed after 6:15 PM.
