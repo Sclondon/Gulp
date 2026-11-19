@@ -4,7 +4,8 @@ extends Node
 ## starts the moment the start button is live, as an eager player's does), then carries the fish
 ## along the legs at SPEED m/s, a few metres over the floor, and stops at each place for a moment;
 ## "leap" throws it out of the water. At the end: the hitches (scripts/hitches.gd) and the frame
-## times. tools/PERF.md, "Hitches", says how it was used.
+## times, and PASSED or FAILED: it fails if any frame after the start is 50 ms or more (the exit
+## code is 1). tools/PERF.md, "Hitches", says how it was used.
 ##
 ##   godot --path . --audio-driver Dummy --rendering-driver opengl3_angle --resolution 390x844 -- --dive --tour
 
@@ -45,7 +46,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	var player: Player = main.player
 	if main._on_deck:
-		hitches.stage = "title" if main._dive < 0.0 else "dive"
+		hitches.stage = ("title" if main._dive < 0.0 else "dive") if not main._loading else "loading"
 		return
 	if not _started:
 		_started = true
@@ -144,7 +145,23 @@ func _finish() -> void:
 	print("GULP TOUR frames %d, mean %.1f ms, median %.1f, 95th %.1f, 99th %.1f, worst %.0f" % [
 			sorted.size(), total / n, sorted[n / 2], sorted[int(n * 0.95)], sorted[int(n * 0.99)], sorted[n - 1]])
 	hitches.report()
-	get_tree().quit()
+	var over_two := 0
+	for t in _times:
+		if t > 33.4:
+			over_two += 1
+	print("GULP TOUR frames over 33 ms (two frames at 60 Hz) in play: %d" % over_two)
+	# Pass or fail (the user, 2026-11-19: "there should be no freezing"): no frame of 50 ms or more
+	# from the moment the start button is pressed (the dive and the swim), nothing loaded or
+	# compiled after it.
+	var after: Array = hitches.after(["start", "loading", "title"])
+	var ready_at: float = main.warmer.ready_s if main.warmer else -1.0
+	print("GULP TOUR loading done at %.1f s from the engine's start" % ready_at)
+	if int(after[0]) == 0:
+		print("GULP TOUR PASSED: no frame over %.0f ms after the start" % Hitches.LONG_MS)
+		get_tree().quit(0)
+	else:
+		print("GULP TOUR FAILED: %d frames over %.0f ms after the start, the worst %.0f ms" % [after[0], Hitches.LONG_MS, after[1]])
+		get_tree().quit(1)
 
 
 # A way through the water from one point to another: a breadth-first search over 2 m squares of

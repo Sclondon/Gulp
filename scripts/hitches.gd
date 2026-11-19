@@ -210,6 +210,17 @@ func _short(list: PackedStringArray) -> String:
 	return ", ".join(list)
 
 
+## The hitches (frames of LONG_MS or more) in stages other than these: [count, worst ms].
+func after(skipped: Array) -> Array:
+	var n := 0
+	var worst := 0.0
+	for h: Dictionary in _hitches:
+		if not skipped.has(h.stage):
+			n += 1
+			worst = maxf(worst, h.ms)
+	return [n, worst]
+
+
 ## The summary: how many hitches (over 50, 100, 250 ms), the worst, the time lost, by stage.
 func report() -> void:
 	var by_stage := {}

@@ -264,3 +264,97 @@ of the 36,000 triangles); half the breaker spray; the panel without MSAA; panel 
 brother*, captain*, face/, hair/, npc/ and textures/boy, brother, captain, tattoos, face, hair, npc: about 35 MB), the
 first, flat Atlantis (model, atlases, table) and the old rocks' table. `tests/web_deps.gd` (headless) checks that
 nothing kept depends on anything left out. The title's figures (models/title_*) are kept.
+
+## Everything at the start (2026-11-19, later)
+
+The user: "there should be no freezing", "whats the point of loading if you have to load after pressing start
+anyways??", "All loading should just happen at the start you shouldnt have to wait for buttons or anything", and of
+baking: "cant you use the shader to generate the textures?". CLAUDE.md, "Decision: everything compiled on the loading
+screen; creatures drawn from baked paint; lit per vertex". GameCommon `godot/baked-look` has the bake's own record.
+
+### Shader programs: what one costs (`tools/compile_cost.gd`, ANGLE D3D11, cold, desktop)
+
+`godot --path . --audio-driver Dummy --rendering-driver opengl3_angle --resolution 320x240 -s res://tools/compile_cost.gd
+-- --synthetic --variants --kinds=<k,...> --parts --shaders=<res://...>` times the first frame a thing is drawn in.
+Each program is salted, so no cache has it.
+
+| program | first draw |
+| --- | --- |
+| an empty spatial shader lit per pixel (or a StandardMaterial3D) | 1.4 to 1.5 s |
+| the same lit per vertex (`vertex_lighting`) | 0.27 s |
+| the same unshaded | 0.14 s |
+| soft shadow filters off, Lambert over Burley | no change |
+| `limits/opengl/max_lights_per_object` 1 (12 here) | slower: 2.6 s |
+| another version of a compiled program: an omni light near / spot / no fog / a sky | 0.08 / 0.08 / 0.04 / 0.14 s (per vertex: 0.07 / 0.07 / 0.04 / 0.00) |
+| a MultiMesh of a compiled program | 0 |
+
+Eight creatures (garibaldi, sardine, octopus, crab, orca, blue whale, dumbo octopus, nudibranch), seconds:
+
+| | per pixel | per vertex | per vertex, fragment one texture (baked) | unshaded, texture |
+| --- | --- | --- | --- | --- |
+| mean | 2.51 | 1.01 | 0.60 | 0.42 |
+| range | 1.56 to 3.78 | 0.46 to 1.99 | 0.45 to 0.78 | 0.28 to 0.58 |
+
+So a creature program was about 1.4 s of Godot's per-pixel lighting, 0.3 s of the program itself, 0.3 s of its own
+vertex code and 0.5 to 2 s of its procedural markings (noise, scales, spots, loops, cartoon eyes). Turning unused
+varyings into locals saved nothing (FXC prunes them). Scenery shaders, per pixel -> per vertex: kelp 1.55 -> 0.54,
+mangrove 2.56 -> 0.81, sea grass 1.42 -> 0.51, seaweed 1.43 -> 0.47, kit rock 1.58 -> 0.35, kit soft 1.41 -> 0.41,
+ruins 1.48 -> 0.33, wreck 0.89 -> 0.27, net 0.90 -> 0.29, flock 1.61 -> 0.56, plankton 1.62 -> 0.46, garden eels 1.94
+-> 0.54, anemone 2.15 -> 0.70, hair 2.05 -> 0.55, nettle 2.94 -> 1.37; the water 7.0 s (kept per pixel: its light is
+its fragment).
+
+### Programs, before and after
+
+About the same number of programs (the hitch logger saw 297 shader-and-format keys; each creature component still has
+its own, as their vertex code differs), each far cheaper: 110 creature shaders baked (from 2.5 s to about 0.6 s), 9
+creature shaders kept unbaked but lit per vertex (the squids, comb jelly, anglerfish, firefly squid, nettle, ghost
+whale's is unshaded), 16 scenery and plant shaders lit per vertex, every StandardMaterial3D of the sea lit per vertex.
+Only the water and the sand (and a few unshaded effects) are compiled per pixel.
+
+### Cold tour (390x844, ANGLE, Godot's shader cache moved aside, `-- --dive --tour`, which now passes or fails)
+
+| | before (pushed 2026-11-19) | after |
+| --- | --- | --- |
+| loading: everything compiled | never (the start waited for 75 m round the start, then ~280 programs compiled in play) | 137 to 157 s from the engine's start (five runs; 128 to 134 s of it warming) |
+| title start button | live at 118 to 142 s | live when the title shows |
+| in play: frames over 50 ms | 100 (worst 5.8 s; 183 s of warm-ups in play) | 0 (PASSED; worst frame 31 ms) |
+| in play: frames over 33 ms | not counted | 0 |
+| frame time in play, median / 95th / 99th | 6.5 / 11.4 / 14.1 ms | 6.2 / 10.3 / 11.9 ms |
+| second visit (cache kept) | 2.9 s to the start button | everything compiled at 23 s |
+
+The loading screen's time, split (tour 1 of the new scheme): the sea's first frames 23 s (the water alone is 7 s);
+each creature kind 0.45 to 0.9 s (median 0.63; the octopus 4.5 s, its arms' loops); the same lit by a lamp 0.12 s
+each (18 s in all); materials 0.1 to 0.9 s.
+
+A Windows desktop's first visit in Chrome is the worst case (FXC); a phone's GL driver compiles faster, and a browser
+keeps compiled programs for later visits.
+
+### Looks: every kind compared (`tests/baked_compare.gd`, the old shader beside the baked look, side and three-quarter)
+
+Same markings for nearly every kind. Different:
+- Eyes no longer look about or blink: baked looking ahead, open (`eye_look`, `blink` were live).
+- No sheen or rim at grazing angles (the shaders' `VIEW` terms), no sparkle on starfish and urchins, no wrinkles
+  drawn as normals (sperm whale).
+- Koi and guppies: three baked patterns each, not one per fish.
+- Fine speckles on small fish (guppies' dots, corydoras' freckles, the leatherback's spots, a seal's or narwhal's
+  mottling) are softer; the emperor angelfish's stripes needed a sharper mipmap (`texture(..., -1.0)`).
+- Light per vertex: the shine is broader and softer on everything lit per vertex.
+- Not baked (look as before): Humboldt and giant squid (living colour cells), comb jelly, deep anglerfish (pulsing lure),
+  firefly squid, the ghost whale (added light), the big jellies (own `light()`), the submarine (already a texture).
+
+### Pack and memory
+
+186 baked pictures, 6.5 MB imported (lossy WebP with mipmaps), about 88 MB of RGBA8 on the GPU, all loaded at the start;
+baked meshes 16 MB (the full-float atlas UVs: half floats came out empty), against 14 MB of game and far models that a
+web build now leaves out (259 listed in `creatures/*/baked/*primed.txt`). The pack was not exported in this pass.
+
+Found on the way (each fixed): the warm-up showed particles as plain meshes, but particles draw as a MultiMesh
+with colours and custom data, another version (the first leap at Steamer Lane stalled 62 ms); a component that shows its
+far model only when stepped (the octopus) or keeps its script under another name (the shrimps) was baked without it;
+lighting the submarine's own materials per vertex as each one was made came with 200 to 380 ms frames on
+the dive (gone without it), so creatures' own plain materials stay per pixel and are compiled once on the loading screen.
+
+### Left
+
+- Native GL (not a browser): a steady 130 ms frame on the way to the sand flats with a warm cache, absent under ANGLE.
+- Not tried in a real browser or on a phone.

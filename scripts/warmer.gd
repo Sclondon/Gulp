@@ -1,71 +1,77 @@
 class_name Warmer
 extends Node
-## Shows each animal kind and every other material of the sea once to a tiny view far under the sea,
-## so that its shader program is compiled before it is first seen in play: a browser compiles each
-## program the first time it is drawn, and stops the game for it (about a second each on a Windows
-## desktop, more on a slow phone; tools/PERF.md, "Hitches"). CLAUDE.md, "Decision: shaders warmed
-## by nearness".
+## Everything is loaded and compiled on the loading screen, before the title shows; nothing after
+## (the user, 2026-11-19: "there should be no freezing", "whats the point of loading if you have to
+## load after pressing start anyways??", "All loading should just happen at the start you shouldnt
+## have to wait for buttons or anything"). CLAUDE.md, "Decision: everything compiled on the loading
+## screen".
 ##
-## Everything is warmed in order of how near it is to the player (each kind by its nearest animal,
-## each material by its nearest piece). Behind the title as fast as it can go (one thing every
-## other frame); the start waits until everything within START_REACH of the start is done (or
-## START_MOST seconds have gone by). In play
-## it carries on, one thing every PLAY_GAP frames, but only what lies within PLAY_REACH of the
-## player (past the 55 m where animals wake and the 60 m where plants and pieces show), so a
-## program is ready before its thing comes into sight; on the sale, shop, run-over and paused
-## screens, and while the fish chooses what to become, as fast as behind the title.
-
-## The start waits for what is this near the start (m), and for what is everywhere (the water,
-## the sand, effects).
-const START_REACH := 75.0
-## ...but for no longer than this (s, from the first frame shown): a browser on a Windows desktop
-## took one to three seconds a program on a first visit (tools/PERF.md, "Hitches"), so the rest are
-## then warmed in play, nearest first.
-const START_MOST := 60.0
-## In play, only what is this near the player is warmed (m)...
-const PLAY_REACH := 110.0
-## ...and at most one thing every this many frames.
-const PLAY_GAP := 30
-## How often what is left is put in order again (frames).
-const SORT_EVERY := 30
+## A browser compiles each shader program the first time it is drawn and stops the game for it
+## (tools/PERF.md, "Shader programs"). So every animal kind (dressed as the game dresses it, its far
+## model too, from its baked look) and every other material of the sea (each by its shader and the
+## way it is drawn: alone, or in a MultiMesh of a format) is shown once to a tiny view far under the
+## sea, one a frame, in the sea's own world (its light, fog and sky). Things made only later in play
+## are made here too and shown (the eelgrass fields' squares, splashes and the rest: Main's
+## `_warm_extras`). Each is shown under the water's light, then again beside a lamp (an omni light),
+## as the jellies' lamps make the engine compile another version of a lit program for what they
+## light; and what is lit per pixel (the water, the sand) a third time under the air's light (the
+## sky): a program lit per pixel has a version for each (tools/PERF.md, "Shader programs").
+##
+## `done()` says when all of it is done; `progress()` how far (0..1, by the time each step is
+## expected to take). Nothing is done once it is ready: there is no warming in play.
 
 var viewport: SubViewport
 var life: Life
-## Every kind and material, each {name, kind or thing, box (where it is: AABB, or null for
-## everywhere), far (its distance from the player when last sorted)}; those not yet shown.
+## Every kind and material, each {name, kind or thing}; those not yet shown.
 var left: Array = []
-## How many there were, and how many lay within START_REACH of the start.
+## How many there were.
 var total := 0
-var first := 0
+## Whether what is shown now is to be lit as above the water (Main sets the sea's light from it).
+var above := false
 ## The thing being shown now (freed after two frames).
 var now: Node3D
 
 var _view: SubViewport
+var _lamp: OmniLight3D
 var _wait := 0
-var _gap := 0
-var _sorted_at := -1000
-var _frames := 0
-var _start := Vector3.ZERO
-var _first_left := 0
+var _weight_total := 0.0
+var _weight_done := 0.0
 var _began_ms := -1
+var _done_ms := -1
+## When everything was ready (s from the engine's start; -1 until then).
+var ready_s := -1.0
 
 
-## Makes the list (call when the sea is built, the run placed at `start`).
-func begin(start: Vector3, extra: Array = []) -> void:
-	_start = start
+## Makes the list (call when the sea is built).
+func begin(extra: Array = []) -> void:
+	# (the plain materials lit per vertex first, so they are shown as they will be drawn)
+	light_per_vertex(viewport)
 	for kind: String in Species.ALL:
 		# (the sea monsters are not in the sea until something calls them up: Species `monster`)
-		if not Species.has(kind) or Species.of(kind).get("monster", false):
+		if not Species.has(kind) or Species.of(kind).get("monster", false) or Species.of(kind).script == "":
 			continue
-		left.append({"name": kind, "kind": kind, "box": null, "far": INF})
+		left.append({"name": kind, "kind": kind, "weight": 1.0})
 	for thing: Dictionary in materials_to_warm(viewport) + extra:
+		thing["weight"] = 0.6
 		left.append(thing)
-	total = left.size()
-	_sort(start)
+	# (twice each: alone, then lit by a lamp; what is lit per pixel a third time, in the air's light)
+	var lit: Array = []
+	var aired: Array = []
 	for item: Dictionary in left:
-		if item.far <= START_REACH:
-			first += 1
-	_first_left = first
+		var again := item.duplicate()
+		again["lamp"] = true
+		again["weight"] = 0.15
+		lit.append(again)
+		if item.has("thing") and lit_per_pixel(item.thing[1]):
+			var air := item.duplicate()
+			air["above"] = true
+			air["weight"] = 0.3
+			aired.append(air)
+	left.append_array(lit)
+	left.append_array(aired)
+	total = left.size()
+	for item: Dictionary in left:
+		_weight_total += float(item.weight)
 	_view = SubViewport.new()
 	_view.size = Vector2i(32, 32)
 	_view.world_3d = viewport.find_world_3d()
@@ -75,35 +81,29 @@ func begin(start: Vector3, extra: Array = []) -> void:
 	eye.position = Vector3(0.0, -800.0, 3.0)
 	eye.far = 12.0
 	_view.add_child(eye)
-	print("GULP WARM %d things to show once (%d kinds), %d of them near the start" % [total, _count_kinds(), first])
+	_lamp = OmniLight3D.new()
+	_lamp.position = Vector3(0.0, -799.0, 1.5)
+	_lamp.omni_range = 4.0
+	_lamp.visible = false
+	viewport.add_child(_lamp)
+	print("GULP WARM %d things to show once (%d kinds), each also lit by a lamp" % [total, _count_kinds()])
 
 
-## Whether everything near the start has been shown.
-func ready_to_start() -> bool:
-	return (_first_left <= 0 and now == null) or (_began_ms >= 0 and Time.get_ticks_msec() - _began_ms > START_MOST * 1000.0)
+## Whether everything has been shown.
+func done() -> bool:
+	return left.is_empty() and now == null
 
 
-## How far along the start's share is (0..1).
+## How far along it is (0..1).
 func progress() -> float:
-	if ready_to_start():
+	if done():
 		return 1.0
-	return 1.0 if first == 0 else clampf(float(first - _first_left) / first, 0.0, 1.0)
+	return clampf(_weight_done / maxf(_weight_total, 0.001), 0.0, 0.999)
 
 
-## Puts these kinds first (what the fish may become, offered now).
-func hurry(kinds: Array) -> void:
-	for item: Dictionary in left:
-		if item.has("kind") and item.kind in kinds:
-			item.far = -1.0
-			item.hurried = true
-	left.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.far) < float(b.far))
-
-
-## A frame: `fast` behind the title and on screens where nothing swims; else the pace of play.
-## `at` is where the player is.
-func step(at: Vector3, fast: bool) -> void:
-	_frames += 1
-	if _began_ms < 0 and Engine.get_frames_drawn() > 1:
+## A frame of the loading screen: shows the next thing.
+func step() -> void:
+	if _began_ms < 0:
 		_began_ms = Time.get_ticks_msec()
 	_wait -= 1
 	if _wait > 0:
@@ -115,22 +115,15 @@ func step(at: Vector3, fast: bool) -> void:
 		if _view:
 			_view.queue_free()
 			_view = null
-			print("GULP WARM everything is ready")
+			_lamp.queue_free()
+			_done_ms = Time.get_ticks_msec()
+			ready_s = _done_ms / 1000.0
+			print("GULP WARM everything is ready at %.1f s (%.1f s of warming)" % [_done_ms / 1000.0, (_done_ms - _began_ms) / 1000.0])
 		return
-	if _frames - _sorted_at >= SORT_EVERY:
-		_sort(at)
-	if not fast:
-		_gap -= 1
-		if _gap > 0:
-			return
-		if float(left[0].far) > PLAY_REACH:
-			return
-	_gap = PLAY_GAP
 	var item: Dictionary = left.pop_front()
-	if item.get("near_start", false):
-		_first_left -= 1
-		if _first_left == 0:
-			print("GULP WARM the starting waters are ready at %.1f s" % (Time.get_ticks_msec() / 1000.0))
+	_weight_done += float(item.weight)
+	_lamp.visible = item.get("lamp", false)
+	above = item.get("above", false)
 	Hitches.note("warm " + String(item.name))
 	if item.has("kind"):
 		_show_kind(item.kind)
@@ -138,37 +131,10 @@ func step(at: Vector3, fast: bool) -> void:
 		_show_thing(item.thing)
 
 
-func _sort(at: Vector3) -> void:
-	_sorted_at = _frames
-	# (each kind's nearest animal)
-	var nearest := {}
-	if life:
-		for each: Creature in life.creatures:
-			var d := each.global_position.distance_to(at)
-			if d < float(nearest.get(each.kind, INF)):
-				nearest[each.kind] = d
-	for item: Dictionary in left:
-		if item.get("hurried", false):
-			item.far = -1.0
-		elif item.has("kind"):
-			# (a kind not stocked in the sea is warmed last)
-			item.far = float(nearest.get(item.kind, 1.0e6))
-		elif item.box == null:
-			item.far = 0.0
-		else:
-			var far := INF
-			for box: AABB in item.box:
-				far = minf(far, at.distance_to(at.clamp(box.position, box.end)))
-			item.far = far
-		if _frames <= 1 and item.far <= START_REACH:
-			item.near_start = true
-	left.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.far) < float(b.far))
-
-
 func _count_kinds() -> int:
 	var n := 0
 	for item: Dictionary in left:
-		if item.has("kind"):
+		if item.has("kind") and not item.get("lamp", false):
 			n += 1
 	return n
 
@@ -186,10 +152,16 @@ func _show_kind(kind: String) -> void:
 	now.scale = Vector3.ONE / maxf(Species.long_of(kind, look), 0.05)
 	viewport.add_child(now)
 	now.global_position = Vector3(0.0, -800.0, 0.0)
-	# (and its far model loaded too, which a component loads only when first asked for it: a
-	# load in play otherwise, the first time one of the kind is far off)
+	# (and its far model, which a component loads only when first asked for it)
 	if &"low" in look:
 		look.set(&"low", true)
+		# (shown too: both models are drawn the frame after)
+		var near: Node3D = Species.make(kind)
+		if &"game" in near:
+			near.set(&"game", true)
+		if &"cartoon_eyes" in near:
+			near.set(&"cartoon_eyes", 1.0)
+		now.add_child(near)
 	_wait = 2
 	if life:
 		life.mark_dressed(kind)
@@ -229,9 +201,9 @@ func _show_thing(thing: Array) -> void:
 	_wait = 2
 
 
-## Every material drawn in the sea but the animals' (warmed by kind), once each by its shader and
-## the way it is drawn (alone, or many in a MultiMesh of a format), with a mesh it is drawn on and
-## where its nearest piece is: {name, thing: [mesh, material, MultiMesh or null], box}.
+## Every material drawn in the sea but the animals' (shown by kind), once each by its shader and
+## the way it is drawn (alone, or many in a MultiMesh of a format), with a mesh it is drawn on:
+## {name, thing: [mesh, material, MultiMesh or null]}.
 static func materials_to_warm(under: Node) -> Array:
 	var seen := {}
 	var out := []
@@ -254,15 +226,15 @@ static func materials_to_warm(under: Node) -> Array:
 			mesh = many.mesh
 		elif node is CPUParticles3D:
 			mesh = (node as CPUParticles3D).mesh
+			# (particles are drawn as a MultiMesh with colours and custom data: that version, not the
+			# plain one, is what they need)
+			many = MultiMesh.new()
+			many.transform_format = MultiMesh.TRANSFORM_3D
+			many.use_colors = true
+			many.use_custom_data = true
 		if mesh == null:
 			continue
 		var geometry := node as GeometryInstance3D
-		# (where it is: particles and things that follow the eye are everywhere)
-		var box: Variant = null
-		if not (node is CPUParticles3D) and geometry.is_inside_tree():
-			var b := geometry.global_transform * geometry.get_aabb()
-			if b.size.length() < 2000.0:
-				box = b
 		for s in mesh.get_surface_count():
 			var material: Material = geometry.material_override
 			if material == null and node is MeshInstance3D:
@@ -274,18 +246,47 @@ static func materials_to_warm(under: Node) -> Array:
 			var what: Object = (material as ShaderMaterial).shader if material is ShaderMaterial and (material as ShaderMaterial).shader else material
 			var key := "%d %s" % [what.get_instance_id(), "" if many == null else "%d%d%d" % [many.transform_format, int(many.use_colors), int(many.use_custom_data)]]
 			if seen.has(key):
-				# (the nearest of its pieces counts)
-				var had: Dictionary = seen[key]
-				if had.box != null and box != null:
-					var boxes: Array = had.box
-					if boxes.size() < 48:
-						boxes.append(box)
-					else:
-						boxes[boxes.size() - 1] = (boxes[boxes.size() - 1] as AABB).merge(box)
-				elif box == null:
-					had.box = null
 				continue
-			var item := {"name": "%s %s" % [node.name, (what as Resource).resource_path.get_file() if what is Resource else ""], "thing": [mesh, material, many], "box": null if box == null else [box], "far": INF}
-			seen[key] = item
-			out.append(item)
+			seen[key] = true
+			out.append({"name": "%s %s" % [node.name, (what as Resource).resource_path.get_file() if what is Resource else ""], "thing": [mesh, material, many]})
 	return out
+
+
+## Whether a material is lit per pixel (not per vertex, not unshaded).
+static func lit_per_pixel(material: Material) -> bool:
+	if material is BaseMaterial3D:
+		return (material as BaseMaterial3D).shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	if material is ShaderMaterial and (material as ShaderMaterial).shader:
+		var m := RegEx.create_from_string("render_mode([^;]*);").search((material as ShaderMaterial).shader.code)
+		var modes := m.get_string(1) if m else ""
+		return not modes.contains("vertex_lighting") and not modes.contains("unshaded")
+	return false
+
+
+## Every StandardMaterial3D under `under` lit per vertex instead of per pixel: a browser compiles a
+## program lit per pixel about five times slower (1.4 s against 0.3 s each under ANGLE; tools/PERF.md,
+## "Shader programs"). Their models are low-poly, so the light looks the same but for the shine.
+static func light_per_vertex(under: Node) -> int:
+	var changed := 0
+	var all: Array = under.find_children("*", "GeometryInstance3D", true, false)
+	if under is GeometryInstance3D:
+		all.append(under)
+	for node: Node in all:
+		var materials: Array = [(node as GeometryInstance3D).material_override]
+		var mesh: Mesh = null
+		if node is MeshInstance3D:
+			mesh = (node as MeshInstance3D).mesh
+			for s in (node as MeshInstance3D).get_surface_override_material_count():
+				materials.append((node as MeshInstance3D).get_surface_override_material(s))
+		elif node is MultiMeshInstance3D and (node as MultiMeshInstance3D).multimesh:
+			mesh = (node as MultiMeshInstance3D).multimesh.mesh
+		elif node is CPUParticles3D:
+			mesh = (node as CPUParticles3D).mesh
+		if mesh:
+			for s in mesh.get_surface_count():
+				materials.append(mesh.surface_get_material(s))
+		for m: Variant in materials:
+			if m is BaseMaterial3D and (m as BaseMaterial3D).shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL:
+				(m as BaseMaterial3D).shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+				changed += 1
+	return changed

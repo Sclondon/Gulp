@@ -313,9 +313,9 @@ Not started:
   proper V wake does not).
 
 Web build: a browser on Windows compiles each shader in about a second, so (1) animals get their models only when first
-seen (`Creature.become(kind, bare)`, `Life.mark_dressed`), (2) every kind and material is shown once to a tiny view,
-nearest first, behind the title and on in play (`scripts/warmer.gd`; "Decision: shaders warmed by nearness" below). First load is still about a minute and
-a half on a Windows desktop browser. Build the web export from the clean worktree `../Gulp-build` (`git checkout
+seen (`Creature.become(kind, bare)`, `Life.mark_dressed`), (2) every kind and material is shown once to a tiny view
+on the loading screen, and nothing after (`scripts/warmer.gd`; "Decision: everything compiled on the loading screen"
+below). Build the web export from the clean worktree `../Gulp-build` (`git checkout
 --detach main` there; `git checkout -- build` first if it refuses), after `sh tools/web_excludes.sh` here.
 
 ## Performance (2026-11-18): the pass, and the decisions it made
@@ -366,20 +366,52 @@ choices below are Claude's.
   only stepping far ones less often (what it was). Tests that put an animal beside the player call `Life.wake(each)`.
   Not verified on a phone; the crash's cause is not known (memory is the likeliest: every kind's shader is compiled
   behind the title and the pack is 40 MB).
-- **Decision: shaders warmed by nearness** (2026-11-19, after the user: "the game is very stuttery on mobile, with lots of
-  freezes"; Claude's pick). What: `scripts/warmer.gd` (Warmer) shows every animal kind (and its far model) and every
-  other material of the sea once to a 32 px view far under the sea, nearest to the player first (a kind by its nearest
-  animal, a material by its nearest piece; the eelgrass fields, made only as the eye nears, are added by Main). Behind
-  the title as fast as it goes; the start button waits for everything within 75 m of the start (at most 60 s from the
-  first frame); in play it carries on, one thing every 30 frames, only within 110 m (ahead of the 55 m wake and 60 m
-  sight), and fast on the sale, shop, run-over and pause screens and while choosing what to become (those kinds first).
-  Why: the hitch logger (`-- --hitches`, `-- --tour`; tools/PERF.md, "Hitches") showed nearly every freeze was a
-  program compiled at first sight, in bursts (the river: 19 freezes in a row); the old warm-up stopped at the start
-  button. The practice: shader/PSO precaching behind a loading screen plus streaming warm-up ahead of the player
-  (Unreal's PSO precaching, open-world streaming). Alternatives: hold the loading screen until all ~330 are done
-  (minutes on a Windows browser's first visit), fewer programs (a shared creature shader in GameCommon: the real cure,
-  big), WebGL's parallel compile extension (Godot does not use it). Measured: compiles at first sight in play 49 -> 9;
-  on a Windows first visit the total compile time is the same, only spread and out of sight.
+- **Decision: everything compiled on the loading screen; creatures drawn from baked paint; lit per vertex**
+  (2026-11-19; replaces "shaders warmed by nearness", the same day). The user's calls: "there should be no freezing",
+  "whats the point of loading if you have to load after pressing start anyways??", "All loading should just happen at
+  the start you shouldnt have to wait for buttons or anything"; and, of baking: "cant you use the shader to generate the
+  textures? We dont need the shader for the color textures after its already made tho right", then that baked textures
+  "should be standard for most game objects". How it is done is Claude's. What:
+  - **One loading screen, then nothing.** `scripts/warmer.gd` (Warmer) shows every animal kind (dressed as the game
+    dresses it, its far model too) and every other material of the sea (by shader and MultiMesh format; the eelgrass
+    fields, made later, added by Main) to a 32 px view under the sea, one a frame: under the water's light, again beside a
+    lamp (the jellies' omni lights make another version of a lit program), and what is lit per pixel (water, sand) a third
+    time under the air's light (`Warmer.above`: Main sets the sea's light from it while warming). Then Main shows the
+    screens drawn over play once each under the loading screen (`Main._warm_screens`: panel, HUD, a growth card for every
+    fish the player may become, the sale, the shop). The sea's own picture is not drawn while the loading screen is up
+    (it would compile all it shows in one frame). The loading screen's bar is the real share done; when it lifts the title's
+    start button is live at once. No warming in play, on menus or for the growth choices any more.
+  - **Creatures drawn from baked paint** (GameCommon `godot/baked-look`: `tools/bake_looks.gd`, `scripts/baked_look.gd`;
+    its README is the full record). Each component's markings are rendered once from its own shader into a picture on
+    a second set of UVs; a copy of its shader keeps its vertex code (swimming, jaw, fins) and reads the picture. Applied in
+    `Species.make` (and to Scenery's anemones and hauled-out seals); the baked meshes go into the component's own mesh
+    cache, so its own game and far models are never loaded and the web pack leaves them out (`baked/primed.txt`,
+    `tools/web_excludes.sh`). The old per-kind shaders stay on disk, unused for drawing (each component script still
+    preloads its own, so they ship, a few KB each, never compiled). Kept unbaked: the squids, comb jelly, anglerfish,
+    firefly squid (living colour), the ghost whale (added light), the big jellies (their own `light()`).
+  - **Lit per vertex**: the baked creatures, the kinds kept unbaked, the plants (kelp, sea grass, seaweed, mangroves), the
+    kit's rocks and soft corals, the liner's and Atlantis' paints, the net, flock, plankton, garden eels, nettles, the
+    figures' hair (`render_mode vertex_lighting`), and every StandardMaterial3D (`Warmer.light_per_vertex`; not
+    the creatures' own: the submarine's stay per pixel, as a material made per animal would compile again). The water and the sand stay per pixel (their light is in their
+    fragment: normals, glints).
+  Why (tools/PERF.md, "Shader programs"): under ANGLE (as Chrome on Windows) a program lit per pixel costs 1.45 s to
+  compile before it draws anything, per vertex 0.27 s; a creature's own shader 2.5 s on average, baked and lit per
+  vertex 0.6 s. About 300 programs at the old cost were 10+ minutes, so they could not all be loaded up front. The
+  practice: Godot's documented cure for GL Compatibility (no ubershaders or pipeline precompilation there): show every
+  material once during loading; plus baking procedural materials to textures, and per-vertex lighting on small
+  low-poly models, as mobile games do. Alternatives: one shared creature ubershader (113 of 132 vertex functions
+  differ; a single huge program is itself a long freeze, and Godot 3's web ubershaders were withdrawn for browser bugs);
+  warming in play by nearness (what it replaces: freezes moved, not gone); unshaded with hand-written light (0.15 s a
+  program cheaper again, but every creature's light matched by hand). Measured (desktop, ANGLE, cache cleared, 390x844,
+  `-- --dive --tour`, which now passes or fails): see tools/PERF.md, "Everything at the start".
+  What looks different: tools/PERF.md lists it kind by kind (eyes fixed looking ahead, no grazing-angle sheen or sparkle,
+  koi and guppies three patterns each, fine speckles softer, shine broader).
+  GameCommon: the bake tool, `BakedLook` and `tools/compile_cost.gd` are the component `godot/baked-look`, and each creature
+  component there carries its `baked/` folder (baked here, with Gulp's settings). After changing them here, pull them back:
+  `sh /c/Projects/GameCommon/kit.sh pull godot/baked-look .`, and for a re-baked creature `kit.sh pull godot/<creature> .` (its
+  FILES.txt lists its baked files; a new bake makes new mesh names: list them). Re-bake after changing a creature's shader
+  or models: `godot --path . --audio-driver Dummy --resolution 320x240 -s res://tools/bake_looks.gd -- --components=<folder>`
+  (Scenery's anemones: `--plan=res://tools/bake_scenery.json`), then `--import`, then `tests/baked_compare.gd` to look.
 - **Decision: a phone tier** (2026-11-19; Claude's pick of what to turn down). `scripts/tier.gd`: `Tier.phone()` is
   true on web_android/web_ios, a mobile build, or a phone or tablet user agent (an iPad's Safari says Mac, with touch);
   `-- --phone` / `-- --desktop` force it. Desktops, in a browser or not, are unchanged. It turns down what costs a phone

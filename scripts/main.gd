@@ -67,11 +67,14 @@ var _selling_for := 0.0
 var _run_for := 0.0
 var _dive_from := Transform3D()
 var _titled := false
-# Shows every animal kind and material once before it is first seen (scripts/warmer.gd), behind the
-# title and on in play, nearest first; null when a test or picture drives without the title.
+# Shows every animal kind and material once on the loading screen (scripts/warmer.gd); null when a
+# test or picture drives without the title.
 var warmer: Warmer
 # The loading screen (scripts/loading_swarm.gd), while it is up.
 var _loading: LoadingSwarm
+# Where the screens' warm-up has got to (Main._warm_screens; -1 done), and frames into its step.
+var _screens_step := 0
+var _screens_frames := 0
 var _scenery: Scenery
 ## Paused from the panel's button (or P, Escape): the sea stands still.
 var paused := false
@@ -306,6 +309,8 @@ func _ready() -> void:
 	restart()
 	if opening:
 		_open_title()
+	# (the models' own materials lit per vertex: five times cheaper for a browser to compile)
+	Warmer.light_per_vertex(_viewport)
 	if _perf != "":
 		var perf: Node = (load("res://tests/perf.gd") as GDScript).new()
 		perf.set(&"main", self)
@@ -397,16 +402,17 @@ func _process(delta: float) -> void:
 	delta = minf(delta, 0.05)
 	if _on_deck:
 		_title_step(delta)
-		sea.set_above(camera.global_position.y > Sea.surface_height(camera.global_position.x, camera.global_position.z, camera.global_position.y))
+		# (while the warm-up runs, the sea's light is the one it is showing things under: Warmer.above)
+		if warmer and not warmer.done():
+			sea.set_above(warmer.above)
+		else:
+			sea.set_above(camera.global_position.y > Sea.surface_height(camera.global_position.x, camera.global_position.z, camera.global_position.y))
 		_post.set_shader_parameter(&"underwater", 0.0 if sea.above else 1.0)
 		camera.fov = 72.0 if size.y > size.x else 60.0
 		_finish_frame()
 		return
 	_steer()
 	_frames += 1
-	if warmer:
-		# (ahead of the fish in play; as fast as behind the title while nothing swims)
-		warmer.step(player.global_position, paused or over or selling or player.choosing)
 	if _trick == "--feed" and _clock > 0.8:
 		_trick = ""
 		player.feed(player.length * 3.0)
@@ -534,25 +540,66 @@ func _open_title() -> void:
 	pad.visible = false
 	_dive = -1.0
 	_begin_warm()
-	# (the loading screen, over everything, until the starting waters' animals are ready: not for
+	# (the loading screen, over everything, until everything is loaded and compiled: not for
 	# pictures and tests, which want the title itself)
 	if _trick == "" and _shot_at < 0.0:
 		_loading = LoadingSwarm.new()
 		add_child(_loading)
+		# (the sea's own picture is not drawn behind it until everything is compiled: drawn, it would
+		# compile all it shows in its first frame, twenty seconds with the loading screen not yet up;
+		# the warm-up's little view compiles each thing one a frame instead)
+		_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 
 
-# A browser compiles each shader program the first time it is drawn, and stops the game for it
-# (about a second each on a Windows desktop; the user, 2026-11-18: "its either really choppy on my
-# pc with long freezes", and 2026-11-19 of phones: "very stuttery on mobile, with lots of
-# freezes"). So every animal kind and every other material of the sea is shown once to a tiny view
-# far under the sea, nearest first: behind the title until the starting waters are ready, and on
-# in play ahead of the fish (scripts/warmer.gd; CLAUDE.md, "Decision: shaders warmed by nearness").
+# A browser compiles each shader program the first time it is drawn, and stops the game for it.
+# So everything is loaded and compiled on the loading screen, before the title shows, and nothing
+# after (the user, 2026-11-19: "All loading should just happen at the start you shouldnt have to
+# wait for buttons or anything"; scripts/warmer.gd; CLAUDE.md, "Decision: everything compiled on
+# the loading screen").
 func _begin_warm() -> void:
 	warmer = Warmer.new()
 	warmer.viewport = _viewport
 	warmer.life = life
 	add_child(warmer)
-	warmer.begin(player.global_position, _warm_extras())
+	warmer.begin(_warm_extras())
+
+
+# The screens drawn over the sea in play, shown under the loading screen once each so that what they
+# draw is compiled there too: the panel, the HUD, a card of every fish the player may become (each
+# card draws its animal in a little world of its own), the sale and the shop. A step every three
+# frames; true when done.
+func _warm_screens() -> bool:
+	if _screens_step < 0:
+		return true
+	_screens_frames += 1
+	if _screens_frames < 3:
+		return false
+	_screens_frames = 0
+	var kinds: Array = Player.GROWTH.keys()
+	var batches := ceili(kinds.size() / 4.0)
+	var at := _screens_step
+	_screens_step += 1
+	if at == 0:
+		hud.visible = true
+		pad.visible = true
+	if at < batches:
+		hud.offer(kinds.slice(at * 4, at * 4 + 4))
+		return false
+	if at == batches:
+		hud.offer([])
+		var sample := purse.price_of("salmon", 1.0, false)
+		sample["money"] = purse.money
+		sale.show_receipt(sample)
+		return false
+	if at == batches + 1:
+		sale.visible = false
+		shop.open(purse)
+		return false
+	shop.visible = false
+	hud.visible = false
+	pad.visible = false
+	_screens_step = -1
+	return true
 
 
 # What is made only as the eye nears it, so is not yet in the sea to be found: the eelgrass
@@ -564,9 +611,7 @@ func _warm_extras() -> Array:
 		var like := MultiMesh.new()
 		like.transform_format = MultiMesh.TRANSFORM_3D
 		like.use_custom_data = true
-		var area: Rect2 = field.get(&"area")
-		var box := AABB(Vector3(area.position.x, -1000.0, area.position.y), Vector3(area.size.x, 2000.0, area.size.y))
-		out.append({"name": "grass field", "thing": [field.get_script().call(&"mesh_of", 0), field.call(&"material"), like], "box": [box], "far": INF})
+		out.append({"name": "grass field", "thing": [field.get_script().call(&"mesh_of", 0), field.call(&"material"), like]})
 	return out
 
 
@@ -576,8 +621,11 @@ func _title_step(delta: float) -> void:
 	if _dive < 0.0:
 		camera.global_transform = title.eye(size.y > size.x)
 		if warmer:
-			warmer.step(player.global_position, true)
-		_card.primed = 1.0 if warmer == null or warmer.ready_to_start() else minf(warmer.progress(), 0.99)
+			warmer.step()
+		if warmer and warmer.done() and _viewport.render_target_update_mode != SubViewport.UPDATE_ALWAYS:
+			_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+		var screens := warmer == null or not warmer.done() or _warm_screens()
+		_card.primed = 1.0 if warmer == null or (warmer.done() and screens) else minf(warmer.progress(), 0.99)
 		if is_instance_valid(_loading):
 			# (it is up for at least three seconds, so the logo is seen made)
 			_loading.progress = minf(_card.primed, _clock / 3.0)
@@ -590,8 +638,6 @@ func _title_step(delta: float) -> void:
 		return
 	_dive += delta / 1.8
 	life.step(delta)
-	if warmer:
-		warmer.step(player.global_position, false)
 	var behind := Transform3D(Basis.IDENTITY, _camera_place()).looking_at(player.global_position + player.heading * player.length, Vector3.UP)
 	camera.global_transform = _dive_from.interpolate_with(behind, smoothstep(0.0, 1.0, _dive))
 	if _dive >= 1.0:
@@ -866,9 +912,6 @@ func _on_grew(stage: int) -> void:
 
 
 func _on_choice(options: Array) -> void:
-	if warmer:
-		# (what it may become is shown first: it is drawn as soon as it is picked)
-		warmer.hurry(options)
 	hud.offer(options)
 	pad.visible = false
 	pad.release()
