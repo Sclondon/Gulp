@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_disabled, world_vertex_coords;
+render_mode cull_disabled, world_vertex_coords, vertex_lighting;
 // Seaweed, drawn a plant at a time by SeaweedBed's MultiMeshes (the plants are
 // models/seaweed_*.glb; tools/build_seaweed.py says what their UVs hold). One shader for all six
 // kinds: each kind has its own material, with the settings below that SeaweedBed.LOOK gives it.

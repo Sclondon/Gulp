@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_disabled;
+render_mode cull_disabled, vertex_lighting;
 // Red mangroves, drawn a tree (or root cluster) at a time by MangroveStand's MultiMeshes (the pieces are
 // models/mangrove_*.glb; tools/build_mangrove.py says what their UVs and vertex colours hold). In each piece's own
 // space y = 0 is the waterline:

@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_disabled, specular_disabled, blend_mix;
+render_mode cull_disabled, specular_disabled, blend_mix, vertex_lighting;
 // A fishing net: diamonds of thin strands, see-through between them (scripts/fishers.gd). Where each
 // point is on the net, in metres, makes the pattern: for a curtain (NetPanel, `panel` on) from its
 // local place scaled by its node (x along it from its left end, y down from its top); for the trawl

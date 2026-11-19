@@ -5,7 +5,7 @@ shader_type spatial;
 // a how much it sways (times `sway`). The pose and the colours are in garden_eel.gdshaderinc, shared
 // with the single eel's shader; the eye is drawn on the skin.
 // Nothing here needs more than GL Compatibility has; it runs the same under Forward+.
-render_mode cull_back;
+render_mode cull_back, vertex_lighting;
 
 #include "res://creatures/garden_eel/garden_eel.gdshaderinc"
 

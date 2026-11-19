@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_disabled;
+render_mode cull_disabled, vertex_lighting;
 // A Flock's boids, all drawn by one MultiMesh. The instance colour is the boid's own shade
 // (multiplied into COLOR with the mesh's vertex colours); its custom data is its pose, which
 // the Flock writes as it moves them: x the beat phase (radians, kept by the Flock so a change

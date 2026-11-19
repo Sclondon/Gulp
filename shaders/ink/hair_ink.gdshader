@@ -1,4 +1,5 @@
 shader_type spatial;
+render_mode vertex_lighting;
 // Hair as the inked prints draw it: each lock a flat shape in two tones,
 // black ink in the gaps between locks and at the roots, strand lines running
 // down the lock (sparse and broken in the light, packed close in the shadow),

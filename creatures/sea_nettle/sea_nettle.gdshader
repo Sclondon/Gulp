@@ -10,7 +10,7 @@ shader_type spatial;
 //
 // The bell's markings are drawn here, after the user's photographs (the component's README):
 // no texture files. Nothing here needs more than GL Compatibility has.
-render_mode blend_mix, depth_draw_opaque, cull_disabled, depth_prepass_alpha;
+render_mode blend_mix, depth_draw_opaque, cull_disabled, depth_prepass_alpha, vertex_lighting;
 
 // Kept in step with the model and the script.
 const float RADIUS = 0.9;

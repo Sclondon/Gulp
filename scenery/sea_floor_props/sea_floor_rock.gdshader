@@ -7,7 +7,7 @@ shader_type spatial;
 //
 // In GL Compatibility a MultiMesh needs use_colors on and its instances' colours set (white for
 // no tint), or COLOR arrives black.
-render_mode cull_back;
+render_mode cull_back, vertex_lighting;
 
 uniform vec3 tint : source_color = vec3(1.0);
 // How strong the grain is (0 none) and how many metres across its biggest blotches are. The

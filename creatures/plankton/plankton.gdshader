@@ -9,7 +9,7 @@ shader_type spatial;
 //
 // The time is the global shader uniform `water_clock` (seconds). Nothing here needs more than GL
 // Compatibility has. The specks are single sheets in places, so both sides are drawn.
-render_mode cull_disabled;
+render_mode cull_disabled, vertex_lighting;
 
 global uniform float water_clock;
 

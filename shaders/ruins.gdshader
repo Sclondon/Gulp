@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode diffuse_lambert, specular_schlick_ggx;
+render_mode diffuse_lambert, specular_schlick_ggx, vertex_lighting;
 // The Atlantis ruins' paint (scripts/ruins.gd; built and baked by tools/build_ruins.py): one baked
 // picture (colour, growth on the tops, silt low down, soft shadow in the hollows) lit by the sea's
 // own lights and fogged by its water like everything else. The one shader of the whole set piece:

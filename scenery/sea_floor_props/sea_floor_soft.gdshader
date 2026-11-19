@@ -9,7 +9,7 @@ shader_type spatial;
 //
 // In GL Compatibility a MultiMesh needs use_colors on and its instances' colours set (white, alpha
 // 1, for no tint and the full sway; a lower alpha stills that instance).
-render_mode cull_back;
+render_mode cull_back, vertex_lighting;
 
 global uniform float water_clock;
 

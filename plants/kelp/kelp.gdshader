@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_disabled, world_vertex_coords;
+render_mode cull_disabled, world_vertex_coords, vertex_lighting;
 // Giant kelp, drawn a metre of frond bundle at a time by KelpForest's MultiMeshes (the pieces are
 // models/kelp_*.glb; tools/build_kelp.py says what their UVs hold). All of its moving is here:
 // - a slow surge to and fro that grows with the height above the holdfast, and runs through the

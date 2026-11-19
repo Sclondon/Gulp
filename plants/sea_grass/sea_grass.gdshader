@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_disabled, world_vertex_coords;
+render_mode cull_disabled, world_vertex_coords, vertex_lighting;
 // Eelgrass, drawn a tuft at a time by SeaGrassBed's MultiMeshes (the tufts are
 // models/sea_grass_*.glb; tools/build_sea_grass.py says what their UVs hold). All of its moving is
 // here: every leaf bends over as one arc (its length kept), leaning down-current and swung to and

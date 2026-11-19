@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode diffuse_lambert, specular_disabled, cull_back;
+render_mode diffuse_lambert, specular_disabled, cull_back, vertex_lighting;
 // The reef wreck's paint (tools/build_wreck.py, tools/WRECK.md): one picture a half, baked in Blender
 // as colour times how open each spot is to the sea (dark inside, light on top). Drawn lit, so the
 // sea's light, its fog and anything that glows near it reach it as they reach everything else.
