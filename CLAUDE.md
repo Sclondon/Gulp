@@ -993,3 +993,11 @@ the research (with sources), the numbers, what is checked and what is rough. Con
 - The water shader writes depth now (`depth_draw_always`: a tall wave's far side showed through its face).
 - Pictures: `tests/surf_shot.gd` (an eye out from a shore, `--shore=x,z`, or anywhere; `--rogue=metres,age`; strips).
 - Not in GameCommon (tied to this shader and Bay's shore); a candidate component if another game wants surf.
+- Pose sheets and the pose test (the user, 2026-11-18, evening): "Make some concept art of the 3 mains in different
+  poses- laughing, shock, swim etc and match the models to the poses as well to make sure the topology is poseablw".
+  Sheets: `tools/art_src/concept_captain_poses.jpg`, `concept_brother_poses.jpg`, `concept_boy_poses.jpg`. The test and
+  the decision on how faces move (a `jaw` bone plus a few shared blend shapes, a mouth inside) are in
+  `tools/FIGURE_HEADS.md`, "The pose test". Also the user, of the captain: "The captains wrist area needs a lot of
+  work why are his forearms and wrists such different sizes" (a base hand's slim wrist loop zipped to a swelled
+  forearm: taper the forearm to a thick wrist and size the hand's loop to meet it); "stop his chin and jaw phasing into
+  his neck- have a pose where he is looking up to see what I mean" (judge every head with the head tilted back).

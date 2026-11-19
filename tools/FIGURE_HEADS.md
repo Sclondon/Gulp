@@ -76,3 +76,32 @@ After every build of a figure:
    a ranked top ten, written to `<outdir>/critique.md`.
 3. That critique, not the builder's own opinion of its work, is the brief for the builder's next round. A builder never
    grades its own figure as done.
+
+## The pose test (the user, 2026-11-18)
+
+"Make some concept art of the 3 mains in different poses- laughing, shock, swim etc and match the models to the poses
+as well to make sure the topology is poseablw"; and of the captain: "stop his chin and jaw phasing into his neck- have a
+pose where he is looking up to see what I mean".
+
+Sheets: `tools/art_src/concept_captain_poses.jpg`, `concept_brother_poses.jpg`, `concept_boy_poses.jpg` (eight poses
+each: laughing with the head thrown back and the mouth wide open, shock, swimming, looking straight up, and four working
+poses). They show the figures DRESSED and with hair; the test is run on the bare base models, matching the pose and
+the expression, not the clothes.
+
+For each figure the builder poses the model to every pose on its sheet and shows sheet pose beside model pose, painted
+and in grey, from the sheet's angle and from one other angle, and fixes what breaks: collapsing or pinching at
+shoulders, elbows, wrists, hips, knees, ankles, the neck and under the jaw; surfaces passing through each other
+(chin into neck, arm into chest, thigh into belly, garment into skin); fingers that cannot make a fist, a point or a
+grip.
+
+**Decision (Claude's pick): faces move by a jaw bone plus a few blend shapes.** What: one `jaw` bone under `head`
+(weights: lower jaw, chin, lower lip, under-jaw) for the open mouth, and morph targets on the head for what bones do
+badly at this density: `smile`, `mouth_o`, `brows_up`, `brows_down`, `eyes_closed`, `eyes_wide`, `cheeks_puff`. An inside
+for the mouth (a dark pocket, a row of teeth as one strip, a tongue) so an open mouth is not a hole. Why: laughing and
+shock cannot be reached by the skeleton alone, and the base head's loops (round the mouth and eyes) are made for
+exactly this. The practice: glTF morph targets import into Godot as blend shapes and mix with skeletal animation; a jaw
+bone for the big motion with a handful of corrective or expressive shapes is the usual set-up for stylised game faces.
+Alternatives: bones only for the whole face (many bones, heavier rig, harder to keep shared across figures), texture
+swaps for mouths and eyes as Twilight Princess-era games did (cheap, and worth adding for blinks, but the user asked
+that the topology itself be poseable), full facial rigs (far beyond this game). The shape names and the jaw bone's name
+are the same on all figures so animations and expressions are shared.
