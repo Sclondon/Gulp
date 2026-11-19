@@ -75,23 +75,25 @@ func _run() -> void:
 	get_tree().quit()
 
 
-# Start-up: when the first frame was drawn, when the starting waters' kinds were ready (the game
-# may start), when every kind had been shown once.
+# Start-up: when the first frame was drawn, when the starting waters were ready (the game may
+# start), when every kind and material had been shown once (scripts/warmer.gd).
 func _startup() -> void:
 	var near_at := -1
 	var all_at := -1
 	var first_at := -1
+	var warmer: Warmer = main.warmer
 	var kinds := {}
-	for thing: Array in main._warm_things:
-		var m: Material = thing[1]
-		var label := (m as ShaderMaterial).shader.resource_path.get_file() if m is ShaderMaterial and (m as ShaderMaterial).shader else m.get_class()
-		kinds[label] = int(kinds.get(label, 0)) + 1
+	for item: Dictionary in warmer.left:
+		if item.has("thing"):
+			var m: Material = item.thing[1]
+			var label := (m as ShaderMaterial).shader.resource_path.get_file() if m is ShaderMaterial and (m as ShaderMaterial).shader else m.get_class()
+			kinds[label] = int(kinds.get(label, 0)) + 1
 	print("PERF WARM materials: ", kinds)
 	var slow := []
 	var was := Time.get_ticks_usec()
 	var until := Time.get_ticks_msec() + 240000
 	while Time.get_ticks_msec() < until:
-		var showing: String = main._warming[0] if not main._warming.is_empty() else ""
+		var showing: String = String(warmer.left[0].name) if not warmer.left.is_empty() else ""
 		await get_tree().process_frame
 		var now := Time.get_ticks_usec()
 		if now - was > 150000:
@@ -99,14 +101,13 @@ func _startup() -> void:
 		was = now
 		if first_at < 0 and Engine.get_frames_drawn() > 0:
 			first_at = Time.get_ticks_msec()
-		var left: int = main._warming.size()
-		if near_at < 0 and main._warm_all > 0 and left <= main._warm_all - main._warm_first:
+		if near_at < 0 and warmer.ready_to_start():
 			near_at = Time.get_ticks_msec()
-		if left == 0 and main._warm_now == null:
+		if warmer.left.is_empty() and warmer.now == null:
 			all_at = Time.get_ticks_msec()
 			break
-	print("PERF STARTUP engine to main ready %d ms; first frame %d ms; starting kinds ready (start button live) %d ms; every kind and material shown %d ms; %d in all (%d materials), %d first" % [
-			_start_ms, first_at, near_at, all_at, main._warm_all, main._warm_things.size(), main._warm_first])
+	print("PERF STARTUP engine to main ready %d ms; first frame %d ms; starting waters ready (start button live) %d ms; every kind and material shown %d ms; %d in all, %d first" % [
+			_start_ms, first_at, near_at, all_at, warmer.total, warmer.first])
 	print("PERF STARTUP frames over 150 ms (%d): %s" % [slow.size(), ", ".join(slow.slice(0, 60))])
 
 
@@ -204,6 +205,14 @@ func _measure(place: String) -> void:
 		if each.visible:
 			shown += 1
 	print("PERF %s animals: %d awake of %d, %d drawn" % [place, main.life.awake.size(), main.life.creatures.size(), shown])
+	print("PERF %s picture: sea %s, window %s%s" % [place, view.size, get_tree().root.size, ", phone tier" if Tier.phone() else ""])
+	var panel_rid: RID = (main.pad.model as SubViewport).get_viewport_rid()
+	var sonar_view: Array = main.pad.sonar.find_children("*", "SubViewport", true, false)
+	print("PERF %s panel: %d draws %d objects; sonar %d draws; ui (root) %d draws" % [place,
+			RenderingServer.viewport_get_render_info(panel_rid, RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME),
+			RenderingServer.viewport_get_render_info(panel_rid, RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE, RenderingServer.VIEWPORT_RENDER_INFO_OBJECTS_IN_FRAME),
+			RenderingServer.viewport_get_render_info((sonar_view[0] as SubViewport).get_viewport_rid(), RenderingServer.VIEWPORT_RENDER_INFO_TYPE_CANVAS, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME) if sonar_view.size() > 0 else -1,
+			RenderingServer.viewport_get_render_info(get_tree().root.get_viewport_rid(), RenderingServer.VIEWPORT_RENDER_INFO_TYPE_CANVAS, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME)])
 	await _heaviest(place)
 
 

@@ -773,7 +773,8 @@ func _make_stream(stream: String) -> CPUParticles3D:
 	var curve := Curve.new()
 	var ramp := Gradient.new()
 	# (more than before: the plume has PLUME_SLOTS points, most hidden until the crest is fully feathering)
-	p.amount = 560
+	# (half on a phone: CLAUDE.md, "Decision: a phone tier")
+	p.amount = 280 if Tier.phone() else 560
 	p.lifetime = 1.3
 	p.spread = 18.0
 	p.initial_velocity_min = 2.5

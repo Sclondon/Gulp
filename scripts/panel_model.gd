@@ -168,6 +168,10 @@ func _init() -> void:
 				mesh.set_surface_override_material(surface, _lamp)
 	var tubes := model.find_child("TubeGlass") as MeshInstance3D
 	_glass = tubes.get_surface_override_material(0)
+	# (a phone: no smoothing of its edges, which at a phone's pixel size do not show; CLAUDE.md,
+	# "Decision: a phone tier")
+	if Tier.phone():
+		msaa_3d = Viewport.MSAA_DISABLED
 
 
 ## Lays the housings out for a screen (pixels) and a layout unit (pixels): the helm in the lower

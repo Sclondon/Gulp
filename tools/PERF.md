@@ -23,7 +23,7 @@ Claude's and are recorded in CLAUDE.md ("Performance"). The web build is what ma
 - RTX 4080 desktop, Windows, Godot 4.7.2, GL Compatibility. Other sessions were running on the machine: frame times vary
   by 1 to 3 ms between runs; triangles, draws and the scripts' share are the steadier numbers.
 
-## Before and after (390x844, the sea's picture 195x422)
+## Before and after (390x844; the sea's picture is 360x779 there, measured 2026-11-19: the half-size picture is half the 720-wide layout, not half the window)
 
 | place | frame ms before | after | scripts ms before | after | draws before | after | triangles before | after |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

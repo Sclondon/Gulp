@@ -67,20 +67,12 @@ var _selling_for := 0.0
 var _run_for := 0.0
 var _dive_from := Transform3D()
 var _titled := false
-# The kinds whose models are still to be shown once behind the title (see _warm), how many there
-# were, how many of those must be done before the game may start, and the little view they are
-# shown in.
-var _warming: Array[String] = []
-var _warm_all := 0
+# Shows every animal kind and material once before it is first seen (scripts/warmer.gd), behind the
+# title and on in play, nearest first; null when a test or picture drives without the title.
+var warmer: Warmer
 # The loading screen (scripts/loading_swarm.gd), while it is up.
 var _loading: LoadingSwarm
-var _warm_first := 0
-var _warm_view: SubViewport
-var _warm_now: Node3D
-var _warm_wait := 0
-# The sea's other materials to be shown once behind the title: each [mesh, material, a MultiMesh
-# to copy the format of (or null)].
-var _warm_things: Array = []
+var _scenery: Scenery
 ## Paused from the panel's button (or P, Escape): the sea stands still.
 var paused := false
 var bot: Bot
@@ -128,6 +120,10 @@ var _near := ""
 var _perf := ""
 var _perf_as := ""
 var _perf_shots := ""
+# Frames over 50 ms logged with what happened in them (--hitches; scripts/hitches.gd), and the swim
+# round the bay that looks for them (--tour; tests/tour.gd).
+var _hitches := false
+var _tour := ""
 
 
 func _ready() -> void:
@@ -184,8 +180,19 @@ func _ready() -> void:
 			_perf_shots = arg.get_slice("=", 1)
 		elif arg.begins_with("--perf-as="):
 			_perf_as = arg.get_slice("=", 1)
+		elif arg == "--hitches":
+			_hitches = true
+		elif arg == "--tour" or arg.begins_with("--tour="):
+			# (a swim round the bay logging freezes: tests/tour.gd)
+			_tour = arg.get_slice("=", 1) if "=" in arg else "all"
+			_hitches = true
+			calm = true
+	# (a phone draws the sand as coarse as it goes, as GameCommon's sand would drop to itself after
+	# some slow seconds: CLAUDE.md, "Decision: a phone tier")
+	if Tier.phone():
+		Sand.quality = 0
 	# (a test's runs are not kept as the player's best)
-	_saves = not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0 or _role != "" or _perf != "")
+	_saves = not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0 or _role != "" or _perf != "" or _tour != "")
 	var container := SubViewportContainer.new()
 	container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	container.stretch = true
@@ -207,11 +214,18 @@ func _ready() -> void:
 	add_child(container)
 	_viewport = SubViewport.new()
 	container.add_child(_viewport)
+	var logger: Hitches = null
+	if _hitches:
+		logger = Hitches.new()
+		logger.view = _viewport
+		logger.main = self
+		add_child(logger)
 	sea = Sea.new()
 	_viewport.add_child(sea)
 	player = Player.new()
 	_viewport.add_child(player)
 	var scenery := Scenery.new()
+	_scenery = scenery
 	scenery.player = player
 	_viewport.add_child(scenery)
 	life = Life.new()
@@ -299,6 +313,13 @@ func _ready() -> void:
 		perf.set(&"as_kind", _perf_as)
 		perf.set(&"shots", _perf_shots)
 		add_child(perf)
+	if _tour != "":
+		var tour: Node = (load("res://tests/tour.gd") as GDScript).new()
+		tour.set(&"main", self)
+		tour.set(&"hitches", logger)
+		if _tour != "all":
+			tour.set(&"legs", _tour.split(","))
+		add_child(tour)
 	if _checking or _touching:
 		var checks: Node = (load("res://tests/checks.gd") as GDScript).new()
 		checks.set(&"main", self)
@@ -383,6 +404,9 @@ func _process(delta: float) -> void:
 		return
 	_steer()
 	_frames += 1
+	if warmer:
+		# (ahead of the fish in play; as fast as behind the title while nothing swims)
+		warmer.step(player.global_position, paused or over or selling or player.choosing)
 	if _trick == "--feed" and _clock > 0.8:
 		_trick = ""
 		player.feed(player.length * 3.0)
@@ -517,171 +541,43 @@ func _open_title() -> void:
 		add_child(_loading)
 
 
-# A browser compiles each animal's shader the first time the animal is drawn, and on Windows that
-# takes a second or two each: the game froze again and again as new kinds swam into view (the
-# user, 2026-11-18: "its either really choppy on my pc with long freezes"). So behind the title
-# each kind is shown once, a kind every few frames, to a tiny view of the same world far under
-# the sea: first the kinds of the waters the fish starts in (the game may start when those are
-# done), then the rest for as long as the title is up.
+# A browser compiles each shader program the first time it is drawn, and stops the game for it
+# (about a second each on a Windows desktop; the user, 2026-11-18: "its either really choppy on my
+# pc with long freezes", and 2026-11-19 of phones: "very stuttery on mobile, with lots of
+# freezes"). So every animal kind and every other material of the sea is shown once to a tiny view
+# far under the sea, nearest first: behind the title until the starting waters are ready, and on
+# in play ahead of the fish (scripts/warmer.gd; CLAUDE.md, "Decision: shaders warmed by nearness").
 func _begin_warm() -> void:
-	# (the waters it starts in: the part of the sea nearest the start)
-	var near: Array[String] = []
-	var nearest := INF
-	for zone: String in Sea.ZONES:
-		var far := (Sea.ZONES[zone].at as Vector2).distance_to(_start) - float(Sea.ZONES[zone].radius)
-		if far < nearest:
-			nearest = far
-			near = [zone]
-	var first: Array[String] = []
-	var rest: Array[String] = []
-	for kind: String in Species.ALL:
-		# (the sea monsters are not in the sea until something calls them up: Species `monster`)
-		if not Species.has(kind) or Species.of(kind).get("monster", false):
-			continue
-		var by_start := Player.GROWTH.has(kind) and float(Player.GROWTH[kind].from) < 0.5
-		for zone: String in Species.of(kind).get("zones", []):
-			by_start = by_start or zone in near
-		(first if by_start else rest).append(kind)
-	# (and, after the starting waters' kinds, every other material of the sea once: the wrecks,
-	# Atlantis, the reef's pieces, the plants, the docks... each a program a browser compiles when
-	# it is first drawn, which froze the game for a second as each set piece came into sight)
-	_warm_things = _materials_to_warm()
-	var things: Array[String] = []
-	for i in _warm_things.size():
-		things.append("#%d" % i)
-	_warming = first + things + rest
-	_warm_all = _warming.size()
-	_warm_first = first.size()
-	_warm_view = SubViewport.new()
-	_warm_view.size = Vector2i(32, 32)
-	_warm_view.world_3d = _viewport.find_world_3d()
-	_warm_view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	add_child(_warm_view)
-	var eye := Camera3D.new()
-	eye.position = Vector3(0.0, -800.0, 3.0)
-	eye.far = 12.0
-	_warm_view.add_child(eye)
+	warmer = Warmer.new()
+	warmer.viewport = _viewport
+	warmer.life = life
+	add_child(warmer)
+	warmer.begin(player.global_position, _warm_extras())
 
 
-func _warm() -> void:
-	_warm_wait -= 1
-	if _warm_wait > 0:
-		return
-	if _warm_now:
-		_warm_now.queue_free()
-		_warm_now = null
-	if _warming.is_empty():
-		return
-	var kind: String = _warming.pop_front()
-	if _warming.size() == _warm_all - _warm_first:
-		print("GULP WARM the near kinds are ready at %.1f s" % _clock)
-	elif _warming.is_empty():
-		print("GULP WARM every kind is ready at %.1f s" % _clock)
-	if kind.begins_with("#"):
-		_warm_thing(_warm_things[int(kind.substr(1))])
-		return
-	var look := Species.make(kind)
-	if look == null:
-		return
-	if &"game" in look:
-		look.set(&"game", true)
-	if &"cartoon_eyes" in look:
-		look.set(&"cartoon_eyes", 1.0)
-	_warm_now = Node3D.new()
-	_warm_now.add_child(look)
-	_warm_now.scale = Vector3.ONE / maxf(Species.long_of(kind, look), 0.05)
-	_viewport.add_child(_warm_now)
-	_warm_now.global_position = Vector3(0.0, -800.0, 0.0)
-	_warm_wait = 2
-	life.mark_dressed(kind)
-
-
-
-# Every material drawn in the sea but the animals' (Species' kinds are warmed by kind), once each
-# by its shader and the way it is drawn (alone, or many in a MultiMesh of a format), with a mesh
-# it is drawn on: [mesh, material, MultiMesh or null].
-func _materials_to_warm() -> Array:
-	var seen := {}
+# What is made only as the eye nears it, so is not yet in the sea to be found: the eelgrass
+# fields' squares (one program for all of them, by its shader and MultiMesh format).
+func _warm_extras() -> Array:
 	var out := []
-	for node in _viewport.find_children("*", "GeometryInstance3D", true, false):
-		var up := node.get_parent()
-		var animal := false
-		while up and up != _viewport:
-			if up is Creature:
-				animal = true
-				break
-			up = up.get_parent()
-		if animal:
-			continue
-		var mesh: Mesh = null
-		var many: MultiMesh = null
-		if node is MeshInstance3D:
-			mesh = (node as MeshInstance3D).mesh
-		elif node is MultiMeshInstance3D and (node as MultiMeshInstance3D).multimesh:
-			many = (node as MultiMeshInstance3D).multimesh
-			mesh = many.mesh
-		elif node is CPUParticles3D:
-			mesh = (node as CPUParticles3D).mesh
-		if mesh == null:
-			continue
-		var geometry := node as GeometryInstance3D
-		for s in mesh.get_surface_count():
-			var material: Material = geometry.material_override
-			if material == null and node is MeshInstance3D:
-				material = (node as MeshInstance3D).get_active_material(s)
-			if material == null:
-				material = mesh.surface_get_material(s)
-			if material == null:
-				continue
-			var what: Object = (material as ShaderMaterial).shader if material is ShaderMaterial and (material as ShaderMaterial).shader else material
-			var key := "%d %s" % [what.get_instance_id(), "" if many == null else "%d%d%d" % [many.transform_format, int(many.use_colors), int(many.use_custom_data)]]
-			if seen.has(key):
-				continue
-			seen[key] = true
-			out.append([mesh, material, many])
+	var fields: Array = _scenery.get(&"_grass") if _scenery else []
+	for field: Node3D in fields:
+		var like := MultiMesh.new()
+		like.transform_format = MultiMesh.TRANSFORM_3D
+		like.use_custom_data = true
+		var area: Rect2 = field.get(&"area")
+		var box := AABB(Vector3(area.position.x, -1000.0, area.position.y), Vector3(area.size.x, 2000.0, area.size.y))
+		out.append({"name": "grass field", "thing": [field.get_script().call(&"mesh_of", 0), field.call(&"material"), like], "box": [box], "far": INF})
 	return out
 
-
-# One of them drawn once in the little view.
-func _warm_thing(thing: Array) -> void:
-	var mesh: Mesh = thing[0]
-	var material: Material = thing[1]
-	var like: MultiMesh = thing[2]
-	_warm_now = Node3D.new()
-	var drawn: GeometryInstance3D
-	if like:
-		var many := MultiMesh.new()
-		many.transform_format = like.transform_format
-		many.use_colors = like.use_colors
-		many.use_custom_data = like.use_custom_data
-		many.mesh = mesh
-		many.instance_count = 1
-		many.set_instance_transform(0, Transform3D.IDENTITY)
-		if like.use_colors:
-			many.set_instance_color(0, Color.WHITE)
-		var holder := MultiMeshInstance3D.new()
-		holder.multimesh = many
-		drawn = holder
-	else:
-		var one := MeshInstance3D.new()
-		one.mesh = mesh
-		drawn = one
-	drawn.material_override = material
-	drawn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_warm_now.add_child(drawn)
-	var box := mesh.get_aabb()
-	_warm_now.scale = Vector3.ONE / maxf(box.size.length(), 0.05)
-	_viewport.add_child(_warm_now)
-	_warm_now.global_position = Vector3(0.0, -800.0, 0.0) - box.get_center() * _warm_now.scale.x
-	_warm_wait = 2
 
 # A frame of the title: the eye astern of the boat, or on its way down through the surface to
 # the fish. The fish waits; the sea goes on only once the eye is on its way.
 func _title_step(delta: float) -> void:
 	if _dive < 0.0:
 		camera.global_transform = title.eye(size.y > size.x)
-		_warm()
-		_card.primed = 1.0 if _warm_all == 0 else clampf(float(_warm_all - _warming.size()) / maxf(_warm_first, 1.0), 0.0, 1.0)
+		if warmer:
+			warmer.step(player.global_position, true)
+		_card.primed = 1.0 if warmer == null or warmer.ready_to_start() else minf(warmer.progress(), 0.99)
 		if is_instance_valid(_loading):
 			# (it is up for at least three seconds, so the logo is seen made)
 			_loading.progress = minf(_card.primed, _clock / 3.0)
@@ -694,15 +590,11 @@ func _title_step(delta: float) -> void:
 		return
 	_dive += delta / 1.8
 	life.step(delta)
+	if warmer:
+		warmer.step(player.global_position, false)
 	var behind := Transform3D(Basis.IDENTITY, _camera_place()).looking_at(player.global_position + player.heading * player.length, Vector3.UP)
 	camera.global_transform = _dive_from.interpolate_with(behind, smoothstep(0.0, 1.0, _dive))
 	if _dive >= 1.0:
-		if _warm_now:
-			_warm_now.queue_free()
-			_warm_now = null
-		if _warm_view:
-			_warm_view.queue_free()
-			_warm_view = null
 		# (the boat stays, hove-to with its net out: DESIGN.md's loop)
 		_on_deck = false
 		_dive = -1.0
@@ -974,6 +866,9 @@ func _on_grew(stage: int) -> void:
 
 
 func _on_choice(options: Array) -> void:
+	if warmer:
+		# (what it may become is shown first: it is drawn as soon as it is picked)
+		warmer.hurry(options)
 	hud.offer(options)
 	pad.visible = false
 	pad.release()

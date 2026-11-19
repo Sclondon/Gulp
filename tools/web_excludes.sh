@@ -7,6 +7,13 @@
 # A full model is creatures/<x>/models/<name>.glb beside a <name>_game.glb.
 set -e
 list="tools/*,tests/*,shots/*,conceptart/*,textures/panel/retired_1/*,textures/controls/*,creatures/*/tools/*,models/sea_floor.glb,models/*_old.json"
+# The figures being made (the boy, his brother, the captain, the townsfolk, their faces and hair) are
+# not in the game: only the title's own copies (models/title_*) are drawn. About 35 MB of the pack
+# (tools/PERF.md, "The web pack, 2026-11-19"). Take a figure out of this list when the game uses it.
+list="$list,models/boy*,models/brother*,models/captain*,models/face/*,models/hair/*,models/npc/*"
+list="$list,textures/boy/*,textures/brother/*,textures/captain/*,textures/tattoos/*,textures/face/*,textures/hair/*,textures/npc/*"
+# (retired: the first, flat Atlantis with its atlases and table, the old rocks' table)
+list="$list,models/atlantis_ruins*,textures/ruins_atlas.png,textures/ruins_atlas_statue.png,models/ruins_extra.json,models/sea_rocks.json"
 # (the flat panel's pictures, retired when the panel became a model: tools/PERF.md)
 for old in engine_module gauge_module helm_module knob lever needle plunger plunger_lit rivet spark switch_closed tube_lit; do
 	list="$list,textures/panel/$old.png"

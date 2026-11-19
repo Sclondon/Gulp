@@ -59,6 +59,7 @@ var _marks_of: Array = []
 var _compass_at := INF
 var _blips_of: Array[Vector3] = []
 var _frame := 0
+var _tube: SubViewport
 
 
 ## How far above (or below) the fish a thing is, folded into a blip's z: a quarter at TALL metres
@@ -75,6 +76,7 @@ func _init() -> void:
 	tube.disable_3d = true
 	tube.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(tube)
+	_tube = tube
 	_rings = _layer(tube, _draw_rings)
 	_sweep = _layer(tube, _draw_sweep)
 	_marks = _layer(tube, _draw_marks)
@@ -99,10 +101,16 @@ func _layer(tube: SubViewport, painter: Callable) -> Layer:
 
 
 func _process(_delta: float) -> void:
+	_frame += 1
+	# (a phone draws the scope every other frame: it is about 120 draws of lines and dots, each dear
+	# in a phone's browser; CLAUDE.md, "Decision: a phone tier")
+	if Tier.phone():
+		if _frame % 2 == 1:
+			return
+		_tube.render_target_update_mode = SubViewport.UPDATE_ONCE
 	_sweep.queue_redraw()
 	# (the blips every other frame: they move only when Main sounds out again, a few times a
 	# second, and their brightening as the sweep passes moves on by under 1% a frame)
-	_frame += 1
 	if _frame % 2 == 0 or not is_same(blips, _blips_of):
 		_blips_of = blips
 		_blips.queue_redraw()

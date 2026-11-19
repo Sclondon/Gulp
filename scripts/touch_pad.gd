@@ -99,7 +99,15 @@ func release() -> void:
 
 
 func _process(delta: float) -> void:
-	model.render_target_update_mode = SubViewport.UPDATE_ALWAYS if visible else SubViewport.UPDATE_DISABLED
+	if not visible:
+		model.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	elif Tier.phone():
+		# (a phone draws the panel every other frame: its needles and lever move slowly; CLAUDE.md,
+		# "Decision: a phone tier")
+		if Engine.get_process_frames() % 2 == 0:
+			model.render_target_update_mode = SubViewport.UPDATE_ONCE
+	else:
+		model.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	if visible:
 		_fit()
 		model.show_state(stick, boost and stamina > 0.0, throttle,

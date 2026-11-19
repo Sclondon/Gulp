@@ -85,6 +85,16 @@ const SLEEP := 65.0
 const WAKE_EVERY := 10
 ## The most animals given their models in one frame (each makes a creature's nodes: a hitch on a phone).
 const DRESS_EACH := 2
+## On a phone (Tier.phone(): CLAUDE.md, "Decision: a phone tier") the bubble is smaller and the far
+## ones are stepped less: what is drawn and stepped are most of a phone frame. Fog leaves a quarter
+## of a thing at 38 m. [FISH_SEEN, STEP_NEAR, STEP_MID, WAKE, SLEEP, DRESS_EACH] there.
+const PHONE := [38.0, 14.0, 24.0, 48.0, 58.0, 1]
+var fish_seen := FISH_SEEN
+var step_near := STEP_NEAR
+var step_mid := STEP_MID
+var wake_at := WAKE
+var sleep_at := SLEEP
+var dress_each := DRESS_EACH
 ## The swarms (tools/SCHOOLING.md): each a Flock of a few dozen guides that are not drawn, with
 ## riders round each one, all drawn by one MultiMesh and placed by its shader, so the CPU pays for
 ## the guides only. Each: [guides, riders round each, how far round its guide a rider keeps (m)].
@@ -170,6 +180,13 @@ static func is_food(eater: float, prey: float) -> bool:
 
 func _ready() -> void:
 	_rng.seed = 5
+	if Tier.phone():
+		fish_seen = PHONE[0]
+		step_near = PHONE[1]
+		step_mid = PHONE[2]
+		wake_at = PHONE[3]
+		sleep_at = PHONE[4]
+		dress_each = PHONE[5]
 	for i in KRILL_CLOUDS:
 		_school(_swarm_rules(_krill_rules(), KRILL_SWARM), _krill_mesh(), KRILL_LENGTH, "", 0.55, 0.92, i)
 	for i in SARDINE_SCHOOLS:
@@ -510,7 +527,7 @@ func _step_creatures(delta: float) -> void:
 	var slice := steps % 15
 	for k in range(slice, awake.size(), 15):
 		_look_about(awake[k])
-	var dress_left := DRESS_EACH
+	var dress_left := dress_each
 	for each in awake:
 		if each.away > 0.0:
 			each.away -= delta
@@ -523,7 +540,7 @@ func _step_creatures(delta: float) -> void:
 			each.prey_at = (each.prey as Node3D).global_position
 		var apart := each.global_position.distance_to(player.global_position)
 		# Too far off to be seen through the water: not drawn, and moved only now and then.
-		var seen := apart < FISH_SEEN + each.length * 2.0
+		var seen := apart < fish_seen + each.length * 2.0
 		# (it gets its model when it is first seen: kinds new to this run a few frames apart, since
 		# each one's shader is compiled then, which is slow in a browser)
 		if seen and not each.dressed:
@@ -547,9 +564,9 @@ func _step_creatures(delta: float) -> void:
 		# (beyond STEP_NEAR, half of them a frame, each with two frames' time: a fish that far off
 		# moves less than a pixel of the half-size picture in a frame. tools/PERF.md)
 		# (and beyond STEP_MID, a third of them a frame)
-		if apart < STEP_NEAR + each.length * 2.0:
+		if apart < step_near + each.length * 2.0:
 			each.step(delta, player, hunting)
-		elif apart < STEP_MID + each.length * 2.0:
+		elif apart < step_mid + each.length * 2.0:
 			if (steps + each.get_index()) % 2 == 0:
 				each.step(delta * 2.0, player, hunting)
 		elif (steps + each.get_index()) % 3 == 0:
@@ -613,7 +630,7 @@ func _wake_or_sleep(unit: Variant) -> void:
 	var far := INF
 	for m: Creature in members:
 		far = minf(far, m.global_position.distance_to(player.global_position) - m.length * 2.0)
-	if first.asleep and far < WAKE:
+	if first.asleep and far < wake_at:
 		for m: Creature in members:
 			m.asleep = false
 			awake.append(m)
@@ -629,7 +646,7 @@ func _wake_or_sleep(unit: Variant) -> void:
 					m.place(Sea.clear_of_rocks(Sea.keep_in(first.global_position + off, keep), keep))
 					m.heading = first.heading
 					m.visible = false
-	elif not first.asleep and far > SLEEP:
+	elif not first.asleep and far > sleep_at:
 		for m: Creature in members:
 			_sleep(m)
 
@@ -862,6 +879,8 @@ func _step_jellies(delta: float) -> void:
 		var drawn := far < JELLY_DRAWN
 		if jelly.visible != drawn:
 			jelly.visible = drawn
+			if drawn:
+				Hitches.note("jelly %d shown (its lamp on)" % i)
 		if far > JELLY_SEEN:
 			continue
 		_jelly_time[i] -= delta

@@ -112,6 +112,9 @@ func _ready() -> void:
 				_spots[named] = _place_in(marker, boat)
 		_wheel = hull.find_child("Wheel") as Node3D
 		_pump = hull.find_child("PumpWheel") as Node3D
+		# (its still parts as one mesh a material: it lies hove-to in sight for the whole game, and was
+		# about 45 draws; scripts/still_batch.gd)
+		StillBatch.merge(hull, [_wheel, _pump])
 	# The computer: the control panel's housings on a bench against the wall, leaning back a
 	# little: the instruments (the two small boxes under them) to the left, then the helm and the
 	# engine close together, where the boy's hands are; and its monitor on the wall over it.

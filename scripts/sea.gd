@@ -680,6 +680,13 @@ func _floor() -> void:
 ## stays on the same place of the water and nothing swims. (Before 2026-11-18 it was one fixed 400 m
 ## sheet of 4 m squares: too coarse to break a wave on.)
 const RING_CELL := 0.5
+## On a phone the squares are twice as big (a quarter of the 36,000 triangles, each running the
+## water's long vertex sums; CLAUDE.md, "Decision: a phone tier").
+const PHONE_RING_CELL := 1.0
+
+
+static func ring_cell() -> float:
+	return PHONE_RING_CELL if Tier.phone() else RING_CELL
 const RING_HALF := 16.0
 const RINGS := 5
 
@@ -759,7 +766,7 @@ static func _rings() -> ArrayMesh:
 			indices.append_array([a, b, c])
 		else:
 			indices.append_array([a, c, b])
-	var cell := RING_CELL
+	var cell := ring_cell()
 	var half := RING_HALF
 	var inner := 0.0
 	for ring in RINGS:
@@ -843,7 +850,7 @@ func _waves(delta: float) -> void:
 	if cam == null:
 		return
 	var at := cam.global_position
-	var step := RING_CELL * pow(2.0, RINGS - 1)
+	var step := ring_cell() * pow(2.0, RINGS - 1)
 	_water_mesh.global_position = Vector3(snappedf(at.x, step), SURFACE, snappedf(at.z, step))
 	if rogues:
 		_rogue_wait -= delta

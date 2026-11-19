@@ -47,6 +47,8 @@ const DOCKS_SEEN := 80.0
 ## metre at MEDIUM, a little under what the placer's clumps came to in a meadow's core). How far the grass
 ## is drawn (40 m at MEDIUM, thinning from 14 m and sinking into the floor towards the end) is the quality's.
 const GRASS_DENSITY := 1.8
+## The share of the eelgrass tufts a phone draws (its grass quality is the sand's: the lowest).
+const PHONE_GRASS := 0.8
 ## How many fish nearest the player lay the grass aside besides it, and within how far of it (m).
 const GRASS_FISH := 3
 const GRASS_FISH_NEAR := 12.0
@@ -380,13 +382,15 @@ func _draw_pieces() -> void:
 # thinning to the edge, each reaching for the surface (the longest lie along it as canopy).
 func _plant_kelp() -> void:
 	var forest: Node3D = (load(KELP) as GDScript).new()
-	forest.set(&"far", SEEN)
+	var phone := Tier.phone()
+	# (a phone: the full pieces nearer, the light ones not as far, nothing past 50 m; CLAUDE.md, "Decision: a phone tier")
+	forest.set(&"far", 50.0 if phone else SEEN)
 	# (blocks of 12 m, not 8: half the draws in a forest, a few more full pieces near the eye; tools/BIOMES.md budget)
 	forest.set(&"cell", 12.0)
 	# (the dense forest's three levels, tools/BIOMES.md "The dense kelp": full pieces within KELP_NEAR, the
 	# light piece to KELP_MID, then 24 m blocks of the light piece stretched KELP_FAR_PIECE m long)
-	forest.set(&"near", KELP_NEAR)
-	forest.set(&"mid", KELP_MID)
+	forest.set(&"near", KELP_NEAR * (0.7 if phone else 1.0))
+	forest.set(&"mid", KELP_MID * (0.7 if phone else 1.0))
 	forest.set(&"far_cell", 24.0)
 	forest.set(&"far_piece", KELP_FAR_PIECE)
 	forest.set(&"current", Vector2(0.3, 0.1))
@@ -408,7 +412,8 @@ func _plant_grass() -> void:
 	bed.call(&"set_quality", clampi(Sand.quality, 0, 2))
 	var floor_at := func(p: Vector2) -> float: return Sea.ground(p.x, p.y)
 	for one: Dictionary in _biomes.grass_fields():
-		var made: Node3D = bed.call(&"field", self, one.area, GRASS_DENSITY, {
+		# (a phone: fewer tufts, PHONE_GRASS of them; CLAUDE.md, "Decision: a phone tier")
+		var made: Node3D = bed.call(&"field", self, one.area, GRASS_DENSITY * (PHONE_GRASS if Tier.phone() else 1.0), {
 			"mask": one.mask, "height": floor_at, "tall": one.tall,
 			# (squares of 12 m: about half the draws of 8 over a thick meadow)
 			"cell": 12.0,

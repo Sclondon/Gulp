@@ -32,6 +32,17 @@ var _cell_of := {}
 var _mids := PackedVector3Array()
 var _seen_from := Vector3.INF
 
+## On a phone (Tier.phone(): CLAUDE.md, "Decision: a phone tier") full models only within this share
+## of `near`, and nothing beyond PHONE_FAR (m): the fog leaves a sixth of a thing there.
+const PHONE_NEAR := 0.6
+const PHONE_FAR := 50.0
+
+
+func _ready() -> void:
+	if Tier.phone():
+		near *= PHONE_NEAR
+		far = minf(far, PHONE_FAR)
+
 
 ## Adds a piece: where each instance stands (in the field's own space), its colour, and how far
 ## its farthest point reaches from its origin at scale 1 (m).

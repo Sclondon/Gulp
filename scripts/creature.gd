@@ -220,6 +220,7 @@ func become(of_kind: String, bare := false) -> void:
 ## Gives it its model (see `become`).
 func dress(of_kind := "") -> void:
 	dressed = true
+	Hitches.note("dress " + (of_kind if of_kind != "" else kind))
 	set_kind(of_kind if of_kind != "" else kind)
 	# (each koi, guppy or other patterned fish its own pattern)
 	if _look and &"pattern_seed" in _look:

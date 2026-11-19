@@ -815,6 +815,8 @@ func _make_trawlers() -> void:
 		trawler.s = _rng.randf() * _loop_length(trawler.loop)
 		if boat_scene:
 			trawler.boat = boat_scene.instantiate()
+			# (one mesh a material, not about 45 pieces: scripts/still_batch.gd)
+			StillBatch.merge(trawler.boat)
 		else:
 			trawler.boat = Node3D.new()
 		add_child(trawler.boat)
