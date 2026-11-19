@@ -6,30 +6,30 @@
   {
    "picture": "brother_anchor",
    "part": "arm_l",
-   "x": 0.5795,
-   "y": 0.6917,
+   "x": 0.5793,
+   "y": 0.6968,
    "size": 0.153,
-   "turn": 32.2,
+   "turn": 32.4,
    "mirror": true,
    "strength": 1.0
   },
   {
    "picture": "brother_forearm_l",
    "part": "arm_l",
-   "x": 0.5995,
-   "y": 0.2591,
+   "x": 0.6004,
+   "y": 0.2602,
    "size": 0.1411,
-   "turn": 24.7,
+   "turn": 25.6,
    "mirror": true,
    "strength": 1.0
   },
   {
    "picture": "brother_forearm_r",
    "part": "arm_r",
-   "x": 0.6055,
-   "y": 0.268,
+   "x": 0.6062,
+   "y": 0.2692,
    "size": 0.1053,
-   "turn": 25.6,
+   "turn": 26.5,
    "mirror": false,
    "strength": 1.0
   }
