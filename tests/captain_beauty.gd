@@ -342,7 +342,7 @@ func _initialize() -> void:
 		for b in [["out", Vector3(1, 0.1, 0.2)], ["front", Vector3(0.2, 0.05, 1)], ["back", Vector3(0.25, 0.05, -1)], ["under", Vector3(-0.35, -0.55, 0.75)]]:
 			_shots.append(["bighand_" + b[0] + gt, (b[1] as Vector3).normalized(), Vector3(0.53, 0.6, 0.02), 0.5, true, "", g])
 		for b in [["front", Vector3(0.05, 0.35, 1)], ["side", Vector3(1, 0.15, 0.05)], ["top", Vector3(0.25, 1, 0.45)]]:
-			_shots.append(["bigfoot_" + b[0] + gt, (b[1] as Vector3).normalized(), Vector3(0.17, 0.06, 0.1), 0.42, true, "", g])
+			_shots.append(["bigfoot_" + b[0] + gt, (b[1] as Vector3).normalized(), Vector3(0.17, 0.0, 0.16), 0.5, true, "", g])   # (twenty-first round: framed lower and wider, the foot whole)
 	for b in [["front", Vector3(0, 0, 1)], ["side", Vector3(-1, 0, 0)], ["back", Vector3(0, 0, -1)]]:
 		_shots.append(["greybody_" + b[0], b[1], Vector3(0, 0.8, 0), 3.0, false, "", true])
 	# (eighteenth round: --poses: the pose test alone: each pose from the sheet's angle and from a quarter turn round,
