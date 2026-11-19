@@ -173,6 +173,100 @@ func _waves() -> void:
 	Surf.rogue_age = Surf.ROGUE_LIFE - 0.05
 	await _frames(10)
 	_check("a rogue wave is gone at the end of its life", not Surf.rogue_on and absf(Sea.surface_height(at.x, at.y) - Sea.SURFACE) < 0.7)
+	_breakers()
+
+
+## The breakers (scripts/breakers.gd): the breaking profile never folds through itself at any stage, a
+## barrel opens (the lip over open air over the water) and closes, and every face of the sheets, as the
+## shader will bend them, faces the air (Godot's front faces wind clockwise as seen), at every break
+## through a whole wave's period. And the water mesh gives way to the sheets only near the breaks.
+func _breakers() -> void:
+	var crossings := 0
+	var tube_open := false
+	var tube_closed := false
+	for r in Breakers.ROWS:
+		var stage := Breakers.LAST_STAGE * r / float(Breakers.ROWS - 1)
+		var line := PackedVector2Array()
+		for c in Breakers.COLUMNS:
+			var p := Breakers.profile_at(c / float(Breakers.COLUMNS - 1), stage)
+			line.append(Vector2(p.x, p.y))
+		for i in line.size() - 1:
+			for j in range(i + 2, line.size() - 1):
+				if Geometry2D.segment_intersects_segment(line[i], line[i + 1], line[j], line[j + 1]) != null:
+					crossings += 1
+		# (open: straight down from the lip's tip there is air, then the floor; the tip is point 9 of 17)
+		var tip := Breakers.profile_at(9.0 / 17.0, stage)
+		var floor_y := INF
+		var face_x := INF
+		for c in range(int(Breakers.COLUMNS * 0.68), int(Breakers.COLUMNS * 0.84)):
+			var p := Breakers.profile_at(c / float(Breakers.COLUMNS - 1), stage)
+			face_x = minf(face_x, p.x)
+		if stage > 0.6 and stage < 0.9 and tip.x > face_x + 0.8 and tip.y > 0.0:
+			tube_open = true
+		if stage > 1.3 and tip.y < 0.0:
+			tube_closed = true
+	_check("a breaker's profile never folds through itself, opens a tube and closes it", crossings == 0 and tube_open and tube_closed,
+			"%d crossings in %d stages; open %s, closed %s" % [crossings, Breakers.ROWS, tube_open, tube_closed])
+	# Every face as bent, against the air side worked out as the shader does.
+	var wrong := 0
+	var slivers := 0
+	var faces := 0
+	var most := 0.0
+	for site: Dictionary in Breakers.sites():
+		var pts: PackedVector2Array = site.points
+		var up := Breakers._faces_up(pts, site.ways)
+		for k in 10:
+			var t := 100.0 + k * Surf.PERIOD / 10.0
+			for i in range(2, pts.size() - 3, 3):
+				var a_row := _breaker_row(site, i, t)
+				var b_row := _breaker_row(site, i + 1, t)
+				for j in Breakers.POINTS - 1:
+					var a: Vector3 = a_row[j][0]
+					var b: Vector3 = b_row[j][0]
+					var c: Vector3 = a_row[j + 1][0]
+					var n: Vector3 = a_row[j][1]
+					var face := (b - a).cross(c - a) if up else (c - a).cross(b - a)
+					if face.length() < 0.0004:
+						continue
+					faces += 1
+					most = maxf(most, a_row[j][2])
+					# (Godot's front faces wind clockwise as seen from in front: the cross of the edges
+					# points away from the side they face)
+					# (where the breaking shape is faint, at a strip's ends, its fold is thin and the step to the
+					# next section can twist a sliver: the shader takes the side seen from the shape (v_air), not
+					# the winding, so those are counted, not failed)
+					if face.normalized().dot(n) > 0.05:
+						if a_row[j][2] >= 0.25:
+							wrong += 1
+						elif a_row[j][2] > 0.02:
+							slivers += 1
+	_check("every face of a breaker's sheet faces the air, bent as the shader bends it", faces > 1000 and wrong == 0 and most > 0.5,
+			"%d of %d faces wrong where the shape shows (breaking weight up to %.2f); %d twisted slivers where it is faint" % [wrong, faces, most, slivers])
+	var zone_far := Breakers.zone(Vector2(-40.0, -55.0), Bay.shore_distance(Vector2(-40.0, -55.0)))
+	var site: Dictionary = Breakers.sites()[0]
+	var mid: Vector2 = site.points[site.points.size() / 2]
+	var zone_near := Breakers.zone(mid, Bay.shore_distance(mid))
+	_check("the water gives way to a breaker only at a break", zone_far == 0.0 and zone_near > 0.9, "%.2f at the break, %.2f out at sea" % [zone_near, zone_far])
+
+
+# One section's points down its length at a time: [place, facing (the shader's), breaking weight].
+func _breaker_row(site: Dictionary, i: int, t: float) -> Array:
+	var out := []
+	var way: Vector2 = site.ways[i]
+	for j in Breakers.POINTS:
+		var v := j / float(Breakers.POINTS - 1)
+		var p: Dictionary = Breakers.point(site, i, v, t)
+		var dv := 0.5 / 63.0 if v < 0.999 else -0.5 / 63.0
+		var q: Dictionary = Breakers.point(site, i, v + dv, t)
+		var run: Vector3 = (q.at - p.at) * signf(dv)
+		var prof := Vector2(Vector2(run.x, run.z).dot(way), run.y)
+		var n := Vector3.UP
+		if prof.length() > 0.00001:
+			prof = prof.normalized()
+			n = Vector3(-prof.y * way.x, prof.x, -prof.y * way.y).normalized()
+		var wd: float = (p.info as Vector4).x
+		out.append([p.at, Vector3.UP.lerp(n, smoothstep(0.0, 0.25, wd)).normalized() if wd < 0.25 else n, wd])
+	return out
 
 
 ## Schooling (tools/SCHOOLING.md): a swarm loses the one fish at the mouth and has it back later,

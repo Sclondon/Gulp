@@ -993,6 +993,22 @@ the research (with sources), the numbers, what is checked and what is rough. Con
 - The water shader writes depth now (`depth_draw_always`: a tall wave's far side showed through its face).
 - Pictures: `tests/surf_shot.gd` (an eye out from a shore, `--shore=x,z`, or anywhere; `--rogue=metres,age`; strips).
 - Not in GameCommon (tied to this shader and Bay's shore); a candidate component if another game wants surf.
+- **Barrels** (2026-11-18, the user: "The whole point of the wave agent was for real curling barrels on the waves, so
+  research that"). `tools/WATER_FX.md`, "Barrels", has the research (Horizon Forbidden West, Moana, Lopatin, Iribarren),
+  numbers, checks and what is rough. **Decision (Claude's pick): a breaker sheet along each break.** What:
+  `scripts/breakers.gd` lays a strip of sections along the coast at each break (Steamer Lane west of the Santa Cruz
+  wharf, and the Marina beach on the east shore); each carries one wave and draws it with the water's own sums except
+  round the crest, where a breaking profile from a baked 64 x 48 picture (steep face, lip thrown, open tube, landing,
+  collapse) is blended in by height only (so it never folds through itself); sections break one after another, so the
+  barrel peels. The water mesh is discarded where the shore map's fourth channel says a sheet stands for it, the sheet
+  everywhere else; both use the water's material, so they meet seamlessly. The rogue wave gets a moving sheet and curls
+  too. Why: phones and the web have no compute; a heightfield cannot curl. Practice: a breaking cross-section swept
+  along the wavefront (Horizon Forbidden West, Moana's profile deformer), baked like a vertex animation texture.
+  Alternatives: Houdini FLIP baked to a VAT, curling Gerstner (loops, no tube), lip-only meshes, a gentler beach (the
+  floor was NOT re-baked: per the Iribarren number a gentler slope spills; the steep beach is right for plunging).
+- The shader's breaker path (`breaker_point`, `breaker_crest`, `surface_at` in water.gdshader and surf.gdshaderinc)
+  and `Breakers.point` are the same sums: change both. Pictures: `tests/barrel_shot.gd` (a held stage, views side,
+  inside, under, beach, sea, high; `--debug=4` which mesh draws). `-- --no-breakers` leaves them out; `-- --perf=barrel`.
 - Pose sheets and the pose test (the user, 2026-11-18, evening): "Make some concept art of the 3 mains in different
   poses- laughing, shock, swim etc and match the models to the poses as well to make sure the topology is poseablw".
   Sheets: `tools/art_src/concept_captain_poses.jpg`, `concept_brother_poses.jpg`, `concept_boy_poses.jpg`. The test and

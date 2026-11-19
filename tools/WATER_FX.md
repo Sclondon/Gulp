@@ -225,8 +225,8 @@ light shafts, Biomes and scenery placement.
 
 - The surf zone is narrow: the bake eases the beach to 5 m deep 14 m out, a steep beach, so real breaking happens in
   the last 6 m; the waves are bigger than real so that the surf reads.
-- No hollow tube: the lip leans over, but the surface is a height field moved sideways and cannot roll a barrel; a
-  breaker sheet along the breaking line would be the next step. No spray off the lips.
+- (Fixed by "Barrels" below, at two breaks and on the rogue wave: elsewhere still true.) No hollow tube: the lip leans
+  over, but the surface is a height field moved sideways and cannot roll a barrel. No spray off the lips.
 - The surf's foam is flat painted pieces like the rest; far off it is a white band pulsing with the sets. The shallow
   water is clear enough that the sand's caustics show through between waves.
 - Under water the churn is subtle (the fog flattens it); the bubbles are only round the eye.
@@ -234,3 +234,125 @@ light shafts, Biomes and scenery placement.
 - The fishers' bobs and skiffs, animals and plants still use the flat surface: under a rogue wave they sit under it.
 - Not in GameCommon: it is tied to this water shader and Bay's baked shore. Worth a component (a shore map from any
   height function, the include, `Surf`) if another game wants surf.
+
+## Barrels (2026-11-18, second round)
+
+The user, after the first build (crests that only leaned forward): "The whole point of the wave agent was for real
+curling barrels on the waves, so research that". Built by an agent. Concept: `tools/art_src/concept_waves_shore.png`.
+
+### What was found (research)
+
+- **A heightfield cannot curl.** One height per x, z; moving it sideways (Gerstner, "choppy" displacement) folds it
+  only into a cusp and then a self-crossing loop, never an open tube. Every curl in the work below adds geometry that
+  folds back on itself.
+- **Games: a breaking-wave shape carried along the wavefront.** Horizon Forbidden West (Malan, "Rendering Water in
+  Horizon Forbidden West", SIGGRAPH 2022 Advances,
+  https://advances.realtimerendering.com/s2022/SIGGRAPH2022-Advances-Water-Malan.pdf; the Decima Real-Time Live,
+  https://history.siggraph.org/?p=89215; the art director on waves that "actually break and collapse",
+  https://gamesradar.com/horizon-forbidden-west-dev-explains-why-its-water-looks-so-unbelievably-good): the curl
+  treated as a fixed cross-section moving along the wavefront, laid out by artists as quads and deformed at run time.
+  Lopatin, "Simulation and Representation of Topology-changing Rolling Waves for Massive Open Ocean Games" (SIGGRAPH
+  2024 talk, https://history.siggraph.org/?p=160711): a simulated rolling wave captured as a few approximation curves
+  that keep its overhang, for an open-world game. (The Horizon PDF could not be read here; the summaries are from the
+  talk pages. No technical write-ups were found for Uncharted 4, Black Flag, Sea of Thieves or the surfing games.)
+- **Film: a profile curve swept along the crest.** Moana's crashing waves (Byun and Stomakhin, SIGGRAPH 2017,
+  https://history.siggraph.org/wp-content/uploads/2022/09/2017-Talks-Byun_Moana-Crashing-Waves.pdf): a profile-curve
+  wave deformer for art-directed shape and motion, simulation only on top. Surf's Up (Sony Imageworks, SIGGRAPH 2007
+  course, https://history.siggraph.org/animation-video-pod/surfs-up-a-practical-guide-to-making-waves-by-sony-pictures-imageworks/):
+  the wave rigged and animated "as if it was just another character".
+- **Real time, simulated**: Thuerey et al., "Real-time Breaking Waves for Shallow Water Simulations"
+  (https://matthias-research.github.io/pages/publications/breakingWaves.pdf): a heightfield plus particle sheets that
+  break off it (needs a simulation; no compute shaders here).
+- **Which beaches plunge**: the Iribarren number, slope / sqrt(wave steepness) (https://en.wikipedia.org/wiki/Iribarren_number):
+  spilling under about 0.5, plunging 0.5 to 3.3. A STEEP beach plunges; a gentle one spills. The baked beach (5 m deep
+  at 14 m, about 0.36) with these waves (about 2 m high, 14 m long) gives about 1: plunging. So the floor was NOT made
+  gentler and data/monterey.bin was not re-baked: a gentler slope would have made spilling surf, the opposite of
+  barrels. What was short was room, which the sheets give (they break 6 to 11 m out, in 3 to 6 m of water).
+- **Vertex animation textures** (a Houdini FLIP breaker baked to a picture of positions): considered; a parametric
+  profile drawn into a small picture is the same idea without a simulation, and stays art-directable.
+
+### Decision: a breaker sheet along each break, its profile from a baked picture (Claude's pick)
+
+- **What**: `scripts/breakers.gd` (Breakers). Each break is a strip of sections (one every 0.6 m) along the line 8 m
+  from the shore; each section has 64 points running in to the shore. A section carries one wave at a time (the one
+  that has come in past 12 m and not yet been replaced a wavelength later). Behind and ahead of that wave's crest it
+  is the water's own sums (the same `surface_at` as the water mesh); round the crest it takes a breaking PROFILE, 18
+  key points per stage (a steep face; the lip pitching; thrown out about one and a half heights; the open tube about
+  as high as it is deep; the lip landing; a collapsing mound), drawn into a 64 x 48 picture (`Breakers.profile`:
+  columns along the profile, rows of stages; x, y, how thin the lip is, how far inside the tube). The profile is
+  blended in by HEIGHT ONLY, where the water is not pushed sideways, so the shape can never fold through itself
+  (each vertical line keeps its order). Each section breaks at its own time (`tb`), so the break peels along the
+  strip (about 9 to 11 m/s): at any moment white water at one end, an open tube in the middle, a standing face at the
+  other. Wave height follows the surf's sets (the barrels come in sets too). The water mesh is cut away (discarded)
+  where the shore map's fourth channel (`Breakers.zone`, baked by `Surf.bake`) is over 0.5, and the sheet everywhere
+  else: both draw with the water's own material and sums, so they meet along one line of one surface. The sideways
+  push is taken out on both sides of that line (`Surf.zone_at` on the CPU).
+- **The rogue wave** gets a sheet of its own across its width, moving with its crest: the same profile, its stage from
+  its age (it pitches at 42% of its life, a stage every 22%), its height from its own. It curls over and collapses.
+- **The look** (water.gdshader, the breaker path): the body deep green-blue at the foot of the face rising to green;
+  the thin lip lit through in a yellow-green (`breaker_lip`), brighter looking towards the sun (`breaker_sun`, set by
+  `Sea._look`); the tube's inside darker (`breaker_tube`) with pale streaks up its face; foam feathering along the
+  lip's edge as it pitches, a white curtain where it lands, then white water with holes; the water round a breaking
+  crest glassy (the last wave's foam left further in), and clearer from below. Spray: drops thrown off each pitching
+  lip, blown back off the crest, and burst up where a lip lands (one CPUParticles3D a break, fed every 0.1 s from the
+  CPU copy of the sums, `Breakers.point`). Which side of the sheet is seen comes from the shape (`v_air`), not the
+  winding.
+- **Why**: GL Compatibility on phones and the web: no compute, so no simulation; a vertex shader that reads a small
+  picture and the shore map is cheap, and sheets exist only at the breaks. It actually curls (an open tube you can
+  look into), which no heightfield trick does.
+- **The practice**: a breaking cross-section swept along the wavefront (Horizon Forbidden West; Moana's profile-curve
+  deformer; Lopatin's curves), the profile baked into a texture as vertex animation textures are, laid on a baked
+  shore line as games drive surf (Crest, AC III).
+- **Alternatives**: a FLIP simulation baked to a vertex animation texture in Houdini (no Houdini here; the profile
+  picture is the same thing, art-directed); "curling Gerstner" displacement (folds into a self-crossing loop, never a
+  tube); lip-only meshes over the heightfield (the heightfield's own crest fills the tube); a gentler beach (makes
+  spilling surf, see Iribarren); particles for the lip (no smooth glassy face).
+
+### Where the barrels break (Claude's pick)
+
+- **Steamer Lane**: the point west of Santa Cruz's wharf, `from` (-50, -125.5) to (-22, -123), waves to 2.6 m at a
+  full set, peeling west to east (a right, as there). Stops short of the wharf's harbour.
+- **Marina**: the long straight beach on the east shore south of the river mouth, (88.5, -10) to (86.5, 24), to 2.3 m,
+  peeling north to south (a beach break).
+- Everywhere else the surf is as before (spilling and broken water, rocky points and cliffs included). More breaks:
+  add a line to `Breakers.SITES` on a straight, smooth coast (a concave cove makes the sections fan; Pleasure Point
+  was looked at and left out for that). Nothing placed by the shore moved: the floor is unchanged.
+
+### The numbers (Claude's picks, change freely)
+
+`Breakers`: STEP 0.6 m, POINTS 64 (12 behind, 40 in the profile, 12 ahead), DEPTH_LINE 8 m, ENTRY 12 m, WINDOW 1.7
+wavelengths, BREAK_TIME 2.2 s (face to landing), LAST_STAGE 1.5, BACK 1.6 and FRONT 2.6 wave heights, SEEN 110 m
+(drawn within it; the water mesh beyond), the peel `tb` 0.5 to 3.1 s along each strip, the ends' fade 2.5 to 8 m.
+The shader repeats the sums (`breaker_point`, `breaker_crest`, `surface_at`): keep them alike with `Breakers.point`.
+`-- --no-breakers` leaves the breakers out (costs, comparisons).
+
+### Checked
+
+- `sh tests/smoke.sh` passes with three new checks (`checks.gd` `_breakers`): the profile never crosses itself at any
+  of its 48 stages, opens a tube and closes it; every face of the sheets, bent as the shader bends it, faces the air
+  (Godot's front faces wind clockwise), at 10 times through a period (0 wrong of about 20,000 where the shape shows;
+  at the strips' ends, where it is faint, about 180 thin twisted slivers, which the shader shows from the right side
+  anyway); the water gives way only at a break.
+- Pictures (`tests/barrel_shot.gd`: holds the clock where a chosen section is at a chosen stage and puts the eye at
+  `--view=side|inside|under|beach|sea|top|high`; `--debug=4` shows which mesh draws each pixel, `--debug=5` the foam
+  and weights): from the shoulder into the tube, from inside the tube out to its open end, from under the water, a
+  strip from the beach of one wave from swell to curl to collapse, both breaks, and the rogue wave's curl from the
+  side (`tests/surf_shot.gd --rogue=46,<age> --across`). Two quality passes against the concept and barrel
+  photographs: colours moved from teal to the concept's lit green lip and dark tube; foam and the pale wandering lines
+  taken off the barrel's glassy face; spray thickened. Also drawn under ANGLE (as a browser draws).
+- Cost (`-- --perf=beach,start,title`, 390x844, desktop): frame 5.32 / 5.15 / 5.57 ms before, 5.39 / 4.51 / 4.56 after;
+  GPU 1.04 / 1.03 / 1.16 before, 1.01 / 1.04 / 1.15 after; one more draw and about 11,000 more triangles where a break
+  is in sight. At a barrel (`--perf=barrel`, new), with and without `--no-breakers`: GPU 0.19 to 0.33 ms either way,
+  within the noise. Not tried on a phone.
+
+### Rough
+
+- The surface the game floats things on (`Sea.surface_height`) is still the water's own sums: a fish or the camera
+  under a lip does not know the lip is there.
+- From under the water a barrel reads only faintly: the broken water's foam roof dominates (only within a crest's
+  reach is the underside cleared).
+- The lip's edge is a hard white line; the white water after the landing is flat painted foam, not a bursting cloud.
+  Spray is round drops, small next to the concept's plume.
+- At the strips' ends the curl shrinks over 2.5 to 8 m into the plain surf: a short shoulder, with a thin twisted
+  sliver or two.
+- Only two breaks. Nobody has swum one by hand.

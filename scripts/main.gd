@@ -339,6 +339,12 @@ func _go_near() -> void:
 			var zone: Vector2 = Sea.ZONES[_near].at
 			what = Vector3(zone.x, Sea.ground(zone.x, zone.y) + 3.0, zone.y)
 			big = 4.0
+		"barrel":
+			# (just under the surf at Santa Cruz's point break, where the barrels peel: scripts/breakers.gd)
+			var site: Dictionary = Breakers.SITES[0]
+			var mid: Vector2 = (site.from + site.to) * 0.5
+			what = Vector3(mid.x, Sea.SURFACE - 1.5, mid.y)
+			big = 2.0
 		"jelly":
 			what = life.jellies[life.jellies.size() - 1].global_position
 		"sardines":

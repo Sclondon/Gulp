@@ -7,7 +7,7 @@ extends SceneTree
 ##       -- --offline --hour=17 --times=3,4.5 --dir=<folder> [--tag=name]
 ##       [--shore=x,z] [--out=metres] [--up=metres] [--along]   (the eye out to sea from the shore near x,z)
 ##       [--eye=x,y,z --look=x,y,z]                             (or exactly)
-##       [--rogue=metres ahead,age]                             (a rogue wave crossing the view, that old)
+##       [--rogue=metres ahead,age] [--across]                  (a rogue wave crossing the view, that old)
 ##
 ## --shore finds the nearest water 6 m from a shore near x, z and puts the eye `out` metres (22) out to
 ## sea from it, `up` metres (2) over the still surface, looking at the shore (--along: looking along it).
@@ -101,8 +101,13 @@ func _process(delta: float) -> bool:
 		_rogue_set = true
 		var sight := Vector2(_look.x - _eye.x, _look.z - _eye.z).normalized()
 		var over := Vector2(_eye.x, _eye.z) + sight * _rogue.x
-		# (coming straight at the eye, its crest across the view)
-		Sea.rogue_wave(over, -sight, true)
+		# (coming straight at the eye, its crest across the view; with --across, passing across the view
+		# from left to right, so its curl is seen from the side)
+		var heading := Vector2(sight.y, -sight.x) if OS.get_cmdline_user_args().has("--across") else -sight
+		Sea.rogue_wave(over, heading, true)
+		if OS.get_cmdline_user_args().has("--across"):
+			# (its crest right across the eye's sight at the age given, not at its highest)
+			Surf.start_rogue(over - heading * Surf.ROGUE_SPEED * (_rogue.y + 0.8), heading)
 		Surf.rogue_age = _rogue.y
 	# (no static from the depth limit: the eye is not the fish's)
 	_main.set(&"limited", false)

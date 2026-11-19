@@ -66,6 +66,7 @@ static var map: ImageTexture
 static var _d := PackedFloat32Array()
 static var _h := PackedFloat32Array()
 static var _open := PackedFloat32Array()
+static var _zone := PackedFloat32Array()
 static var _cols := 0
 static var _rows := 0
 
@@ -81,6 +82,7 @@ static func bake() -> void:
 	_d.resize(_cols * _rows)
 	_h.resize(_cols * _rows)
 	_open.resize(_cols * _rows)
+	_zone.resize(_cols * _rows)
 	var image := Image.create(_cols, _rows, false, Image.FORMAT_RGBAH)
 	for r in _rows:
 		var z := Bay.NORTH + r * GRID
@@ -99,7 +101,9 @@ static func bake() -> void:
 			_d[i] = d
 			_h[i] = h
 			_open[i] = open
-			image.set_pixel(c, r, Color(d, h, open, 1.0))
+			# (the fourth: how much a breaker's sheet stands for the water here, scripts/breakers.gd)
+			_zone[i] = Breakers.zone(p, d) if d > -2.0 and d < REACH else 0.0
+			image.set_pixel(c, r, Color(d, h, open, _zone[i]))
 	map = ImageTexture.create_from_image(image)
 
 
@@ -112,6 +116,7 @@ static func dress(material: ShaderMaterial) -> void:
 	material.set_shader_parameter(&"surf_a", Vector4(HEIGHT, LENGTH, PERIOD, REACH))
 	material.set_shader_parameter(&"surf_b", Vector4(FLAT, DEEP, BREAK, SWASH))
 	material.set_shader_parameter(&"rogue_c", Vector4(ROGUE_LENGTH, ROGUE_WIDTH, ROGUE_LIFE, ROGUE_HEIGHT))
+	Breakers.dress(material)
 
 
 ## The rogue wave's state for the shader, each frame.
@@ -225,15 +230,17 @@ static func height(x: float, z: float) -> float:
 	var shore := _shore(x, z)
 	var surf := wave(x, z, t, shore)
 	var r := rogue(x, z)
+	# (no sideways push where a breaker's sheet draws the water: scripts/breakers.gd)
+	var pushed := 1.0 - smoothstep(0.0, 0.5, zone_at(x, z))
 	var sx := x
 	var sz := z
 	if surf[7] > 0.0:
 		var way := shoreward(x, z)
-		sx -= way.x * surf[1]
-		sz -= way.y * surf[1]
+		sx -= way.x * surf[1] * pushed
+		sz -= way.y * surf[1] * pushed
 	if r.y != 0.0:
-		sx -= rogue_dir.x * r.y
-		sz -= rogue_dir.y * r.y
+		sx -= rogue_dir.x * r.y * pushed
+		sz -= rogue_dir.y * r.y * pushed
 	if sx != x or sz != z:
 		shore = _shore(sx, sz)
 		surf = wave(sx, sz, t, shore)
@@ -276,3 +283,17 @@ static func surge(at: Vector3) -> Vector3:
 	var rise := (ahead.x - r.x) / 0.1
 	var along := ROGUE_PUSH * clampf(r.x / ROGUE_HEIGHT, -0.4, 1.0)
 	return Vector3(rogue_dir.x * along, clampf(rise, -1.5, 1.8), rogue_dir.y * along) * fade
+
+
+## How much a breaker's sheet stands for the water at a point (the map's fourth channel, bilinear as the
+## shader reads it): there the water is not pushed sideways (scripts/breakers.gd).
+static func zone_at(x: float, z: float) -> float:
+	if _d.is_empty():
+		bake()
+	var gx := clampf((x - Bay.WEST) / GRID, 0.0, _cols - 1.001)
+	var gz := clampf((z - Bay.NORTH) / GRID, 0.0, _rows - 1.001)
+	var c := int(gx)
+	var r := int(gz)
+	var i := r * _cols + c
+	var j := i + _cols
+	return lerpf(lerpf(_zone[i], _zone[i + 1], gx - c), lerpf(_zone[j], _zone[j + 1], gx - c), gz - r)

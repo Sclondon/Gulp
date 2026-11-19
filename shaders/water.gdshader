@@ -249,7 +249,178 @@ vec3 swell_at(vec2 p) {
 	return sum;
 }
 
+// (Gulp) The water's surface over an undisplaced point (world x, z): its place (world x, z, and y from
+// the still surface), with the surf and the rogue wave; in `level` what the breakers ride on (the
+// swell and the rogue wave). The water mesh and the breakers' sheets both draw from it.
+vec3 surface_at(vec2 still, float fine, float swelling, vec3 eye, out vec4 wa, out vec4 wb, out vec2 way, out float level) {
+	surf_wave(still, water_clock, shore_at(still), wa, wb);
+	way = wb.w > 0.0 ? shore_way(still) : vec2(0.0);
+	vec2 r_slope;
+	vec2 r_shape;
+	vec4 r = rogue_at(still, r_slope, r_shape);
+	level = swell_at(vec2(still.x, 200.0 - still.y)).x * swelling * (1.0 - 0.6 * wb.w) + r.x;
+	// (no sideways push where a breaker's sheet stands for the water, nor up to the line where it takes
+	// over, on either side of it: there the sheet draws the shape by height alone, and the two meet)
+	float sheet = max(shore_zone(still) * (1.0 - step(breaker_seen, length(still - eye.xz))), rogue_zone(still));
+	float pushed = 1.0 - smoothstep(0.0, 0.5, sheet);
+	vec2 xz = still + (way * wa.y * fine + rogue_a.zw * r.y) * pushed;
+	return vec3(xz.x, level + wa.x * fine, xz.y);
+}
+
+// (the surf's shape only where the mesh is fine enough for it: near the eye; its foam goes on
+// further, worked out at every pixel)
+float fine_at(vec2 still, vec3 eye) {
+	return 1.0 - smoothstep(45.0, 80.0, length(still - eye.xz));
+}
+
+// A point of a breaker's section (scripts/breakers.gd, Breakers.point): v is how far down the section
+// (0 the back end out at sea, 1 the front end at the shore). The section stands at `base`, running in
+// along `way`; for the rogue wave, `base` and `way` are its own. Its place (world x, z; y from the still
+// surface); in `info` the weight of the breaking shape, the stage, the lip, inside; `still` the water it
+// stands for.
+vec3 breaker_point(vec2 base, vec2 way, float line_d, float tb, float site_h, float fade, float v, bool rogue, vec3 eye,
+		out vec2 still, out vec4 info, out vec4 wa, out vec4 wb, out vec2 sway, out float t_piece, out vec3 sect) {
+	float hh;
+	float stage;
+	float sc;
+	float dc;
+	float win;
+	if (rogue) {
+		// (the rogue wave: its crest goes on along its way; it curls as it grows to its highest)
+		float grow = pow(sin(3.14159265 * clamp(rogue_b.x / rogue_c.z, 0.0, 1.0)), 1.5);
+		hh = rogue_c.w * grow * fade / 0.85;
+		stage = (rogue_b.x / rogue_c.z - breaker_rogue.x) / breaker_rogue.y;
+		win = breaker_rogue.z * rogue_c.x;
+		// (here "s" and "d" are metres along its way from the crest, the crest at 0: d runs against it)
+		sc = 0.0;
+		dc = 0.0;
+	} else {
+		vec3 cr = breaker_crest(base, way, line_d, water_clock);
+		hh = site_h * (0.8 + 0.3 * sin(cr.z * 0.27 + 1.0)) / 1.1;
+		stage = (cr.y - tb) / breaker_a.x;
+		sc = cr.x;
+		dc = surf_d(sc);
+		win = breaker_a.w * surf_a.y;
+	}
+	float d;
+	vec4 b = vec4(0.0);
+	float wd = 0.0;
+	info = vec4(0.0, stage, 0.0, 0.0);
+	sect = vec3(breaker_stage_weight(stage) * fade, hh, 0.0);
+	t_piece = v < breaker_b.z ? 0.0 : 1.0;
+	if (v < breaker_b.z) {
+		float f = v / breaker_b.z;
+		d = rogue ? mix(win, breaker_b.x * hh, f) : surf_d(mix(sc + win, surf_s(dc + breaker_b.x * hh), f));
+	} else if (v > breaker_b.w) {
+		float f = (v - breaker_b.w) / (1.0 - breaker_b.w);
+		d = rogue ? mix(-breaker_b.y * hh, -win, f) : surf_d(mix(surf_s(max(dc - breaker_b.y * hh, 0.25)), max(sc - win, surf_s(0.25)), f));
+	} else {
+		t_piece = (v - breaker_b.z) / (breaker_b.w - breaker_b.z);
+		b = breaker_shape(t_piece, max(stage, 0.0));
+		d = dc - b.x * hh;
+		wd = breaker_piece_weight(t_piece) * breaker_stage_weight(stage) * fade;
+		info = vec4(wd, stage, b.z, b.w);
+	}
+	still = base + (line_d - d) * way;
+	// (how near the crest this water is, a wave's length either side: its glassy water and clear underside)
+	sect.z = 1.0 - smoothstep(0.25, 0.42, rogue ? abs(d) / win : abs(surf_s(d) - sc) / surf_a.y);
+	float fine = fine_at(still, eye);
+	wd *= fine;
+	info.x = wd;
+	float level;
+	vec3 g = surface_at(still, fine, 1.0, eye, wa, wb, sway, level);
+	if (rogue && wd > 0.0) {
+		// (the rogue wave's breaking shape stands in for its own hump, not on top of it)
+		vec2 r_slope;
+		vec2 r_shape;
+		level -= rogue_at(still, r_slope, r_shape).x;
+	}
+	vec3 bp = vec3(still.x, level + b.y * hh, still.y);
+	return vec3(g.x, mix(g.y, bp.y, wd), g.z);
+}
+
+// (Gulp) which mesh this is: 0 the water's rings, 1 a shore breaker's sheet, 2 the rogue wave's sheet
+varying float v_kind;
+// a breaker: the weight of its breaking shape (0 where it is the plain water), its stage, lip, inside
+varying vec4 v_brk;
+// a breaker: where along the coast (m) and how far down its breaking piece (0..1), for its foam
+varying vec2 v_brk_uv;
+// a breaker: how much its section is breaking now, and how high this point is (in its wave's heights)
+varying vec3 v_sect;
+// a breaker: which way its air side faces (world), worked out from the shape itself, so that which side is
+// seen does not hang on the winding of its triangles (a thin fold at a strip's end can twist one)
+varying vec3 v_air;
+
 void vertex() {
+	// (Gulp: a breaker's sheet, scripts/breakers.gd: its sections' points are worked out here, from the
+	// water's sums and the breaking profile)
+	if (CUSTOM0.w > 5.0) {
+		bool rogue = CUSTOM0.w > 8.0;
+		vec2 base;
+		vec2 way;
+		float line_d;
+		float fade = UV.y;
+		if (rogue) {
+			way = rogue_a.zw;
+			vec2 side = vec2(-way.y, way.x);
+			float side_off = CUSTOM0.x;
+			base = rogue_a.xy + way * rogue_b.y * max(rogue_b.x, 0.0) + side * side_off;
+			line_d = 0.0;
+			fade = exp(-pow(side_off / rogue_c.y, 2.0)) * smoothstep(0.7, 1.0, 1.0 - abs(side_off) / (1.4 * rogue_c.y) + 0.7);
+		} else {
+			base = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xz;
+			way = UV2;
+			line_d = CUSTOM0.x;
+		}
+		float v = UV.x;
+		vec2 still;
+		vec4 info;
+		vec4 wa;
+		vec4 wb;
+		vec2 sway;
+		float tp;
+		vec3 sect;
+		vec3 sc2;
+		vec3 p = breaker_point(base, way, line_d, CUSTOM0.y, CUSTOM0.z, fade, v, rogue, CAMERA_POSITION_WORLD, still, info, wa, wb, sway, tp, sect);
+		// (its facing from the next point down the section: the air on the left going in to the shore)
+		float dv = v < 0.999 ? 0.5 / 63.0 : -0.5 / 63.0;
+		vec2 s2;
+		vec4 i2;
+		vec4 a2;
+		vec4 b2;
+		vec2 w2;
+		float t2;
+		vec3 q = breaker_point(base, way, line_d, CUSTOM0.y, CUSTOM0.z, fade, v + dv, rogue, CAMERA_POSITION_WORLD, s2, i2, a2, b2, w2, t2, sc2);
+		vec3 run = (q - p) * sign(dv);
+		vec3 n = vec3(0.0, 1.0, 0.0);
+		vec2 prof = vec2(dot(run.xz, way), run.y);
+		if (length(prof) > 0.00001) {
+			prof = normalize(prof);
+			n = normalize(vec3(-prof.y * way.x, prof.x, -prof.y * way.y));
+		}
+		float bend = smoothstep(0.0, 0.25, info.x);
+		NORMAL = normalize(mix(vec3(0.0, 1.0, 0.0), n, bend));
+		v_air = NORMAL;
+		vec3 x_way = vec3(1.0, 0.0, 0.0) - NORMAL * NORMAL.x;
+		TANGENT = length(x_way) > 0.1 ? normalize(x_way) : normalize(vec3(0.0, 0.0, 1.0) - NORMAL * NORMAL.z);
+		BINORMAL = normalize(cross(NORMAL, TANGENT));
+		v_kind = rogue ? 2.0 : 1.0;
+		v_brk = info;
+		v_brk_uv = vec2(dot(base, vec2(-way.y, way.x)), tp);
+		v_sect = vec3(sect.x, p.y / max(sect.y, 0.1), sect.z);
+		v_at = still;
+		UV = vec2(0.5 + still.x / 26.8, 200.0 - still.y);
+		UV2 = vec2(still.x, 1.0);
+		v_metres = vec2(still.x, UV.y);
+		v_steep = 0.0;
+		v_swell = 1.0;
+		v_surf_a = wa;
+		v_surf_b = wb;
+		v_surf_way = sway;
+		VERTEX = vec3(p.x, p.y, p.z) - vec3(MODEL_MATRIX[3].x, 0.0, MODEL_MATRIX[3].z);
+		v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		POSITION = psx_snap(PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0), VIEWPORT_SIZE);
+	} else {
 	// (Gulp: the mesh goes with the eye: its places on the water come from the world, mapped as the
 	// old fixed 400 m mesh's UVs were, so the swell and the foam lie as they did)
 	vec3 still = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -262,23 +433,43 @@ void vertex() {
 	v_swell = UV2.y * (1.0 - smoothstep(0.1, 0.4, v_steep));
 	vec4 wa;
 	vec4 wb;
-	surf_wave(still.xz, water_clock, shore_at(still.xz), wa, wb);
+	vec2 sway;
+	float level;
+	vec3 p = surface_at(still.xz, fine_at(still.xz, CAMERA_POSITION_WORLD), v_swell, CAMERA_POSITION_WORLD, wa, wb, sway, level);
 	v_surf_a = wa;
 	v_surf_b = wb;
-	v_surf_way = wb.w > 0.0 ? shore_way(still.xz) : vec2(0.0);
-	vec2 r_slope;
-	vec2 r_shape;
-	vec4 r = rogue_at(still.xz, r_slope, r_shape);
-	// (the surf's shape only where the mesh is fine enough for it: near the eye; its foam goes on
-	// further, worked out at every pixel)
-	float fine = 1.0 - smoothstep(45.0, 80.0, length(still - CAMERA_POSITION_WORLD));
-	VERTEX.y += swell_at(v_metres).x * v_swell * (1.0 - 0.6 * v_surf_b.w) + v_surf_a.x * fine + r.x;
-	VERTEX.xz += v_surf_way * v_surf_a.y * fine + rogue_a.zw * r.y;
+	v_surf_way = sway;
+	v_kind = 0.0;
+	v_brk = vec4(0.0);
+	v_brk_uv = vec2(0.0);
+	v_sect = vec3(0.0);
+	v_air = vec3(0.0, 1.0, 0.0);
+	VERTEX.y += p.y;
+	VERTEX.xz += p.xz - still.xz;
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	POSITION = psx_snap(PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0), VIEWPORT_SIZE);
+	}
 }
 
 void fragment() {
+	// (Gulp: the water mesh gives way to the breakers' sheets where they stand for it, and the sheets are
+	// cut away everywhere else: the two meet along one line of one surface. scripts/breakers.gd)
+	float sheet_near = 1.0 - step(breaker_seen, length(v_at - CAMERA_POSITION_WORLD.xz));
+	float z_shore = shore_zone(v_at) * sheet_near;
+	float z_rogue = rogue_zone(v_at);
+	if (v_kind < 0.5) {
+		if (z_shore > 0.5 || z_rogue > 0.5) {
+			discard;
+		}
+	} else if (v_kind < 1.5) {
+		if (z_shore <= 0.5) {
+			discard;
+		}
+	} else if (z_rogue <= 0.5) {
+		discard;
+	}
+	// (how much of a breaker's own shape there is here: its facing is the mesh's, not the sums')
+	float brk_bend = smoothstep(0.0, 0.25, v_brk.x);
 	// how much water lies between the surface here and whatever is behind it
 	float behind = view_depth(SCREEN_UV, texture(depth_texture, SCREEN_UV).r, INV_PROJECTION_MATRIX);
 	float surface = view_depth(SCREEN_UV, FRAGCOORD.z, INV_PROJECTION_MATRIX);
@@ -451,6 +642,11 @@ void fragment() {
 		surf_white = max(surf_white, step(0.6, gone * (0.2 + 0.9 * fn)));
 		surf_white = max(surf_white, step(0.5, crest_line * (0.35 + 0.9 * fn)));
 		surf_white = max(surf_white, step(0.45, lace)) * step(0.3, sw) * (1.0 - fall);
+		// (Gulp: none of it on a breaker's own shape, which has its own foam below)
+		surf_white *= 1.0 - brk_bend;
+		// (and round a breaking barrel the water ahead of it is glassy, as in barrel photographs: the last
+		// wave's foam is left further in)
+		surf_white *= 1.0 - 0.85 * v_sect.x * v_sect.z;
 		white = max(white, surf_white);
 		col = mix(col, foam_color.rgb, surf_white);
 	}
@@ -476,10 +672,46 @@ void fragment() {
 		white = max(white, rogue_white);
 		col = mix(col, foam_color.rgb, rogue_white);
 	}
+	// (Gulp) A breaker (scripts/breakers.gd): the body of a standing wave is green-teal; its thin lip
+	// glows green with the light through it, most when the eye looks towards the sun; the inside of the
+	// tube is darker, with pale streaks running up its face; foam feathers along the lip's edge as it
+	// throws, the curtain goes white where the lip lands, and then it is all white water.
+	float brk_glow = 0.0;
+	float brk_white = 0.0;
+	if (v_brk.x > 0.001) {
+		float wd = v_brk.x;
+		float st = v_brk.y;
+		float thin = v_brk.z;
+		float inside = v_brk.w;
+		vec2 bu = vec2(v_brk_uv.x * 0.22, v_brk_uv.y * 3.0 - st * 0.4);
+		float bn = texture(foam_texture, bu).r * 0.6 + texture(foam_texture, bu * vec2(2.3, 1.7) + 0.37).r * 0.4;
+		// (the body: deep green-blue at the foot of the face, rising to a lit green near the top, as in the
+		// concept and barrel photographs)
+		float up_k = smoothstep(0.0, 0.95, v_sect.y);
+		vec3 body = mix(breaker_tube.rgb * 1.3, mix(surf_body.rgb, breaker_lip.rgb, 0.5), up_k) * lit_water;
+		col = mix(col, body, wd * 0.85);
+		// (inside: darker towards the back of the tube, the face streaked with the light coming up it)
+		float streaks = smoothstep(0.55, 0.75, texture(foam_texture, vec2(v_brk_uv.x * 0.6, v_brk_uv.y * 0.35 + st * 0.15)).r);
+		col = mix(col, breaker_tube.rgb * lit_water, inside * wd * 0.8);
+		col = mix(col, surf_glow.rgb * lit_water * 0.8, inside * wd * streaks * 0.35 * (1.0 - smoothstep(0.9, 1.05, st)));
+		vec3 to_frag = normalize(v_world - CAMERA_POSITION_WORLD);
+		float towards_sun = pow(max(dot(to_frag, normalize(breaker_sun)), 0.0), 2.0);
+		brk_glow = wd * smoothstep(0.1, 0.7, thin) * smoothstep(0.0, 0.25, st) * (1.0 - smoothstep(0.9, 1.1, st)) * (0.6 + 0.4 * towards_sun);
+		col = mix(col, breaker_lip.rgb * lit_water, brk_glow);
+		// (foam: the lip's very edge feathering as it pitches; the curtain where it lands; white water after)
+		float edge = smoothstep(0.88, 1.0, thin) * smoothstep(0.15, 0.4, st);
+		float curtain = smoothstep(0.78, 0.95, st) * smoothstep(0.45, 0.9, thin);
+		float crash = smoothstep(0.95, 1.12, st);
+		brk_white = max(step(0.55, edge * (0.5 + 0.8 * bn)), step(0.5, curtain * (0.4 + 0.9 * bn)));
+		brk_white = max(brk_white, step(0.4, crash * (0.35 + 0.9 * bn) * (1.0 - 0.4 * inside)));
+		brk_white *= step(0.15, wd);
+		white = max(white, brk_white);
+		col = mix(col, foam_color.rgb, brk_white);
+	}
 	// and faint pale lines wander over it, like light on the surface
 	vec2 lp = at * 0.3 + (vec2(vnoise(at * 0.2 + 1.0), vnoise(at * 0.2 + 7.0)) - 0.5) * 2.0;
 	float line = (1.0 - smoothstep(0.0, 0.045, abs(vnoise(lp + vec2(0.0, TIME * 0.12)) - 0.5))) * lines * (1.0 - white)
-			* (1.0 - smoothstep(50.0, 160.0, far)) * (1.0 - wake_flat);
+			* (1.0 - smoothstep(50.0, 160.0, far)) * (1.0 - wake_flat) * (1.0 - brk_bend);
 	col = mix(col, mix(col, foam_color.rgb, 0.35), line);
 	if (rain > 0.0 && far < 70.0) {
 		// one drop, or none, in each square of the water at a time: its ring opens out and fades
@@ -499,14 +731,20 @@ void fragment() {
 	vec3 across_way = normalize((INV_VIEW_MATRIX * vec4(TANGENT, 0.0)).xyz);
 	vec3 along_way = normalize((INV_VIEW_MATRIX * vec4(BINORMAL, 0.0)).xyz);
 	vec3 flat_normal = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	// (Gulp: a breaker's sheet knows its air side from its shape; the water's rings from their winding)
+	bool facing = FRONT_FACING;
+	if (v_kind > 0.5) {
+		facing = dot(v_air, CAMERA_POSITION_WORLD - v_world) > 0.0;
+		flat_normal = normalize(v_air) * (facing ? 1.0 : -1.0);
+	}
 	// (far off the small waves are smaller than a pixel: they are smoothed away, or they would
 	// only be noise; foam is not shiny; and the wake has flattened them. The swell is none
 	// of those things: it is the shape of the water itself.)
 	// (and in the surf the small ripples give way to the big waves: they hid them)
 	float steepness = ripple_height * 0.5 * mix(1.0, 0.12, smoothstep(30.0, 170.0, far)) * (1.0 - white) * (1.0 - 0.85 * wake_flat) * (1.0 - 0.75 * v_surf_b.w);
 	// (the surf's and the rogue wave's slopes are in the world's x and z; the water's second way runs to -z)
-	vec2 slope = vec2(slope_x, slope_y) * steepness + swell_slope * v_swell * (1.0 - 0.6 * v_surf_b.w)
-			+ vec2(surf_slope.x + r_slope.x, -(surf_slope.y + r_slope.y));
+	vec2 slope = vec2(slope_x, slope_y) * steepness * (1.0 - 0.5 * brk_bend) + (swell_slope * v_swell * (1.0 - 0.6 * v_surf_b.w)
+			+ vec2(surf_slope.x + r_slope.x, -(surf_slope.y + r_slope.y))) * (1.0 - brk_bend);
 	vec3 wavy = normalize(flat_normal - across_way * slope.x - along_way * slope.y);
 	// seen at a low angle water is a mirror, however clear it is seen from above
 	float fresnel = pow(1.0 - clamp(dot(wavy, to_eye / max(far, 0.001)), 0.0, 1.0), 5.0);
@@ -515,17 +753,21 @@ void fragment() {
 	// (the surf is solid water where it stands thick, clear only in the thin swash)
 	ALPHA = mix(ALPHA, 0.94, surf_thick * 0.85);
 	ALPHA = mix(ALPHA, 0.97, rogue_face);
+	// (a breaker: solid in its body, a little clear in its lit lip, and its lip lit from within)
+	ALPHA = mix(ALPHA, 0.95, brk_bend);
+	ALPHA = mix(ALPHA, 0.82, brk_glow * (1.0 - brk_white));
 	ROUGHNESS = mix(roughness, 0.85, white);
 	SPECULAR = specular;
 	METALLIC = 0.0;
 	EMISSION = foam_color.rgb * fall * 0.15;
+	EMISSION += breaker_lip.rgb * lit_water * brk_glow * 0.4;
 	// seen from underneath, the surface is a bright ceiling that hides the sky
 	// (Gulp: with the eye above the water a back face is the underside of a wave's curling lip or an
 	// overhanging wall: drawn as the water it is, not as the bright ceiling seen from under the sea)
-	if (!FRONT_FACING && eye_above > 0.5) {
+	if (!facing && eye_above > 0.5) {
 		ALBEDO = mix(col, surf_body.rgb * lit_water * 0.8, 0.5);
 		ALPHA = 0.97;
-	} else if (!FRONT_FACING) {
+	} else if (!facing) {
 		ALBEDO = mix(shallow.rgb, vec3(1.0), 0.2 + 0.4 * white);
 		// (Moon Jellies: far off it fades into the dark of the deep water, so that the bright
 		// water is a window overhead, as it is to a diver, and has no edge)
@@ -537,13 +779,36 @@ void fragment() {
 		ALBEDO = mix(ALBEDO, vec3(1.0), white * surf_under * 0.6) * mix(1.0, 0.75 + 0.25 * sin(v_surf_a.z), v_surf_b.w);
 		EMISSION += vec3(0.85, 0.95, 1.0) * white * (0.25 + 0.5 * surf_under);
 		EMISSION *= 1.0 - 0.6 * rogue_face;
+		// (Gulp: the underside of a breaker seen from under the water: its lip and curtain glow green-white
+		// with the light through them; the barrel's body is darker)
+		ALBEDO = mix(ALBEDO, mix(surf_body.rgb * lit_water, surf_glow.rgb * lit_water * 1.3, brk_glow), brk_bend * (1.0 - white) * 0.7);
+		EMISSION += surf_glow.rgb * lit_water * brk_glow * 0.5;
+		ALPHA = mix(ALPHA, 0.92, brk_bend);
+		// (and the water's surface round a breaking barrel is clearer from below, so the lip and the tube
+		// over it show through as a dark curl against the light)
+		float clear_under = v_sect.x * v_sect.z * (1.0 - brk_bend) * step(0.5, v_kind);
+		ALPHA = mix(ALPHA, 0.3, clear_under);
+		EMISSION *= 1.0 - 0.6 * clear_under;
 		ROUGHNESS = 0.9;
 	} else {
 		NORMAL = normalize((VIEW_MATRIX * vec4(wavy, 0.0)).xyz);
 	}
 	if (surf_debug > 0) {
 		vec3 sd = shore_at(v_at);
-		ALBEDO = surf_debug == 3 ? (FRONT_FACING ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)) : surf_debug == 1 ? vec3(clamp(sd.x / 30.0, 0.0, 1.0), clamp(sd.y / 10.0, 0.0, 1.0), v_surf_b.w) : vec3(v_surf_b.w, v_surf_b.x, fract(v_surf_a.z / 6.2831853));
+		if (surf_debug == 5) {
+			// (white, the breaking shape's weight, the glassy water near a breaking crest)
+			sd = vec3(white, brk_bend, v_sect.x * v_sect.z);
+		}
+		if (surf_debug == 4) {
+			// (which mesh: the water's rings blue, a shore breaker orange, the rogue's magenta; back faces darker)
+			sd = v_kind < 0.5 ? vec3(0.1, 0.3, 1.0) : (v_kind < 1.5 ? vec3(1.0, 0.55, 0.1) : vec3(1.0, 0.2, 0.9));
+			ALBEDO = sd * (facing ? 1.0 : 0.35) * (0.6 + 0.4 * brk_bend);
+		} else if (surf_debug == 5) {
+			ALBEDO = sd;
+		} else {
+			ALBEDO = surf_debug == 3 ? (facing ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)) : surf_debug == 1 ? vec3(clamp(sd.x / 30.0, 0.0, 1.0), clamp(sd.y / 10.0, 0.0, 1.0), v_surf_b.w) : vec3(v_surf_b.w, v_surf_b.x, fract(v_surf_a.z / 6.2831853));
+		}
 		ALPHA = 1.0;
+		EMISSION = ALBEDO * 0.8;
 	}
 }

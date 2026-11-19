@@ -126,6 +126,8 @@ var post_tint := POST_TINT
 ## The water's mesh, which goes with the eye (`_surface`), and bubbles churned in the surf round it.
 var _water_mesh: MeshInstance3D
 var _surf_bubbles: CPUParticles3D
+## The breakers' sheets (curling barrels; scripts/breakers.gd).
+var breakers: Breakers
 ## Seconds until a rogue wave comes by itself (Surf.ROGUE_EVERY); `rogues` false stops them.
 var rogues := true
 var _rogue_wait := 0.0
@@ -355,6 +357,10 @@ func _ready() -> void:
 	_light()
 	_floor()
 	_surface()
+	# (curling barrels at the surf breaks, and the rogue wave's curl: scripts/breakers.gd)
+	breakers = Breakers.new()
+	breakers.name = "Breakers"
+	add_child(breakers)
 	_make_snow()
 	# (the water's light: tools/WATER_FX.md)
 	_caustics()
@@ -404,6 +410,7 @@ func _look() -> void:
 	var to := Day.sun_direction()
 	_sun.global_basis = Basis.looking_at(-to, Vector3.UP if absf(to.y) < 0.99 else Vector3.FORWARD)
 	_sun.light_color = lit
+	_water.set_shader_parameter(&"breaker_sun", to)
 	_sun.light_energy = lerpf(0.6, 1.5, day) + 0.45 * glow * (1.0 - day)
 	var water := Color(0.008, 0.042, 0.11).lerp(Color(0.012, 0.07, 0.17), day).lerp(Color(0.05, 0.06, 0.13), glow * 0.35)
 	# (near the top the water is a green-blue, as coastal water is and as the concept pictures
@@ -824,6 +831,7 @@ func _waves(delta: float) -> void:
 	Surf.clock = clock
 	Surf.advance(delta)
 	Surf.dress_rogue(_water)
+	_water.set_shader_parameter(&"breaker_rogue", Vector4(Breakers.ROGUE_FROM, Breakers.ROGUE_STAGE, Breakers.ROGUE_WINDOW, 1.0 if Surf.rogue_on else 0.0))
 	_water.set_shader_parameter(&"eye_above", 1.0 if above else 0.0)
 	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
 	if cam == null:
