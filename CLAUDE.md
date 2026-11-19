@@ -1048,3 +1048,16 @@ walls, the eight biomes, denser kelp, sea grass on Warren's field spawning, Atla
 everything, surf with curling barrels and rogue waves, only nearby animals awake. The pack is 61 MB (it was 39.6):
 first load on a phone is a worry. The preview film on the arcade is still the old one. Not tried on a phone or in a
 browser after this push.
+- State at 6:30 PM, 2026-11-18 (figures; nothing is in the game):
+  - The brother's settled sheets: body `concept_brother_tpose8.jpg`; head `concept_brother_head3.jpg` TOP row (its
+    bottom row drew a different child-like face: ignore it) and `concept_brother_head3_bare.jpg` (the same man shaved,
+    two rows: build to the bottom row). `concept_brother_head2.jpg`, tpose5/6/7 are retired for him (6 = `man_big`,
+    7 = `man_trim`). When asking Gemini for a shaved row, say "exactly the same grown man, nothing else changed" and
+    check it: it turned him into a child once.
+  - Hair exists: `tools/build_hair.py` (under-shell + alpha-cut lock cards + normals from one hull),
+    `shaders/hair_cards.gdshader`, `models/hair/*`, viewer `tests/hair_view.gd`. The user asked "Is there a hair agent
+    running?" (there was not): keep one going alongside the figures.
+  - Facial movement (the user: "We should start working on facial movements as well"; "Make sure it does research"):
+    `tools/face_rig.py`, `tools/FACE_RIG.md` (research with sources, then the decision), test outputs `models/face/*`.
+  - Every figure's builder now runs the pose test against its pose sheet; critiques by a no-context reviewer drive
+    each round; lit "beauty" pictures are what the user is shown.
