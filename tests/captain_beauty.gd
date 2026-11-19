@@ -345,6 +345,17 @@ func _initialize() -> void:
 			_shots.append(["bigfoot_" + b[0] + gt, (b[1] as Vector3).normalized(), Vector3(0.17, 0.0, 0.16), 0.5, true, "", g])   # (twenty-first round: framed lower and wider, the foot whole)
 	for b in [["front", Vector3(0, 0, 1)], ["side", Vector3(-1, 0, 0)], ["back", Vector3(0, 0, -1)]]:
 		_shots.append(["greybody_" + b[0], b[1], Vector3(0, 0.8, 0), 3.0, false, "", true])
+	# (twenty-second round: close-ups aimed at a bone of the posed figure (shot[7]): the wheel's fist and the net's grip,
+	# the heel from behind, the boxers seated (side and back) and standing from the side, lit and grey)
+	for g in [false, true]:
+		var gt := "_grey" if g else ""
+		_shots.append(["fist_back" + gt, Vector3(0.9, 0.3, 0.3).normalized(), Vector3.ZERO, 0.32, true, "wheel", g, "finger_middle_1_l"])
+		_shots.append(["fist_front" + gt, Vector3(0.3, 0.2, 1).normalized(), Vector3.ZERO, 0.32, true, "wheel", g, "finger_middle_1_l"])
+		_shots.append(["grip" + gt, Vector3(0.8, 0.3, 0.6).normalized(), Vector3.ZERO, 0.32, true, "haul", g, "finger_middle_1_l"])
+		_shots.append(["heel_back" + gt, Vector3(0.15, 0.2, -1).normalized(), Vector3.ZERO, 0.45, true, "", g, "foot_l"])
+		_shots.append(["boxers_sit_side" + gt, Vector3(-1, 0.1, 0.15).normalized(), Vector3.ZERO, 1.1, true, "sit", g, "hips"])
+		_shots.append(["boxers_sit_back" + gt, Vector3(0.3, 0.15, -1).normalized(), Vector3.ZERO, 1.1, true, "sit", g, "hips"])
+		_shots.append(["boxers_side" + gt, Vector3(-1, 0.05, 0.1).normalized(), Vector3(0, 0.62, 0.02), 1.0, true, "", g])
 	# (eighteenth round: --poses: the pose test alone: each pose from the sheet's angle and from a quarter turn round,
 	# lit and in grey, cap on)
 	if "--poses" in OS.get_cmdline_user_args():
@@ -398,6 +409,13 @@ func _process(_delta: float) -> bool:
 			if String(mesh.name).begins_with("captain_ink"):
 				mesh.visible = not grey
 		var at: Vector3 = shot[2]
+		if shot.size() > 7:
+			for sk: Skeleton3D in _model.find_children("*", "Skeleton3D", true, false):
+				var bi := sk.find_bone(String(shot[7]))
+				if bi >= 0:
+					at = (sk.global_transform * sk.get_bone_global_pose(bi)).origin
+					if String(shot[7]) == "foot_l":
+						at.y = 0.05
 		# (the eye at about his eye height for the whole-body views, looking a little down at his middle)
 		var eye: Vector3 = at + (shot[1] as Vector3) * float(shot[3])
 		if float(shot[3]) > 2.0 and not POSES.has(String(shot[5]) if shot.size() > 5 else ""):

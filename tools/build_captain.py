@@ -8102,6 +8102,346 @@ def bare_scalp(M, face, fpos, fhit):
     return out
 
 
+# Twenty-second round. The user: "Are you rebuilding the whole head each revision? I'm not seeing improvement, you
+# should just be making adjustments". So the mesh as the twenty-first round left it (every step up to the neck's
+# blend: the fitted body, the base head with its carves, nose and ears, the fitted hands and feet) is FROZEN in
+# BASE_MESH (point positions; the faces are made the same way every build, and the count is checked), and the build
+# loads it unless --rebuild-base is given (--save-base writes it again from a rebuild). Changes from here are an ordered
+# list of small named ADJUSTMENTS laid on the frozen mesh, each a local move with smooth falloff, each with its own
+# amount (ADJUSTMENTS; --adj name=amount,name=0 sets amounts; --adj-upto name applies only those before it, for
+# before-and-after pictures). Each was kept only when its before-and-after pair moved toward the sheet.
+BASE_MESH = os.path.join(HERE, "blend", "captain_base_mesh.npz")
+
+
+SKIN_GAIN = tuple(float(v) for v in arg("--skin-gain", "0.81,0.85,0.90").split(","))
+
+
+def frozen_base(M):
+    if "--save-base" in ARGS:
+        np.savez_compressed(BASE_MESH, P=np.array(M.P, float), nfaces=len(M.faces), npoints=len(M.P))
+        print("CAPTAIN base mesh saved: %d points" % len(M.P))
+        return
+    if "--rebuild-base" in ARGS or not os.path.exists(BASE_MESH):
+        print("CAPTAIN base mesh: rebuilt, not loaded")
+        return
+    z = np.load(BASE_MESH)
+    if int(z["npoints"]) != len(M.P) or int(z["nfaces"]) != len(M.faces):
+        raise RuntimeError("frozen base mesh does not match the build (%d/%d points, %d/%d faces)" % (
+            int(z["npoints"]), len(M.P), int(z["nfaces"]), len(M.faces)))
+    moved = float(np.abs(z["P"] - np.array(M.P)).max())
+    M.P = [p for p in z["P"]]
+    print("CAPTAIN base mesh loaded (%d points; the rebuild differed by %.2f mm at most)" % (len(M.P), 1000 * moved))
+
+
+ADJ_SET = {kv.split("=")[0]: float(kv.split("=")[1]) for kv in arg("--adj", "").split(",") if "=" in kv}
+ADJ_UPTO = arg("--adj-upto", "")
+
+
+def _gauss(d, r):
+    return np.exp(-(d / r) ** 2)
+
+
+def adj_knuckle_bumps(M, P, N, ctx, amt):
+    """The hands sheet's swollen knuckles on the back of the hand and fingers: a bump over each finger's MCP (amt
+    metres), PIP (0.6 of it) and DIP (0.3), toward the hand's back."""
+    move = np.zeros_like(P)
+    parts = ctx["parts"]
+    for sfx in ("_l", "_r"):
+        back0 = np.array(ctx["joints"]["hand_frame" + sfx][0], float)
+        hand = np.array([p.startswith("hand" + sfx) for p in parts])
+        for n in ("little", "ring", "middle", "index"):
+            js = [np.array(v, float) for v in ctx["joints"][n + sfx]]
+            mine = np.array([p == "hand%s_%s" % (sfx, n) for p in parts])
+            for k, (share, rad) in enumerate(((1.0, 0.0105), (0.6, 0.0075), (0.3, 0.0055))):
+                jp = js[k]
+                d = (js[k + 1] - js[k - 1]) if k else (js[1] - js[0])
+                d /= np.linalg.norm(d)
+                back = back0 - d * (back0 @ d)
+                back /= np.linalg.norm(back)
+                across = np.cross(d, back)
+                q = P - jp
+                s, a, b = q @ d, q @ across, q @ back
+                on_back = np.clip(b / 0.005, 0, 1)
+                w = _gauss(s, rad) * _gauss(a, rad * (1.1 if k == 0 else 0.9)) * on_back * (hand if k == 0 else mine)
+                move += back[None, :] * (amt * share * w)[:, None]
+    return move
+
+
+def adj_finger_joints(M, P, N, ctx, amt):
+    """Knobbly finger joints: each finger's ring swollen by `amt` (share) round its PIP and DIP, and a shallow crease
+    across the palm side under them."""
+    move = np.zeros_like(P)
+    parts = ctx["parts"]
+    for sfx in ("_l", "_r"):
+        back0 = np.array(ctx["joints"]["hand_frame" + sfx][0], float)
+        for n in ("little", "ring", "middle", "index"):
+            js = [np.array(v, float) for v in ctx["joints"][n + sfx]]
+            mine = np.array([p == "hand%s_%s" % (sfx, n) for p in parts])
+            for k in (1, 2):
+                jp = js[k]
+                d = js[k + 1] - js[k - 1]
+                d /= np.linalg.norm(d)
+                back = back0 - d * (back0 @ d)
+                back /= np.linalg.norm(back)
+                q = P - jp
+                s = q @ d
+                r = q - np.outer(s, d)
+                g = _gauss(s, 0.0055) * mine
+                move += r * (amt * g)[:, None]
+                on_palm = np.clip(-(q @ back) / 0.004, 0, 1)
+                move += back[None, :] * (0.0012 * _gauss(s, 0.0028) * on_palm * mine)[:, None]
+    return move
+
+
+def adj_palm_pads(M, P, N, ctx, amt):
+    """A fat thenar pad under the thumb's root (amt metres out of the palm) and a smaller hypothenar on the little
+    finger's side."""
+    move = np.zeros_like(P)
+    parts = ctx["parts"]
+    for sfx in ("_l", "_r"):
+        back = np.array(ctx["joints"]["hand_frame" + sfx][0], float)
+        hand = np.array([p.startswith("hand" + sfx) for p in parts])
+        t0, t1 = (np.array(v, float) for v in ctx["joints"]["thumb" + sfx][:2])
+        l0 = np.array(ctx["joints"]["little" + sfx][0], float)
+        wr = np.array(ctx["bones"]["hand" + sfx], float)
+        for c, a, r in ((t0 * 0.6 + t1 * 0.4, amt, 0.02), (l0 * 0.5 + wr * 0.5, amt * 0.65, 0.016)):
+            q = P - c
+            plane = q - np.outer(q @ back, back)
+            on_palm = np.clip(-(q @ back) / 0.004, 0, 1)
+            w = _gauss(np.linalg.norm(plane, axis=1), r) * on_palm * hand
+            move -= back[None, :] * (a * w)[:, None]
+    return move
+
+
+# The face's landmarks as the face rig finds them on the frozen head (its self-test log): the lips' line in the middle
+# at z 1.3607 (y -0.1858), the corners 4.3 to 4.6 cm out, the nose's tip (0, -0.2205, 1.3984), the chin's front
+# (0, -0.2057, 1.2962), the menton (where the profile falls back) at z 1.2527.
+MOUTH_Z, MOUTH_X = 1.3607, 0.044
+CHIN = np.array((0.0, -0.2057, 1.2962))
+
+
+def _face_pts(ctx, P):
+    fam = np.array([part_family(p) for p in ctx["parts"]])
+    return np.isin(fam, ("head", "neck")) & (P[:, 2] > 1.15)
+
+
+def adj_frown(M, P, N, ctx, amt):
+    """The sheet's upside-down-U frown: the lips' line drawn down toward its corners (amt metres at the corner, as
+    the square of the way out), the corners' flesh with it, fading out by 2 cm round them."""
+    face = _face_pts(ctx, P) & (P[:, 1] < -0.12)
+    ax = np.abs(P[:, 0])
+    t = np.clip(ax / MOUTH_X, 0, 1.25)
+    down = amt * t ** 2 * _gauss(P[:, 2] - (MOUTH_Z - 0.4 * amt * t ** 2), 0.016) * np.clip((0.075 - ax) / 0.02, 0, 1)
+    mv = np.zeros_like(P)
+    mv[:, 2] = -down * face
+    return mv
+
+
+def adj_mouth_crease(M, P, N, ctx, amt):
+    """The lips' meeting line and the corners cut in (amt metres) along the frowned line, so it reads in grey."""
+    face = _face_pts(ctx, P) & (P[:, 1] < -0.12)
+    ax = np.abs(P[:, 0])
+    zl = MOUTH_Z - ctx.get("frown", 0.0) * np.clip(ax / MOUTH_X, 0, 1.25) ** 2
+    w = _gauss(P[:, 2] - zl, 0.0028) * np.clip((MOUTH_X + 0.006 - ax) / 0.006, 0, 1) * face
+    return -N * (amt * w)[:, None]
+
+
+def _segment_dist(P, a, b):
+    ab = b - a
+    t = np.clip(((P - a) @ ab) / float(ab @ ab), 0, 1)
+    return np.linalg.norm(P - (a + np.outer(t, ab)), axis=1), t
+
+
+def adj_nasolabial(M, P, N, ctx, amt):
+    """The deep folds from the nose's wings down past the mouth's corners (amt metres in), the cheek above each
+    swelling a little over it."""
+    face = _face_pts(ctx, P) & (P[:, 1] < -0.1)
+    mv = np.zeros_like(P)
+    for s in (1.0, -1.0):
+        a = np.array((s * 0.034, -0.19, 1.392))
+        b = np.array((s * 0.062, -0.165, 1.322))
+        XZ = np.array((1.0, 0.0, 1.0))
+        d, t = _segment_dist(P * XZ, a * XZ, b * XZ)
+        fade = np.clip(t * 4, 0, 1) * np.clip((1 - t) * 3 + 0.3, 0, 1)
+        mv -= N * (amt * _gauss(d, 0.0035) * fade * face)[:, None]
+        # the cheek's fullness on the outer side of the fold
+        out = a + np.array((s * 0.012, 0.004, -0.008))
+        d2, t2 = _segment_dist(P * XZ, out * XZ, (b + np.array((s * 0.012, 0.004, 0.004))) * XZ)
+        mv += N * (0.5 * amt * _gauss(d2, 0.008) * face)[:, None]
+    return mv
+
+
+def adj_jowls(M, P, N, ctx, amt):
+    """Heavy jowls beside the chin: flesh below the mouth's corners lowered (amt metres) and filled out (0.6 of it)."""
+    face = _face_pts(ctx, P)
+    mv = np.zeros_like(P)
+    for s in (1.0, -1.0):
+        c = np.array((s * 0.062, -0.165, 1.305))
+        w = _gauss(np.linalg.norm((P - c) * np.array((1.0, 0.8, 1.2)), axis=1), 0.024) * face
+        mv[:, 2] -= amt * w
+        mv += N * (0.6 * amt * w)[:, None]
+    return mv
+
+
+def adj_chin_ball(M, P, N, ctx, amt):
+    """A round solid chin: its ball pushed out (amt metres) and the crease above it under the lower lip cut in."""
+    face = _face_pts(ctx, P) & (P[:, 1] < -0.13)
+    c = CHIN + np.array((0.0, 0.006, -0.004))
+    w = _gauss(np.linalg.norm((P - c) * np.array((0.9, 1.0, 1.0)), axis=1), 0.02) * face
+    crease = _gauss(P[:, 2] - (MOUTH_Z - 0.03), 0.004) * _gauss(P[:, 0], 0.02) * face
+    return N * (amt * w - 0.4 * amt * crease)[:, None]
+
+
+def adj_throat_round(M, P, N, ctx, amt):
+    """The flat shelf under the jaw rounded: points that face down between the chin and the throat pushed out along
+    their normals, most halfway (amt metres), so chin to throat is one convex curve with a soft double chin."""
+    face = _face_pts(ctx, P)
+    down = np.clip((-N[:, 2] - 0.25) / 0.4, 0, 1)
+    y0, y1 = -0.205, -0.075
+    t = np.clip((P[:, 1] - y0) / (y1 - y0), 0, 1)
+    band = (P[:, 2] > 1.17) & (P[:, 2] < 1.29)
+    w = np.sin(np.pi * t) * down * band * face * np.clip((0.09 - np.abs(P[:, 0])) / 0.03, 0, 1)
+    return N * (amt * w)[:, None]
+
+
+ADJUSTMENTS = [
+    # (name, function, amount)
+    ("knuckle_bumps", adj_knuckle_bumps, 0.009),
+    ("finger_joints", adj_finger_joints, 0.16),
+    ("palm_pads", adj_palm_pads, 0.005),
+    ("frown", adj_frown, 0.006),
+    ("mouth_crease", adj_mouth_crease, 0.0015),
+    ("nasolabial", adj_nasolabial, 0.003),
+    ("jowls", adj_jowls, 0.009),
+    ("chin_ball", adj_chin_ball, 0.004),
+    ("throat_round", adj_throat_round, 0.004),   # (0.008 folded two faces at the temple in every face shape)
+    ("deltoid_mass", None, 0.04),
+    ("heel_fin_off", None, 0),   # (off: 4 rounds moved 7.7 mm but the heel from behind did not change)
+    ("toe_clefts", None, 0.002),
+    ("wrist_seam", None, 3),
+]
+
+
+def _local_smooth(M, P, w, rounds, lam=0.5, mu=-0.53):
+    """Taubin smoothing (keeps the size) weighted by w (0 holds a point)."""
+    E = edges_of(M.faces)
+    deg = np.bincount(E.ravel(), minlength=len(P)).astype(float)
+    Q = P.copy()
+    for _ in range(rounds):
+        for k in (lam, mu):
+            acc = np.zeros_like(Q)
+            np.add.at(acc, E[:, 0], Q[E[:, 1]])
+            np.add.at(acc, E[:, 1], Q[E[:, 0]])
+            lap = acc / np.maximum(deg, 1)[:, None] - Q
+            lap[deg == 0] = 0.0      # (points on no face: they would be drawn to the origin)
+            Q = Q + k * lap * w[:, None]
+    return Q - P
+
+
+def adj_deltoid_mass(M, P, N, ctx, amt):
+    """Each deltoid a round mass of its own at the shoulder's cap, out along the normals (amt metres), its front and
+    back heads a little lower, on the arm and the torso's points round the arm's root."""
+    fam = np.array([part_family(p) for p in ctx["parts"]])
+    near = np.isin(fam, ("torso", "arm", "shoulder"))
+    w = np.zeros(len(P))
+    for sfx in ("_l", "_r"):
+        sh_ = np.array(ctx["bones"]["upper_arm" + sfx], float)
+        el = np.array(ctx["bones"]["forearm" + sfx], float)
+        d = (el - sh_) / np.linalg.norm(el - sh_)
+        c = sh_ + d * 0.045
+        for off, r, k in ((0.0, 0.05, 1.0), (-0.03, 0.04, 0.6), (0.03, 0.04, 0.6)):
+            cc = c + np.array((0.0, off, -0.015 * abs(off) / 0.03))
+            w = np.maximum(w, k * _gauss(np.linalg.norm(P - cc, axis=1), r))
+    return N * (amt * w * near)[:, None]
+
+
+def adj_heel_fin_off(M, P, N, ctx, amt):
+    """The fin at the back of each heel smoothed away (amt rounds of Taubin smoothing over the heel), so the heel is
+    a round half dome."""
+    w = np.zeros(len(P))
+    parts = ctx["parts"]
+    for sfx in ("_l", "_r"):
+        o, f_, l_ = M.tag["foot_frame" + sfx]
+        mine = np.array([p.startswith("foot" + sfx) for p in parts])
+        back = -((P - o) @ f_)
+        w = np.maximum(w, mine * np.clip((back + 0.005) / 0.025, 0, 1) * np.clip((0.11 - P[:, 2]) / 0.03, 0, 1))
+    # (the first try, Taubin over the whole heel, sharpened the fin: only the spiky points, those standing far from
+    # their neighbours' middle, are drawn to it, a few rounds; the rest of the heel is left as it is)
+    E = edges_of(M.faces)
+    deg = np.bincount(E.ravel(), minlength=len(P)).astype(float)
+    Q = P.copy()
+    zone = w > 0.05
+    for _ in range(int(amt)):
+        acc = np.zeros_like(Q)
+        np.add.at(acc, E[:, 0], Q[E[:, 1]])
+        np.add.at(acc, E[:, 1], Q[E[:, 0]])
+        lap = acc / np.maximum(deg, 1)[:, None] - Q
+        lap[deg == 0] = 0.0
+        m = np.linalg.norm(lap, axis=1)
+        bad = zone & (m > 1.6 * np.median(m[zone])) & (m < 0.012)
+        Q[bad] += 0.7 * lap[bad] * w[bad, None]
+    return Q - P
+
+
+def adj_toe_clefts(M, P, N, ctx, amt):
+    """Clefts between the toes (amt metres in), deepest at the tips' line, running 2.2 cm back: separate toes, the
+    big toe's cleft the deepest."""
+    mv = np.zeros_like(P)
+    parts = ctx["parts"]
+    for sfx in ("_l", "_r"):
+        o, f_, l_ = M.tag["foot_frame" + sfx]
+        mine = np.array([p.startswith("foot" + sfx) for p in parts])
+        tips = [np.array(t, float) for t, _ in M.tag["foot_toes" + sfx]]
+        for i in range(len(tips) - 1):
+            a = (tips[i] + tips[i + 1]) / 2
+            b = a - f_ * 0.022
+            d, t = _segment_dist(P * np.array((1, 1, 0)), a * np.array((1, 1, 0)), b * np.array((1, 1, 0)))
+            k = 1.3 if i == 0 else 1.0
+            mv -= N * (amt * k * _gauss(d, 0.0035) * (1 - 0.6 * t) * mine * (P[:, 2] > 0.004))[:, None]
+    return mv
+
+
+def adj_wrist_seam(M, P, N, ctx, amt):
+    """The step where the hand meets the forearm smoothed (amt rounds) within 2.5 cm of the wrist joint."""
+    fam = np.array([part_family(p) for p in ctx["parts"]])
+    w = np.zeros(len(P))
+    for sfx in ("_l", "_r"):
+        wr = np.array(ctx["bones"]["hand" + sfx], float)
+        el = np.array(ctx["bones"]["forearm" + sfx], float)
+        d = (wr - el) / np.linalg.norm(wr - el)
+        q = P - wr
+        s = q @ d
+        rad = np.linalg.norm(q - np.outer(s, d), axis=1)
+        w = np.maximum(w, _gauss(s, 0.025) * (rad < 0.09))
+    near_ = w > 0.3
+    print("CAPTAIN wrist seam: %d points near, families %s" % (int(near_.sum()), sorted(set(fam[near_].tolist()))))
+    w *= np.isin(fam, ("arm", "hand"))
+    return _local_smooth(M, P, w, int(amt))
+
+
+ADJ_FN = {"deltoid_mass": adj_deltoid_mass, "heel_fin_off": adj_heel_fin_off, "toe_clefts": adj_toe_clefts,
+          "wrist_seam": adj_wrist_seam}
+ADJUSTMENTS = [(n, f or ADJ_FN[n], a) for n, f, a in ADJUSTMENTS]
+
+
+def adjust(M, bones, joints):
+    ctx = {"parts": list(M.part), "joints": joints, "bones": {n: p for n, p, _ in bones}}
+    done = []
+    for name, fn, amt in ADJUSTMENTS:
+        if ADJ_UPTO and name == ADJ_UPTO:
+            break
+        amt = ADJ_SET.get(name, amt)
+        if not amt:
+            continue
+        P = np.array(M.P, float)
+        N = normals_of(P, M.tris())
+        mv = fn(M, P, N, ctx, amt)
+        ctx[name] = amt
+        M.P = [p for p in P + mv]
+        done.append("%s %.4g (%.1f mm most)" % (name, amt, 1000 * float(np.linalg.norm(mv, axis=1).max())))
+    print("CAPTAIN adjustments: %s" % ("; ".join(done) or "none"))
+
+
 def finish(M, T, joints, sh):
     H = M.tag["head_rings"]
     bones = skeleton_joints(M, T, joints)
@@ -8129,6 +8469,8 @@ def finish(M, T, joints, sh):
     neck_slope(M, T)
     unfold_body(M)
     weights = neck_blend(M, weights)
+    frozen_base(M)
+    adjust(M, bones, joints)
     print("CAPTAIN island shares: %s" % ", ".join("%s %.0f%%" % (n, 100 * w * h * sc * sc) for n, (pic, u0, v0, sc, (w, h)) in sorted(placed.items())))
     os.makedirs(TEX, exist_ok=True)
     for picture in ATLAS:
@@ -8240,6 +8582,11 @@ def finish(M, T, joints, sh):
     clean = fill_out(skin, shit & ~under_ink, 64)
     skin = np.where(under_ink[..., None], blur(clean, 2), skin)
     print("CAPTAIN skin under the tattoos refilled: %d texels" % int((under_ink & shit).sum()))
+    # (twenty-second round, a paint adjustment: the Godot lit render of his chest measured (205, 170, 145) against
+    # the body sheet's (166, 144, 130): the skin and the face brought down by those ratios, so the game's render matches
+    # the sheet's warm greyed tan)
+    skin = np.clip(skin * np.array(SKIN_GAIN), 0, 1)
+    face = np.clip(face * np.array(SKIN_GAIN), 0, 1)
     save_rgb(os.path.join(TEX, "captain_skin.png"), skin[::-1])
     face = fill_out(face, fhit, 64)
     save_rgb(os.path.join(TEX, "captain_face.png"), face[::-1])
@@ -9870,6 +10217,166 @@ def save_rgba(path, rgba):
     bpy.data.images.remove(img)
 
 
+# Twenty-second round (the sixth critic: "the tattoos are solid, dark navy, blurry silhouettes (the swallows and anchor
+# are blobs) ... draw them as line art with outlines"). The simple sailor designs are DRAWN by rule (a paint
+# adjustment): each design's picture, lifted from the sheet as before, is replaced by line art of the same size, so
+# its place, size and turn in the movable table are the sheet's. Slate blue-black lines with a lighter see-through
+# fill. The others (rose, badge, squid, the back sleeves) stay lifted. --lifted-tattoos takes the drawn ones back.
+TATTOO_DRAWN = "--lifted-tattoos" not in ARGS
+TATTOO_LINE_RGB = (0.17, 0.21, 0.27)
+TATTOO_FILL_RGB = (0.36, 0.43, 0.52)
+TATTOO_LINE_A = (0.82, 0.32)         # the lines' opacity, the fills'
+TATTOO_LINE_W = 0.045                # half the line's width, in the design's units (its box is -1..1)
+
+
+def _arc(cx, cy, r, a0, a1, n=24, ry=None):
+    t = np.radians(np.linspace(a0, a1, n))
+    return [(cx + r * math.cos(v), cy + (ry or r) * math.sin(v)) for v in t]
+
+
+def _heart(cx, cy, s, n=40):
+    t = np.linspace(0, 2 * math.pi, n)
+    x = 16 * np.sin(t) ** 3
+    y = -(13 * np.cos(t) - 5 * np.cos(2 * t) - 2 * np.cos(3 * t) - np.cos(4 * t))
+    return [(cx + s * a / 17.0, cy + s * b / 17.0) for a, b in zip(x, y)]
+
+
+def _swallow(cx, cy, s, flip=False):
+    """A swallow flying right (left if flip), as polygons: wings, tail, body."""
+    f = -1.0 if flip else 1.0
+    P_ = lambda pts: [(cx + f * s * x, cy + s * y) for x, y in pts]
+    body = P_([(0.55, -0.08), (0.4, -0.2), (0.0, -0.15), (-0.35, -0.02), (-0.95, -0.38), (-0.62, 0.02),
+               (-0.95, 0.32), (-0.3, 0.12), (0.1, 0.16), (0.42, 0.06)])
+    wing = P_([(0.2, -0.14), (0.0, -0.55), (-0.3, -0.85), (-0.55, -0.98), (-0.2, -0.55), (-0.08, -0.14)])
+    wing2 = P_([(0.15, 0.12), (-0.05, 0.45), (-0.4, 0.78), (-0.12, 0.42), (-0.05, 0.12)])
+    beak = P_([(0.55, -0.08), (0.72, -0.04), (0.53, 0.0)])
+    return [("fill", body), ("fill", wing), ("fill", wing2), ("line", beak + [beak[0]]),
+            ("dot", P_([(0.38, -0.08)])[0], 0.06 * s)]
+
+
+def _anchor(cx, cy, s):
+    sh_ = [(cx, cy - 0.62 * s), (cx, cy + 0.72 * s)]
+    ring = _arc(cx, cy - 0.78 * s, 0.15 * s, 0, 360)
+    stock = [(cx - 0.38 * s, cy - 0.5 * s), (cx + 0.38 * s, cy - 0.5 * s)]
+    arms = _arc(cx, cy + 0.1 * s, 0.62 * s, 15, 165)
+    l, r = arms[-1], arms[0]
+    fl = [(l[0] - 0.14 * s, l[1] - 0.02 * s), (l[0] + 0.02 * s, l[1] - 0.22 * s), (l[0] + 0.1 * s, l[1] + 0.02 * s)]
+    fr = [(r[0] + 0.14 * s, r[1] - 0.02 * s), (r[0] - 0.02 * s, r[1] - 0.22 * s), (r[0] - 0.1 * s, r[1] + 0.02 * s)]
+    rope = [(cx + 0.22 * s * math.sin(t * 2.6), cy + (-0.55 + t * 0.35) * s) for t in np.linspace(0, 3, 30)]
+    return [("line", sh_), ("line", ring), ("line", stock), ("line", arms), ("fill", fl), ("fill", fr),
+            ("thin", rope)]
+
+
+def _ship(cx, cy, s):
+    hull = [(cx - 0.85 * s, cy + 0.25 * s), (cx + 0.9 * s, cy + 0.25 * s), (cx + 0.62 * s, cy + 0.55 * s),
+            (cx - 0.6 * s, cy + 0.55 * s)]
+    out = [("fill", hull)]
+    for mx, top, w in ((-0.35, -0.8, 0.32), (0.25, -0.95, 0.36)):
+        x = cx + mx * s
+        out.append(("line", [(x, cy + 0.25 * s), (x, cy + top * s)]))
+        y0, y1 = top + 0.15, top + 0.85
+        # one square sail a mast, its foot bellied
+        sail = [(x - w * s, cy + y0 * s), (x + w * s, cy + y0 * s)] + \
+               [(x + w * 1.1 * s * (1 - 2 * t), cy + (y1 + 0.08 * math.sin(math.pi * t)) * s) for t in np.linspace(0, 1, 8)]
+        out.append(("fill", sail))
+    out.append(("line", [(cx + 0.9 * s, cy + 0.25 * s), (cx + 0.25 * s, cy - 0.95 * s)]))
+    out.append(("thin", [(cx + (-1.0 + 2.0 * t) * s, cy + (0.68 + 0.06 * math.sin(t * 25)) * s) for t in np.linspace(0, 1, 40)]))
+    return out
+
+
+def _compass(cx, cy, s):
+    out = [("line", _arc(cx, cy, 0.9 * s, 0, 360, 48)), ("thin", _arc(cx, cy, 0.72 * s, 0, 360, 40))]
+    for k in range(8):
+        a = math.radians(k * 45 - 90)
+        L = (0.85 if k % 2 == 0 else 0.5) * s
+        tip = (cx + L * math.cos(a), cy + L * math.sin(a))
+        sa, ca = math.sin(a), math.cos(a)
+        w = 0.13 * s
+        out.append(("fill", [(cx - sa * w, cy + ca * w), tip, (cx + sa * w, cy - ca * w)]))
+    out.append(("dot", (cx, cy), 0.07 * s))
+    return out
+
+
+TATTOO_DESIGNS = {
+    "chest_anchor": [("anchor", 0.0, 0.0, 0.95)],
+    "anchor_forearm": [("anchor", 0.0, 0.0, 0.95)],
+    "anchor_arm": [("anchor", 0.0, 0.0, 0.95)],
+    "hand_anchor": [("anchor", 0.0, 0.0, 0.95)],
+    "swallow_forearm": [("swallow", 0.0, 0.0, 0.9, False)],
+    "swallows_forearm": [("swallow", -0.25, -0.35, 0.6, False), ("swallow", 0.3, 0.4, 0.55, True)],
+    "swallow_heart": [("heart", -0.1, 0.15, 0.62), ("swallow", 0.35, -0.55, 0.45, True), ("swallow", -0.45, -0.55, 0.42, False)],
+    "compass": [("compass", 0.0, 0.0, 0.95)],
+    "ship_shoulder": [("ship", 0.0, 0.0, 0.92)],
+    "ship_back": [("ship", 0.0, 0.0, 0.92)],
+    "ship_wrist": [("ship", 0.0, 0.0, 0.92)],
+}
+
+
+def _seg_dist(X, Y, pts):
+    d = np.full(X.shape, 1e9)
+    for (x0, y0), (x1, y1) in zip(pts[:-1], pts[1:]):
+        dx, dy = x1 - x0, y1 - y0
+        L = dx * dx + dy * dy
+        t = np.clip(((X - x0) * dx + (Y - y0) * dy) / L, 0, 1) if L > 0 else 0.0
+        d = np.minimum(d, np.hypot(X - (x0 + t * dx), Y - (y0 + t * dy)))
+    return d
+
+
+def _inside(X, Y, poly):
+    ins = np.zeros(X.shape, bool)
+    n = len(poly)
+    for i in range(n):
+        (x0, y0), (x1, y1) = poly[i], poly[(i + 1) % n]
+        c = ((y0 > Y) != (y1 > Y)) & (X < (x1 - x0) * (Y - y0) / ((y1 - y0) if y1 != y0 else 1e-9) + x0)
+        ins ^= c
+    return ins
+
+
+def draw_tattoo(design, shape):
+    """An RGBA picture (rows top down) of the given shape: the design drawn as line art in a -1..1 box fitted to it."""
+    h, w = shape
+    k = 4                                   # drawn at 4x and brought down: smooth edges
+    H, W = h * k, w * k
+    sc = min(W, H) / 2.0
+    Y, X = np.mgrid[0:H, 0:W].astype(np.float32)
+    X = (X + 0.5 - W / 2.0) / sc
+    Y = (Y + 0.5 - H / 2.0) / sc
+    line = np.zeros((H, W), np.float32)
+    fill = np.zeros((H, W), np.float32)
+    hw = TATTOO_LINE_W
+    aa = 1.0 / sc
+    for item in design:
+        kind, cx, cy, s = item[:4]
+        if kind == "anchor":
+            parts = _anchor(cx, cy, s)
+        elif kind == "swallow":
+            parts = _swallow(cx, cy, s, item[4])
+        elif kind == "heart":
+            parts = [("fill", _heart(cx, cy, s))]
+        elif kind == "compass":
+            parts = _compass(cx, cy, s)
+        else:
+            parts = _ship(cx, cy, s)
+        for p in parts:
+            if p[0] == "dot":
+                (px, py), r = p[1], p[2]
+                line = np.maximum(line, np.clip((r - np.hypot(X - px, Y - py)) / aa + 0.5, 0, 1))
+                continue
+            pts = p[1]
+            closed = p[0] == "fill"
+            ring = pts + [pts[0]] if closed else pts
+            d = _seg_dist(X, Y, ring)
+            width = hw * (0.55 if p[0] == "thin" else 1.0) * (0.85 if s < 0.7 else 1.0)
+            line = np.maximum(line, np.clip((width - d) / aa + 0.5, 0, 1))
+            if closed:
+                fill = np.maximum(fill, _inside(X, Y, pts).astype(np.float32))
+    line = line.reshape(h, k, w, k).mean(axis=(1, 3))
+    fill = fill.reshape(h, k, w, k).mean(axis=(1, 3))
+    a = np.maximum(line * TATTOO_LINE_A[0], fill * TATTOO_LINE_A[1])
+    rgb = np.array(TATTOO_FILL_RGB, np.float32) * (1 - line[..., None]) + np.array(TATTOO_LINE_RGB, np.float32) * line[..., None]
+    return np.concatenate([rgb, a[..., None]], 2).astype(np.float32)
+
+
 def lay_tattoos(M, face_uv, placed, sh):
     os.makedirs(TATTOO_DIR, exist_ok=True)
     table = os.path.join(TEX, "captain_tattoos.json")
@@ -9911,6 +10418,12 @@ def lay_tattoos(M, face_uv, placed, sh):
     row = hand_anchor(M, face_uv, face_island, pictures)
     if row:
         rows.append(row)
+    if TATTOO_DRAWN:
+        for name in list(pictures):
+            if name in TATTOO_DESIGNS:
+                pictures[name] = draw_tattoo(TATTOO_DESIGNS[name], pictures[name].shape[:2])
+                save_rgba(os.path.join(TATTOO_DIR, "captain_%s.png" % name), pictures[name])
+        print("CAPTAIN tattoos drawn as line art: %s" % ", ".join(n for n in pictures if n in TATTOO_DESIGNS))
     if old and old.get("keep"):
         rows = old["rows"]
         print("CAPTAIN tattoos: the table says keep; placed as it says")
