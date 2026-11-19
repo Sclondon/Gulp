@@ -1079,6 +1079,13 @@ the research (with sources), the numbers, what is checked and what is rough. Con
 - The brother's eye colour (the user, 2026-11-18): "And tehy should be amber brown green": hazel, amber-brown shading to
   green (not the blue-grey of his earlier sheets).
 
+## Pushed 2026-11-19
+Game build a64b400 (source c0c574c), site PR #216 (cart ?v=a64b400), after 2d56cec / PR #215 (barrels, crash timing,
+crest spray, the seam between waves): shaders warmed by nearness, the phone tier, boats batched, figures left out of
+the web pack (37.9 MB, was 76). Not tried on a real phone. When a push of main and a push of the build land a minute
+apart, Pages cancels the first and `pages/builds/latest` reports "errored" though the second deployed: check
+`gh run list` and the live pck's Content-Length instead.
+
 ## Pushed 2026-11-18 (evening)
 Game build a8f7d82 (source 3eb0d1e), site PR #214 (cart ?v=a8f7d82): the real bay with the drawn trench and terraced
 walls, the eight biomes, denser kelp, sea grass on Warren's field spawning, Atlantis in the canyon basin, caustics on
