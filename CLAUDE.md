@@ -1097,3 +1097,8 @@ browser after this push.
   character. That earlier head is restored as his frozen base on the current body, and only the user's own asks are
   adjusted on it (nose a tad angular and less red, eyes a bit downturned with bags, hazel). Before a figure's next round,
   put its head from several rounds side by side: later is not better by default.
+- Face rig and mouth paint (found 2026-11-18): `tools/face_rig.py` finds the mouth from the darkness of the PAINTED mouth
+  line, so any mouth paint has to stay on the lips' seam edge; a painted smile curving off it sent the mouth corners
+  45 mm out and folded five expressions on the boy. Worth changing the rig to take the lip loop from the mesh instead.
+- The boy's late adjustments are `late_adjust` in `tools/build_boy.py` (switches listed near `eye_margins`); trial
+  builds go to `--glb <path>` and are viewed with `tests/boy_view.gd -- --glb=... --face`.

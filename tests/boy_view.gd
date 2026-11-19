@@ -51,6 +51,9 @@ func _initialize() -> void:
 			_only = a.get_slice("=", 1).split(",")
 		elif a.begins_with("--focus="):
 			_focus = a.get_slice("=", 1)
+		elif a.begins_with("--fist="):
+			for v in a.get_slice("=", 1).split(","):
+				_fist.append(float(v))
 	var world := Node3D.new()
 	root.add_child(world)
 	_env = Environment.new()
@@ -64,7 +67,19 @@ func _initialize() -> void:
 	_sun = DirectionalLight3D.new()
 	_sun.basis = Basis.looking_at(Vector3(-0.45, -0.75, -0.5).normalized(), Vector3.UP)
 	world.add_child(_sun)
-	_model = (load(MODEL) as PackedScene).instantiate() as Node3D
+	# (twelfth pass) --glb=<absolute path>: a model built elsewhere (tools/build_boy.py -- --glb <path>), read as it
+	# stands without importing it, so before/after builds can be pictured side by side
+	var glb := ""
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--glb="):
+			glb = a.get_slice("=", 1)
+	if glb != "":
+		var doc := GLTFDocument.new()
+		var st := GLTFState.new()
+		doc.append_from_file(glb, st)
+		_model = doc.generate_scene(st) as Node3D
+	else:
+		_model = (load(MODEL) as PackedScene).instantiate() as Node3D
 	world.add_child(_model)
 	for mesh: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
 		mesh.lod_bias = 64.0
@@ -140,6 +155,18 @@ func _initialize() -> void:
 				var d := Vector3(-sin(a), 0.12, cos(a)).normalized()
 				for grey in [false, true]:
 					_shots.append(["pose_%s_%d%s" % [pn, vi, "_grey" if grey else ""], d, null, 0.0, true, pn, 5.0, grey])
+	# (--face, twelfth pass: the face close up at the head sheet's scale, its rows 1000 to 1300 in a 720-row window
+	# (2.4 pixels a sheet pixel, row 1150 in the middle), from the sheet's front, three-quarter and side, painted and
+	# grey; and his left eye closer, front and three-quarter: for before/after pairs of the face's adjustments)
+	if "--face" in OS.get_cmdline_user_args():
+		_shots.clear()
+		for grey in [false, true]:
+			for v in ["hfront", "hq", "hside"]:
+				var a := deg_to_rad(float(_azimuth[v]))
+				_shots.append([("face_grey_" if grey else "face_") + v, Vector3(-sin(a), 0, cos(a)), Vector3(0, HEAD_MID_Y, 0), 300.0 * HEAD_S, true, "", 5.0, grey])
+			for e in [["eye_front", 0.0], ["eye_q", 40.0]]:
+				var a := deg_to_rad(float(e[1]))
+				_shots.append([(e[0] as String) + ("_grey" if grey else ""),Vector3(-sin(a), 0, cos(a)), Vector3(0.045, HEAD_MID_Y + 46.0 * HEAD_S, 0), 110.0 * HEAD_S, true, "", 5.0, grey])
 	# (--hand=fist,point,...: ninth pass, close-ups of his left hand in those finger presets, the arm hanging a little
 	# out from his side, seen from the hand's own back, palm, thumb side, little-finger side and fingertips, lit and grey)
 	for a in OS.get_cmdline_user_args():
@@ -265,6 +292,8 @@ const V_PARENT := {"shin_l": "thigh_l", "shin_r": "thigh_r", "foot_l": "shin_l",
 const AIM_CHILD := {"upper_arm": "forearm", "forearm": "hand", "thigh": "shin", "shin": "foot"}
 
 var _G := {}
+## (--fist=a,b,c,...: twelfth pass, a trial fist in place of HANDS["fist"], to compare before choosing one)
+var _fist: Array = []
 
 
 func _mx(v: Vector3) -> Vector3:
@@ -361,6 +390,8 @@ func _apply(spec: Dictionary) -> void:
 			if f == null:
 				f = "rest"
 			var c: Array = HANDS[f] if f is String else f
+			if f is String and f == "fist" and not _fist.is_empty():
+				c = _fist
 			var ax: Array = axes[side]
 			var q := Quaternion()
 			if base.begins_with("finger_"):

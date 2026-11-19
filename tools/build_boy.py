@@ -64,6 +64,12 @@ def arg(name, default):
 
 
 OUT = arg("--out", "")
+# (twelfth pass) --glb <path>: a trial build written elsewhere (its pictures and .blend beside it), so before/after
+# pairs can be built side by side without touching models/boy.glb
+if "--glb" in ARGS:
+    GLB = os.path.abspath(arg("--glb", GLB))
+    TEX = os.path.join(os.path.dirname(GLB), "tex")
+    BLEND = os.path.join(os.path.dirname(GLB), "boy.blend")
 FIT_ROUNDS = int(arg("--rounds", "6"))
 HEAD_FIT_ROUNDS = int(arg("--head-rounds", "10"))
 
@@ -6931,7 +6937,7 @@ EYE_INNER = (42.0, 1104.0)
 EYE_OUTER = (118.0, 1101.0)
 EYE_TOP = (79.0, float(arg("--eye-top", "1082")))   # (eighth pass: from 1077; ninth: from 1080, which still showed the iris whole: the lid now over its top 3 px)
 EYE_LOW = (78.0, 1128.0)
-EYE_IRIS = (78.0, 1104.0, float(arg("--iris", "27.0")))   # (tenth pass: from 21; the sheet's iris is about 58 head-sheet pixels across)
+EYE_IRIS = (78.0, 1104.0, float(arg("--iris", "21.5")))   # (tenth pass: from 21; twelfth: from 27, measured again on the bald front view: the iris 40 pixels across, the upper lid on its top, white either side)
 EYE_R = 0.0135
 EYE_RX = 0.0215
 if "--old-head" not in ARGS:
@@ -7399,7 +7405,7 @@ def eye_texture(path, size=256):
     X, Y = np.meshgrid(k, k)
     r = np.hypot(X * EYE_RX / EYE_R, Y)
     ri = EYE_IRIS[2] * HS / EYE_R
-    rp = ri * 0.4
+    rp = ri * EYE_PUPIL
     sclera = np.array((0.94, 0.92, 0.88))
     img = np.zeros((size, size, 3))
     img[:] = sclera * (1.0 - 0.16 * np.clip((r - 0.75) / 0.25, 0, 1))[..., None]
@@ -7673,7 +7679,7 @@ def rule_paint(M, face_uv, picture, pos, nrm, hit, fam, joints):
     crease = np.clip((0.78 - ao) / 0.45, 0, 1) ** 1.3
     # (eighth pass) on the hands only the truly shut-in places: the vertex shade of each finger's knuckle ring, pulled
     # out a little by the knuckle bump, drew thin dark lines across the fingers in the close-up
-    crease = np.where(fam == "hand", 0.22 * np.clip((0.58 - ao) / 0.4, 0, 1) ** 1.3, crease)   # (eleventh pass: from 0.5, the cupped palm read as a darker orange patch)
+    crease = np.where(fam == "hand", 0.22 * (1.0 - 0.8 * SKIN_ROSE) * np.clip((0.58 - ao) / 0.4, 0, 1) ** 1.3, crease)   # (eleventh pass: from 0.5, the cupped palm read as a darker orange patch; twelfth, 9. skin: less again)
     rgb = blush(rgb, crease, SHADE)
     if picture == "skin" and joints is not None:
         ny = nrm[..., 1]
@@ -7681,14 +7687,14 @@ def rule_paint(M, face_uv, picture, pos, nrm, hit, fam, joints):
             side = np.sign(pos[..., 0]) == s_
             kn = np.array(joints["knee" + sfx], float)
             d = np.linalg.norm((pos - kn) * np.array((1.0, 0.6, 1.0)), axis=-1)
-            rgb = blush(rgb, 0.55 * np.exp(-(d / 0.034) ** 2) * smooth01(0.0, 0.5, -ny) * side)
+            rgb = blush(rgb, (0.55 + 0.25 * SKIN_ROSE) * np.exp(-(d / 0.034) ** 2) * smooth01(0.0, 0.5, -ny) * side)
             el = np.array(mirror_x(joints["elbow_l"], s_), float)
             d = np.linalg.norm(pos - el, axis=-1)
             rgb = blush(rgb, 0.35 * np.exp(-(d / 0.03) ** 2) * side)
             kk = np.array(joints["knuckles" + sfx], float)
             Tb = np.array(joints["hand_frame" + sfx][0], float)
             d = np.linalg.norm(pos - kk, axis=-1)
-            rgb = blush(rgb, 0.4 * np.exp(-(d / 0.024) ** 2) * smooth01(0.0, 0.5, (nrm * Tb).sum(-1)) * side)
+            rgb = blush(rgb, (0.4 + 0.25 * SKIN_ROSE) * np.exp(-(d / 0.024) ** 2) * smooth01(0.0, 0.5, (nrm * Tb).sum(-1)) * side)
             # the scabbed knee: three small marks on the kneecap, a soft pink round them
             cap = nearest_texel(pos, hit & (fam == "leg") & side & (ny < -0.5), kn + np.array((0.0, -0.06, 0.0)))
             if cap is not None:
@@ -7719,7 +7725,7 @@ def rule_paint(M, face_uv, picture, pos, nrm, hit, fam, joints):
     if picture == "face":
         ear = hit & (fam == "ear")
         xa = np.abs(pos[..., 0])
-        rgb = blush(rgb, ear * (0.05 + 0.33 * smooth01(0.095, 0.125, xa)))   # (seventh pass: from 0.18 + 0.4, "saturated, uniform pink-red")
+        rgb = blush(rgb, ear * (0.05 + 0.1 * SKIN_ROSE + (0.33 + 0.12 * SKIN_ROSE) * smooth01(0.095, 0.125, xa)))   # (seventh pass: from 0.18 + 0.4, "saturated, uniform pink-red")
     return np.clip(rgb, 0, 1)
 
 
@@ -7833,7 +7839,14 @@ def face_features(M, rgb, pos, nrm, hit, fam):
     hh = BROW_THICK - 3.0 * ti
     ends = smooth01(32.0, 42.0, ac) * (1.0 - smooth01(118.0, 128.0, ac))
     strokes = 0.85 + 0.15 * np.sin(col * 1.9 + row * 0.7)
-    tint(np.exp(-((row - rb) / hh) ** 4) * ends * strokes * fwd * head, BROW_TINT, 0.74)   # (eighth pass: softer, blond-brown; from 0.64, 0.5, 0.34 at 0.72)
+    if BROW_WARM:
+        # (twelfth pass, 4. brows) a little thicker and warmer, the arch a little higher in the middle
+        hh = hh + 2.0 * BROW_WARM
+        rb = rb - 2.0 * BROW_WARM * np.sin(np.pi * np.clip(ti, 0, 1))
+        tint(np.exp(-((row - rb) / hh) ** 4) * ends * strokes * fwd * head,
+             np.array(BROW_TINT) * (1 - BROW_WARM) + np.array((0.6, 0.41, 0.22)) * BROW_WARM, 0.74 + 0.08 * BROW_WARM)
+    else:
+        tint(np.exp(-((row - rb) / hh) ** 4) * ends * strokes * fwd * head, BROW_TINT, 0.74)   # (eighth pass: softer, blond-brown; from 0.64, 0.5, 0.34 at 0.72)
     # the eye: the opening's upper and lower curves in (column, row)
     poly = eye_outline()
     up = poly[:25]
@@ -7841,6 +7854,22 @@ def face_features(M, rgb, pos, nrm, hit, fam):
     lt = np.interp(ac, up[:, 0], up[:, 1], left=np.nan, right=np.nan)
     lb = np.interp(ac, low[:, 0], low[:, 1], left=np.nan, right=np.nan)
     t = np.clip((ac - EYE_INNER[0]) / (EYE_OUTER[0] - EYE_INNER[0]), 0, 1)
+    if LASH_ON_LID and M.tag.get("eye_margins"):
+        # (twelfth pass, 2. lash_on_lid) the lid's paint laid on the opening's actual edge as the mesh has it (its upper
+        # and lower curves read off the margin loop's points), not on the sheet's outline, which the edge only nears
+        lp = np.array([(abs(Pm[v][0]) / HS, float(hrow(Pm[v][2]))) for v in M.tag["eye_margins"][0][0]])
+        i_in, i_out = int(np.argmin(lp[:, 0])), int(np.argmax(lp[:, 0]))
+        c_in, c_out = lp[i_in], lp[i_out]
+        mid = c_in[1] + (lp[:, 0] - c_in[0]) / (c_out[0] - c_in[0]) * (c_out[1] - c_in[1])
+        upp = np.vstack([c_in, lp[lp[:, 1] < mid - 0.5], c_out])
+        low_ = np.vstack([c_in, lp[lp[:, 1] > mid + 0.5], c_out])
+        upp, low_ = upp[np.argsort(upp[:, 0])], low_[np.argsort(low_[:, 0])]
+        lt = np.interp(ac, upp[:, 0], upp[:, 1], left=np.nan, right=np.nan)
+        lb = np.interp(ac, low_[:, 0], low_[:, 1], left=np.nan, right=np.nan)
+        t = np.clip((ac - c_in[0]) / (c_out[0] - c_in[0]), 0, 1)
+        flick_at = (c_out[0] + 3.0, c_out[1] - 3.0)
+    else:
+        flick_at = (EYE_OUTER[0] + 4.0, EYE_OUTER[1] - 4.0)
     inside = np.isfinite(lt)
     d_up = np.where(inside, lt - row, 99.0)
     d_low = np.where(inside & np.isfinite(lb), row - lb, 99.0)
@@ -7848,18 +7877,25 @@ def face_features(M, rgb, pos, nrm, hit, fam):
     # (ninth pass, for the face rig: a thin line at the margin only, no paint below it on the hidden rim; the wide band
     # stretched into brown streaks over a closing lid)
     lash = np.exp(-((d_up - 0.6) / (0.9 + 0.7 * t)) ** 2) * (0.55 + 0.45 * smooth01(0.0, 0.25, t)) * smooth01(-0.6, 0.2, d_up)   # (eighth pass: along the whole lid, over the white flecks at its margin)
-    flick_c = np.array((EYE_OUTER[0] + 4.0, EYE_OUTER[1] - 4.0))
+    flick_c = np.array(flick_at)
     flick = np.exp(-(((ac - flick_c[0]) / 5.0) ** 2 + ((row - flick_c[1]) / 2.2) ** 2))
-    tint(np.maximum(lash, flick) * head, (0.28, 0.19, 0.14), 0.75)
+    if LASH_ON_LID and M.tag.get("eye_margins"):
+        # (a thin line just above the edge, a little heavier outward, none on or below the edge itself)
+        lash = np.exp(-((d_up - 1.6) / (1.1 + 0.7 * t)) ** 2) * (0.75 + 0.25 * smooth01(0.0, 0.3, t)) * smooth01(0.0, 0.8, d_up)
+        flick = flick * 0.6
+    if LASH_ON_LID and M.tag.get("eye_margins"):
+        tint(np.maximum(lash, flick) * head, (0.21, 0.14, 0.11), 0.9)
+    else:
+        tint(np.maximum(lash, flick) * head, (0.28, 0.19, 0.14), 0.75)
     # the lid crease and a little shade under the brow
     mult(np.exp(-((d_up - 10.0) / 2.6) ** 2) * 0.55 * head, SHADE)
     # the lower lid: a faint warm line, no dark rim
     mult(np.exp(-((d_low - 1.5) / 1.8) ** 2) * 0.35 * head, (0.97, 0.86, 0.84))
     # cheeks, nose: rose
     for s in (1.0, -1.0):
-        mult(np.exp(-(((col - s * 95.0) / 40.0) ** 2 + ((row - 1166.0) / 30.0) ** 2)) * 0.42 * head, ROSE)
+        mult(np.exp(-(((col - s * 95.0) / 40.0) ** 2 + ((row - 1166.0) / 30.0) ** 2)) * (0.42 + 0.18 * SKIN_ROSE) * head, ROSE)
     nose_row = float(hrow(Pm[mk["nose"], 2]))
-    mult(np.exp(-((col / 20.0) ** 2 + ((row - nose_row - 4.0) / 16.0) ** 2)) * 0.45 * head, (1.0, 0.8, 0.77))
+    mult(np.exp(-((col / 20.0) ** 2 + ((row - nose_row - 4.0) / 16.0) ** 2)) * (0.45 + 0.25 * SKIN_ROSE) * head, (1.0, 0.8, 0.77))
     # the mouth: a short soft line on the lips' seam, its ends turned up; a rose lower lip; small dimples
     zm = float(Pm[mk["mouth"], 2])
     xc = abs(float(Pm[mk["mouth_l"], 0]))
@@ -7871,12 +7907,50 @@ def face_features(M, rgb, pos, nrm, hit, fam):
         # curve of its own; the ends still turn up a little past the corners)
         zl = np.interp(pos[..., 0], seam[0], seam_smooth(seam[0], seam[1])) + 0.0016 * np.clip(np.abs(xr) - 0.85, 0, None) ** 2
     near_front = (pos[..., 1] < float(Pm[mk["mouth"], 1]) + 0.012) & head
-    line = np.exp(-((pos[..., 2] - zl) / 0.00075) ** 2) * (1.0 - smooth01(0.75, 1.02, np.abs(xr)))
-    tint(line * near_front, (0.58, 0.36, 0.34), 0.6)
-    lip = np.exp(-(((pos[..., 2] - (zm - 0.0042)) / 0.0032) ** 2 + (pos[..., 0] / (0.62 * xc)) ** 4))
-    mult(lip * near_front * 0.9, (1.0, 0.8, 0.78))
+    if SMILE_PAINT:
+        # (twelfth pass, 3. smile) the sheet's broad closed smile: the line out to the corners and turned up there,
+        # a little curl at each end, a fuller rose lower lip, a soft dimple shade beyond each corner
+        k_ = SMILE_PAINT
+        ax_ = np.abs(xr)
+        # (the corners lie further back than the old mask's 12 mm behind the mouth's middle: it cut the line short)
+        near_front = (pos[..., 1] < float(Pm[mk["mouth"], 1]) + 0.03) & head & (nrm[..., 1] < -0.2)
+        # (the line stays on the lips' meeting edge to the corners, which the face rig traces and cuts open: turned up
+        # over the whole mouth it led the rig's cut off the lips, and five of its expressions folded; it turns up only
+        # past the corners, into the curls)
+        # (and the dark line itself ends a little inside the corners: carried past them it set the rig's corners 45 mm out
+        # and its wider cut folded the upper lip in a frown; the turned-up tails beyond are lighter)
+        zl = zl + k_ * 0.004 * smooth01(0.85, 1.16, ax_) ** 1.2
+        line = np.exp(-((pos[..., 2] - zl) / (0.0011 - 0.0004 * smooth01(0.6, 1.1, ax_))) ** 2)
+        tint(line * (1.0 - smooth01(0.8, 1.0, ax_)) * near_front, (0.47, 0.28, 0.26), 0.82)
+        tint(line * smooth01(0.78, 0.95, ax_) * (1.0 - smooth01(1.08, 1.2, ax_)) * near_front, (0.6, 0.4, 0.37), 0.45)
+        zc_ = zm + k_ * 0.004 + 0.0008
+        for s_ in (1.0, -1.0):
+            cx_ = s_ * xc * 1.1
+            curl = np.exp(-(((pos[..., 0] - cx_) / 0.0011) ** 2 + ((pos[..., 2] - zc_ - 0.0012) / 0.0024) ** 2))
+            tint(curl * near_front * k_, (0.62, 0.42, 0.38), 0.35)
+            dim = np.exp(-(((pos[..., 0] - s_ * xc * 1.3) / 0.0045) ** 2 + ((pos[..., 2] - zc_) / 0.006) ** 2))
+            mult(dim * near_front * 0.35 * k_, SHADE)
+        lip = np.exp(-(((pos[..., 2] - (zm - 0.0042)) / 0.0034) ** 2 + (pos[..., 0] / (0.78 * xc)) ** 4))
+        mult(lip * near_front, (1.0, 0.78, 0.76))
+    else:
+        line = np.exp(-((pos[..., 2] - zl) / 0.00075) ** 2) * (1.0 - smooth01(0.75, 1.02, np.abs(xr)))
+        tint(line * near_front, (0.58, 0.36, 0.34), 0.6)
+        lip = np.exp(-(((pos[..., 2] - (zm - 0.0042)) / 0.0032) ** 2 + (pos[..., 0] / (0.62 * xc)) ** 4))
+        mult(lip * near_front * 0.9, (1.0, 0.8, 0.78))
     uplip = np.exp(-(((pos[..., 2] - (zm + 0.0025)) / 0.002) ** 2 + (pos[..., 0] / (0.7 * xc)) ** 4))
     mult(uplip * near_front * 0.35, (1.0, 0.86, 0.84))
+    if NOSE_PAINT:
+        # (twelfth pass, 5. nose) the nostrils as two soft dark commas under the tip, and the wings' creases faintly
+        tip = Pm[mk["nose"]]
+        down = smooth01(-0.05, -0.5, nrm[..., 2])
+        # (on whatever of the nose faces down, near the tip: the nostrils find themselves on the mesh)
+        near_tip = np.exp(-(np.linalg.norm((pos - (tip + np.array((0.0, 0.004, -0.004)))) / np.array((1.0, 1.4, 1.0)), axis=-1) / 0.009) ** 2)
+        for s_ in (1.0, -1.0):
+            side_ = np.exp(-((pos[..., 0] - s_ * 0.0055) / 0.0028) ** 2)
+            mult(near_tip * side_ * down ** 1.5 * head * NOSE_PAINT, (0.55, 0.4, 0.38))
+            c2 = tip + np.array((s_ * 0.0105, 0.007, -0.002))
+            d2 = np.linalg.norm((pos - c2) / np.array((0.002, 0.004, 0.005)), axis=-1)
+            mult(np.exp(-d2 ** 2) * head * 0.4 * NOSE_PAINT, SHADE)
     # (ninth pass: the small shade marks at the mouth's corners read as dark specks; gone)
     # freckles over the bridge of the nose and the cheeks
     reg = np.exp(-((ac - 58.0) / 46.0) ** 2) * np.exp(-((row - 1148.0) / 20.0) ** 2) * fwd * head
@@ -8039,6 +8113,136 @@ def nape_polish(M):
         int((w > 0.02).sum()), 1000 * NAPE_IN * float(under.max()), 1000 * THROAT_IN * float(throat.max()), n))
 
 
+# ------------------------------------------------------------------------------------------------------------------
+# (twelfth pass) The late adjustments: small named moves on the finished head (after its eyes are opened and it is
+# polished), appended in order, each with its own switch and amount (0 turns it off). Nothing before them is changed.
+# Each was kept only if its before/after pair moved him toward concept_boy_head2.jpg.
+# ------------------------------------------------------------------------------------------------------------------
+EYE_GROW = float(arg("--eye-grow", "0.0"))      # 1. eyes_bigger: the lids' opening and the skin round it spread out from each eye's middle by this share
+EYE_SEAT = float(arg("--eye-seat", "0.0015"))      # 1. eyes_bigger: the ball and its lids set back into the head (metres), the cheek and brow round them left
+LASH_ON_LID = float(arg("--lash-on-lid", "1")) > 0   # 2. lash_on_lid: the lid's paint (lash, crease, lower lid) on the mesh's own opening edge
+SMILE_PAINT = float(arg("--smile-paint", "0.25"))   # 3. smile: the painted mouth as the sheet's broad closed smile (its amount scales the corners' rise)
+EYE_PUPIL = float(arg("--pupil", "0.5"))        # 1. the pupil's radius as a share of the iris's (the sheet's: about half)
+BROW_WARM = float(arg("--brow-warm", "1"))      # 4. brows: thicker and warmer by this share
+NOSE_PAINT = float(arg("--nose-paint", "1"))    # 5. nose: the nostrils' shading painted
+NOSE_UP = float(arg("--nose-up", "0.0012"))          # 5. nose: the tip lifted (metres)
+EAR_UP = float(arg("--ear-up", "0.008"))            # 7. ears: raised (metres)
+EAR_LATE_SIZE = float(arg("--ear-late-size", "1.05"))   # 7. ears: sized about their root
+EAR_LATE_SMOOTH = int(arg("--ear-late-smooth", "6"))   # 7. ears: Taubin rounds over the ear (its outline rounded)
+EAR_TURN = float(arg("--ear-turn", "15"))        # 7. ears: degrees turned about the upright at the root, the bowl toward the front
+NECK_RIDGE = int(arg("--neck-ridge-off", "30"))  # 8. neck_ridge_off: Taubin rounds over the back of the neck
+SKIN_ROSE = float(arg("--skin-rose", "1"))      # 9. skin: rosier ears, nose tip, cheeks, knees, knuckles; the palm's crease shade less
+LATE_ADJUST = []
+
+
+def eye_margins(M, eyes):
+    """Each eye's lid margin (the opening's edge) as open_eyes2 left it: its points in order from the inner corner,
+    read from the lid_hold tag (each eye's margin loop, then its roll ring, the same length)."""
+    lh = list(M.tag.get("lid_hold", []))
+    n = len(lh) // (2 * max(len(eyes), 1))
+    return [(lh[2 * k * n:(2 * k + 1) * n], lh[(2 * k + 1) * n:(2 * k + 2) * n]) for k in range(len(eyes))]
+
+
+def late_adjust(M, eyes):
+    P = np.array(M.P)
+    fams = np.array([part_family(p) for p in M.part])
+    head = fams == "head"
+    marg = eye_margins(M, eyes)
+    M.tag["eye_margins"] = marg
+    # 1. eyes_bigger
+    if EYE_GROW or EYE_SEAT:
+        T_ = M.tris()
+        N = normals_of(P, T_)
+        ax, az = 37.0 * HS, 23.0 * HS          # the opening's half width and half height (the sheet's, measured)
+        D = np.zeros_like(P)
+        for (C, s), (loop, ring2) in zip(eyes, marg):
+            dx, dz = P[:, 0] - C[0], P[:, 2] - C[2]
+            e = np.hypot(dx / ax, dz / az)
+            front = smooth01(C[1] + 0.004, C[1] - 0.004, P[:, 1])
+            w = (1.0 - smooth01(1.2, 2.7, e)) * front * head
+            # spread in the face's own surface (the normal part taken out), the lids then laid back on the ball
+            d = np.stack([dx, np.zeros(len(P)), dz], 1) * (EYE_GROW * w)[:, None]
+            d -= N * (d * N).sum(1)[:, None] * (e > 1.3)[:, None]
+            D += d
+        P2 = P + D
+        for (C, s), (loop, ring2) in zip(eyes, marg):
+            def by(x, z):
+                k = 1.0 - ((x - C[0]) / EYE_RAD[0]) ** 2 - ((z - C[2]) / EYE_RAD[2]) ** 2
+                return C[1] - EYE_RAD[1] * np.sqrt(np.maximum(k, 0.25))
+            e = np.hypot((P[:, 0] - C[0]) / ax, (P[:, 2] - C[2]) / az)
+            near = (e < 1.3) & head & (np.sign(P[:, 0]) == s)
+            P2[near, 1] += by(P2[near, 0], P2[near, 2]) - by(P[near, 0], P[near, 2])
+            # the seat: the ball and everything on it back, faded out over the lids' rings to the cheek and brow
+            if EYE_SEAT:
+                ws = (1.0 - smooth01(1.05, 2.0, e)) * head * (np.sign(P[:, 0]) == s) * smooth01(C[1] + 0.004, C[1] - 0.004, P[:, 1])
+                P2[:, 1] += EYE_SEAT * ws
+        if EYE_SEAT:
+            eyes[:] = [(C + np.array((0.0, EYE_SEAT, 0.0)), s) for C, s in eyes]
+        P = P2
+        M.P = [p for p in P]
+        n, _ = folded(P, M.faces)
+        cols = [abs(P[v][0]) / HS for v in marg[0][0]]
+        rows = [float(hrow(P[v][2])) for v in marg[0][0]]
+        LATE_ADJUST.append("eyes_bigger %.2f, seat %.1f mm" % (EYE_GROW, 1000 * EYE_SEAT))
+        print("BOY late eyes_bigger: grow %.2f, seat %.1f mm; the opening now columns %.0f to %.0f, rows %.0f to %.0f (%.0f x %.0f); %d folded" % (
+            EYE_GROW, 1000 * EYE_SEAT, min(cols), max(cols), min(rows), max(rows), max(cols) - min(cols), max(rows) - min(rows), n))
+    # 5. nose_up: the tip and the underside of the nose lifted, the bridge and the lip below left
+    if NOSE_UP:
+        tip = P[M.tag["head_marks"]["nose"]].copy()
+        w = np.exp(-(np.linalg.norm((P - (tip + np.array((0.0, 0.003, -0.003)))) * np.array((0.8, 1.0, 1.0)), axis=1) / 0.0075) ** 2) * head
+        P[:, 2] += NOSE_UP * w
+        P[:, 1] += NOSE_UP * 0.3 * w
+        n, _ = folded(P, M.faces)
+        LATE_ADJUST.append("nose_up %.1f mm" % (1000 * NOSE_UP))
+        print("BOY late nose_up: %.1f mm; %d folded" % (1000 * NOSE_UP, n))
+    # 7. ears: raised to the sheet's height, sized about their root, their outline rounded by Taubin rounds (no new points)
+    ear = np.isin(np.array(M.part), ("ear_l", "ear_r"))
+    for nm in ("ear_l", "ear_r"):
+        e_ = np.array(M.part) == nm
+        Q = P[e_]
+        print("BOY ear %s: rows %.0f to %.0f, out to column %.0f, back %.1f to %.1f cm" % (
+            nm, float(hrow(Q[:, 2].max())), float(hrow(Q[:, 2].min())), float(np.abs(Q[:, 0]).max() / HS), 100 * Q[:, 1].min(), 100 * Q[:, 1].max()))
+    if EAR_UP or EAR_LATE_SIZE != 1.0 or EAR_LATE_SMOOTH or EAR_TURN:
+        for nm in ("ear_l", "ear_r"):
+            e_ = np.array(M.part) == nm
+            Q = P[e_]
+            ax_ = np.abs(Q[:, 0])
+            root = Q[ax_ < np.quantile(ax_, 0.15)].mean(0)
+            s_ = 1.0 if nm == "ear_l" else -1.0
+            a_ = math.radians(EAR_TURN)
+            v_ = (Q - root) * EAR_LATE_SIZE
+            # (turned about the upright through its root, its back edge out: the bowl faces more forward)
+            v_ = np.stack([v_[:, 0] * math.cos(a_) + s_ * v_[:, 1] * math.sin(a_), -s_ * v_[:, 0] * math.sin(a_) + v_[:, 1] * math.cos(a_), v_[:, 2]], 1)
+            P[e_] = root + v_ + np.array((0.0, 0.0, EAR_UP))
+        M.P = [p for p in P]
+        if EAR_LATE_SMOOTH:
+            taubin(M, ear, rounds=EAR_LATE_SMOOTH)
+            P = np.array(M.P)
+        n, _ = folded(P, M.faces)
+        LATE_ADJUST.append("ears up %.1f mm, x%.2f, %d rounds" % (1000 * EAR_UP, EAR_LATE_SIZE, EAR_LATE_SMOOTH))
+        print("BOY late ears: up %.1f mm, size x%.2f, %d smoothing rounds; %d folded" % (1000 * EAR_UP, EAR_LATE_SIZE, EAR_LATE_SMOOTH, n))
+    # 8. neck_ridge_off: the back of the neck evened by Taubin rounds (its two creases from the nape down), faded out
+    # toward the skull, the shoulders and the throat
+    if NECK_RIDGE:
+        zt = float(np.mean([P[i][2] for i in M.tag["neck_rings"][-1]]))
+        z0 = float(np.mean([P[i][2] for i in M.tag["neck_rings"][0]]))
+        cy = float(np.mean([P[i][1] for i in M.tag["neck_rings"][-1]]))
+        z = P[:, 2]
+        wgt = np.isin(fams, ("neck", "head")) * smooth01(z0 - 0.005, z0 + 0.02, z) * (1.0 - smooth01(zt + 0.03, zt + 0.07, z)) \
+            * smooth01(cy - 0.01, cy + 0.015, P[:, 1])
+        before = P.copy()
+        taubin(M, wgt > 0.01, rounds=NECK_RIDGE)
+        P = np.array(M.P)
+        P = before + (P - before) * wgt[:, None]
+        M.P = [p for p in P]
+        n, _ = folded(P, M.faces)
+        LATE_ADJUST.append("neck_ridge_off %d rounds" % NECK_RIDGE)
+        print("BOY late neck_ridge_off: %d rounds over %d points (most moved %.1f mm); %d folded" % (
+            NECK_RIDGE, int((wgt > 0.01).sum()), 1000 * float(np.linalg.norm(P - before, axis=1).max()), n))
+    M.P = [p for p in P]
+    print("BOY late adjustments: %s" % (LATE_ADJUST or "none"))
+
+
 def finish(M, T, joints, sh):
     H = None
     bones = skeleton_joints(M, T, joints)
@@ -8056,6 +8260,7 @@ def finish(M, T, joints, sh):
         face_polish(M)
     if NAPE_POLISH:
         nape_polish(M)
+    late_adjust(M, eyes)
     # (third pass: the head is the fitted base mesh, made in build_head; no splitting, smoothing or sculpting here)
     hobjs = lambda: [(np.array(M.P), M.tris(), M.tri_fams())]
     fit_angled_model(hobjs(), sh)
