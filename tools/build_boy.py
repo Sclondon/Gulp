@@ -2690,8 +2690,11 @@ def round_tips(Lc, faces, chains, fingers, thumb):
         cap = TIP_CAP * (1.25 if name == "thumb" else 1.0)
         s = np.clip((t - (tmax - cap)) / cap, 0, 1)
         perp = d - np.outer(t, a)
-        k = np.sqrt(np.clip(1.0 - s ** 2, 0.0, 1.0)) * 0.5 + 0.5
+        # (eighth pass: a blunter dome; the critic still saw pointed curled tips: the very end pulled back a little and
+        # the cap's sides kept fuller, from 0.5 + 0.5 sqrt(1 - s^2))
+        k = np.sqrt(np.clip(1.0 - s ** 2, 0.0, 1.0)) * 0.32 + 0.68
         k = np.where(s > 0, k, 1.0)
+        t = t - 0.3 * cap * smooth01(0.75, 1.0, s)
         Lc[idx] = np.asarray(J[2]) + np.outer(t, a) + perp * k[:, None]
         sel[np.asarray(idx)[s > 0]] = True
     Lc = smooth_points(Lc, edges_of(faces), sel, rounds=2)
@@ -4111,7 +4114,7 @@ def skeleton_joints(M, T, joints):
         el = Vector(mirror_x(joints["elbow_l"], s))
         wr = Vector(mirror_x(joints["wrist_l"], s))
         bones.append(("clavicle" + sfx, Vector((s * 0.035, sh_.y - 0.01, sh_.z + 0.05)), "chest"))
-        bones.append(("upper_arm" + sfx, sh_, "chest"))
+        bones.append(("upper_arm" + sfx, sh_, "clavicle" + sfx))   # (eighth pass: from the chest; the clavicle lifts the shoulder)
         bones.append(("forearm" + sfx, el, "upper_arm" + sfx))
         bones.append(("hand" + sfx, wr, "forearm" + sfx))
         for f in FINGERS:
@@ -4159,6 +4162,12 @@ def chain_weights(s, names, ends, blend):
     return w
 
 
+CLAV_SHARE = float(arg("--clav", "0.7"))
+FINGER_BLEND = float(arg("--finger-blend", "0.011"))
+WEB_SHARE = float(arg("--web", "0.45"))
+ELBOW_BLEND = float(arg("--elbow-blend", "0.028"))
+
+
 def weights_of(M, T, bones, joints):
     at = {n: np.array(p) for n, p, _ in bones}
     P = np.array(M.P)
@@ -4178,6 +4187,16 @@ def weights_of(M, T, bones, joints):
         elif fam == "torso":
             w = chain_weights(p[2], ["hips", "spine", "chest", "neck"], zt, 0.06)
             for s, sx in ((1, "_l"), (-1, "_r")):
+                # (eighth pass) the top of the chest out toward each shoulder rides the clavicle, which lifts the
+                # shoulder when the arm goes up (the shoulder cap collapsed into a hard fold with the arm overhead)
+                kc = CLAV_SHARE * float(smooth01(0.035, 0.1, s * p[0])) * float(smooth01(at["upper_arm" + sx][2] - 0.09, at["upper_arm" + sx][2] - 0.02, p[2]))
+                if kc > 0:
+                    moved = w.get("chest", 0.0) * kc + w.get("neck", 0.0) * kc * 0.5
+                    if "chest" in w:
+                        w["chest"] *= 1 - kc
+                    if "neck" in w:
+                        w["neck"] *= 1 - kc * 0.5
+                    w["clavicle" + sx] = w.get("clavicle" + sx, 0) + moved
                 d = np.linalg.norm(p - at["upper_arm" + sx])
                 k = 0.45 * (1 - float(smooth01(0.06, 0.14, d)))
                 if k > 0:
@@ -4190,18 +4209,19 @@ def weights_of(M, T, bones, joints):
             if vi in M.tag["crotch"]:
                 w = {"hips": 0.6, "thigh_l": 0.2, "thigh_r": 0.2}
         elif fam == "shoulder":
-            w = {"chest": 0.55, "upper_arm" + sfx: 0.45}
+            w = {"chest": 0.2, "clavicle" + sfx: 0.4, "upper_arm" + sfx: 0.4}
         elif fam == "arm":
             J, E, W = at["upper_arm" + sfx], at["forearm" + sfx], at["hand" + sfx]
             Lu = np.linalg.norm(E - J)
             s = along(p, J, E)
             if s > Lu - 0.05:
                 s = Lu + along(p, E, W)
-            w = chain_weights(s, ["upper_arm" + sfx, "forearm" + sfx, "hand" + sfx], [Lu, Lu + np.linalg.norm(W - E) + 0.005], 0.04)
+            w = chain_weights(s, ["upper_arm" + sfx, "forearm" + sfx, "hand" + sfx], [Lu, Lu + np.linalg.norm(W - E) + 0.005], ELBOW_BLEND)   # (eighth pass: from 0.04 at both joints)
             k = 0.4 * (1 - float(smooth01(0.0, 0.07, s)))
             if k > 0:
                 w = {n: v * (1 - k) for n, v in w.items()}
-                w["chest"] = w.get("chest", 0) + k
+                w["chest"] = w.get("chest", 0) + k * 0.4
+                w["clavicle" + sfx] = w.get("clavicle" + sfx, 0) + k * 0.6
         elif fam == "hand":
             sub = part.split("_")[2] if part.count("_") >= 2 else ""
             if sub in FINGERS or sub == "thumb":
@@ -4214,11 +4234,26 @@ def weights_of(M, T, bones, joints):
                     l2 = l1 + np.linalg.norm(a3 - a2)
                     if s > l2 - 0.004:
                         s = l2 + max(0.0, along(p, a3, a3 + (a3 - a2)))
-                w = chain_weights(s, ["hand" + sfx] + names, [0.004, l1, l1 + np.linalg.norm(a3 - a2)], 0.007)
+                w = chain_weights(s, ["hand" + sfx] + names, [0.003, l1, l1 + np.linalg.norm(a3 - a2)], FINGER_BLEND)   # (eighth pass: from 0.007, the fist spiked at the knuckles)
             else:
                 Wr = at["hand" + sfx]
                 s = along(p, at["forearm" + sfx], Wr) - np.linalg.norm(Wr - at["forearm" + sfx])
                 w = chain_weights(s, ["forearm" + sfx, "hand" + sfx], [0.0], 0.025)
+                # (eighth pass) the webs and the knuckles' skin follow the fingers' first bones part way (in a fist the
+                # webs stayed with the palm and stood out as spikes between the curled fingers)
+                roots = [(np.linalg.norm(p - at["finger_%s_1%s" % (f, sfx)]), "finger_%s_1%s" % (f, sfx)) for f in FINGERS]
+                roots.sort()
+                hand_dir = at["finger_middle_1" + sfx] - at["hand" + sfx]
+                past = along(p, at["hand" + sfx], at["finger_middle_1" + sfx]) - np.linalg.norm(hand_dir) + 0.012
+                if past > 0:
+                    d0, n0 = roots[0]
+                    d1, n1 = roots[1]
+                    k = WEB_SHARE * float(smooth01(0.0, 0.012, past)) * (1 - float(smooth01(0.008, 0.02, d0)))
+                    if k > 0:
+                        share = d1 / max(d0 + d1, 1e-6)
+                        w = {n: v * (1 - k) for n, v in w.items()}
+                        w[n0] = w.get(n0, 0) + k * share
+                        w[n1] = w.get(n1, 0) + k * (1 - share)
         elif fam in ("leg", "foot"):
             H, K, A = at["thigh" + sfx], at["shin" + sfx], at["foot" + sfx]
             if fam == "leg":
@@ -5404,7 +5439,416 @@ def boxer_faces(M, T):
     return out
 
 
+# (eighth pass) The shorts as the brother's knit shorts: a band with thickness, rows down the trunk, each leg's rings
+# taken from the leg under it (so the hems follow the thighs in every pose: the hems stood off as open rings when he
+# sat, their weights taken from points higher on the leg than where they sat), a turned hem with a lip and an inside
+# face, the front's fullness, the fly's seam and the seat's line; painted cream with the rib, the fly and folds.
+SHORTS_STAND = {"band_lip": 0.0018, "band": 0.005, "cloth": 0.0075, "leg_in": 0.0025, "leg_out": 0.0065, "hug": 0.002}
+SHORTS_BULGE = 0.009
+SHORTS_SEAT = 0.004
+SHORTS_FLY = 0.002
+SHORTS_KEEP = float(arg("--shorts-keep", "0.48"))
+SHORTS_SEAT_OUT = 0.012      # metres: the seat's fullness pushed out behind (the critic: "a small but present rounded bottom")
+
+# (eighth pass) ring_double, knit_shorts and paint_knit copied from tools/build_brother.py (2026-11-18), unchanged:
+# the knit shorts that follow the legs (each point's weights blended from the body points under it).
+
+def ring_double(pts):
+    """A closed ring of points with a new point between each two (the four-point subdivision rule: a smooth curve
+    through the old points). Gives 2n points, the old ones at even places."""
+    pts = np.asarray(pts, float)
+    n = len(pts)
+    out = np.zeros((2 * n,) + pts.shape[1:])
+    for i in range(n):
+        p0, p1, p2, p3 = pts[(i - 1) % n], pts[i], pts[(i + 1) % n], pts[(i + 2) % n]
+        out[2 * i] = p1
+        out[2 * i + 1] = (-p0 + 9.0 * p1 + 9.0 * p2 - p3) / 16.0
+    return out
+
+
+def knit_shorts(P, N, T, leg_rings, crotch, band_z, band_tall, mid_zs, hem_z, side_cols, stand=SHORTS_STAND,
+                bulge=SHORTS_BULGE, seat=SHORTS_SEAT, fly=SHORTS_FLY, lower_rings=3):
+    """Knit shorts over a lofted body.
+    P, N: the body's points and normals. T: the torso's rings (lists of point indices, the crotch's ring first, each
+    starting at his front middle and going round toward +X). leg_rings: {"_l": rings, "_r": rings} from the leg's top
+    (the torso's first ring's half and the crotch point) down, LIMB_N points each. crotch: the crotch point's index.
+    band_z(phi): the waistband's top height at the angle phi round him (0 = his front). band_tall: the band's height
+    (metres). mid_zs(z_band_bottom): the heights of the rows between the band and the torso rings kept. hem_z: the hem's
+    height. side_cols(sfx): the torso columns (0..n/2) that the leg's top takes, in its own order.
+    Gives (Mesh, src: [{body point: weight}] per point, islands: {name: {face: uvs in metres}}, info)."""
+    nT = len(T[0])
+    Bx = Mesh()
+    src = []
+    zs = np.array([P[r].mean(0)[2] for r in T])
+    up = np.array((0.0, 0.0, 1.0))
+
+    def column_at(k, z):
+        ks = np.array([P[r[k]][2] for r in T])
+        q = np.array([np.interp(z, ks, P[[r[k] for r in T]][:, a]) for a in range(3)])
+        n = np.array([np.interp(z, ks, N[[r[k] for r in T]][:, a]) for a in range(3)])
+        i = int(np.clip(np.searchsorted(ks, z), 1, len(ks) - 1))
+        t = float(np.clip((z - ks[i - 1]) / max(ks[i] - ks[i - 1], 1e-9), 0, 1))
+        return q, n / max(np.linalg.norm(n), 1e-9), {T[i - 1][k]: 1.0 - t, T[i][k]: t}
+
+    def add(q, s, part="boxers"):
+        src.append(s)
+        return Bx.add(q, part)
+
+    def blend(a, b, t=0.5):
+        out = {}
+        for d, w in ((a, 1.0 - t), (b, t)):
+            for k, v in d.items():
+                out[k] = out.get(k, 0.0) + v * w
+        return out
+    # the trunk: per column its band top, band bottom, rows between, then the torso's last rings
+    z_low = [float(z) for z in zs[:lower_rings]][::-1]
+    rows = []
+    for k in range(nT):
+        phi = math.tau * k / nT
+        zb = band_z(phi)
+        zb1 = zb - band_tall
+        rows.append([zb, zb, zb1] + list(mid_zs(zb1)) + z_low)
+    nrows = len(rows[0])
+    G, grow = [], []
+    for j in range(nrows):
+        qs, ns, ss = [], [], []
+        for k in range(nT):
+            q, n, s = column_at(k, rows[k][j])
+            qs.append(q)
+            ns.append(n)
+            ss.append(s)
+        Q2 = ring_double(qs)
+        N2 = ring_double(ns)
+        N2 /= np.maximum(np.linalg.norm(N2, axis=1, keepdims=True), 1e-9)
+        st = stand["band_lip"] if j == 0 else stand["band"] if j in (1, 2) else stand["cloth"]
+        ring = []
+        for i in range(2 * nT):
+            s = ss[i // 2] if i % 2 == 0 else blend(ss[i // 2], ss[(i // 2 + 1) % nT])
+            q = Q2[i] + N2[i] * st
+            if j == 0:
+                q = q - up * 0.003
+            ring.append(add(q, s))
+        G.append(ring)
+    nc = 2 * nT
+    for j in range(nrows - 1):
+        for i in range(nc):
+            ii = (i + 1) % nc
+            Bx.face([G[j][i], G[j][ii], G[j + 1][ii], G[j + 1][i]], "boxers_band" if j < 2 else "boxers_torso")
+            Bx.cell[len(Bx.faces) - 1] = ("trunk", j, i)
+    bottom = G[-1]
+    gc = add(P[crotch] - up * stand["cloth"], {crotch: 1.0})
+    legs, rolls = {}, {}
+    for sfx in ("_l", "_r"):
+        side = 1.0 if sfx == "_l" else -1.0
+        cols = side_cols(sfx)                     # torso columns 0..n/2 in the leg's own order
+        # the top ring, doubled: the trunk's bottom row at whole and half columns, then the two points by the crotch
+        top = []
+        for a, b in zip(cols[:-1], cols[1:]):
+            top.append(bottom[2 * a])
+            # (the half column between two whole ones: the one the trunk made, between a and b going round)
+            top.append(bottom[(2 * a + 1) % nc] if (b - a) % nT == 1 else bottom[(2 * a - 1) % nc])
+        top.append(bottom[2 * cols[-1]])
+        ten = [Bx.P[bottom[2 * c]] for c in cols] + [Bx.P[gc]]
+        d10 = ring_double(ten)
+        m1 = add(d10[2 * len(cols) - 1], blend(src[bottom[2 * cols[-1]]], src[gc]))
+        m2 = add(d10[-1], blend(src[gc], src[bottom[2 * cols[0]]]))
+        top += [m1, gc, m2]
+        rings = [top]
+        body = leg_rings[sfx]
+        bz = np.array([P[r].mean(0)[2] for r in body])
+        # the rings below: the body's first ring under the crotch, one between, and the hem
+        z1 = bz[1]
+        targets = [z1, (z1 + hem_z) / 2.0, hem_z]
+        for ti, z in enumerate(targets):
+            i = int(np.clip(np.searchsorted(-bz, -z), 1, len(bz) - 1))
+            t = float(np.clip((bz[i - 1] - z) / max(bz[i - 1] - bz[i], 1e-9), 0, 1))
+            A, B = body[i - 1], body[i]
+            pts = P[A] * (1 - t) + P[B] * t
+            c = pts.mean(0)
+            hem = ti == len(targets) - 1
+            q10 = []
+            for p in pts:
+                out = p - c
+                out[2] = 0.0
+                out /= max(np.linalg.norm(out), 1e-9)
+                inner = max(0.0, -side * out[0])          # 1 facing the other leg
+                st = stand["leg_in"] + (stand["leg_out"] - stand["leg_in"]) * (1.0 - inner) ** 1.5
+                st = stand["cloth"] * (1 - (ti + 1) / len(targets)) + st * ((ti + 1) / len(targets))
+                q = p + out * st
+                q[2] = z
+                q10.append(q)
+            q20 = ring_double(q10)
+            ring = []
+            for m in range(len(q20)):
+                k0, k1 = A[(m // 2) % len(A)], A[((m + 1) // 2) % len(A)]
+                l0, l1 = B[(m // 2) % len(B)], B[((m + 1) // 2) % len(B)]
+                s = blend(blend({k0: 1.0}, {k1: 1.0}), blend({l0: 1.0}, {l1: 1.0}), t)
+                ring.append(add(q20[m], s))
+            rings.append(ring)
+        for a, b in zip(rings, rings[1:]):
+            n = len(a)
+            for j in range(n):
+                k = (j + 1) % n
+                Bx.face([a[j], a[k], b[k], b[j]], "boxers_leg" + sfx)
+        # the turned hem: a lip a few millimetres under the hem, rolled in toward the thigh, and the inside face
+        # against the thigh, a centimetre and a half up
+        hem = rings[-1]
+        hc = np.array([Bx.P[v] for v in hem]).mean(0)
+        lip, inside = [], []
+        for v in hem:
+            q = np.array(Bx.P[v], float)
+            dd = q - hc
+            dd[2] = 0.0
+            dd /= max(np.linalg.norm(dd), 1e-9)
+            lip.append(add(q - dd * 0.004 - up * 0.004, src[v]))
+        for v in hem:
+            q = np.array(Bx.P[v], float)
+            dd = q - hc
+            dd[2] = 0.0
+            dd /= max(np.linalg.norm(dd), 1e-9)
+            # (the skin under it: the hem's own stand taken back to the hug)
+            skin = q - dd * 0.0
+            # find how far this hem point stands from the body: the body ring at the hem's height
+            inside.append(add(q - dd * 0.009 + up * 0.014, src[v]))
+        n = len(hem)
+        roll = []
+        for j in range(n):
+            k = (j + 1) % n
+            Bx.face([hem[j], hem[k], lip[k], lip[j]], "boxers_hem" + sfx)
+            Bx.want[len(Bx.faces) - 1] = ("down", None)
+            roll.append(len(Bx.faces) - 1)
+            Bx.face([lip[j], lip[k], inside[k], inside[j]], "boxers_hem" + sfx)
+            Bx.want[len(Bx.faces) - 1] = ("in", hc)
+            roll.append(len(Bx.faces) - 1)
+        legs[sfx] = rings
+        rolls[sfx] = (hem, lip, inside, roll)
+    # the forms: the front's fullness between the legs, the fly's seam, the seat's middle line
+    Q = np.array(Bx.P)
+    zc = float(P[crotch][2]) + 0.035
+    cy = float(np.mean([P[r].mean(0)[1] for r in T[:2]]))
+    front = Q[:, 1] < cy
+    w = np.exp(-(Q[:, 0] / 0.055) ** 2 - ((Q[:, 2] - zc) / 0.05) ** 2) * front
+    Q[:, 1] -= bulge * w
+    zf0 = min(band_z(0.0) - band_tall, zc + 0.11)
+    wf = np.exp(-(Q[:, 0] / 0.008) ** 2) * front * smooth01(zc + 0.02, zc + 0.05, Q[:, 2]) * (1.0 - smooth01(zf0 - 0.02, zf0, Q[:, 2]))
+    Q[:, 1] += fly * wf
+    ws = np.exp(-(Q[:, 0] / 0.02) ** 2) * (~front) * smooth01(zc - 0.03, zc + 0.04, Q[:, 2]) * (1.0 - smooth01(zc + 0.14, zc + 0.2, Q[:, 2]))
+    Q[:, 1] -= seat * ws
+    # the hem's soft wave (cloth, not a pipe)
+    for sfx in ("_l", "_r"):
+        hem, lip, inside, _ = rolls[sfx]
+        for m, v in enumerate(hem):
+            Q[v, 2] += 0.0025 * math.sin(m * math.tau * 3 / len(hem) + (0.7 if sfx == "_l" else 2.1))
+            Q[lip[m], 2] += 0.0025 * math.sin(m * math.tau * 3 / len(hem) + (0.7 if sfx == "_l" else 2.1))
+    Bx.P = [q for q in Q]
+    # UVs: the trunk's front and back halves unrolled by distance round its middle row; each leg round its axis;
+    # each hem's roll its own strip
+    mid = G[nrows // 2]
+    seg = [float(np.linalg.norm(Q[mid[(i + 1) % nc]] - Q[mid[i]])) for i in range(nc)]
+    islands = {"boxers_front": {}, "boxers_back": {}}
+    q0, q1 = nc * 3 // 4, nc // 4
+    for fi, c in Bx.cell.items():
+        j, i = c[1], c[2]
+        is_front = i >= q0 or i < q1
+        start = q0 if is_front else q1
+        uv = []
+        for v in Bx.faces[fi]:
+            kv = G[j].index(v) if v in G[j] else G[j + 1].index(v)
+            kk = (kv - start) % nc
+            if kk > nc // 2:
+                kk -= nc
+            u = sum(seg[(start + m) % nc] for m in range(kk)) if kk >= 0 else -seg[(start - 1) % nc]
+            uv.append((u if is_front else -u, float(Q[v][2])))
+        islands["boxers_front" if is_front else "boxers_back"][fi] = uv
+    for sfx, s in (("_l", 1.0), ("_r", -1.0)):
+        ring = legs[sfx][1]
+        cx, cy_ = Q[ring][:, 0].mean(), Q[ring][:, 1].mean()
+        R = float(np.hypot(Q[ring][:, 0] - cx, Q[ring][:, 1] - cy_).mean())
+        isl, hisl = {}, {}
+        hem, lip, inside, roll = rolls[sfx]
+        vpos = {}
+        for v in hem:
+            vpos[v] = 0.0
+        for v in lip:
+            vpos[v] = -0.006
+        for v in inside:
+            vpos[v] = -0.022
+        for fi, p in enumerate(Bx.fpart):
+            if p not in ("boxers_leg" + sfx, "boxers_hem" + sfx):
+                continue
+            th = [math.atan2(-(Q[v][1] - cy_), s * (Q[v][0] - cx)) for v in Bx.faces[fi]]
+            if max(th) - min(th) > math.pi:
+                th = [t + math.tau if t < 0 else t for t in th]
+            if p.startswith("boxers_hem"):
+                hisl[fi] = [(s * t * R, vpos[v]) for t, v in zip(th, Bx.faces[fi])]
+            else:
+                isl[fi] = [(s * t * R, float(Q[v][2])) for t, v in zip(th, Bx.faces[fi])]
+        islands["boxers_leg" + sfx] = isl
+        islands["boxers_hem" + sfx] = hisl
+    return Bx, src, islands, {"zc": zc, "cy": cy, "rows": nrows}
+
+
+def paint_knit(rgb, pos, hit, fid, Bx, info, rib=0.006):
+    """The knit's details over the cleaned paint: the band ribbed (soft upright stripes every `rib` metres round) with
+    a shadow line under it, the fly's seam (a double stitch line down his front middle), the crotch's soft folds as
+    shade fanning from it, the hem's lip a little darker."""
+    parts = np.array(list(Bx.fpart) + ["none"])[fid]
+    band = hit & (parts == "boxers_band")
+    ang = np.arctan2(pos[..., 0], -(pos[..., 1] - info["cy"]))
+    R = np.hypot(pos[..., 0], pos[..., 1] - info["cy"])
+    stripes = 0.5 + 0.5 * np.cos(ang * R / rib * math.tau)
+    rgb[band] *= (0.93 + 0.07 * stripes[band])[:, None]
+    zb = pos[..., 2]
+    # the line under the band: the lowest band texels of each column and the cloth just under
+    torso = hit & (parts == "boxers_torso")
+    under = np.zeros_like(torso)
+    if band.any():
+        bins = np.round(ang * 16).astype(int)
+        for b in np.unique(bins[band]):
+            zmin = zb[band & (bins == b)].min()
+            sel = torso & (bins == b) & (zb > zmin - 0.008) & (zb < zmin)
+            under |= sel
+    rgb[under] *= 0.92
+    front = pos[..., 1] < info["cy"]
+    zc = info["zc"]
+    for dx in (-0.004, 0.004):
+        st = hit & front & (np.abs(pos[..., 0] - dx) < 0.0011) & (zb > zc + 0.03) & (zb < zc + 0.12)
+        rgb[st] *= 0.88
+    # the crotch's folds: soft shade lines fanning up and out from it, on the front of each leg
+    for s in (1.0, -1.0):
+        x = s * pos[..., 0]
+        for k, a in enumerate((0.35, 0.75)):
+            d = (zb - (zc - 0.035)) * math.cos(a) - x * math.sin(a)
+            fold = hit & front & (x > 0.01) & (x < 0.13) & (zb > zc - 0.06) & (zb < zc + 0.06)
+            g = np.exp(-(d / 0.006) ** 2)[fold]
+            rgb[fold] *= (1.0 - 0.07 * g)[:, None]
+    lip = hit & np.char.startswith(parts.astype(str), "boxers_hem")
+    rgb[lip] *= 0.94
+    return rgb
+
+
+
 def build_boxers(M, T, sh, weights, armature):
+    """(eighth pass) The knit shorts (knit_shorts, the brother's), sized to the boy, their weights blended from the body
+    points under each of their points."""
+    T = M.tag["torso_rings"]
+    P = np.array(M.P)
+    N = normals_of(P, M.tris())
+    crotch = M.tag["crotch"][0]
+
+    def band_z(phi):
+        return float(body_z(band_row(phi)))
+
+    def mid_zs(zb1):
+        z870 = float(body_z(BR(870)))
+        return [zb1 + (z870 - zb1) * t for t in (0.33, 0.66, 1.0)]
+
+    def side_cols(sfx):
+        return list(range(0, 9)) if sfx == "_l" else [col_of(k, -1) for k in range(0, 9)]
+    lower = sum(1 for r in TORSO_ROWS if r >= BR(885))
+    Bx, src, islands, info = knit_shorts(P, N, T, {s: M.tag["leg_rings" + s] for s in ("_l", "_r")}, crotch, band_z,
+                                         BOXER_BAND_TALL * S, mid_zs, float(body_z(BOXER_HEM_ROW)), side_cols,
+                                         lower_rings=lower)
+    # the seat: a small rounded bottom behind, each side of the middle line
+    Q = np.array(Bx.P)
+    zc = info["zc"]
+    back = Q[:, 1] > info["cy"]
+    ws = np.exp(-((np.abs(Q[:, 0]) - 0.045) / 0.045) ** 2 - ((Q[:, 2] - (zc + 0.035)) / 0.05) ** 2) * back
+    Q[:, 1] += SHORTS_SEAT_OUT * ws
+    Bx.P = [q for q in Q]
+    Q = np.array(Bx.P)
+    flipped = 0
+    turned = set()
+    for fi, f in enumerate(Bx.faces):
+        n = face_normal(Q, f)
+        want = Bx.want.get(fi)
+        if want is None:
+            nb = np.zeros(3)
+            for v in f:
+                for b, w in src[v].items():
+                    nb += N[b] * w
+            ok = np.dot(n, nb) >= 0
+        elif want[0] == "down":
+            ok = n[2] <= 0
+        else:
+            c = Q[f].mean(0) - want[1]
+            c[2] = 0.0
+            ok = np.dot(n, c) <= 0
+        if not ok:
+            Bx.faces[fi] = f[::-1]
+            turned.add(fi)
+            flipped += 1
+    for n_ in islands:
+        ISLANDS[n_] = ("boxers", 0.5 if n_.startswith("boxers_hem") else 1.0)
+    saved = dict(ATLAS)
+    ATLAS.clear()
+    ATLAS["boxers"] = 512
+    placed, face_uv = pack(islands)
+    # (a face turned for its winding has its corners' UVs turned with it: the brother's builder's fix)
+    for fi in turned:
+        if fi in face_uv:
+            pic, uv = face_uv[fi]
+            face_uv[fi] = (pic, list(uv)[::-1])
+    write_layout(face_uv, placed, "boxers", os.path.join(TEX, "boy_boxers_layout.png"))
+    Qb = np.array(Bx.P)
+    pos, nrm, hit, fid = texel_geometry(Bx, face_uv, "boxers", Qb, normals_of(Qb, Bx.tris()))
+    ATLAS.clear()
+    ATLAS.update(saved)
+    size = pos.shape[0]
+    cream = np.array((0.91, 0.875, 0.795))
+    rgb = np.ones((size, size, 3)) * cream
+    yy, xx = np.mgrid[0:size, 0:size]
+    rgb *= (1.0 + 0.022 * np.sin(xx * 1.9) * np.sin(yy * 0.9))[..., None]
+    # (soft shade where the cloth turns under him, and between the legs)
+    rgb *= (0.9 + 0.1 * np.clip(nrm[..., 2] + 0.6, 0, 1))[..., None]
+    inner = np.clip(1.0 - np.abs(pos[..., 0]) / 0.07, 0, 1) * np.clip((zc + 0.02 - pos[..., 2]) / 0.06, 0, 1)
+    rgb *= (1.0 - 0.12 * inner)[..., None]
+    rgb = paint_knit(rgb, pos, hit, fid, Bx, info, rib=0.005)
+    # the button under the band, at the fly's top
+    zb_ = float(body_z(BOXER_BAND[1])) - BOXER_BAND_TALL * S
+    front = pos[..., 1] < info["cy"]
+    d = np.hypot(pos[..., 0] - 0.0, (zb_ - 0.01) - pos[..., 2])
+    btn = hit & front & (d < 0.0045)
+    rgb[btn] = rgb[btn] * 0.45 + np.array((0.95, 0.93, 0.88)) * 0.55
+    rgb[hit & front & (np.abs(d - 0.0042) < 0.0007)] *= 0.75
+    rgb = pad_edges(fill_out(rgb, hit, 64), hit)
+    path = os.path.join(TEX, "boy_boxers.png")
+    save_rgb(path, rgb[::-1])
+    w = []
+    for s in src:
+        acc = {}
+        for b, k in s.items():
+            for bone, v in weights[b].items():
+                acc[bone] = acc.get(bone, 0.0) + v * k
+        top4 = sorted(acc.items(), key=lambda kv: -kv[1])[:4]
+        tot = sum(v for _, v in top4)
+        w.append({b: v / tot for b, v in top4})
+    ob = mesh_object("boy_boxers", Bx.P, Bx.faces, armature, w)
+    mat = textured_material("boy_boxers", path)
+    mat.use_backface_culling = True
+    ob.data.materials.append(mat)
+    uvl = ob.data.uv_layers.new(name="UVMap")
+    for poly in ob.data.polygons:
+        for li, q in zip(poly.loop_indices, face_uv[poly.index][1]):
+            uvl.data[li].uv = q
+    n_before = len(Bx.tris())
+    dec = ob.modifiers.new("fewer", "DECIMATE")
+    dec.decimate_type = "COLLAPSE"
+    dec.ratio = SHORTS_KEEP
+    dec.use_symmetry = True
+    dec.symmetry_axis = "X"
+    dec.use_collapse_triangulate = True
+    bpy.context.view_layer.objects.active = ob
+    for o in bpy.context.view_layer.objects:
+        o.select_set(o is ob)
+    bpy.ops.object.modifier_apply(modifier=dec.name)
+    n_after = sum(len(p.vertices) - 2 for p in ob.data.polygons)
+    print("BOY shorts: %d triangles (%d before the collapse), %d faces turned outward" % (n_after, n_before, flipped))
+    Bx.n_tris_out = n_after
+    return Bx
+
+
+def build_boxers_retired(M, T, sh, weights, armature):
     P = np.array(M.P)
     N = normals_of(P, M.tris())
     Bx = Mesh()
@@ -5753,7 +6197,7 @@ def tone_report(M, face_uv, face_rgb, sh):
 # pixels round centred at 1104 so the upper lid covers its top; the critic: "about 20% larger, sunk 2 to 3 mm")
 EYE_INNER = (42.0, 1104.0)
 EYE_OUTER = (118.0, 1101.0)
-EYE_TOP = (79.0, 1077.0)
+EYE_TOP = (79.0, 1080.0)   # (eighth pass: from 1077, the upper lid over the top of the iris; "a little big and staring")
 EYE_LOW = (78.0, 1128.0)
 EYE_IRIS = (78.0, 1104.0, 21.0)
 EYE_R = 0.0135
@@ -6236,6 +6680,9 @@ def rule_paint(M, face_uv, picture, pos, nrm, hit, fam, joints):
     rgb = rgb * (1.0 + 0.018 * v[..., None] * np.array((0.6, 1.0, 1.3)))
     # soft rose shade only where the mesh is truly shut in (armpit, under the chin, between fingers and toes, ear bowl)
     crease = np.clip((0.78 - ao) / 0.45, 0, 1) ** 1.3
+    # (eighth pass) on the hands only the truly shut-in places: the vertex shade of each finger's knuckle ring, pulled
+    # out a little by the knuckle bump, drew thin dark lines across the fingers in the close-up
+    crease = np.where(fam == "hand", 0.5 * np.clip((0.58 - ao) / 0.4, 0, 1) ** 1.3, crease)
     rgb = blush(rgb, crease, SHADE)
     if picture == "skin" and joints is not None:
         ny = nrm[..., 1]
@@ -6323,7 +6770,7 @@ def face_features(M, rgb, pos, nrm, hit, fam):
     hh = 6.5 - 3.0 * ti
     ends = smooth01(32.0, 42.0, ac) * (1.0 - smooth01(118.0, 128.0, ac))
     strokes = 0.85 + 0.15 * np.sin(col * 1.9 + row * 0.7)
-    tint(np.exp(-((row - rb) / hh) ** 4) * ends * strokes * fwd * head, (0.64, 0.5, 0.34), 0.72)
+    tint(np.exp(-((row - rb) / hh) ** 4) * ends * strokes * fwd * head, (0.6, 0.47, 0.33), 0.62)   # (eighth pass: softer, blond-brown; from 0.64, 0.5, 0.34 at 0.72)
     # the eye: the opening's upper and lower curves in (column, row)
     poly = eye_outline()
     up = poly[:25]
@@ -6335,19 +6782,19 @@ def face_features(M, rgb, pos, nrm, hit, fam):
     d_up = np.where(inside, lt - row, 99.0)
     d_low = np.where(inside & np.isfinite(lb), row - lb, 99.0)
     # the lash line (on the lid's margin and just above it), thickest at the outer end, with a small flick out
-    lash = np.exp(-((d_up - 0.6) / (1.4 + 1.6 * t)) ** 2) * smooth01(0.0, 0.25, t)
+    lash = np.exp(-((d_up - 0.4) / (1.8 + 1.4 * t)) ** 2) * (0.55 + 0.45 * smooth01(0.0, 0.25, t))   # (eighth pass: along the whole lid, over the white flecks at its margin)
     flick_c = np.array((EYE_OUTER[0] + 4.0, EYE_OUTER[1] - 4.0))
     flick = np.exp(-(((ac - flick_c[0]) / 5.0) ** 2 + ((row - flick_c[1]) / 2.2) ** 2))
-    tint(np.maximum(lash, flick) * head, (0.24, 0.16, 0.12), 0.85)
+    tint(np.maximum(lash, flick) * head, (0.28, 0.19, 0.14), 0.75)
     # the lid crease and a little shade under the brow
     mult(np.exp(-((d_up - 10.0) / 2.6) ** 2) * 0.55 * head, SHADE)
     # the lower lid: a faint warm line, no dark rim
     mult(np.exp(-((d_low - 1.5) / 1.8) ** 2) * 0.35 * head, (0.97, 0.86, 0.84))
     # cheeks, nose: rose
     for s in (1.0, -1.0):
-        mult(np.exp(-(((col - s * 95.0) / 40.0) ** 2 + ((row - 1166.0) / 30.0) ** 2)) * 0.55 * head, ROSE)
+        mult(np.exp(-(((col - s * 95.0) / 40.0) ** 2 + ((row - 1166.0) / 30.0) ** 2)) * 0.42 * head, ROSE)
     nose_row = float(hrow(Pm[mk["nose"], 2]))
-    mult(np.exp(-((col / 20.0) ** 2 + ((row - nose_row - 4.0) / 16.0) ** 2)) * 0.65 * head, (1.0, 0.8, 0.77))
+    mult(np.exp(-((col / 20.0) ** 2 + ((row - nose_row - 4.0) / 16.0) ** 2)) * 0.45 * head, (1.0, 0.8, 0.77))
     # the mouth: a short soft line on the lips' seam, its ends turned up; a rose lower lip; small dimples
     zm = float(Pm[mk["mouth"], 2])
     xc = abs(float(Pm[mk["mouth_l"], 0]))
@@ -6524,7 +6971,7 @@ def finish(M, T, joints, sh):
     skin_object("boy_body_under", sorted(under))
     Bx = build_boxers(M, T, sh, weights, armature)
     total = report_counts(M)
-    print("BOY triangles with the shorts: %d" % (total + len(Bx.tris())))
+    print("BOY triangles with the shorts: %d" % (total + getattr(Bx, "n_tris_out", len(Bx.tris()))))
     zs = P[:, 2]
     print("BOY height: soles %.3f to crown %.3f m (%.3f m)" % (zs.min(), zs.max(), zs.max() - zs.min()))
     print("BOY joints: %s" % json.dumps({n: [round(float(v), 3) for v in p] for n, p, _ in bones if "_" not in n or n.endswith("_l") and not n.startswith(("finger", "thumb"))}))
