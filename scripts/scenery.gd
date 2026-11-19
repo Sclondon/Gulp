@@ -522,6 +522,9 @@ func _plant_anemones() -> void:
 		if in_lane(at, Sea.WRECK_AT, Sea.WRECK_HEADING, WRECK_LANE, 1.0):
 			continue
 		var home: Node3D = (load(ANEMONE) as GDScript).new()
+		# (its game model: the full one is left out of the web pack, which could not load it, and is
+		# 13,800 triangles against 2,540)
+		home.set(&"game", true)
 		add_child(home)
 		home.global_position = Vector3(at.x, Sea.ground(at.x, at.y) - 0.02, at.y)
 		home.scale = Vector3.ONE * _rng.randf_range(1.2, 2.0)
