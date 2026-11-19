@@ -3,7 +3,8 @@ extends SceneTree
 ## light), a 35 degree perspective camera, from the front, three-quarter, side, three-quarter back, back, above and
 ## below, then the head thrown back and turned; the concept sheet's views in a row above. One sheet a figure.
 ##   godot --path . --audio-driver Dummy --resolution 360x360 --position 2600,60 -s tests/hair_view.gd -- \
-##       --fig=brother|boy|captain|all --out=<folder> [--grey] [--beauty] [--zoom=<n>] [--each] [--flat]
+##       --fig=brother|boy|captain|all --out=<folder> [--grey] [--beauty] [--zoom=<n>] [--each] [--flat] [--up=<n>]
+## --beauty with --fig=<one> shows that figure only; --up=2 at half the resolution shows the game's half-size picture.
 ## Attaching hair in the game: each piece is in its figure's model space at rest; put it under a BoneAttachment3D on
 ## `head` with the transform `attach()` gives it, and wear `material(fig)`.
 
@@ -18,8 +19,8 @@ const FIGS := {
 		"views": [[95, 40, 445, 560], [450, 40, 820, 560], [825, 40, 1200, 560], [1210, 40, 1570, 560],
 				[1575, 40, 1960, 560]],
 		"face": 1.0,
-		"look": {"sheen_gain": 0.45, "sheen_power": 3.0, "rim_gain": 0.3, "gloss_gain": 0.1, "sheen": Color(1.0, 0.42, 0.14),
-				"crest_gain": 0.35, "feather": 0.3, "root_dark": 0.15, "wrap": 0.55},
+		"look": {"sheen_gain": 0.6, "sheen_power": 3.0, "rim_gain": 0.3, "gloss_gain": 0.1, "sheen": Color(1.0, 0.5, 0.16),
+				"crest_gain": 0.42, "feather": 0.3, "root_dark": 0.15, "wrap": 0.55},
 	},
 	"boy": {
 		"pieces": ["hair"],
@@ -40,7 +41,7 @@ const FIGS := {
 				[1640, 100, 1960, 450]],
 		"face": -1.0,
 		"look": {"sheen_gain": 0.0, "rim_gain": 0.25, "gloss_gain": 0.08, "sheen": Color(0.9, 0.92, 1.0),
-				"feather": 0.45, "crest_gain": 0.12, "wrap": 0.6, "root_dark": 0.12},
+				"feather": 0.25, "crest_gain": 0.0, "wrap": 0.6, "root_dark": 0.0},
 	},
 }
 
@@ -138,7 +139,7 @@ func _initialize() -> void:
 	_cam.near = 0.03
 	_world.add_child(_cam)
 	_cam.current = true
-	if _beauty:
+	if _beauty and which == "all":
 		_figs = ["captain", "brother", "boy"]
 	_next_figure()
 
@@ -289,6 +290,12 @@ func _process(_delta: float) -> bool:
 	if _frame < 4:
 		return false
 	var img := root.get_viewport().get_texture().get_image()
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--up="):
+			# (the game draws at half size: render at half the resolution and blow it up, nearest, to see what a
+			# player sees)
+			var up := int(a.get_slice("=", 1))
+			img.resize(img.get_width() * up, img.get_height() * up, Image.INTERPOLATE_NEAREST)
 	_images.append(img)
 	if OS.get_cmdline_user_args().has("--each"):
 		img.save_png(_out.path_join("%s_%02d.png" % [_fig, _images.size() - 1]))

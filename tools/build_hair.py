@@ -55,6 +55,15 @@ FOURTH PASS (2026-11-18): SOFT. The third pass read as wood chips (the brother) 
     where they meet, closed to the skin at its top and sides, a soft shadow on the beard under it (`shade_at`).
   - The boy: soft tips (`soft`, `side_soft`), a lighter, cooler golden palette.
 
+FIFTH PASS (2026-11-18): the captain as RELIEF SHEETS. The fourth pass's smooth shells read as a bib, paper tapes and
+  torn strips; separate soft modelled locks (the brother's way) tried first in this pass read as crumpled paper, because
+  on white hair every place two locks cut through each other shows. So each of the captain's masses is one continuous
+  sheet (Builder.relief): thickness plus soft overlapping lock ridges (a smooth 4-norm of the ridges, so no creases),
+  grooves darker by vertex colour, rounded points hanging at the lower edge, a gentle rise from the top edge, normals
+  from the sheet blended to the hull, painted with fine strand strokes (paint_strands). The fringe's top is tucked
+  under the cap's rim (`tuck`) and rises in soft wisps (`top_points`), so it reads with the cap on and off. The brother
+  got more varied curls, locks over the plain patch at the back, three locks falling onto the forehead, a lower top.
+
 JAW: WHAT EACH POINT FOLLOWS (for tools/face_rig.py's bind_to_face). A mass with a `jaw` function (head-frame angles
   from that mass's own middle -> 0..1) writes, in its .blend object and its glb:
     vertex groups `follow_jaw` (the weight) and `follow_head` (1 - the weight), and a point attribute `_JAW` (the same
@@ -389,6 +398,36 @@ def paint_surface(img, tile, pal, rng, grooves=4.0, lo=0.38, hi=0.62, streak=0.0
     img[y0:y0 + TH, x0:x0 + TW, 3] = 1.0
 
 
+def paint_strands(img, tile, pal, rng, lo=0.6, hi=0.74, count=40, top_fade=0.0, length=(0.15, 0.4), width=(1.2, 2.6),
+                  lean=0.12):
+    """A relief sheet's skin (fifth pass, the captain): a soft mid tone with many short fine strand strokes laid down
+    the tile (the flow), lighter and darker by a little, so up close the masses read as hair and from afar as one soft
+    tone. top_fade: the alpha rises over that share of the tile's top (the sheet's top edge: a short smooth gradient
+    that the shader's feather dithers finely)."""
+    x0, y0 = (tile % 4) * TW, (tile // 4) * TH
+    yy, xx = np.mgrid[0:TH, 0:TW].astype(float)
+    tone = np.full((TH, TW), (lo + hi) / 2) + 0.03 * (blur(rng.random((TH, TW)), 6) * 6 - 3)
+    for _ in range(count * 6):
+        cx, cy = rng.uniform(0, TW), rng.uniform(-TH * 0.1, TH)
+        ln = rng.uniform(*length) * TH
+        wd = rng.uniform(*width)
+        ln_ = rng.uniform(-lean, lean)
+        v = (yy - cy) / ln
+        u = (xx - cx - ln_ * (yy - cy)) / wd
+        # (wrapped across the tile's width, so the tile has no seam left to right)
+        u = np.minimum(np.abs(u), np.abs((xx + TW - cx - ln_ * (yy - cy)) / wd))
+        u = np.minimum(u, np.abs((xx - TW - cx - ln_ * (yy - cy)) / wd))
+        inside = (v > 0) & (v < 1) & (u < 1)
+        k = rng.choice((-1.0, 1.0)) * rng.uniform(0.3, 1.0)
+        tone = tone + np.where(inside, k * (hi - lo) * 0.5 * (1 - u * u) * np.sin(np.clip(v, 0, 1) * math.pi), 0.0)
+    tone = np.clip(tone, lo - 0.06, hi + 0.06)
+    img[y0:y0 + TH, x0:x0 + TW, :3] = palette(tone, pal)
+    alpha = np.ones((TH, TW))
+    if top_fade > 0.0:
+        alpha = sstep_np(0.0, top_fade, yy / TH) * 1.0
+    img[y0:y0 + TH, x0:x0 + TW, 3] = alpha
+
+
 _SHEETS = {}
 
 
@@ -591,8 +630,9 @@ class Builder:
             for p in pts:
                 d = p - self.h.c
                 hit = cap.ray_cast(self.h.c, d.normalized(), d.length + 0.004)
+                self.clamped = getattr(self, "clamped", 0) + (hit[0] is not None)
                 # (but never under the skin: with the cap off, what was under it shows as a thin layer)
-                out.append(self.h.c + d.normalized() * max((hit[0] - self.h.c).length - 0.004, self.h.skin(d) + 0.0015)
+                out.append(self.h.c + d.normalized() * max((hit[0] - self.h.c).length - 0.004, max(self.h.skin(d), min(self.h.skin_raw(d), self.h.skin(d) + 0.006)) + 0.0025)
                            if hit[0] is not None else p)
             pts = out
         a, b, c = pts[:3]
@@ -635,6 +675,10 @@ class Builder:
                     d = direction(a, e)
                     # (full thickness inside, down to the skin at the last row, which is the band of strands)
                     f = 0.0 if (r == rows or (tb and r == 0)) else m["shell_frac"] * (1.0 - 0.6 * x ** 2)
+                    # (top_ramp: the mass rises gently from its top edge over that share of the rows, so a beard's
+                    # cheek line is not a ledge standing off the skin)
+                    if m.get("top_ramp"):
+                        f *= lerp(0.3, 1.0, sstep(0.0, m["top_ramp"], x))
                     p = self.h.c + d * (max(self.h.skin(d), self.h.skin_raw(d) if m.get("over_raw") else 0)
                                         + self.thick(d) * f + 0.003)
                     col.append((p, self.hull_normal(d), t))
@@ -837,7 +881,7 @@ class Builder:
             r = h.skin(d) + self.thick(d)
             nd = (d + g * (length / fine) / r).normalized()
             na, ne = angles(nd)
-            if ne < m["fall"](na):
+            if ne < k.get("fall", m["fall"])(na):
                 break
             pts.append(nd)
         if len(pts) < 4:
@@ -905,7 +949,7 @@ class Builder:
             pts, nors = [], []
             for s in ss:
                 # (a soft arch: up by cos across, the edges dipped under the root line)
-                lift_s = ht * (math.cos(s * math.pi / 2) ** 0.8) - ht * 0.35 * s * s
+                lift_s = ht * (math.cos(s * math.pi / 2) ** 0.8) - ht * k.get("dip", 0.35) * s * s
                 q = p + across * (s * w * 0.5) + n * lift_s
                 dd = q - h.c
                 if dd.length < h.skin(dd) + 0.002:
@@ -916,6 +960,9 @@ class Builder:
                 nors.append(own.lerp(hn, hull_k).normalized())
             rings.append((pts, nors, t, along, n))
         edge = k.get("edge", 0.86)
+        # (the mass's shade_at darkens each point too: the soft shadow a moustache casts on the beard's locks)
+        sa = m.get("shade_at", lambda _a, _e: 1.0)
+        sh = lambda q: sa(*angles(q - h.c))
         for r in range(rows):
             (q0, n0, t0, _, _), (q1, n1, t1, _, _) = rings[r], rings[r + 1]
             for i in range(ns - 1):
@@ -925,7 +972,8 @@ class Builder:
                 cj = shade * lerp(edge, 1.0, 1.0 - ss[j] ** 2)
                 self.add([q0[i], q1[i], q1[j], q0[j]],
                          [tile_uv(tile, si, t0), tile_uv(tile, si, t1), tile_uv(tile, sj, t1), tile_uv(tile, sj, t0)],
-                         [(ci, t0, 1, 1), (ci, t1, 1, 1), (cj, t1, 1, 1), (cj, t0, 1, 1)],
+                         [(ci * sh(q0[i]), t0, 1, 1), (ci * sh(q1[i]), t1, 1, 1), (cj * sh(q1[j]), t1, 1, 1),
+                          (cj * sh(q0[j]), t0, 1, 1)],
                          [n0[i], n1[i], n1[j], n0[j]])
         # (a rounded end: the last ring's points meet a point a little past it, its normal the end's own, softened)
         q, nn, t, along, n = rings[-1]
@@ -938,13 +986,133 @@ class Builder:
             ci = shade * lerp(edge, 1.0, 1.0 - ss[i] ** 2)
             cj = shade * lerp(edge, 1.0, 1.0 - ss[j] ** 2)
             self.add([q[i], q[j], tip], [tile_uv(tile, (ss[i] + 1) / 2, 0.97), tile_uv(tile, (ss[j] + 1) / 2, 0.97),
-                                         tile_uv(tile, 0.5, 1.0)], [(ci, 1, 1, 1), (cj, 1, 1, 1), (shade, 1, 1, 1)],
+                                         tile_uv(tile, 0.5, 1.0)],
+                     [(ci * sh(q[i]), 1, 1, 1), (cj * sh(q[j]), 1, 1, 1), (shade * sh(tip), 1, 1, 1)],
                      [nn[i], nn[j], nt])
 
+    def relief(self):
+        """FIFTH PASS (the captain): a mass as ONE continuous sheet (no separate locks to cut through each other, which
+        on white hair read as crumpled paper): a grid over the mass's azimuths and elevations (high to low), each point
+        out from the skin by the mass's thickness plus soft LOCK RIDGES (the largest of the ridges there: each a rounded
+        bulge along the flow from its root, tapering to a rounded end, fanning out as it falls, so where a ridge ends
+        the next row's shows: overlapping lock masses with grooves between); the lower edge HANGS in rounded points
+        (pulled down, `hang`); it rises gently from its top edge (`top_ramp`). Normals from the sheet itself, blended
+        toward the smooth hull; the grooves darker by vertex colour (`groove`). R = m["relief"]: span (azimuth from,
+        to; may pass 180), cols, rows, ridges [dict(a, e, len, w, amp, fan)] (degrees and head sizes), top_ramp,
+        bottom_keep (thickness kept at the lower edge), hang (azimuth -> head sizes), hang_from (share of the way down
+        it starts), groove, hull, tile, t_pow (rows bunched toward the bottom when > 1)."""
+        R = self.m["relief"]
+        if isinstance(R["span"][0], (list, tuple)):
+            # (several spans, each its own sheet: the two brows)
+            for sp in R["span"]:
+                self._relief(sp, R["cols"] // len(R["span"]))
+        else:
+            self._relief(R["span"], R["cols"])
+
+    def _relief(self, span, nc):
+        m, h, R = self.m, self.h, self.m["relief"]
+        a0, a1 = span
+        nr = R["rows"]
+        ridges = R["ridges"]
+        wrap = lambda a: (a + 180.0) % 360.0 - 180.0
+        amax = max(r["amp"] for r in ridges) if ridges else 1.0
+
+        def bump(a, e):
+            # (a SMOOTH largest of the ridges (a 4-norm): a plain max creased the sheet where two ridges met)
+            best = 0.0
+            for r in ridges:
+                along = (r["e"] - e) / r["len"]
+                if along < -0.25 or along > 1.0:
+                    continue
+                ca = r["a"] + r.get("fan", 0.0) * max(along, 0.0) * r["len"]
+                x = wrap(a - ca) / (r["w"] * (1.0 - 0.45 * max(along, 0.0) ** 2))
+                if abs(x) >= 1.0:
+                    continue
+                # (across: a soft dome; along: rising from the root, full, then a rounded end)
+                g = (1.0 - x * x) ** 1.5
+                env = sstep(-0.25, 0.1, along) * math.sqrt(max(0.0, 1.0 - max(along - 0.55, 0.0) ** 2 / 0.2025))
+                best += (r["amp"] * g * env) ** 4
+            return best ** 0.25
+
+        cap = getattr(self, "cap", None)
+        tops = {}
+
+        def high(a):
+            # (tuck: under a cap the top edge is the cap's own rim, `tuck` degrees up under it, so the cap hides the
+            # edge and, with the cap off, the edge is the sheet's own smooth top, not a line pulled in by the cap)
+            if cap is None or R.get("tuck") is None:
+                return m["high"](a)
+            if a not in tops:
+                top = m["high"](a)
+                e = m["low"](a)
+                while e < top:
+                    d = direction(a, e)
+                    reach = h.skin(d) + self.thick(d) + 0.006
+                    if cap.ray_cast(h.c, d, reach)[0] is not None:
+                        top = min(top, e + R["tuck"])
+                        break
+                    e += 1.0
+                tops[a] = top
+            return tops[a]
+
+        hs = [high(wrap(lerp(a0, a1, j / nc))) for j in range(nc + 1)]
+        for _ in range(2):
+            hs = [hs[0]] + [(hs[j - 1] + 2 * hs[j] + hs[j + 1]) / 4 for j in range(1, nc)] + [hs[nc]]
+        grid = []
+        for i in range(nr + 1):
+            t = (i / nr) ** R.get("t_pow", 1.0)
+            row = []
+            for j in range(nc + 1):
+                a = wrap(lerp(a0, a1, j / nc))
+                # (top_points: the top edge rises in rounded soft points (wisps), degrees by azimuth)
+                e = lerp(hs[j] + R.get("top_points", lambda _a: 0.0)(a), m["low"](a), t)
+                d = direction(a, e)
+                ramp = lerp(0.2, 1.0, sstep(0.0, R.get("top_ramp", 0.2), t))
+                keep = lerp(1.0, R.get("bottom_keep", 0.4), sstep(0.75, 1.0, t))
+                b = bump(a, e)
+                # (the skin: the filtered one, but never under the true skin by more than 6 mm, so nothing of the head shows
+                # through near the ears)
+                sk = max(h.skin(d), min(h.skin_raw(d), h.skin(d) + 0.006))
+                rad = sk + (self.thick(d) * keep + b * h.size) * ramp + 0.003
+                p = h.c + d * rad
+                hang = R.get("hang", lambda _a: 0.0)(a) * h.size * sstep(R.get("hang_from", 0.6), 1.0, t) ** 1.4
+                p = p + Vector((0, 0, -1)) * hang
+                row.append([p, d, b, t, a, e])
+            grid.append(row)
+        # (normals from the sheet, blended toward the hull's)
+        for i in range(nr + 1):
+            for j in range(nc + 1):
+                p, d = grid[i][j][0], grid[i][j][1]
+                du = grid[i][min(j + 1, nc)][0] - grid[i][max(j - 1, 0)][0]
+                dv = grid[min(i + 1, nr)][j][0] - grid[max(i - 1, 0)][j][0]
+                n = du.cross(dv)
+                if n.length < 1e-9:
+                    n = d.copy()
+                n.normalize()
+                if n.dot(d) < 0:
+                    n = -n
+                grid[i][j].append(n.lerp(self.hull_normal(d), R.get("hull", 0.35)).normalized())
+        sa = m.get("shade_at", lambda _a, _e: 1.0)
+        tile = R.get("tile", 0)
+        shade = m.get("shell_shade", 1.0)
+        gr = R.get("groove", 0.72)
+
+        def corner(i, j):
+            p, d, b, t, a, e, n = grid[i][j]
+            c = shade * lerp(gr, 1.0, (b / amax) ** 0.7 if amax > 0 else 1.0) * sa(*angles(p - h.c))
+            return p, tile_uv(tile, j / nc, i / nr), (c, 1.0, 0.0, 1.0), n
+
+        for i in range(nr):
+            for j in range(nc):
+                cs = [corner(i, j), corner(i + 1, j), corner(i + 1, j + 1), corner(i, j + 1)]
+                self.add([c[0] for c in cs], [c[1] for c in cs], [c[2] for c in cs], [c[3] for c in cs])
+
     def build(self):
+        if self.m.get("relief"):
+            self.relief()
         if self.m.get("shell_cols"):
             self.shell()
-        print("HAIR shell faces", len(self.faces))
+        print("HAIR shell faces", len(self.faces), "corners pulled under the cap", getattr(self, "clamped", 0))
         if "locks" in self.m:
             specs = self.m["locks"](self.rng)
             for k in specs:
@@ -1014,7 +1182,7 @@ def brother():
     # temples, tall on top, a tousled fringe on the forehead, a ragged outline of fat curled locks.
     # (fourth pass: dark brown overall, fixed: the colours read from the sheet came out orange; the amber-red is the
     # shader's sheen only, "dark hair but amberish red in the right light")
-    pal = [(0.1, 0.064, 0.042), (0.21, 0.13, 0.08), (0.34, 0.215, 0.125), (0.48, 0.31, 0.175), (0.63, 0.42, 0.25)]
+    pal = [(0.1, 0.064, 0.042), (0.21, 0.13, 0.08), (0.34, 0.215, 0.125), (0.5, 0.315, 0.17), (0.7, 0.45, 0.24)]
     # THIRD PASS (2026-11-18): MODELLED LOCKS. Cards and fins (the first two passes) read as a nest of small flakes in
     # a tight cap; the sheet's mop is a big soft mass of 25 to 40 large readable curls. So the mop is now chunky
     # modelled locks (Builder.lock: fat crested ribbons 3 to 6 cm wide, about 33 triangles each, rolled over in a C at
@@ -1051,22 +1219,24 @@ def brother():
         out = []
 
         def add(a, share, comb, length, width, curl, curl_from=0.5, swing=0.0, depth=(0.55, 0.85), shade=1.0,
-                lift=0.0, rows=6):
+                lift=0.0, rows=5, fall=None):
             a = a + rng.uniform(-4, 4)
             s = min(max(share + rng.uniform(-0.06, 0.06), 0.0), 0.98)
-            out.append(dict(a=a, e=at(a, s), comb=comb, length=length * rng.uniform(0.82, 1.18),
-                            width=width * rng.uniform(0.9, 1.1), curl=curl * rng.uniform(0.75, 1.25),
+            out.append(dict(a=a, e=at(a, s), comb=comb, length=length * rng.uniform(0.74, 1.3),
+                            width=width * rng.uniform(0.8, 1.22), curl=curl * rng.uniform(0.6, 1.45),
                             curl_from=curl_from, swing=swing + rng.uniform(-0.17, 0.17), depth=depth,
                             shade=shade * rng.uniform(0.95, 1.03), lift=lift, rows=rows, crest=0.34, edge=0.82,
                             hull=0.6, tile=rng.choice((1, 2)), tip=0.32,
                             taper=[(0.0, 0.9), (0.2, 1.0), (0.6, 0.92), (0.85, 0.7), (1.0, 0.48)]))
+            if fall is not None:
+                out[-1]["fall"] = fall
 
         # Curls on the top, the crown and the back roll UNDER (curl < 0): the bend of each C is what shows, so the
         # outline is a row of rounded curl backs, not points; the nape and the sides over the ears roll OUT.
         # the nape: falling to the neck's top, the ends rolled up and out (a full curly nape)
         for a in (180, 160, -160, 140, -140, 120, -120):
             add(a, 0.06, away(0.8), 0.2, 0.3, 1.0, 0.45, 0.2 * math.copysign(1, a) if a != 180 else 0.0,
-                (0.5, 0.75), 0.92, rows=5)
+                (0.5, 0.75), 0.92, rows=4)
         # the back, two rows, shingled over the nape's roots
         for a in (180, 158, -158, 136, -136, 114, -114):
             add(a, 0.3, away(0.5), 0.4, 0.27, -1.5, 0.45, 0.2 * math.copysign(1, a) if a != 180 else 0.0,
@@ -1075,11 +1245,11 @@ def brother():
             add(a, 0.56, away(0.35), 0.4, 0.27, -1.4, 0.45, 0.15 * math.copysign(1, a), (0.72, 0.95), 0.97, rows=5)
         # the crown: the whorl, short locks lying close
         for a in (180, 135, -135, 90, -90):
-            add(a, 0.88, away(0.1), 0.32, 0.26, -1.2, 0.45, 0.6, (0.8, 0.95), 1.0, rows=5)
+            add(a, 0.88, away(0.1), 0.32, 0.26, -1.2, 0.45, 0.6, (0.8, 0.95), 1.0, rows=4)
         # the sides, shorter (the user): down and a little back to the ears' tops, curling out
         for sg in (1, -1):
-            add(sg * 96, 0.3, away(0.7), 0.22, 0.27, -1.2, 0.4, sg * 0.3, (0.6, 0.8), 0.92, rows=5)
-            add(sg * 72, 0.3, away(0.65), 0.22, 0.27, -1.2, 0.4, sg * 0.3, (0.6, 0.8), 0.92, rows=5)
+            add(sg * 96, 0.3, away(0.7), 0.22, 0.27, -1.2, 0.4, sg * 0.3, (0.6, 0.8), 0.92, rows=4)
+            add(sg * 72, 0.3, away(0.65), 0.22, 0.27, -1.2, 0.4, sg * 0.3, (0.6, 0.8), 0.92, rows=4)
             add(sg * 88, 0.5, away(0.45), 0.36, 0.27, -1.4, 0.45, sg * 0.2, (0.7, 0.92), 0.96)
             add(sg * 62, 0.5, away(0.4), 0.36, 0.27, -1.4, 0.45, sg * 0.2, (0.7, 0.92), 0.96)
         # the upper ring, from the crown outward
@@ -1096,6 +1266,16 @@ def brother():
         for sg in (1, -1):
             add(sg * 52, 0.26, lambda d, sg=sg: Vector((sg * 0.6, -1, -0.65)), 0.34, 0.26, -1.5, 0.5, sg * 0.2,
                 (0.85, 1.0), 1.0)
+        # (fifth pass: variety. Locks over the plain patch seen from three-quarter back; a few looser S locks and stray
+        # curls at the outline; three fringe locks falling lower on the forehead to break the bowl line)
+        for sg in (1, -1):
+            add(sg * 104, 0.45, away(0.45), 0.36, 0.26, -1.3, 0.45, sg * 0.25, (0.72, 0.95), 0.97)
+            add(sg * 128, 0.42, away(0.45), 0.36, 0.26, -1.3, 0.45, sg * 0.2, (0.74, 0.96), 0.97)
+            add(sg * 150, 0.15, away(0.75), 0.3, 0.24, 0.9, 0.35, sg * 0.7, (0.6, 0.85), 0.94, rows=5)
+            add(sg * 66, 0.86, away(0.2), 0.24, 0.2, -2.3, 0.3, sg * 0.4, (0.9, 1.0), 1.02, lift=0.04, rows=5)
+        for a, ln in ((-14, 0.4), (12, 0.44), (32, 0.38)):
+            add(a, 0.22, lambda d: Vector((0.35, -1, -0.9)), ln, 0.25, -1.6, 0.6, 0.15, (1.0, 1.1), 1.04,
+                fall=lambda _a: -10.0)
         return out
 
     hair = dict(
@@ -1107,12 +1287,12 @@ def brother():
         # (the mop's thickness off the skull, head sizes (0.2 m): about 3 cm at the sides, 5 to 6 cm on top; the
         # locks' crests stand a centimetre or two over it)
         # (fourth pass: a broad rounded top, not a peak: the top no thicker than the temples, the temples fuller)
-        thick=lambda a, e: lerp(pw([(0, 0.2), (55, 0.3), (100, 0.3), (130, 0.26), (180, 0.22)], abs(a)), 0.25,
+        thick=lambda a, e: lerp(pw([(0, 0.2), (55, 0.3), (100, 0.3), (130, 0.26), (180, 0.22)], abs(a)), 0.21,
                                 sstep(30, 80, e)) * (0.6 + 0.4 * sstep(-40, 10, e)),
         comb=away(0.25),
         # (the under-shell a warm dark brown near the locks' own shade, so no black holes between them; it stops
         # short of the hairline (the locks hang past it), so its edge never shows as a jagged band from below)
-        shell_cols=18, shell_rows=5, shell_frac=0.8, shell_shade=0.92,
+        shell_cols=14, shell_rows=5, shell_frac=0.8, shell_shade=0.92,
         shell_past=lambda a: pw([(0, -9), (40, -8), (90, -3), (125, 2), (150, 7), (180, 8)], abs(a)),
         locks=locks,
     )
@@ -1189,7 +1369,9 @@ def boy():
     return pal, tiles, {"hair": hair}
 
 
-def captain():
+def _captain_fourth_pass():
+    # (RETIRED, kept for reference: the fourth pass's smooth shells; read as a bib, paper tapes and torn strips. The
+    # captain is captain() below.)
     # A full white beard and moustache, white-grey hair in a fringe round the back and sides under his cap, heavy grey
     # brows (the user); concept_captain_head.jpg (the beard, the cap on), concept_captain_head_bare.jpg (the fringe).
     # Second pass (2026-11-18), to the sheet: the beard a full ROUNDED soft near-white mass, warm grey only in its
@@ -1330,6 +1512,151 @@ def captain():
     return pal, tiles, {"hair": hair, "beard": beard, "moustache": moustache, "brows": brows}
 
 
+def captain():
+    # FIFTH PASS (2026-11-18). concept_captain_head.jpg: a BIG, full, fluffy, rounded white beard standing 3 to 6 cm off
+    # the jaw and chin, wider than the face, of large soft overlapping lock masses with warm-grey shadow between them
+    # and a scalloped soft lower outline; a huge drooping WALRUS moustache in two thick rounded lobes over the mouth,
+    # in front of the beard with a shadow under them; bushy overhanging brows of soft tufts; sideburns into the white
+    # fringe under the cap. The fourth pass (smooth shells, _captain_fourth_pass) read as a bib, paper tapes and torn
+    # strips; the second (many sharp cards) as flakes; a first try at this pass with separate soft modelled locks (as
+    # the brother's curls) read as crumpled paper: on white hair every place two locks cut through each other shows.
+    # So every mass is ONE continuous RELIEF sheet (Builder.relief): its thickness carries soft lock ridges that
+    # overlap row under row with grooves between (darker by vertex colour), its lower edge hangs in rounded points, it
+    # rises gently from its top edge; its skin is painted with fine low-contrast strand strokes (paint_strands), the
+    # top edge a short smooth alpha gradient finely dithered by the shader. Nothing cuts through anything.
+    fixed = [(0.5, 0.47, 0.42), (0.64, 0.61, 0.56), (0.76, 0.74, 0.69), (0.86, 0.85, 0.81), (0.93, 0.92, 0.89)]
+    pal = dict(fixed=fixed, sheet=dict(src="concept_captain_head.jpg", box=(230, 590, 600, 830), key="grey",
+                                       darken=1.32, saturate=1.1))
+
+    def points(centres, depth, width):
+        # (the lower edge's rounded points: a drop, head sizes, at each centre, rounded, nothing between)
+        def f(a):
+            best = 0.0
+            for c in centres:
+                x = (a - c) / width
+                if abs(x) < 1.0:
+                    best = max(best, depth * math.sqrt(1.0 - x * x))
+            return best
+        return f
+
+    # ---- the beard (angles from the jaw's middle, about the mouth's height, 0.09 back; skin read no further than
+    # 0.62 head sizes, so under the chin it closes round instead of following the throat)
+    b_high = lambda a: 1.5 * math.sin(a * 0.19) + pw([(0, -13), (14, -12), (24, -4), (40, 6), (60, 10), (80, 18),
+                                                     (95, 24), (102, 18), (106, 10)], abs(a))
+    b_low = lambda a: pw([(0, -66), (40, -62), (70, -56), (88, -46), (98, -30), (106, -6)], abs(a))
+    sg_ = lambda a: math.copysign(1.0, a) if abs(a) > 1e-6 else 0.0
+    ridges = []
+    # the cheek row (from under the cheek line down the sideburns and the jaw), the middle row between them, then the
+    # lower row whose ends are the hanging points; each fans out as it falls
+    for a in (30, 50, 70, 90):
+        for s in (1, -1):
+            ridges.append(dict(a=s * a, e=b_high(a) - 1, len=34, w=13, amp=0.08, fan=s * 0.2))
+    for a in (0, 12, 32, 52, 74):
+        for s in ((1, -1) if a else (1,)):
+            ridges.append(dict(a=s * a, e=lerp(b_high(a), b_low(a), 0.22), len=34, w=12, amp=0.085, fan=s * 0.25))
+    for a in (0, 22, 42, 62):
+        for s in ((1, -1) if a else (1,)):
+            ridges.append(dict(a=s * a, e=lerp(b_high(a), b_low(a), 0.5), len=40, w=12, amp=0.09, fan=s * 0.2))
+    hang_at = points([0, 22, -22, 44, -44, 66, -66], 0.1, 13)
+    beard = dict(
+        centre=(0.09, -0.32, 0.78),
+        high=b_high, low=b_low, reach=106,
+        fall=lambda a: -80.0,
+        # how far the beard stands off: full round the chin and the jaw (wider than the jaw), close on the cheeks,
+        # thinning to nothing at the sideburn's back edge
+        thick=lambda a, e: (0.07 + 0.2 * sstep(-6, -40, e) * sstep(120, 55, abs(a))) * sstep(110, 94, abs(a))
+        * (1.0 - 0.5 * sstep(34, 12, abs(a)) * sstep(-50, -18, e)) + 0.01,
+        comb=lambda a, e, d: Vector((0, 0, -1)),
+        # (the soft shadow the moustache casts on the beard under it)
+        shade_at=lambda a, e: 1.0 - 0.3 * sstep(34, 10, abs(a)) * sstep(-36, -18, e),
+        shell_shade=1.0,
+        relief=dict(span=(-106, 106), cols=24, rows=11, ridges=ridges, top_ramp=0.22, bottom_keep=0.55,
+                    hang=lambda a: hang_at(a) * sstep(84, 60, abs(a)), hang_from=0.55, groove=0.55, hull=0.3,
+                    tile=1, t_pow=0.9),
+        # (what it follows, for the face rig: the jaw under and round the chin, fading to the head up the cheeks and
+        # the sideburns)
+        jaw=lambda a, e: sstep(100, 72, abs(a)) * sstep(14, -6, e),
+    )
+
+    # ---- the walrus moustache: two thick rounded lobes from a parting under the nose, out and down past the mouth's
+    # corners, each with three lock ridges fanning out; its ends hang in rounded points
+    m_ridges = []
+    for s in (1, -1):
+        for a, e, ln, fan in ((5, 2, 26, 0.55), (11, -1, 30, 0.6), (18, -6, 30, 0.55)):
+            m_ridges.append(dict(a=s * a, e=e, len=ln, w=9, amp=0.085, fan=s * fan * 1.5))
+    m_hang = points([30, -30], 0.05, 18)
+    moustache = dict(
+        centre=(0.09, -0.32),
+        high=lambda a: pw([(0, 2), (10, 1), (22, -4), (36, -14), (46, -24)], abs(a)),
+        low=lambda a: pw([(0, -12), (10, -22), (24, -30), (40, -38), (46, -40)], abs(a)),
+        fall=lambda a: -60.0,
+        # (thick in each lobe's middle, thinner at the parting and at the ends)
+        thick=lambda a, e: 0.07 + 0.18 * sstep(0, 8, abs(a)) * sstep(50, 28, abs(a)),
+        comb=lambda a, e, d: Vector((0, 0, -1)),
+        shell_shade=1.0,
+        relief=dict(span=(-46, 46), cols=16, rows=6, ridges=m_ridges, top_ramp=0.3, bottom_keep=0.1,
+                    hang=lambda a: m_hang(a), hang_from=0.4, groove=0.58, hull=0.3, tile=2),
+        jaw=lambda a, e: 0.0,
+    )
+
+    # ---- brows: bushy soft tufts sweeping out and a little up, standing over the eye
+    br_ridges = []
+    for s in (1, -1):
+        for a, e in ((12, 14), (21, 16), (30, 15), (39, 11)):
+            br_ridges.append(dict(a=s * a, e=e, len=16, w=8, amp=0.055, fan=s * 0.8))
+    brows = dict(
+        high=lambda a: pw([(8, 14), (30, 17), (48, 10)], abs(a)),
+        low=lambda a: pw([(8, -1), (30, -1), (48, -5)], abs(a)),
+        fall=lambda a: -14.0,
+        thick=lambda a, e: 0.05 + 0.04 * sstep(8, 24, abs(a)),
+        comb=lambda a, e, d: Vector((0, 0, -1)),
+        shell_shade=1.0,
+    )
+
+    # ---- the fringe round the back and sides, under the cap: hugging the head, its strand ridges swept back and down,
+    # its top edge a short smooth gradient (it feathers up into the bald crown with the cap off)
+    c_high = lambda a: pw([(78, 8), (95, 22), (120, 28), (180, 28)], abs(a))
+    c_low = lambda a: pw([(78, 4), (96, 5), (104, 5), (122, -1), (134, -22), (155, -32), (180, -35)], abs(a))
+    f_ridges = []
+    for a in range(84, 181, 14):
+        for s in ((1, -1) if a < 178 else (1,)):
+            f_ridges.append(dict(a=s * a, e=c_high(a) - 2, len=30, w=11, amp=0.025, fan=s * 0.4))
+            f_ridges.append(dict(a=s * (a + 7), e=lerp(c_high(a), c_low(a), 0.45), len=30, w=11, amp=0.03,
+                                 fan=s * 0.35))
+    f_hang = lambda a: 0.025 * (0.5 + 0.5 * math.cos(math.radians(a) * 26)) * sstep(120, 140, abs(a))
+    hair = dict(
+        under_cap=True,
+        high=c_high, low=c_low, gap=78,
+        fall=lambda a: -60.0,
+        thick=lambda a, e: (0.016 + 0.04 * sstep(20, 0, e) * pw([(80, 0.6), (100, 1.0), (180, 1.1)], abs(a)))
+        * sstep(78, 96, abs(a)),
+        comb=lambda a, e, d: Vector((0, 0, -1)),
+        shell_shade=0.97,
+        relief=dict(span=(78, 282), cols=28, rows=5, ridges=f_ridges, top_ramp=0.35, bottom_keep=0.5,
+                    hang=f_hang, hang_from=0.6, groove=0.8, hull=0.4, tile=0, tuck=3.0,
+                    top_points=lambda a: 6.0 * (0.5 + 0.5 * math.cos(math.radians(a) * 24 + 0.6)) ** 2
+                    * sstep(84, 100, abs(a))),
+    )
+    tiles = [
+        # 0 the fringe: strands, its top edge a short smooth gradient
+        dict(strands=dict(lo=0.54, hi=0.8, count=60, top_fade=0.1)),
+        # 1 the beard: fine strands; its top (the cheek line) a short smooth gradient
+        dict(strands=dict(lo=0.54, hi=0.84, count=70, top_fade=0.06)),
+        # 2 the moustache: lighter, the top under the nose a short gradient
+        dict(strands=dict(lo=0.7, hi=0.84, count=40, top_fade=0.08, length=(0.2, 0.5))),
+        # 3 the brows
+        dict(strands=dict(lo=0.5, hi=0.76, count=40, top_fade=0.12, length=(0.3, 0.6), lean=0.3)),
+        dict(surface=dict(grooves=6.0, lo=0.62, hi=0.8, streak=0.03)),
+        dict(surface=dict(grooves=6.0, lo=0.62, hi=0.8, streak=0.03)),
+        dict(surface=dict(grooves=6.0, lo=0.62, hi=0.8, streak=0.03)),
+        dict(surface=dict(grooves=6.0, lo=0.62, hi=0.8, streak=0.03)),
+    ]
+    brows["relief"] = dict(span=[(-48, -8), (8, 48)], cols=16, rows=3, ridges=br_ridges, top_ramp=0.4, bottom_keep=0.5,
+                           hang=lambda a: 0.0, groove=0.78, hull=0.35, tile=3)
+    # (two spans: no sheet across the nose)
+    return pal, tiles, {"hair": hair, "beard": beard, "moustache": moustache, "brows": brows}
+
+
 FIGURES = {"brother": brother, "boy": boy, "captain": captain}
 
 
@@ -1347,6 +1674,8 @@ def build(fig):
         # (the lock painted by script (its shape and light), then whatever is lifted from the sheet laid over it)
         if "surface" in t:
             paint_surface(img, i, pal, nrng, **t["surface"])
+        elif isinstance(t.get("strands"), dict):
+            paint_strands(img, i, pal, nrng, **t["strands"])
         elif "else" in t or "lift" not in t:
             paint_lock(img, i, pal, nrng, **t.get("else", t))
         if "lift" in t and not SCRIPTED:
