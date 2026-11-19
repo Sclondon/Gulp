@@ -1085,3 +1085,9 @@ browser after this push.
   switch and amount); every adjustment is shown as a before/after pair (same camera and light, grey and lit, beside
   the sheet's view) and kept only if it visibly moves toward the sheet. The user is shown those pairs. Paint the same
   way: adjust what is there.
+- The brother's head to keep is the one of 6:00 PM, 2026-11-18 (commit 61a8380, pictures in the session's `brother7`): the
+  user, late that evening: "The brother had a much better earlier head unless I'm mistaken". They were right: the refit
+  to the shaved sheet (commit 3a063ac) made him gaunt and old, and the "youth" pass after it erased his nose and
+  character. That earlier head is restored as his frozen base on the current body, and only the user's own asks are
+  adjusted on it (nose a tad angular and less red, eyes a bit downturned with bags, hazel). Before a figure's next round,
+  put its head from several rounds side by side: later is not better by default.
