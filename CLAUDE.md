@@ -1039,3 +1039,5 @@ the research (with sources), the numbers, what is checked and what is rough. Con
   prominent world weary bags for soft gentle kind eyes". Outer corners a little lower than the inner, a slightly heavy
   outer upper lid, clear soft bags under each eye, relaxed brows: gentle and kind, a little tired. Into
   `concept_brother_head3.jpg` and the model.
+- The brother's eye colour (the user, 2026-11-18): "And tehy should be amber brown green": hazel, amber-brown shading to
+  green (not the blue-grey of his earlier sheets).
