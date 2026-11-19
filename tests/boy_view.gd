@@ -164,6 +164,9 @@ func _initialize() -> void:
 			for v in ["hfront", "hq", "hside"]:
 				var a := deg_to_rad(float(_azimuth[v]))
 				_shots.append([("face_grey_" if grey else "face_") + v, Vector3(-sin(a), 0, cos(a)), Vector3(0, HEAD_MID_Y, 0), 300.0 * HEAD_S, true, "", 5.0, grey])
+			# (fifteenth pass) the side framed on the face (the eye, nose and mouth), not on the head's middle
+			var sa := deg_to_rad(float(_azimuth["hside"]))
+			_shots.append([("face_grey_" if grey else "face_") + "prof", Vector3(-sin(sa), 0, cos(sa)), Vector3(0, HEAD_MID_Y, 0.075), 300.0 * HEAD_S, true, "", 5.0, grey])
 			for e in [["eye_front", 0.0], ["eye_q", 40.0]]:
 				var a := deg_to_rad(float(e[1]))
 				_shots.append([(e[0] as String) + ("_grey" if grey else ""),Vector3(-sin(a), 0, cos(a)), Vector3(0.045, HEAD_MID_Y + 46.0 * HEAD_S, 0), 110.0 * HEAD_S, true, "", 5.0, grey])

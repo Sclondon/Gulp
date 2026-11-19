@@ -7939,7 +7939,9 @@ def face_features(M, rgb, pos, nrm, hit, fam):
         mult(lip * near_front * 0.9, (1.0, 0.8, 0.78))
     uplip = np.exp(-(((pos[..., 2] - (zm + 0.0025)) / 0.002) ** 2 + (pos[..., 0] / (0.7 * xc)) ** 4))
     mult(uplip * near_front * 0.35, (1.0, 0.86, 0.84))
+    pos_real = pos
     if NOSE_PAINT:
+        pos = nose_unscale(M, pos)   # (fifteenth pass: the nose's paint placed as before nose_scale, so it scales with it)
         # (twelfth pass, 5. nose) the nostrils as two soft dark commas under the tip, and the wings' creases faintly
         # (fourteenth pass: with nose_ball2/3 the paint follows those shapes)
         NBB, NBW = (NB2_BALL, NB2_WING) if NB_MODE > 1 else (NB_BALL, NB_WING)
@@ -7967,7 +7969,7 @@ def face_features(M, rgb, pos, nrm, hit, fam):
             field = np.exp(-(((pos - c_) / np.array((0.016 * wx ** 0.5, 0.014, 0.012))) ** 2).sum(-1)) * head
             mult(field * 0.55 * NOSE_PAINT2, (0.97, 0.86, 0.8) if NOSE_TAN else (1.0, 0.84, 0.8))
             sides = smooth01(0.3, 0.75, np.abs(nrm[..., 0])) * smooth01(-0.2, 0.3, -nrm[..., 1])
-            mult(field * sides * 0.6 * NOSE_PAINT2, (0.8, 0.62, 0.58))
+            mult(field * sides * 0.6 * NOSE_PAINT2 * (0.35 if NOSE_PAINT4 else 1.0), (0.8, 0.62, 0.58))
             if NOSE_TAN:
                 # (thirteenth pass, nose_tan) the sheet's nose is a warm tan-rose, not pink: the pink taken back toward
                 # tan over the nose, and the nostrils as seen from the front: two soft dark commas on the ball's lower rim
@@ -7997,9 +7999,11 @@ def face_features(M, rgb, pos, nrm, hit, fam):
                 # bottom (none on its inner lower side, where the nostril is); under the ball a soft shade; the nostrils
                 # crisp dark commas (126 84 68 on the sheet) between ball and wing, their outer ends a little higher.
                 xs_, zs_ = pos[..., 0], pos[..., 2]
+                # (fifteenth pass) with nose_paint4 the painted wings their own size (np4-wing), inside the scaled wings as built
+                NBW_ = NBW if not NOSE_PAINT4 else (NP4_WING[0], NBW[1], NP4_WING[1], NP4_WING[2], NBW[4], NP4_WING[3])
                 fwd_ = smooth01(0.1, 0.5, -nrm[..., 1])
                 nose_u = np.full(xs_.shape, 9.0)
-                shapes_ = [(0.0, NBB[4], NBB[0], NBB[2])] + [(s_ * NBW[3], NBW[5], NBW[0], NBW[2]) for s_ in (1.0, -1.0)]
+                shapes_ = [(0.0, NBB[4], NBB[0], NBB[2])] + [(s_ * NBW_[3], NBW_[5], NBW_[0], NBW_[2]) for s_ in (1.0, -1.0)]
                 for cx_, cd_, rx_, rz_ in shapes_:
                     nose_u = np.minimum(nose_u, np.hypot((xs_ - cx_) / rx_, (zs_ - (float(tip[2]) - cd_)) / rz_))
                 yfade = smooth01(float(tip[1]) + 0.024, float(tip[1]) + 0.014, pos[..., 1])   # (soft, no cut where the nose meets the cheek)
@@ -8007,11 +8011,15 @@ def face_features(M, rgb, pos, nrm, hit, fam):
                 mult(over * P3, (0.95, 0.88, 0.86))
                 tint(over * P3, (0.7, 0.5, 0.41), 0.3)
                 for s_ in (1.0, -1.0):
-                    cx_, cz_ = s_ * NBW[3], float(tip[2]) - NBW[5]
-                    u_ = np.hypot((xs_ - cx_) / NBW[0], (zs_ - cz_) / NBW[2])
-                    inner_low = (s_ * (xs_ - cx_) < 0) & (zs_ < cz_ - 0.3 * NBW[2])
+                    cx_, cz_ = s_ * NBW_[3], float(tip[2]) - NBW_[5]
+                    u_ = np.hypot((xs_ - cx_) / NBW_[0], (zs_ - cz_) / NBW_[2])
+                    inner_low = (s_ * (xs_ - cx_) < 0) & (zs_ < cz_ - 0.3 * NBW_[2])
                     c_line = np.exp(-((u_ - 1.02) / 0.12) ** 2) * ~inner_low * yfade
-                    tint(c_line * head * P3, (0.55, 0.37, 0.3), 0.4)
+                    if NOSE_PAINT4:
+                        # (fifteenth pass) only the wing's outer side and the outer part of its top: the sheet draws one
+                        # outline round the nose, not a ring round each wing (the ring read as a separate lobe)
+                        c_line = np.exp(-((u_ - 1.0) / 0.06) ** 2) * ~inner_low * yfade * smooth01(-0.35, 0.1, s_ * (xs_ - cx_) / NBW_[0]) * 1.4
+                    tint(np.clip(c_line, 0, 1) * head * P3, (0.5, 0.33, 0.27), 0.65 if NOSE_PAINT4 else 0.4)
                     # the nostril: a comma lying across between ball and wing, its outer end higher and rounder
                     t_ = np.clip((s_ * xs_ - NB3_NOST[0]) / NB3_NOST[2], -1.0, 1.0)
                     zc_ = float(tip[2]) - NB3_NOST[1] + 0.0018 * t_ ** 2 * np.sign(t_) + 0.0004
@@ -8021,11 +8029,29 @@ def face_features(M, rgb, pos, nrm, hit, fam):
                     tint(smooth01(1.0, 0.65, e_) * head * yfade * P3, (0.43, 0.28, 0.22), 0.8)
                 under_ = np.exp(-((zs_ - (float(tip[2]) - NBB[4] - NBB[2] * 0.9)) / 0.0018) ** 2) * np.exp(-(xs_ / (NBB[0] * 0.8)) ** 2)
                 mult(under_ * fwd_ * head * 0.5 * P3, (0.8, 0.66, 0.6))
+                if NOSE_PAINT4:
+                    # (fifteenth pass, nose_paint4) the sheet's front: the lower nose (the ball's lower half and both
+                    # wings) one darker warm tan-brown mass (sheet: wings and lower ball the cheek times about
+                    # (0.87 0.82 0.83)), the wings without a light middle; the bridge a pale stripe from between the eyes
+                    # widening onto the ball's top, a soft shade either side of it
+                    zb_ = float(tip[2]) - NBB[4]
+                    lower_ = smooth01(zb_ + 0.003, zb_ - 0.004, zs_)
+                    mass = (1.0 - smooth01(0.88, 1.0, nose_u)) * yfade * head
+                    mult(mass * lower_ * NOSE_PAINT4, (0.92, 0.86, 0.85))
+                    z_eye = float(tip[2]) + 0.032
+                    ztop_ = float(tip[2]) - NBB[4] + NBB[2] * 0.6
+                    t_ = np.clip((z_eye - zs_) / max(z_eye - ztop_, 1e-4), 0.0, 1.0)
+                    hw_ = 0.0035 + 0.005 * t_ ** 1.5
+                    along = smooth01(z_eye + 0.004, z_eye - 0.006, zs_) * smooth01(ztop_ - 0.006, ztop_ + 0.001, zs_)
+                    tint(np.exp(-(xs_ / hw_) ** 2) * along * fwd_ * head * NOSE_PAINT4, (1.0, 0.93, 0.86), 0.3)
+                    side_ = np.exp(-((np.abs(xs_) - (hw_ + 0.0055)) / 0.0035) ** 2) * along * head
+                    mult(side_ * NOSE_PAINT4, (0.93, 0.89, 0.88))
             hi = np.exp(-(((pos - ((tip + np.array((0.0, NBB[3] - NBB[1], 0.002 - NBB[4]))) if NOSE_BALL_TO else (tip + np.array((0.0, 0.0, 0.0025))))) / np.array((0.0035 * wx ** 0.5, 0.004, 0.003))) ** 2).sum(-1))
             tint(hi * smooth01(0.6, 0.9, -nrm[..., 1]) * head * NOSE_PAINT2, (1.0, 0.93, 0.88), 0.4)
             br = np.exp(-(pos[..., 0] / 0.0035) ** 2) * smooth01(float(tip[2]) + 0.004, float(tip[2]) + 0.01, pos[..., 2]) \
                 * (1.0 - smooth01(float(tip[2]) + 0.02, float(tip[2]) + 0.028, pos[..., 2])) * smooth01(0.6, 0.9, -nrm[..., 1])
             tint(br * head * NOSE_PAINT2, (1.0, 0.92, 0.86), 0.25)
+    pos = pos_real
     # (ninth pass: the small shade marks at the mouth's corners read as dark specks; gone)
     # freckles over the bridge of the nose and the cheeks
     reg = np.exp(-((ac - 58.0) / 46.0) ** 2) * np.exp(-((row - 1148.0) / 20.0) ** 2) * fwd * head
@@ -8235,8 +8261,8 @@ NOSE_TAN = float(arg("--nose-tan", "1"))         # (thirteenth pass) the nose's 
 # (fourteenth pass) nose_ball2: the ball narrower, the wings their own lobes out and back of it, the underside carved to a
 # floor that meets the lip at a corner; all in metres from the nose mark (the tip as built): across, behind, below
 NB_MODE = int(arg("--nb-mode", "3"))             # 1: nose_ball as in the thirteenth pass; 2: nose_ball2; 3: nose_ball3 (kept)
-NB2_BALL = tuple(float(v) for v in arg("--nb2-ball", "0.007,0.0085,0.010,0.0056,0.009").split(","))   # radii across, back, up; middle behind and below
-NB2_WING = tuple(float(v) for v in arg("--nb2-wing", "0.0075,0.006,0.009,0.015,0.007,0.0135").split(","))   # radii; middle out, behind, below
+NB2_BALL = tuple(float(v) for v in arg("--nb2-ball", "0.0105,0.009,0.0115,0.0056,0.0095").split(","))   # radii across, back, up; middle behind and below
+NB2_WING = tuple(float(v) for v in arg("--nb2-wing", "0.0075,0.006,0.009,0.0155,0.008,0.0135").split(","))   # radii; middle out, behind, below
 NB3_EDGE = float(arg("--nb3-edge", "0.6"))      # nose_ball3: share of the outline (seen from the front) where the height field starts to fade out
 NB3_DSMOOTH = int(arg("--nb3-dsmooth", "4"))    # nose_ball3: rounds the moves are averaged with their neighbours
 NOSE_PAINT3 = float(arg("--nose-paint3", "1"))   # (fourteenth pass) with nose_ball2/3: the sheet's tan-brown, wing outlines, crisp nostril commas
@@ -8247,7 +8273,73 @@ NB_PROBE = int(arg("--nb-probe", "0"))          # (fourteenth pass) print the no
 WING_SUB = int(arg("--wing-sub", "0"))          # (fourteenth pass) wing_sub: the wings' faces split in four once more (0: off)
 WING_SUB_AT = tuple(float(v) for v in arg("--wing-sub-at", "0.015,0.012,0.011").split(","))   # each box's middle: out, behind, below the tip
 WING_SUB_REACH = tuple(float(v) for v in arg("--wing-sub-reach", "0.011,0.013,0.011").split(","))   # its reach across, back, up
+# (fifteenth pass) nose_scale: measured as shares of the pupils' spacing (IPD) on the sheet's shaved front and side and on a
+# Godot front render: the wings 0.51 IPD across on the sheet, 0.44 on the model; the nose's base 0.64 below the pupils on
+# the sheet, 0.56 on the model (the mouth 0.82 on the sheet, 0.73 on the model: the upper lip, base to mouth, 0.18 and 0.17)
+NOSE_SCALE = tuple(float(v) for v in arg("--nose-scale", "1.3,1,1.35").split(","))   # across, forward, down: about the bridge between the eyes
+NS_REACH = tuple(float(v) for v in arg("--ns-reach", "0.024,0.042").split(","))   # metres out from his middle where the scale starts to fade, and is gone
+NS_TOP = tuple(float(v) for v in arg("--ns-top", "0.004,0.018").split(","))   # metres under the pupils where it starts and is full (the bridge's top left)
+NOSE_PAINT4 = float(arg("--nose-paint4", "1"))   # (fifteenth pass) the lower nose one tan-brown mass, one outline, the bridge's pale stripe
+NP4_WING = tuple(float(v) for v in arg("--np4-wing", "0.006,0.011,0.012,0.011").split(","))   # the painted wing with nose_paint4: half width, half height, out, below the mark (before nose_scale)
+NS_ZPIV = arg("--ns-zpiv", "tip")   # the down scale about the pupils' row ("eyes") or about the tip's height ("tip")
 LATE_ADJUST = []
+
+
+def nose_scale_move(T, Q):
+    """The nose_scale displacement at (pre-scale) points Q, from the tag T."""
+    piv, S, zb, zm, ty = T["pivot"], np.array(T["S"]), T["z_base"], T["z_mouth"], T["tip_y"]
+    ax = np.abs(Q[..., 0])
+    w = (1.0 - smooth01(NS_REACH[0], NS_REACH[1], ax))
+    w = w * smooth01(piv[2] - NS_TOP[0], piv[2] - NS_TOP[1], Q[..., 2])
+    w = w * smooth01(zm + 0.003, zb + 0.001, Q[..., 2])
+    w = w * smooth01(ty + 0.04, ty + 0.03, Q[..., 1])
+    d = Q - piv
+    if NS_ZPIV == "tip":
+        # (the down scale about the tip's height: the tip stays where the sheet has it, the ball and its underside, the
+        # wings and the nostrils below it stretched down; above the tip nothing moves down (a soft corner, 2 mm))
+        dz = Q[..., 2] - T["tip_z"]
+        d[..., 2] = 0.5 * (dz - np.sqrt(dz * dz + 0.002 ** 2))
+    return d * (S - 1.0) * w[..., None]
+
+
+def nose_unscale(M, pos):
+    """Points on the scaled nose taken back to where they were before nose_scale (a few fixed-point rounds), so paint
+    placed by the nose's pre-scale measures lands on the scaled forms."""
+    T = M.tag.get("nose_scale")
+    if not T:
+        return pos
+    q = np.array(pos, float)
+    for _ in range(8):
+        q = pos - nose_scale_move(T, q)
+    return q
+
+
+def nose_scale(M, eyes):
+    P = np.array(M.P)
+    mk = M.tag["head_marks"]
+    fams = np.array([part_family(p) for p in M.part])
+    head = fams == "head"
+    zr = float(np.mean([C_[2] for C_, s_ in eyes]))
+    tip = P[mk["nose"]]
+    band = head & (np.abs(P[:, 0]) < 0.008) & (np.abs(P[:, 2] - zr) < 0.008) & (P[:, 1] < tip[1] + 0.05)
+    yr = float(P[band, 1].min()) if band.any() else float(tip[1]) + 0.02
+    print("BOY late nose_scale: the pupils' row z %.1f mm, tip z %.1f, %d points at the bridge" % (1000 * zr, 1000 * tip[2], int(band.sum())))
+    T = {"pivot": np.array((0.0, yr, zr)), "S": NOSE_SCALE, "z_base": float(P[mk["nose_base"], 2]),
+         "z_mouth": float(P[mk["mouth"], 2]), "tip_y": float(tip[1])}
+    # (the tip's height: the frontmost point of his middle, not the nose mark, which sits a few mm above it)
+    mid_ = head & (np.abs(P[:, 0]) < 0.004) & (P[:, 2] < zr - 0.01) & (P[:, 2] > T["z_base"])
+    T["tip_z"] = float(P[mid_][np.argmin(P[mid_, 1]), 2]) if mid_.any() else float(tip[2])
+    guard = np.zeros(len(P), bool)
+    guard[list(M.tag.get("lid_hold", []))] = True
+    D = nose_scale_move(T, P) * (head & ~guard)[:, None]
+    P2 = P + D
+    M.P = [p for p in P2]
+    M.tag["nose_scale"] = T
+    n, _ = folded(P2, M.faces)
+    LATE_ADJUST.append("nose_scale %s" % (NOSE_SCALE,))
+    print("BOY late nose_scale: x%.2f y%.2f z%.2f about (0, %.1f, %.1f) mm; tip moved %.1f mm, base %.1f mm, most %.1f mm; %d folded" % (
+        *NOSE_SCALE, 1000 * yr, 1000 * zr, 1000 * np.linalg.norm(D[mk["nose"]]), 1000 * np.linalg.norm(D[mk["nose_base"]]),
+        1000 * np.linalg.norm(D, axis=1).max(), n))
 
 
 def nose_profile(P, mk, head, tag):
@@ -8610,6 +8702,13 @@ def late_adjust(M, eyes, face_uv=None, weights=None):
         LATE_ADJUST.append("nose_ball %.2f, nostrils %.1f mm" % (NOSE_BALL_TO, 1000 * NB_NOSTRIL))
         print("BOY late nose_ball: %.2f of the way (most moved %.1f mm, %d points), nostrils %.1f mm; %d folded" % (
             NOSE_BALL_TO, 1000 * float(np.linalg.norm(P - before, axis=1).max()), int((np.abs(mv) > 1e-4).sum()), 1000 * NB_NOSTRIL, n))
+    # (fifteenth pass) nose_scale: the whole lower nose (ball, wings, nostrils, the bridge's lower half) scaled about the
+    # bridge between the eyes, toward the sheet's proportions measured as shares of the pupils' spacing; the paint follows
+    # (face_features maps its points back through nose_unscale)
+    if NOSE_SCALE != (1.0, 1.0, 1.0):
+        M.P = [p for p in P]
+        nose_scale(M, eyes)
+        P = np.array(M.P)
     # (thirteenth pass) 2. smile_form: the sheet's broad closed smile from the form: the lips' meeting edge and both lips
     # round it raised toward the corners (none in the middle, most at the corners), the corners tucked back, the cheeks
     # above them swelled a little, a small soft dent at each corner. The painted line rides the seam, so it moves too.
