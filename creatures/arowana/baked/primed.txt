@@ -1,0 +1,2 @@
+creatures/arowana/models/arowana_game.glb
+creatures/arowana/models/arowana_lo.glb

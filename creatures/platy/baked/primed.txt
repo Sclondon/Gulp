@@ -1,0 +1,2 @@
+creatures/platy/models/platy_game.glb
+creatures/platy/models/platy_lo.glb

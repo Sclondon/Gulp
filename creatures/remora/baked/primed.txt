@@ -1,0 +1,2 @@
+creatures/remora/models/remora_game.glb
+creatures/remora/models/remora_lo.glb

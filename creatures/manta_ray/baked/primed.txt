@@ -1,0 +1,2 @@
+creatures/manta_ray/models/manta_ray_game.glb
+creatures/manta_ray/models/manta_ray_lo.glb

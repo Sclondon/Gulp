@@ -1,0 +1,2 @@
+creatures/narwhal/models/narwhal_game.glb
+creatures/narwhal/models/narwhal_lo.glb

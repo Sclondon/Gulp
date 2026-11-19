@@ -1,0 +1,4 @@
+creatures/crinoid/models/crinoid_feather_star_game.glb
+creatures/crinoid/models/crinoid_feather_star_lo.glb
+creatures/crinoid/models/crinoid_sea_lily_game.glb
+creatures/crinoid/models/crinoid_sea_lily_lo.glb

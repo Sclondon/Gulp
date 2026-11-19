@@ -1,0 +1,2 @@
+creatures/deep_spawn/models/deep_spawn_game.glb
+creatures/deep_spawn/models/deep_spawn_lo.glb

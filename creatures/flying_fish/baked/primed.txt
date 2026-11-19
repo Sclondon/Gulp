@@ -1,0 +1,2 @@
+creatures/flying_fish/models/flying_fish_game.glb
+creatures/flying_fish/models/flying_fish_lo.glb

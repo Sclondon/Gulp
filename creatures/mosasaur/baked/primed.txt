@@ -1,0 +1,2 @@
+creatures/mosasaur/models/mosasaur_game.glb
+creatures/mosasaur/models/mosasaur_lo.glb

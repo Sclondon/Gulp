@@ -1,0 +1,2 @@
+creatures/pufferfish/models/pufferfish_game.glb
+creatures/pufferfish/models/pufferfish_lo.glb

@@ -1,0 +1,2 @@
+creatures/giant_sea_bass/models/giant_sea_bass_game.glb
+creatures/giant_sea_bass/models/giant_sea_bass_lo.glb

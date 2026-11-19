@@ -1,0 +1,2 @@
+creatures/leopard_shark/models/leopard_shark_game.glb
+creatures/leopard_shark/models/leopard_shark_lo.glb

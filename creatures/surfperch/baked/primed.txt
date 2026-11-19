@@ -1,0 +1,2 @@
+creatures/surfperch/models/surfperch_game.glb
+creatures/surfperch/models/surfperch_lo.glb

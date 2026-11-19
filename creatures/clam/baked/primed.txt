@@ -1,0 +1,6 @@
+creatures/clam/models/giant_clam_game.glb
+creatures/clam/models/giant_clam_lo.glb
+creatures/clam/models/scallop_game.glb
+creatures/clam/models/scallop_lo.glb
+creatures/clam/models/razor_clam_game.glb
+creatures/clam/models/razor_clam_lo.glb

@@ -1,0 +1,4 @@
+creatures/guppy/models/guppy_female_game.glb
+creatures/guppy/models/guppy_female_lo.glb
+creatures/guppy/models/guppy_male_game.glb
+creatures/guppy/models/guppy_male_lo.glb

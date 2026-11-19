@@ -1,0 +1,2 @@
+creatures/california_halibut/models/california_halibut_game.glb
+creatures/california_halibut/models/california_halibut_lo.glb

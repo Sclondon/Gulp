@@ -1,0 +1,2 @@
+creatures/harbor_seal/models/harbor_seal_game.glb
+creatures/harbor_seal/models/harbor_seal_lo.glb

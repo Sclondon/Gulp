@@ -1,0 +1,2 @@
+creatures/garibaldi/models/garibaldi_game.glb
+creatures/garibaldi/models/garibaldi_lo.glb

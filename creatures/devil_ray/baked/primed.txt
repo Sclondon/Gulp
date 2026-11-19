@@ -1,0 +1,2 @@
+creatures/devil_ray/models/devil_ray_game.glb
+creatures/devil_ray/models/devil_ray_lo.glb

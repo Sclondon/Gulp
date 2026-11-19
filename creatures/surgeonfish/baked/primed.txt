@@ -1,0 +1,6 @@
+creatures/surgeonfish/models/surgeonfish_yellow_tang_game.glb
+creatures/surgeonfish/models/surgeonfish_yellow_tang_lo.glb
+creatures/surgeonfish/models/surgeonfish_powder_blue_game.glb
+creatures/surgeonfish/models/surgeonfish_powder_blue_lo.glb
+creatures/surgeonfish/models/surgeonfish_convict_game.glb
+creatures/surgeonfish/models/surgeonfish_convict_lo.glb

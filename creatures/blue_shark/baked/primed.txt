@@ -1,0 +1,2 @@
+creatures/blue_shark/models/blue_shark_game.glb
+creatures/blue_shark/models/blue_shark_lo.glb

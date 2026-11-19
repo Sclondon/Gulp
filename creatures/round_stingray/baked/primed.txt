@@ -1,0 +1,2 @@
+creatures/round_stingray/models/round_stingray_game.glb
+creatures/round_stingray/models/round_stingray_lo.glb

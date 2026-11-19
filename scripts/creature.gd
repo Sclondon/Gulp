@@ -225,6 +225,8 @@ func dress(of_kind := "") -> void:
 	# (each koi, guppy or other patterned fish its own pattern)
 	if _look and &"pattern_seed" in _look:
 		_look.set(&"pattern_seed", _rng.randi() % 1000)
+		# (its baked look has a few patterns: one of them)
+		BakedLook.refresh(_look)
 	_has = 0
 	_sent.resize(_LOOKS.size())
 	_sent.fill(-99.0)

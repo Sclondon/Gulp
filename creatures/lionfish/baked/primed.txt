@@ -1,0 +1,2 @@
+creatures/lionfish/models/lionfish_game.glb
+creatures/lionfish/models/lionfish_lo.glb

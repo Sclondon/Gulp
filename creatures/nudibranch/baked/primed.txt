@@ -1,0 +1,2 @@
+creatures/nudibranch/models/nudibranch_game.glb
+creatures/nudibranch/models/nudibranch_lo.glb

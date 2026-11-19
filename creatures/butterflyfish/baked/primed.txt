@@ -1,0 +1,10 @@
+creatures/butterflyfish/models/butterflyfish_threadfin_game.glb
+creatures/butterflyfish/models/butterflyfish_threadfin_lo.glb
+creatures/butterflyfish/models/butterflyfish_raccoon_game.glb
+creatures/butterflyfish/models/butterflyfish_raccoon_lo.glb
+creatures/butterflyfish/models/butterflyfish_copperband_game.glb
+creatures/butterflyfish/models/butterflyfish_copperband_lo.glb
+creatures/butterflyfish/models/butterflyfish_longnose_game.glb
+creatures/butterflyfish/models/butterflyfish_longnose_lo.glb
+creatures/butterflyfish/models/butterflyfish_bannerfish_game.glb
+creatures/butterflyfish/models/butterflyfish_bannerfish_lo.glb

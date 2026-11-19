@@ -1,0 +1,6 @@
+creatures/shrimps/models/shrimp_cleaner_game.glb
+creatures/shrimps/models/shrimp_cleaner_lo.glb
+creatures/shrimps/models/shrimp_mantis_game.glb
+creatures/shrimps/models/shrimp_mantis_lo.glb
+creatures/shrimps/models/shrimp_pistol_game.glb
+creatures/shrimps/models/shrimp_pistol_lo.glb

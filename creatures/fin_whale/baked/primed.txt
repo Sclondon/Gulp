@@ -1,0 +1,2 @@
+creatures/fin_whale/models/fin_whale_game.glb
+creatures/fin_whale/models/fin_whale_lo.glb

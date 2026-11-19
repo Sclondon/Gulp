@@ -12,7 +12,7 @@ shader_type spatial;
 // little pectoral fins fan. The rod sways and can be flicked; the bulb glows (EMISSION: the only part that does).
 // All of it is a function of `phase` alone, so a picture of it loops exactly.
 // Nothing here needs more than GL Compatibility has; it runs the same under Forward+.
-render_mode cull_back;
+render_mode cull_back, vertex_lighting;
 
 // Kept in step with the model.
 const float LENGTH = 0.30;

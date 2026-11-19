@@ -1,0 +1,2 @@
+creatures/grouper/models/grouper_game.glb
+creatures/grouper/models/grouper_lo.glb

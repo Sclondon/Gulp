@@ -1,0 +1,2 @@
+creatures/ammonite/models/ammonite_game.glb
+creatures/ammonite/models/ammonite_lo.glb

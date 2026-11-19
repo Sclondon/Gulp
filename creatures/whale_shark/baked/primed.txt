@@ -1,0 +1,2 @@
+creatures/whale_shark/models/whale_shark_game.glb
+creatures/whale_shark/models/whale_shark_lo.glb

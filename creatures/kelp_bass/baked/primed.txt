@@ -1,0 +1,2 @@
+creatures/kelp_bass/models/kelp_bass_game.glb
+creatures/kelp_bass/models/kelp_bass_lo.glb

@@ -1,0 +1,2 @@
+creatures/horseshoe_crab/models/horseshoe_crab_game.glb
+creatures/horseshoe_crab/models/horseshoe_crab_lo.glb

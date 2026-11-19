@@ -1,0 +1,2 @@
+creatures/viperfish/models/viperfish_game.glb
+creatures/viperfish/models/viperfish_lo.glb

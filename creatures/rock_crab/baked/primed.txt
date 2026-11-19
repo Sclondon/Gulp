@@ -1,0 +1,2 @@
+creatures/rock_crab/models/rock_crab_game.glb
+creatures/rock_crab/models/rock_crab_lo.glb

@@ -1,0 +1,2 @@
+creatures/wahoo/models/wahoo_game.glb
+creatures/wahoo/models/wahoo_lo.glb

@@ -1,0 +1,2 @@
+creatures/bluefin_tuna/models/bluefin_tuna_game.glb
+creatures/bluefin_tuna/models/bluefin_tuna_lo.glb

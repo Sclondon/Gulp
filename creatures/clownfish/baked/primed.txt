@@ -1,0 +1,2 @@
+creatures/clownfish/models/clownfish_game.glb
+creatures/clownfish/models/clownfish_lo.glb

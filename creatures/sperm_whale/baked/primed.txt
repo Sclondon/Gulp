@@ -1,0 +1,2 @@
+creatures/sperm_whale/models/sperm_whale_game.glb
+creatures/sperm_whale/models/sperm_whale_lo.glb

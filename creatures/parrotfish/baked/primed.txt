@@ -1,0 +1,2 @@
+creatures/parrotfish/models/parrotfish_game.glb
+creatures/parrotfish/models/parrotfish_lo.glb

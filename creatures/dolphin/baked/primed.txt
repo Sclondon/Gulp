@@ -1,0 +1,2 @@
+creatures/dolphin/models/dolphin_game.glb
+creatures/dolphin/models/dolphin_lo.glb

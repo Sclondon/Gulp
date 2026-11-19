@@ -507,6 +507,8 @@ func _plant_live_anemones() -> void:
 			var one: Node3D = (load(LIVE_ANEMONE) as GDScript).new()
 			one.set(&"kind", int(row[0]))
 			one.set(&"game", true)
+			# (drawn from its baked paint: tools/bake_looks.gd -- --plan=res://tools/bake_scenery.json)
+			BakedLook.apply(one)
 			add_child(one)
 			one.global_position = Vector3(at.x, Sea.ground(at.x, at.y) - 0.01, at.y)
 			one.rotation.y = _rng.randf() * TAU
@@ -525,6 +527,7 @@ func _plant_anemones() -> void:
 		# (its game model: the full one is left out of the web pack, which could not load it, and is
 		# 13,800 triangles against 2,540)
 		home.set(&"game", true)
+		BakedLook.apply(home)
 		add_child(home)
 		home.global_position = Vector3(at.x, Sea.ground(at.x, at.y) - 0.02, at.y)
 		home.scale = Vector3.ONE * _rng.randf_range(1.2, 2.0)
@@ -749,6 +752,7 @@ func _build_outcrop(kit: Node3D, middle: Vector2, label: String, turn_islet: flo
 		# (a seal hauled out lies in a curve, head and tail a little up)
 		animal.set(&"arch", -0.25)
 		animal.set(&"curl", _rng.randf_range(-0.4, 0.4))
+		BakedLook.apply(animal)
 		add_child(animal)
 		var at: Vector2 = middle + (each[1] as Vector2)
 		animal.global_position = Vector3(at.x, top + float(each[3]) + 0.22, at.y)

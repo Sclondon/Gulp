@@ -1,0 +1,2 @@
+creatures/sea_serpent/models/sea_serpent_game.glb
+creatures/sea_serpent/models/sea_serpent_lo.glb

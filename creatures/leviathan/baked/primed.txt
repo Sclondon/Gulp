@@ -1,0 +1,2 @@
+creatures/leviathan/models/leviathan_game.glb
+creatures/leviathan/models/leviathan_lo.glb

@@ -226,8 +226,9 @@ static func of(kind: String) -> Dictionary:
 	return ALL.get(kind, {})
 
 
-## A new creature of a kind, dressed (not yet in the tree), or null for the old shark.
-static func make(kind: String) -> Node3D:
+## A new creature of a kind, dressed (not yet in the tree), or null for the old shark. It is drawn
+## from its baked paint where its component has one (BakedLook), unless `baked` is false.
+static func make(kind: String, baked := true) -> Node3D:
 	var entry: Dictionary = ALL[kind]
 	if entry.script == "":
 		return null
@@ -237,6 +238,8 @@ static func make(kind: String) -> Node3D:
 	var sets: Dictionary = entry.get("set", {})
 	for setting: String in sets:
 		made.set(setting, sets[setting])
+	if baked:
+		BakedLook.apply(made)
 	return made
 
 

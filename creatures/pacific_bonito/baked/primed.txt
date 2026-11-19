@@ -1,0 +1,2 @@
+creatures/pacific_bonito/models/pacific_bonito_game.glb
+creatures/pacific_bonito/models/pacific_bonito_lo.glb

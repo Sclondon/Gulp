@@ -10,7 +10,7 @@ shader_type spatial;
 // (EMISSION): the comb rows, in rainbow bands that run along them from the aboral end towards the lobes as the plates
 // beat; a faint blue glow at its edges where the skin turns away; the statocyst, a small bright dot at the aboral
 // end. Everything that moves goes by `phase` alone, so it loops. Nothing here needs more than GL Compatibility has.
-render_mode blend_mix, cull_back, depth_draw_opaque;
+render_mode blend_mix, cull_back, depth_draw_opaque, vertex_lighting;
 
 // Kept in step with the model.
 const float RX = 0.0185;

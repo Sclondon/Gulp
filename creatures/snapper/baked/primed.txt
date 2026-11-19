@@ -1,0 +1,2 @@
+creatures/snapper/models/snapper_game.glb
+creatures/snapper/models/snapper_lo.glb

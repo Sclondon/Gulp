@@ -1,0 +1,2 @@
+creatures/barracuda/models/barracuda_game.glb
+creatures/barracuda/models/barracuda_lo.glb

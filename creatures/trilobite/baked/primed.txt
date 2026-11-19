@@ -1,0 +1,6 @@
+creatures/trilobite/models/trilobite_smooth_game.glb
+creatures/trilobite/models/trilobite_smooth_lo.glb
+creatures/trilobite/models/trilobite_spiny_game.glb
+creatures/trilobite/models/trilobite_spiny_lo.glb
+creatures/trilobite/models/trilobite_cheeks_game.glb
+creatures/trilobite/models/trilobite_cheeks_lo.glb

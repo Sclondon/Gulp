@@ -1,0 +1,2 @@
+creatures/gulper_eel/models/gulper_eel_game.glb
+creatures/gulper_eel/models/gulper_eel_lo.glb

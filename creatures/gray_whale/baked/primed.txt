@@ -1,0 +1,2 @@
+creatures/gray_whale/models/gray_whale_game.glb
+creatures/gray_whale/models/gray_whale_lo.glb

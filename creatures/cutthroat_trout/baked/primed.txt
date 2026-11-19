@@ -1,0 +1,2 @@
+creatures/cutthroat_trout/models/cutthroat_trout_game.glb
+creatures/cutthroat_trout/models/cutthroat_trout_lo.glb

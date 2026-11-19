@@ -1,0 +1,4 @@
+creatures/sea_slug/models/sea_hare_game.glb
+creatures/sea_slug/models/sea_hare_lo.glb
+creatures/sea_slug/models/spanish_dancer_game.glb
+creatures/sea_slug/models/spanish_dancer_lo.glb

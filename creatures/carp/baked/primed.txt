@@ -1,0 +1,2 @@
+creatures/carp/models/carp_game.glb
+creatures/carp/models/carp_lo.glb

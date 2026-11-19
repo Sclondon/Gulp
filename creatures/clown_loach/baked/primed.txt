@@ -1,0 +1,2 @@
+creatures/clown_loach/models/clown_loach_game.glb
+creatures/clown_loach/models/clown_loach_lo.glb

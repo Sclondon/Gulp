@@ -1,0 +1,4 @@
+creatures/sockeye_salmon/models/sockeye_smolt_game.glb
+creatures/sockeye_salmon/models/sockeye_smolt_lo.glb
+creatures/sockeye_salmon/models/sockeye_ocean_game.glb
+creatures/sockeye_salmon/models/sockeye_ocean_lo.glb

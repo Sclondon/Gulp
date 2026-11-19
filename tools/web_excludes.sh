@@ -18,6 +18,14 @@ list="$list,models/atlantis_ruins*,textures/ruins_atlas.png,textures/ruins_atlas
 for old in engine_module gauge_module helm_module knob lever needle plunger plunger_lit rivet spark switch_closed tube_lit; do
 	list="$list,textures/panel/$old.png"
 done
+# The game and far models a creature's baked look stands in for (BakedLook primes the component's
+# own cache with the baked meshes, so these are never loaded: tools/bake_looks.gd writes the list).
+for primed in creatures/*/baked/*primed.txt; do
+	[ -f "$primed" ] || continue
+	for model in $(tr -d '\r' < "$primed"); do
+		list="$list,$model"
+	done
+done
 for game in creatures/*/models/*_game.glb; do
 	full="${game%_game.glb}.glb"
 	if [ -f "$full" ]; then

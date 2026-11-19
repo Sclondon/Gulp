@@ -1,0 +1,2 @@
+creatures/bigeye_tuna/models/bigeye_tuna_game.glb
+creatures/bigeye_tuna/models/bigeye_tuna_lo.glb

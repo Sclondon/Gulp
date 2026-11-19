@@ -1,0 +1,2 @@
+creatures/walleye/models/walleye_game.glb
+creatures/walleye/models/walleye_lo.glb

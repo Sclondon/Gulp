@@ -1,0 +1,2 @@
+creatures/cameroceras/models/cameroceras_game.glb
+creatures/cameroceras/models/cameroceras_lo.glb

@@ -1,0 +1,2 @@
+creatures/sea_otter/models/sea_otter_game.glb
+creatures/sea_otter/models/sea_otter_lo.glb

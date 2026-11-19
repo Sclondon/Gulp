@@ -1,0 +1,2 @@
+creatures/pacific_mackerel/models/pacific_mackerel_game.glb
+creatures/pacific_mackerel/models/pacific_mackerel_lo.glb

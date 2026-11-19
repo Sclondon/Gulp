@@ -1,0 +1,2 @@
+creatures/rockfish/models/rockfish_game.glb
+creatures/rockfish/models/rockfish_lo.glb

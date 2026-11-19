@@ -1,0 +1,2 @@
+creatures/plesiosaur/models/plesiosaur_game.glb
+creatures/plesiosaur/models/plesiosaur_lo.glb

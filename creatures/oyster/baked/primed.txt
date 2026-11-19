@@ -1,0 +1,2 @@
+creatures/oyster/models/oyster_clump_game.glb
+creatures/oyster/models/oyster_clump_lo.glb

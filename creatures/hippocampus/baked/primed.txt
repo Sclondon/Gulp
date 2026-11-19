@@ -1,0 +1,2 @@
+creatures/hippocampus/models/hippocampus_game.glb
+creatures/hippocampus/models/hippocampus_lo.glb

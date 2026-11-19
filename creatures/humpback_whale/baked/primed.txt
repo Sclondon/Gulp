@@ -1,0 +1,2 @@
+creatures/humpback_whale/models/humpback_whale_game.glb
+creatures/humpback_whale/models/humpback_whale_lo.glb

@@ -1,0 +1,6 @@
+creatures/anemone/models/anemone_giant_green_game.glb
+creatures/anemone/models/anemone_giant_green_lo.glb
+creatures/anemone/models/anemone_tube_game.glb
+creatures/anemone/models/anemone_tube_lo.glb
+creatures/anemone/models/anemone_plumose_game.glb
+creatures/anemone/models/anemone_plumose_lo.glb

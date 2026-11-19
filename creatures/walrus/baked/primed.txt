@@ -1,0 +1,2 @@
+creatures/walrus/models/walrus_game.glb
+creatures/walrus/models/walrus_lo.glb

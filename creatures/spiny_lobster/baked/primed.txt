@@ -1,0 +1,2 @@
+creatures/spiny_lobster/models/spiny_lobster_game.glb
+creatures/spiny_lobster/models/spiny_lobster_lo.glb

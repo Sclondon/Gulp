@@ -1,0 +1,6 @@
+creatures/angelfish/models/angelfish_emperor_game.glb
+creatures/angelfish/models/angelfish_emperor_lo.glb
+creatures/angelfish/models/angelfish_queen_game.glb
+creatures/angelfish/models/angelfish_queen_lo.glb
+creatures/angelfish/models/angelfish_french_game.glb
+creatures/angelfish/models/angelfish_french_lo.glb

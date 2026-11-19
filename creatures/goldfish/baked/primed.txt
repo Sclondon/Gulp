@@ -1,0 +1,4 @@
+creatures/goldfish/models/goldfish_common_game.glb
+creatures/goldfish/models/goldfish_common_lo.glb
+creatures/goldfish/models/goldfish_fantail_game.glb
+creatures/goldfish/models/goldfish_fantail_lo.glb

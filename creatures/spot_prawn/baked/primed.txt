@@ -1,0 +1,2 @@
+creatures/spot_prawn/models/spot_prawn_game.glb
+creatures/spot_prawn/models/spot_prawn_lo.glb

@@ -1,0 +1,2 @@
+creatures/pyrosome/models/pyrosome_game.glb
+creatures/pyrosome/models/pyrosome_lo.glb

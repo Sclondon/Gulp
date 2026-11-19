@@ -1,0 +1,2 @@
+creatures/river_beast/models/river_beast_game.glb
+creatures/river_beast/models/river_beast_lo.glb

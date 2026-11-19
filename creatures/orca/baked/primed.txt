@@ -1,0 +1,2 @@
+creatures/orca/models/orca_game.glb
+creatures/orca/models/orca_lo.glb

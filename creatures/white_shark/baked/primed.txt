@@ -1,0 +1,2 @@
+creatures/white_shark/models/white_shark_game.glb
+creatures/white_shark/models/white_shark_lo.glb

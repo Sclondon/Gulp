@@ -1,0 +1,2 @@
+creatures/mermaid/models/mermaid_game.glb
+creatures/mermaid/models/mermaid_lo.glb

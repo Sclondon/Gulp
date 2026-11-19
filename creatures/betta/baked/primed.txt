@@ -1,0 +1,2 @@
+creatures/betta/models/betta_game.glb
+creatures/betta/models/betta_lo.glb

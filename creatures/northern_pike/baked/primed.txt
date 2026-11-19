@@ -1,0 +1,2 @@
+creatures/northern_pike/models/northern_pike_game.glb
+creatures/northern_pike/models/northern_pike_lo.glb

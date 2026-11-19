@@ -1,0 +1,2 @@
+creatures/spinosaurus/models/spinosaurus_game.glb
+creatures/spinosaurus/models/spinosaurus_lo.glb

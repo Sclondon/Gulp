@@ -1,0 +1,6 @@
+creatures/starfish/models/starfish_classic_game.glb
+creatures/starfish/models/starfish_classic_lo.glb
+creatures/starfish/models/starfish_sunflower_game.glb
+creatures/starfish/models/starfish_sunflower_lo.glb
+creatures/starfish/models/starfish_brittle_game.glb
+creatures/starfish/models/starfish_brittle_lo.glb

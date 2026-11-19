@@ -1,0 +1,6 @@
+creatures/seahorse/models/seahorse_common_game.glb
+creatures/seahorse/models/seahorse_common_lo.glb
+creatures/seahorse/models/seahorse_spiny_game.glb
+creatures/seahorse/models/seahorse_spiny_lo.glb
+creatures/seahorse/models/seahorse_pygmy_game.glb
+creatures/seahorse/models/seahorse_pygmy_lo.glb

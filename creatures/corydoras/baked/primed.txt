@@ -1,0 +1,2 @@
+creatures/corydoras/models/corydoras_game.glb
+creatures/corydoras/models/corydoras_lo.glb

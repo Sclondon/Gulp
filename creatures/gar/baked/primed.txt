@@ -1,0 +1,2 @@
+creatures/gar/models/gar_game.glb
+creatures/gar/models/gar_lo.glb

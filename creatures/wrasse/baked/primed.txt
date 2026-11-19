@@ -1,0 +1,4 @@
+creatures/wrasse/models/wrasse_cleaner_game.glb
+creatures/wrasse/models/wrasse_cleaner_lo.glb
+creatures/wrasse/models/wrasse_moon_game.glb
+creatures/wrasse/models/wrasse_moon_lo.glb

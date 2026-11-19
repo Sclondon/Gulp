@@ -1,0 +1,2 @@
+creatures/ichthyosaur/models/ichthyosaur_game.glb
+creatures/ichthyosaur/models/ichthyosaur_lo.glb

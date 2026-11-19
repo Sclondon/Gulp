@@ -1,0 +1,4 @@
+{
+	"res://creatures/anemone/anemone.gd": [{"kind": 0}, {"kind": 1}, {"kind": 2}],
+	"res://creatures/clownfish/clownfish_anemone.gd": [{}]
+}

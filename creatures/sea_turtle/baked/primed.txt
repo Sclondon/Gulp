@@ -1,0 +1,8 @@
+creatures/sea_turtle/models/sea_turtle_green_game.glb
+creatures/sea_turtle/models/sea_turtle_green_lo.glb
+creatures/sea_turtle/models/sea_turtle_hawksbill_game.glb
+creatures/sea_turtle/models/sea_turtle_hawksbill_lo.glb
+creatures/sea_turtle/models/sea_turtle_loggerhead_game.glb
+creatures/sea_turtle/models/sea_turtle_loggerhead_lo.glb
+creatures/sea_turtle/models/sea_turtle_leatherback_game.glb
+creatures/sea_turtle/models/sea_turtle_leatherback_lo.glb

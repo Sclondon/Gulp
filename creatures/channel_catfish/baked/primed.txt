@@ -1,0 +1,2 @@
+creatures/channel_catfish/models/channel_catfish_game.glb
+creatures/channel_catfish/models/channel_catfish_lo.glb

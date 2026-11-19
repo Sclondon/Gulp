@@ -1,0 +1,2 @@
+creatures/yellow_perch/models/yellow_perch_game.glb
+creatures/yellow_perch/models/yellow_perch_lo.glb

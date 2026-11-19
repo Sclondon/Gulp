@@ -1,0 +1,6 @@
+creatures/sea_urchin/models/sea_urchin_long_spined_game.glb
+creatures/sea_urchin/models/sea_urchin_long_spined_lo.glb
+creatures/sea_urchin/models/sea_urchin_purple_game.glb
+creatures/sea_urchin/models/sea_urchin_purple_lo.glb
+creatures/sea_urchin/models/sea_urchin_slate_pencil_game.glb
+creatures/sea_urchin/models/sea_urchin_slate_pencil_lo.glb

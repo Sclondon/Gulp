@@ -1,0 +1,2 @@
+creatures/piranha/models/piranha_game.glb
+creatures/piranha/models/piranha_lo.glb

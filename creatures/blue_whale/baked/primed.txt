@@ -1,0 +1,2 @@
+creatures/blue_whale/models/blue_whale_game.glb
+creatures/blue_whale/models/blue_whale_lo.glb

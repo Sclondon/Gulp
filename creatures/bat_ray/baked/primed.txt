@@ -1,0 +1,2 @@
+creatures/bat_ray/models/bat_ray_game.glb
+creatures/bat_ray/models/bat_ray_lo.glb

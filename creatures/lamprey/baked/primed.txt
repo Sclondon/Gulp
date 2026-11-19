@@ -1,0 +1,2 @@
+creatures/lamprey/models/lamprey_game.glb
+creatures/lamprey/models/lamprey_lo.glb

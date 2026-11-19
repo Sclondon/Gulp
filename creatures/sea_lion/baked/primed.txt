@@ -1,0 +1,2 @@
+creatures/sea_lion/models/sea_lion_game.glb
+creatures/sea_lion/models/sea_lion_lo.glb

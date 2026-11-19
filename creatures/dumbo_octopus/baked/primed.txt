@@ -1,0 +1,2 @@
+creatures/dumbo_octopus/models/dumbo_octopus_game.glb
+creatures/dumbo_octopus/models/dumbo_octopus_lo.glb

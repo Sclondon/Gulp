@@ -1,0 +1,2 @@
+creatures/spotted_eagle_ray/models/spotted_eagle_ray_game.glb
+creatures/spotted_eagle_ray/models/spotted_eagle_ray_lo.glb

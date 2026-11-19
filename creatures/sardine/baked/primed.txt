@@ -1,0 +1,2 @@
+creatures/sardine/models/sardine_game.glb
+creatures/sardine/models/sardine_lo.glb

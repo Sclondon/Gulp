@@ -1,0 +1,2 @@
+creatures/blue_tang/models/blue_tang_game.glb
+creatures/blue_tang/models/blue_tang_lo.glb
