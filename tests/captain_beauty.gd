@@ -8,6 +8,7 @@ const MODEL := "res://models/captain.glb"
 
 var _out := ""
 var _only: PackedStringArray = []
+var _hide: PackedStringArray = []
 var _cam: Camera3D
 var _model: Node3D
 var _shots: Array = []
@@ -40,6 +41,16 @@ func _pose(name: String) -> void:
 			"turn":
 				_turn(sk, "neck", Vector3.UP, 15.0)
 				_turn(sk, "head", Vector3.UP, 30.0)
+			"h_fist":
+				_apply(sk, HAND_FIST)
+			"h_grip":
+				_apply(sk, HAND_GRIP)
+			"h_relaxed":
+				_apply(sk, HAND_RELAXED)
+			"armfwd":
+				# (twenty-third round: the arms reached forward, so a side view of the boxers is not hidden by the hand)
+				_apply(sk, [["aim", "upper_arm_l", "forearm_l", Vector3(0.15, -0.35, 0.95)], ["aim", "forearm_l", "hand_l", Vector3(0.05, -0.2, 1.0)],
+					["aim", "upper_arm_r", "forearm_r", Vector3(-0.15, -0.35, 0.95)], ["aim", "forearm_r", "hand_r", Vector3(-0.05, -0.2, 1.0)]])
 			"bend", "bendb":
 				# (eighteenth round: "the bent 40 degrees shots do not actually bend the hand": the turn was about the
 				# arm's front-to-back axis, a sideways swing that hardly shows from the front. Now the hand is FLEXED (and
@@ -87,7 +98,7 @@ const POSES := {
 		["rot", "chest", Vector3.RIGHT, 4.0], ["rot", "head", Vector3.RIGHT, 8.0],
 		["aim", "upper_arm_l", "forearm_l", Vector3(0.3, -0.25, 0.9)], ["aim", "forearm_l", "hand_l", Vector3(-0.1, 0.75, 0.65)],
 		["aim", "upper_arm_r", "forearm_r", Vector3(-0.25, -0.9, 0.35)], ["aim", "forearm_r", "hand_r", Vector3(0.2, -0.2, 0.95)],
-		["flex", "_l", 20.0], ["flex", "_r", 20.0], ["curl", "_l", [70, 75, 75, 75], 35], ["curl", "_r", [70, 75, 75, 75], 35],
+		["flex", "_l", 20.0], ["flex", "_r", 20.0], ["curl3", "_l", [[60, 70, 40], [62, 72, 40], [65, 72, 40], [68, 72, 40]]], ["curl", "_l", [0, 0, 0, 0], 35], ["curl3", "_r", [[60, 70, 40], [62, 72, 40], [65, 72, 40], [68, 72, 40]]], ["curl", "_r", [0, 0, 0, 0], 35],
 		["leg", "_l", Vector3(0.33, 0.136, 0.12), Vector3(0.5, 0, 1), 0.0], ["leg", "_r", Vector3(-0.33, 0.136, -0.12), Vector3(-0.5, 0, 1), 0.0]]},
 	"shout": {"cam": [Vector3(0.3, 0.05, 1.0), Vector3(0.1, 0.9, 0.05), 3.3], "ops": [
 		["root", Vector3(0, -0.04, 0), Vector3.RIGHT, 6.0],
@@ -102,20 +113,38 @@ const POSES := {
 		["aim", "upper_arm_l", "forearm_l", Vector3(0.3, -0.75, 0.55)], ["aim", "forearm_l", "hand_l", Vector3(-0.45, -0.15, 0.9)],
 		["aim", "upper_arm_r", "forearm_r", Vector3(-0.3, -0.75, 0.55)], ["aim", "forearm_r", "hand_r", Vector3(0.45, -0.1, 0.9)],
 		["curl", "_l", [40, 45, 50, 55], 20], ["curl", "_r", [40, 45, 50, 55], 20],
-		["leg", "_l", Vector3(0.3, 0.136, 0.3), Vector3(0.5, 0.3, 1), 0.0], ["leg", "_r", Vector3(-0.3, 0.136, 0.3), Vector3(-0.5, 0.3, 1), 0.0]]},
+		# (twenty-third round: the feet further forward, so the thighs lie nearly level on the barrel as the sheet's;
+		# at z 0.3 they sloped down through its rim)
+		["leg", "_l", Vector3(0.3, 0.136, 0.44), Vector3(0.5, 0.3, 1), 0.0], ["leg", "_r", Vector3(-0.3, 0.136, 0.44), Vector3(-0.5, 0.3, 1), 0.0]]},
 	"haul": {"cam": [Vector3(-0.5, 0.1, 1.0), Vector3(0, 0.75, 0.15), 3.1], "ops": [
 		["root", Vector3(0, -0.08, -0.06), Vector3.RIGHT, 22.0],
 		["rot", "spine", Vector3.RIGHT, 12.0], ["rot", "chest", Vector3.RIGHT, 8.0], ["rot", "neck", Vector3.RIGHT, -20.0],
 		["rot", "chest", Vector3.UP, -12.0],
 		["aim", "upper_arm_l", "forearm_l", Vector3(-0.2, -0.6, 0.8)], ["aim", "forearm_l", "hand_l", Vector3(-0.55, -0.35, 0.75)],
 		["aim", "upper_arm_r", "forearm_r", Vector3(-0.45, -0.7, 0.55)], ["aim", "forearm_r", "hand_r", Vector3(-0.5, -0.2, 0.85)],
-		["curl", "_l", [70, 75, 75, 75], 35], ["curl", "_r", [70, 75, 75, 75], 35],
+		["curl3", "_l", [[60, 70, 40], [62, 72, 40], [65, 72, 40], [68, 72, 40]]], ["curl", "_l", [0, 0, 0, 0], 35], ["curl3", "_r", [[60, 70, 40], [62, 72, 40], [65, 72, 40], [68, 72, 40]]], ["curl", "_r", [0, 0, 0, 0], 35],
 		["leg", "_l", Vector3(0.25, 0.136, 0.25), Vector3(0.3, 0, 1), 0.0], ["leg", "_r", Vector3(-0.2, 0.136, -0.34), Vector3(-0.3, 0, 1), 0.0]]},
 	"look_up": {"cam": [Vector3(-0.35, 0.05, 1.0), Vector3(0, 0.9, 0.05), 3.0], "ops": [
 		["rot", "neck", Vector3.RIGHT, -4.0], ["rot", "head", Vector3.RIGHT, -6.0],
 		["aim", "upper_arm_r", "forearm_r", Vector3(-0.75, 0.5, 0.45)], ["aim", "forearm_r", "hand_r", Vector3(0.6, 0.45, 0.65)],
 		["flex", "_r", -20.0], ["curl", "_r", [35, 40, 45, 50], 20], ["curl", "_l", [10, 12, 15, 18], 5]]},
 }
+
+
+## (twenty-third round) The fist and the grip of the hands sheet, each joint its own angle (knuckle, middle, tip),
+## the thumb across: tuned by the --hands pictures.
+const HAND_FIST := [["curl3", "_l", [[85, 95, 55], [85, 95, 55], [88, 95, 55], [90, 95, 55]]],
+	# (the thumb across the front of the curled fingers: tried six single turns and four pairs; this one lies across)
+	["thumbrot", "_l", "thumb_1", "across", -30.0], ["thumbrot", "_l", "thumb_1", "palm", -40.0], ["thumbrot", "_l", "thumb_2", "palm", -30.0], ["thumbrot", "_l", "thumb_3", "palm", -39.0],
+	# (the fingers drawn together at the knuckles, so the curled fingers close side by side, not as separate hooks)
+	["thumbrot", "_l", "finger_index_1", "palm", -7.0], ["thumbrot", "_l", "finger_ring_1", "palm", 5.0], ["thumbrot", "_l", "finger_little_1", "palm", 10.0]]
+## The relaxed hand of the sheet's back, palm and thumb views: the thumb turned out from under the palm about the
+## hand's length (tried along +-40, across +-35, palm +-30 and pairs: this one lies as the sheet draws it), the
+## fingers a little curved.
+const HAND_RELAXED := [["thumbrot", "_l", "thumb_1", "along", -40.0], ["curl3", "_l", [[6, 10, 6], [6, 10, 6], [7, 11, 7], [8, 12, 8]]]]
+const HAND_GRIP := [["curl3", "_l", [[60, 70, 40], [62, 72, 40], [65, 72, 40], [68, 72, 40]]],
+	["thumbrot", "_l", "thumb_1", "across", -20.0], ["thumbrot", "_l", "thumb_1", "palm", -28.0], ["thumbrot", "_l", "thumb_2", "palm", -20.0], ["thumbrot", "_l", "thumb_3", "palm", -25.0],
+	["thumbrot", "_l", "finger_index_1", "palm", -5.0], ["thumbrot", "_l", "finger_ring_1", "palm", 4.0], ["thumbrot", "_l", "finger_little_1", "palm", 8.0]]
 
 
 ## How far the clavicle lifts (degrees) for an arm straight up, and comes forward for an arm straight ahead.
@@ -167,6 +196,20 @@ func _apply(sk: Skeleton3D, ops: Array) -> void:
 						var hp: Vector3 = X[b] * h
 						var q := Quaternion(cur.normalized(), (op[3] as Vector3).normalized())
 						X[b] = Transform3D(Basis(q), hp - Basis(q) * hp) * X[b]
+				"curl3":
+					# (twenty-third round) ["curl3", side, [[knuckle, middle, tip] for index, middle, ring, little]]:
+					# each joint its own angle (an even curl at every joint made hooks, not a fist)
+					var sfx3 := String(op[1])
+					if bname.ends_with(sfx3) and bname.begins_with("finger_"):
+						var fi := ["index", "middle", "ring", "little"].find(bname.get_slice("_", 1))
+						var ji := int(bname.get_slice("_", 2)) - 1
+						X[b] = X[b] * _about(h, _curl_axis(sk, rest, sfx3), float(op[2][fi][ji]))
+				"thumbrot":
+					# ["thumbrot", side, bone, axis ("along", "across", "palm"), degrees]: a thumb bone turned about one of
+					# the hand's own axes at rest
+					if bname == String(op[2]) + String(op[1]):
+						var fr := _hand_axes(sk, rest, String(op[1]))
+						X[b] = X[b] * _about(h, fr[["along", "across", "palm"].find(String(op[3]))], float(op[4]))
 				"flex":
 					if bname == "hand" + String(op[1]):
 						X[b] = X[b] * _about(h, _wrist_axis(sk, rest, String(op[1])), float(op[2]))
@@ -232,6 +275,66 @@ func _curl_axis(sk: Skeleton3D, rest: Array[Transform3D], sfx: String) -> Vector
 	return k if k.cross(along).dot(palm) > 0.0 else -k
 
 
+## The hand's own axes at rest (skeleton space): along (wrist to the middle knuckle), across (index to little
+## knuckle, square to along), palm (out of the palm, the side the thumb's middle joint stands).
+func _hand_axes(sk: Skeleton3D, rest: Array[Transform3D], sfx: String) -> Array:
+	var w := rest[sk.find_bone("hand" + sfx)].origin
+	var m1 := rest[sk.find_bone("finger_middle_1" + sfx)].origin
+	var i1 := rest[sk.find_bone("finger_index_1" + sfx)].origin
+	var l1 := rest[sk.find_bone("finger_little_1" + sfx)].origin
+	var t2 := rest[sk.find_bone("thumb_2" + sfx)].origin
+	var along := (m1 - w).normalized()
+	var across := (l1 - i1)
+	across = (across - along * across.dot(along)).normalized()
+	var palm := along.cross(across)
+	if palm.dot(t2 - m1) < 0.0:
+		palm = -palm
+	return [along, across, palm, w, m1]
+
+
+## (twenty-third round) An orthographic camera 0.3 m tall on the left hand, in the hand's own frame at rest (the hand
+## bone is never turned in these poses): each view says where the eye is, what is up and what is to the right; when
+## the camera's right comes out the other way the picture is mirrored (_mirror) so it lies as the sheet draws it.
+const HAND_VIEWS := {
+	"back": [["palm", -1.0], ["across", 1.0], ["along", 1.0]],
+	"palm": [["palm", 1.0], ["along", 1.0], ["across", -1.0]],
+	"thumb": [["across", -1.0], ["palm", -1.0], ["along", -1.0]],
+	"little": [["across", 1.0], ["palm", -1.0], ["along", 1.0]],
+	"tips": [["along", 1.0], ["palm", -1.0], ["across", -1.0]],
+	"fistview": [["palm", -1.0], ["across", 1.0], ["along", 1.0]],
+}
+const HAND_ORTHO := 0.3
+var _mirror := false
+
+
+func _hand_camera(spec: Dictionary, pose: String) -> void:
+	var sk: Skeleton3D = _model.find_children("*", "Skeleton3D", true, false)[0]
+	var rest: Array[Transform3D] = []
+	for b in sk.get_bone_count():
+		rest.append(sk.get_bone_global_rest(b))
+	var fr := _hand_axes(sk, rest, String(spec["sfx"]))
+	var gb := sk.global_transform.basis
+	var ax := {"along": (gb * (fr[0] as Vector3)).normalized(), "across": (gb * (fr[1] as Vector3)).normalized(),
+		"palm": (gb * (fr[2] as Vector3)).normalized()}
+	var wrist: Vector3 = sk.global_transform * (fr[3] as Vector3)
+	var v: Array = HAND_VIEWS[String(spec["view"])]
+	var d: Vector3 = ax[v[0][0]] * float(v[0][1])
+	if String(spec["view"]) == "tips":
+		d = (d - ax["palm"] * 0.5).normalized()
+	if String(spec["view"]) == "fistview":
+		d = (d + ax["along"] * 0.6 - ax["across"] * 0.3).normalized()
+	var up: Vector3 = ax[v[1][0]] * float(v[1][1])
+	var right: Vector3 = ax[v[2][0]] * float(v[2][1])
+	var at: Vector3 = wrist + ax["along"] * (0.1 if pose == "h_relaxed" else 0.075)
+	_cam.projection = Camera3D.PROJECTION_ORTHOGONAL
+	_cam.size = HAND_ORTHO
+	_cam.near = 0.8   # (only what lies within 20 cm of the hand: the thigh and boxers were in front of it)
+	_cam.far = 1.2
+	_cam.position = at + d * 1.0
+	_cam.look_at(at, up)
+	_mirror = _cam.global_transform.basis.x.dot(right) < 0.0
+
+
 func _leg_move(sk: Skeleton3D, rest: Array[Transform3D], X: Array[Transform3D], sfx: String, bname: String, op: Array) -> Transform3D:
 	var hb := sk.find_bone("hips")
 	var H0 := rest[sk.find_bone("thigh" + sfx)].origin
@@ -276,6 +379,8 @@ func _initialize() -> void:
 			_out = a.get_slice("=", 1)
 		if a.begins_with("--only="):
 			_only = a.get_slice("=", 1).split(",")
+		if a.begins_with("--hide="):
+			_hide = a.get_slice("=", 1).split(",")
 	var world := Node3D.new()
 	root.add_child(world)
 	var env := Environment.new()
@@ -356,6 +461,41 @@ func _initialize() -> void:
 		_shots.append(["boxers_sit_side" + gt, Vector3(-1, 0.1, 0.15).normalized(), Vector3.ZERO, 1.1, true, "sit", g, "hips"])
 		_shots.append(["boxers_sit_back" + gt, Vector3(0.3, 0.15, -1).normalized(), Vector3.ZERO, 1.1, true, "sit", g, "hips"])
 		_shots.append(["boxers_side" + gt, Vector3(-1, 0.05, 0.1).normalized(), Vector3(0, 0.62, 0.02), 1.0, true, "", g])
+	# (twenty-third round: the before-and-after views of each adjustment, r23_<feature>_<view>, lit and grey)
+	for g in [false, true]:
+		var gt := "_grey" if g else ""
+		var hd := Vector3(0, 1.395, 0.1)
+		for s in [
+				["box_front", Vector3(0, 0.05, 1), Vector3(0, 0.6, 0.02), 1.5, true, "armfwd"],
+				["box_side", Vector3(-1, 0.05, 0.05), Vector3(0, 0.6, 0.02), 1.5, true, "armfwd"],
+				["box_back", Vector3(0.1, 0.05, -1), Vector3(0, 0.6, 0.0), 1.5, true, "armfwd"],
+				["box_sit", Vector3(-1, 0.15, -0.15), Vector3.ZERO, 1.5, true, "sit", "hips"],
+				["box_sitb", Vector3(0.3, 0.15, -1), Vector3.ZERO, 1.5, true, "sit", "hips"],
+				["box_haul", Vector3(-0.6, 0.1, 1), Vector3.ZERO, 1.9, true, "haul", "hips"],
+				["heel_back", Vector3(0.1, 0.15, -1), Vector3.ZERO, 0.6, true, "", "foot_l"],
+				["heel_q", Vector3(0.7, 0.15, -0.7), Vector3.ZERO, 0.6, true, "", "foot_l"],
+				["toe_front", Vector3(0.4, 0.18, 0.9), Vector3(0.2, 0.03, 0.19), 0.36, true, ""],
+				["toe_q", Vector3(0.9, 0.5, 0.3), Vector3(0.21, 0.025, 0.2), 0.32, true, ""],
+				["nose_front", Vector3(0, 0, 1), hd, 0.42, false, ""],
+				["nose_q", Vector3(0.7, 0, 0.7), hd, 0.42, false, ""],
+				["nose_side", Vector3(-1, 0, 0), hd, 0.42, false, ""],
+				["nose_below", Vector3(0.2, -0.6, 0.8), hd, 0.42, false, ""],
+				["ear_side", Vector3(1, 0, 0.05), Vector3(0.05, 1.4, 0.0), 0.4, false, ""],
+				["ear_back", Vector3(0.3, 0.05, -1), Vector3(0.0, 1.4, 0.0), 0.55, false, ""],
+				["torso_back", Vector3(0.0, 0.05, -1), Vector3(0, 1.0, 0), 1.5, false, ""],
+				["torso_front", Vector3(0.0, 0.05, 1), Vector3(0, 1.0, 0), 1.5, false, ""],
+				["torso_q", Vector3(0.7, 0.05, 0.7), Vector3(0, 1.0, 0), 1.5, false, ""],
+				["jaw_up_side", Vector3(-1, -0.1, 0), Vector3(0, 1.36, 0.03), 0.95, false, "up"],
+				["jaw_up_q", Vector3(0.7, -0.1, 0.7), Vector3(0, 1.36, 0.03), 0.95, false, "up"],
+				["jaw_front", Vector3(0.0, 0.0, 1), Vector3(0, 1.36, 0.03), 0.8, false, ""],
+				["fist_back", Vector3(0.9, 0.3, 0.3), Vector3.ZERO, 0.32, true, "wheel", "finger_middle_1_l"],
+				["fist_front", Vector3(0.3, 0.2, 1), Vector3.ZERO, 0.32, true, "wheel", "finger_middle_1_l"],
+				["fist_grip", Vector3(0.8, 0.3, 0.6), Vector3.ZERO, 0.32, true, "haul", "finger_middle_1_l"],
+				["nail_top", Vector3(0.6, 0.6, 0.6), Vector3(0.53, 0.6, 0.02), 0.35, true, ""]]:
+			var sh_: Array = ["r23_" + s[0] + gt, (s[1] as Vector3).normalized(), s[2], s[3], s[4], s[5], g]
+			if s.size() > 6:
+				sh_.append(s[6])
+			_shots.append(sh_)
 	# (eighteenth round: --poses: the pose test alone: each pose from the sheet's angle and from a quarter turn round,
 	# lit and in grey, cap on)
 	if "--poses" in OS.get_cmdline_user_args():
@@ -368,6 +508,18 @@ func _initialize() -> void:
 				var gt := "_grey" if g else ""
 				_shots.append(["pose_" + pname + "_a" + gt, d0, cam[1], cam[2], true, pname, g])
 				_shots.append(["pose_" + pname + "_b" + gt, d1, cam[1], cam[2], true, pname, g])
+	# (twenty-third round: --hands: his hands alone, orthographic, 0.3 m tall, in the hand's own frame, the views of
+	# tools/art_src/concept_captain_hands.jpg: relaxed (back, palm, thumb side, little-finger side, fingertips on),
+	# the fist and the grip round a spoke; mirrored where needed so each lies as the sheet draws it)
+	if "--hands" in OS.get_cmdline_user_args():
+		_shots = []
+		var vs := {"relaxed": ["back", "palm", "thumb", "little", "tips"], "fist": ["fistview", "back", "thumb", "tips", "little", "palm"],
+			"grip": ["back", "thumb", "tips"]}
+		for pz: String in vs:
+			for g in [false, true]:
+				var gt := "_grey" if g else ""
+				for v: String in vs[pz]:
+					_shots.append(["hand_" + pz + "_" + v + gt, Vector3.ZERO, Vector3.ZERO, 1.0, true, "h_" + pz, g, "", {"view": v, "sfx": "_l"}])
 	# (eighteenth round: --only=<a,b> keeps the shots whose names begin with one of them)
 	if not _only.is_empty():
 		_shots = _shots.filter(func(s: Array) -> bool:
@@ -395,12 +547,14 @@ func _process(_delta: float) -> bool:
 			var cyl := CylinderMesh.new()
 			cyl.top_radius = 0.27
 			cyl.bottom_radius = 0.25
-			cyl.height = 0.44
+			cyl.height = 0.4
 			_barrel.mesh = cyl
 			var bm := StandardMaterial3D.new()
 			bm.albedo_color = Color(0.45, 0.3, 0.18)
 			_barrel.material_override = bm
-			_barrel.position = Vector3(0, 0.22, -0.06)
+			# (twenty-third round: back under his seat and a little lower; it stood in front, through his thighs, and
+			# cut the boxers' legs off at its rim, which read as a flap)
+			_barrel.position = Vector3(0, 0.2, -0.17)
 			_model.get_parent().add_child(_barrel)
 		_barrel.visible = shot.size() > 5 and String(shot[5]) == "sit"
 		var grey: bool = shot.size() > 6 and bool(shot[6])
@@ -408,6 +562,9 @@ func _process(_delta: float) -> bool:
 			mesh.material_override = _grey if grey and not String(mesh.name).begins_with("captain_ink") else null
 			if String(mesh.name).begins_with("captain_ink"):
 				mesh.visible = not grey
+			for hn in _hide:
+				if String(mesh.name).begins_with(hn):
+					mesh.visible = false
 		var at: Vector3 = shot[2]
 		if shot.size() > 7:
 			for sk: Skeleton3D in _model.find_children("*", "Skeleton3D", true, false):
@@ -421,11 +578,23 @@ func _process(_delta: float) -> bool:
 		if float(shot[3]) > 2.0 and not POSES.has(String(shot[5]) if shot.size() > 5 else ""):
 			eye.y = 1.5
 		_cam.position = eye
-		_cam.look_at(at, Vector3.UP)
+		_mirror = false
+		if shot.size() > 8:
+			_hand_camera(shot[8], String(shot[5]))
+			eye = _cam.position
+			at = _cam.position - _cam.global_transform.basis.z
+		else:
+			_cam.projection = Camera3D.PROJECTION_PERSPECTIVE
+			_cam.near = 0.05
+			_cam.far = 100.0
+			_cam.look_at(at, Vector3.UP)
 		# (the sun over the camera's left shoulder for every shot, so no view is lit from behind)
 		var to := (at - eye).normalized()
 		var light := (to + _cam.global_transform.basis.x * -0.45 + Vector3(0, -0.6, 0)).normalized()
 		_sun.basis = Basis.looking_at(light, Vector3.UP)
 	elif f % 5 == 4 and _out != "":
-		root.get_texture().get_image().save_png("%s/%s.png" % [_out, shot[0]])
+		var img := root.get_texture().get_image()
+		if _mirror:
+			img.flip_x()
+		img.save_png("%s/%s.png" % [_out, shot[0]])
 	return false

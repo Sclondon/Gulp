@@ -8319,6 +8319,11 @@ ADJUSTMENTS = [
     ("heel_fin_off", None, 0),   # (off: 4 rounds moved 7.7 mm but the heel from behind did not change)
     ("toe_clefts", None, 0.002),
     ("wrist_seam", None, 3),
+    # (twenty-third round)
+    ("heel_pole", None, 0),   # (32 mm moved the fan's pole, the outline from behind did not change: see adj_heel_pole)
+    ("toe_round", None, 0),
+    ("toe_clefts_deep", None, 0),   # a second pass of the clefts, deeper
+    ("finger_long", None, 0.15),   # (twenty-third round, the hands: fingers 14% short against the hands sheet)
 ]
 
 
@@ -8419,9 +8424,130 @@ def adj_wrist_seam(M, P, N, ctx, amt):
     return _local_smooth(M, P, w, int(amt))
 
 
+def adj_heel_pole(M, P, N, ctx, amt):
+    """(twenty-third round) The heel's fin, found in wireframe: not a ridge or a smoothing split but a POLE, the one point
+    at the back of the heel's underside where the collapsed sole's long triangles all meet (a fan of 15 to 20), so the
+    heel's outline from behind came to that point. The pole is moved forward under the heel (amt metres along the foot)
+    and onto the sole's level, so its fan lies flat under the heel and the heel's back is drawn by the ring of shorter
+    edges round it."""
+    E = edges_of(M.faces)
+    deg = np.bincount(E.ravel(), minlength=len(P))
+    mv = np.zeros_like(P)
+    parts = ctx["parts"]
+    for sfx in ("_l", "_r"):
+        o, f_, l_ = M.tag["foot_frame" + sfx]
+        f_ = np.array(f_, float)
+        mine = np.array([p.startswith("foot" + sfx) for p in parts])
+        along = (P - np.array(o, float)) @ f_
+        cand = np.where(mine & (P[:, 2] < 0.03) & (along < np.percentile(along[mine], 15)))[0]
+        if not len(cand):
+            continue
+        k = cand[np.argmax(deg[cand])]
+        nb = np.unique(np.concatenate([E[E[:, 0] == k, 1], E[E[:, 1] == k, 0]]))
+        sole = float(P[mine, 2].min())
+        tgt = P[k] + f_ * amt
+        tgt[2] = sole + 0.002
+        mv[k] = tgt - P[k]
+        print("CAPTAIN heel pole%s: point %d, %d edges, moved %.1f mm (its neighbours' heights %.1f..%.1f cm)"
+              % (sfx, k, int(deg[k]), 1000 * float(np.linalg.norm(mv[k])), 100 * P[nb, 2].min(), 100 * P[nb, 2].max()))
+    return mv
+
+
+def adj_toe_round(M, P, N, ctx, amt):
+    """(twenty-third round) From the front the toes read as beads under a lip (the instep's front edge overhangs them):
+    each toe's top raised and rounded about its own line (amt metres at its middle, a dome across it, none at the
+    tip's very end), and the lip behind them, the strip 2.5 to 4.5 cm behind the tips that faces forward, eased down
+    and back (half of amt), so the instep runs down into the toes."""
+    mv = np.zeros_like(P)
+    parts = ctx["parts"]
+    for sfx in ("_l", "_r"):
+        o, f_, l_ = (np.array(v, float) for v in M.tag["foot_frame" + sfx])
+        mine = np.array([p.startswith("foot" + sfx) for p in parts])
+        toes = M.tag["foot_toes" + sfx]
+        up_face = np.clip((N[:, 2] + 0.1) / 0.5, 0, 1)
+        lift = np.zeros(len(P))
+        for t, r in toes:
+            t = np.array(t, float)
+            q = P - t
+            back = -(q @ f_)            # metres behind the tip
+            across = q @ l_
+            hump = smooth01(0.002, 0.012, back) * (1.0 - smooth01(0.022, 0.034, back))
+            lift = np.maximum(lift, hump * _gauss(across, r * 1.05))
+        mv[:, 2] += amt * lift * up_face * mine
+        tip_u = min(float((np.array(t, float) - o) @ f_) for t, _ in toes)
+        u = (P - o) @ f_
+        lip = smooth01(tip_u - 0.05, tip_u - 0.035, u) * (1.0 - smooth01(tip_u - 0.03, tip_u - 0.02, u))
+        fwd = np.clip((N @ f_ + 0.1) / 0.5, 0, 1)
+        k = 0.5 * amt * lip * fwd * mine * (P[:, 2] > 0.012)
+        mv[:, 2] -= k
+        mv -= f_[None, :] * (0.4 * k)[:, None]
+    return mv
+
+
+def adj_finger_long(M, P, N, ctx, amt):
+    """(twenty-third round, the hands) Measured at one scale against the hands sheet's back view, his fingers were about
+    14% short (knuckle to middle tip 11.8 cm against the sheet's 13.7) while the palm was right: each finger's skin
+    beyond its knuckle joint stretched along the finger by `amt` (share) of its distance from that joint, and the
+    finger's own joints (its bones' heads) moved with it, so the bends stay at the creases."""
+    mv = np.zeros_like(P)
+    parts = ctx["parts"]
+    moves = ctx.setdefault("bone_moves", {})
+    for sfx in ("_l", "_r"):
+        for n in ("index", "middle", "ring", "little"):
+            js = [np.array(v, float) for v in ctx["joints"][n + sfx]]
+            j1 = np.array(ctx["bones"]["finger_%s_1%s" % (n, sfx)], float)
+            d = js[-1] - js[0]
+            d /= np.linalg.norm(d)
+            mine = np.array([p == "hand%s_%s" % (sfx, n) for p in parts])
+            s = (P - j1) @ d
+            k = amt * np.maximum(s, 0.0) * smooth01(-0.004, 0.006, s) * mine
+            mv += d[None, :] * k[:, None]
+            for b in (2, 3):
+                name = "finger_%s_%d%s" % (n, b, sfx)
+                h = np.array(ctx["bones"][name], float)
+                moves[name] = h + d * amt * max(float((h - j1) @ d), 0.0)
+    return mv
+
+
 ADJ_FN = {"deltoid_mass": adj_deltoid_mass, "heel_fin_off": adj_heel_fin_off, "toe_clefts": adj_toe_clefts,
-          "wrist_seam": adj_wrist_seam}
+          "wrist_seam": adj_wrist_seam, "heel_pole": adj_heel_pole, "toe_round": adj_toe_round,
+          "toe_clefts_deep": adj_toe_clefts, "finger_long": adj_finger_long}
 ADJUSTMENTS = [(n, f or ADJ_FN[n], a) for n, f, a in ADJUSTMENTS]
+
+
+# (twenty-third round) Paint adjustments, each with its own strength (set by --adj like the others; 0 is off).
+PAINT_ADJ = {n: ADJ_SET.get(n, v) for n, v in (("toe_nails", 0.0), ("finger_nails", 0.0), ("nose_coral", 0.0), ("anchor_size", 0.05))}   # (anchor_size: the hand anchor 5 cm, was 3.4: the sheet draws it bigger)
+NAIL_RGB = (0.86, 0.76, 0.70)
+NAIL_RIM = (0.62, 0.47, 0.42)
+
+
+def paint_nails(rgb, pos, nrm, mine, f_, l_, tips, k, tip_back=0.9, lift=0.55, long=1.15):
+    """A flat pale plate on each digit's top near its tip, crisp-edged (a thin darker rim and the free edge a little
+    lighter), laid over the skin after its blur. tips = [(tip point, nail radius)]; f_ the digit's forward, l_ across."""
+    f_, l_ = np.array(f_, float), np.array(l_, float)
+    up = np.cross(l_, f_)
+    up = up if up[2] >= 0 else -up
+    n_up = (nrm * up).sum(-1)
+    n_f = (nrm * f_).sum(-1)
+    total = 0
+    for t, r in tips:
+        t = np.array(t, float)
+        c = t - f_ * (r * tip_back) + up * (r * lift)
+        dd = pos - c
+        a = (dd * f_).sum(-1) / (r * long)
+        b = (dd * l_).sum(-1) / (r * 0.9)
+        e = a * a + b * b
+        on = mine & (e < 1.0) & ((n_up > 0.2) | (n_f > 0.6)) & ((dd * up).sum(-1) > -r * 0.6)
+        plate = smooth01(1.0, 0.8, e)
+        rim = smooth01(0.72, 0.86, e) * (1.0 - smooth01(0.9, 1.0, e))
+        free = smooth01(0.35, 0.75, a) * plate
+        col = np.array(NAIL_RGB) * (1.0 + 0.08 * free[..., None])
+        col = col * (1 - rim[..., None]) + np.array(NAIL_RIM) * rim[..., None]
+        w = (k * np.maximum(plate, rim))[on][:, None]
+        rgb[on] = rgb[on] * (1 - w) + col[on] * w
+        total += int(on.sum())
+    print("CAPTAIN R23 nails painted: %d texels, strength %.2f" % (total, k))
+    return rgb
 
 
 def adjust(M, bones, joints):
@@ -8439,6 +8565,10 @@ def adjust(M, bones, joints):
         ctx[name] = amt
         M.P = [p for p in P + mv]
         done.append("%s %.4g (%.1f mm most)" % (name, amt, 1000 * float(np.linalg.norm(mv, axis=1).max())))
+    if ctx.get("bone_moves"):
+        for i, (bn, at_, par) in enumerate(bones):
+            if bn in ctx["bone_moves"]:
+                bones[i] = (bn, Vector([float(v) for v in ctx["bone_moves"][bn]]), par)
     print("CAPTAIN adjustments: %s" % ("; ".join(done) or "none"))
 
 
@@ -8514,6 +8644,21 @@ def finish(M, T, joints, sh):
             skin = paint_feet(skin, spos, snrm, shit, mine, (o, f_, l_), M.tag["foot_toes" + sfx], base_c, shin=legs,
                               ring_z=float(body_z(LEG_ROWS[-1])))
             print("CAPTAIN FEET painted%s: %d texels, the shin's tone %s" % (sfx, int(mine.sum()), np.round(base_c, 3)))
+            if PAINT_ADJ["toe_nails"]:
+                # (the tags' tips are the build's, before the fitted foot and the adjustments: each snapped to the
+                # adjusted foot's front-most point within its toe's width, at the toe's middle height)
+                fp = Pp[[i for i, p in enumerate(M.part) if p.startswith("foot" + sfx)]]
+                snapped = []
+                for t, r in M.tag["foot_toes" + sfx]:
+                    t = np.array(t, float)
+                    near_ = fp[np.abs((fp - t) @ np.array(l_, float)) < r * 0.8]
+                    if len(near_):
+                        front_pt = near_[np.argmax(near_ @ np.array(f_, float))]
+                        top = near_[(near_ @ np.array(f_, float)) > (front_pt @ np.array(f_, float)) - 1.0 * r][:, 2].max()
+                        t = front_pt.copy()
+                        t[2] = top - 0.85 * r
+                    snapped.append((t, r))
+                skin = paint_nails(skin, spos, snrm, mine, f_, l_, snapped, PAINT_ADJ["toe_nails"])
     fsat = face.max(-1) - face.min(-1)
     face, fmed = match_tone(face, fhit & (fsat > 0.1) & (face.mean(-1) > 0.35))
     face = clean_under_jaw(M, face_uv, face, fpos, fhit)
@@ -9025,6 +9170,136 @@ def fly_placket(Bx, info):
     print("CAPTAIN fly modelled: %d points, most %.1f mm" % (int((d > 1e-4).sum()), 1000 * float(d.max())))
 
 
+# Twenty-third round: the boxers' named steps, laid on the garment after it is built (the user asked for a base body
+# "in heart-print boxers" with "a tasteful bulge"; seated they read as a diaper). Each has its own amount and is set by
+# --adj like the body's ADJUSTMENTS (0 turns it off).
+BOXER_STEPS = {
+    "box_seat": 0.04,          # metres: two rounded buttocks behind, a soft cleft between, the cloth rounded under them
+    "box_bulge": 0.035,         # metres: a rounded pouch low at the fly (on top of BOXER_LOOSE_BULGE)
+    "box_leg_follow": 0.025,    # metres: the legs' cloth below the crotch drawn to the thigh alone over this reach
+    "box_hip_follow": 1.0,     # share: the trunk's cloth over the outer hips given to its side's thigh, below the hip joints
+    "box_weight_smooth": 0,    # rounds: the cloth's bone weights averaged over its own surface below the band
+}
+
+
+def _box_amt(name):
+    return ADJ_SET.get(name, BOXER_STEPS[name])
+
+
+def boxer_steps(Bx, info):
+    Q = np.array(Bx.P)
+    zc, cy = info["zc"], info["cy"]
+    band = np.zeros(len(Q), bool)
+    for fi, p in enumerate(Bx.fpart):
+        if p == "boxers_band":
+            band[Bx.faces[fi]] = True
+    free = ~band
+    done = []
+    a = _box_amt("box_seat")
+    if a:
+        back = np.clip((Q[:, 1] - cy) / 0.03, 0, 1)
+        mv = np.zeros(len(Q))
+        for s in (1.0, -1.0):
+            mv += _gauss(Q[:, 0] - s * 0.075, 0.06) * _gauss(Q[:, 2] - (zc + 0.05), 0.075)
+        cleft = _gauss(Q[:, 0], 0.014) * _gauss(Q[:, 2] - (zc + 0.05), 0.07)
+        under = (1.0 - smooth01(zc - 0.04, zc + 0.02, Q[:, 2])) * _gauss(np.abs(Q[:, 0]) - 0.075, 0.06)
+        dy = a * (mv - 0.5 * cleft - 0.6 * under) * back * free
+        Q[:, 1] += dy
+        Q[:, 2] += a * 0.5 * under * back * free
+        done.append("box_seat %.3f" % a)
+    a = _box_amt("box_bulge")
+    if a:
+        front = np.clip((cy - Q[:, 1]) / 0.03, 0, 1)
+        g = _gauss(Q[:, 0], 0.04) * _gauss(Q[:, 2] - (zc + 0.005), 0.038)
+        Q[:, 1] -= a * g * front * free
+        Q[:, 2] -= 0.3 * a * g * front * free
+        done.append("box_bulge %.3f" % a)
+    Bx.P = [q for q in Q]
+    print("CAPTAIN R23 boxer steps: %s" % ("; ".join(done) or "none"))
+
+
+def boxer_leg_follow(Bx, w, zc):
+    """box_leg_follow (metres): each leg's cloth below the crotch drawn to its thigh's bone alone, over this reach down
+    from the crotch, so the leg opening keeps round the thigh when it lifts (seated, it lagged with the hips' share)."""
+    a = _box_amt("box_leg_follow")
+    if not a:
+        return w
+    Q = np.array(Bx.P)
+    z0 = zc - 0.035
+    side = {}
+    for fi, p in enumerate(Bx.fpart):
+        if p.startswith("boxers_leg") or p.startswith("boxers_hem"):
+            for v in Bx.faces[fi]:
+                side[v] = p[-2:]
+    out = list(w)
+    n = 0
+    for v, sfx in side.items():
+        t = float(smooth01(0.0, a, z0 - Q[v][2]))
+        if t <= 0:
+            continue
+        d = {b: x * (1 - t) for b, x in w[v].items()}
+        d["thigh" + sfx] = d.get("thigh" + sfx, 0.0) + t
+        tot = sum(d.values())
+        out[v] = {b: x / tot for b, x in sorted(d.items(), key=lambda kv: -kv[1])[:4]}
+        n += 1
+    print("CAPTAIN R23 boxer legs follow the thighs: %d points, reach %.3f" % (n, a))
+    return out
+
+
+def boxer_hip_follow(Bx, w, zc):
+    """box_hip_follow (share): the trunk's cloth below the hip joints' height given that share of its own side's thigh
+    bone, growing down to the crotch, none at the middle line (front and back), so seated the cloth over the outer hip
+    goes with the thigh instead of hanging below it as a flap."""
+    a = _box_amt("box_hip_follow")
+    if not a:
+        return w
+    Q = np.array(Bx.P)
+    out = list(w)
+    n = 0
+    for v, d0 in enumerate(w):
+        if any(b.startswith("thigh") for b in d0) and max(d0.values()) > 0.6 and max(d0, key=d0.get).startswith("thigh"):
+            continue
+        q = Q[v]
+        t = a * float(smooth01(0.0, 0.11, zc + 0.08 - q[2])) * float(smooth01(0.015, 0.06, abs(q[0])))
+        if t <= 0.01:
+            continue
+        sfx = "_l" if q[0] > 0 else "_r"
+        d = {b: x * (1 - t) for b, x in d0.items()}
+        d["thigh" + sfx] = d.get("thigh" + sfx, 0.0) + t
+        tot = sum(d.values())
+        out[v] = {b: x / tot for b, x in sorted(d.items(), key=lambda kv: -kv[1])[:4]}
+        n += 1
+    print("CAPTAIN R23 boxer hips follow the thighs: %d points, share %.2f" % (n, a))
+    return out
+
+
+def boxer_weight_smooth(Bx, w):
+    k = int(_box_amt("box_weight_smooth"))
+    if not k:
+        return w
+    names = sorted({b for d in w for b in d})
+    W = np.array([[d.get(b, 0.0) for b in names] for d in w])
+    band = np.zeros(len(w), bool)
+    for fi, p in enumerate(Bx.fpart):
+        if p == "boxers_band":
+            band[Bx.faces[fi]] = True
+    E = edges_of(Bx.faces)
+    deg = np.bincount(E.ravel(), minlength=len(w)).astype(float)
+    for _ in range(k):
+        acc = np.zeros_like(W)
+        np.add.at(acc, E[:, 0], W[E[:, 1]])
+        np.add.at(acc, E[:, 1], W[E[:, 0]])
+        avg = acc / np.maximum(deg, 1)[:, None]
+        W = np.where((band | (deg == 0))[:, None], W, 0.5 * W + 0.5 * avg)
+    out = []
+    for row in W:
+        top = sorted(((v, names[i]) for i, v in enumerate(row) if v > 1e-4), reverse=True)[:4]
+        tot = sum(v for v, _ in top)
+        out.append({b: v / tot for v, b in top})
+    print("CAPTAIN R23 boxer weights smoothed: %d rounds" % k)
+    return out
+
+
 def build_boxers(M, T, sh, weights, under, armature):
     if GRID_BOXERS:
         return build_boxers_grid(M, T, sh, weights, under, armature)
@@ -9049,6 +9324,7 @@ def build_boxers(M, T, sh, weights, under, armature):
                                          BOXER_LOOSE, bulge=BOXER_LOOSE_BULGE, lower_rings=lower)
     loose_folds(Bx, info, P, Tl)
     fly_placket(Bx, info)
+    boxer_steps(Bx, info)
     Q = np.array(Bx.P)
     flipped = 0
     for fi, f in enumerate(Bx.faces):
@@ -9093,6 +9369,9 @@ def build_boxers(M, T, sh, weights, under, armature):
         top4 = sorted(acc.items(), key=lambda kv: -kv[1])[:4]
         tot = sum(v for _, v in top4)
         w.append({b: v / tot for b, v in top4})
+    w = boxer_leg_follow(Bx, w, info["zc"])
+    w = boxer_hip_follow(Bx, w, info["zc"])
+    w = boxer_weight_smooth(Bx, w)
     ob = mesh_object("captain_boxers", Bx.P, Bx.faces, armature, w)
     mat = textured_material("captain_boxers", path)
     mat.use_backface_culling = True
@@ -10156,7 +10435,7 @@ def hand_anchor(M, face_uv, face_island, pictures):
     au = (uv_up - uv) / 0.01                # atlas units a metre, toward the wrist
     per_m = float(np.linalg.norm(au))
     ph, pw = rgba.shape[:2]
-    width_m = HAND_ANCHOR_SIZE * pw / ph
+    width_m = (PAINT_ADJ["anchor_size"] or HAND_ANCHOR_SIZE) * pw / ph
     turn = math.degrees(math.atan2(au[1], au[0])) - 90.0
     print("CAPTAIN hand anchor: on %s at z %.3f (wrist %.3f), %.1f cm wide" % (isl[0], cen[2], wz, 100 * width_m))
     return {"picture": "captain_hand_anchor", "part": isl[0], "x": round(float((uv[0] - a0) / (w * sc)), 4),
