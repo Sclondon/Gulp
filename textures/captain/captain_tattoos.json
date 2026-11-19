@@ -167,12 +167,13 @@
   {
    "picture": "captain_hand_anchor",
    "part": "handback_l",
-   "x": 0.613,
-   "y": 0.3713,
-   "size": 0.0516,
-   "turn": -208.7,
+   "x": 0.4457,
+   "y": 0.1791,
+   "size": 0.0562,
+   "turn": -11.2,
    "mirror": false,
-   "strength": 1.0
+   "strength": 1.0,
+   "aspect": 1.667
   }
  ]
 }

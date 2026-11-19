@@ -8594,7 +8594,7 @@ ADJUSTMENTS = [(n, f or ADJ_FN[n], a) for n, f, a in ADJUSTMENTS]
 
 
 # (twenty-third round) Paint adjustments, each with its own strength (set by --adj like the others; 0 is off).
-PAINT_ADJ = {n: ADJ_SET.get(n, v) for n, v in (("toe_nails", 0.0), ("finger_nails", 0.0), ("nose_coral", 0.0), ("anchor_size", 0.05))}   # (anchor_size: the hand anchor 5 cm, was 3.4: the sheet draws it bigger)
+PAINT_ADJ = {n: ADJ_SET.get(n, v) for n, v in (("toe_nails", 0.0), ("finger_nails", 0.0), ("nose_coral", 0.0), ("anchor_size", 0.046))}   # (anchor_size: the hand anchor 5 cm, was 3.4: the sheet draws it bigger)
 NAIL_RGB = (0.86, 0.76, 0.70)
 NAIL_RIM = (0.62, 0.47, 0.42)
 
@@ -8628,6 +8628,309 @@ def paint_nails(rgb, pos, nrm, mine, f_, l_, tips, k, tip_back=0.9, lift=0.55, l
     return rgb
 
 
+# (twenty-fifth round, the hands' paint) Why the hands read dark and muddy: their texels were the arm's tone exactly
+# (median (0.48, 0.41, 0.36) after SKIN_GAIN, the forearm's the same) and greyer than the hands sheet's (its back
+# (0.60, 0.49, 0.435), saturation 0.16 against 0.12); on that sat the sheet's own painted light and shade, projected and
+# blurred into soft dark blotches between the fingers, and the body's hair strokes as dark blue-grey dashes (they read as
+# veins); the raking light of the --hands pictures darkened all of it by a further third. So the hand is repainted by
+# rule over its own texels: a smooth tone (warm tan on the back, ruddy on the palm) with the sheet's fine detail at a
+# third of its strength, then knuckle wrinkles, nails, palm creases, pads and fine pale hair, fading into the forearm's
+# paint over the first 3 cm past the wrist. Colours are before SKIN_GAIN.
+HAND_PAINT = "--old-hand-paint" not in ARGS
+HAND_BACK_RGB = (0.70, 0.555, 0.45)
+HAND_PALM_RGB = (0.74, 0.54, 0.47)
+HAND_DETAIL = 0.33
+HAND_NAIL = (0.90, 0.76, 0.70)       # (the sheet's big clean pale nails)
+HAND_NAIL_EDGE = (0.97, 0.91, 0.84)
+HAND_NAIL_LONG = 0.02                # metres back from the tip (the last bone droops, so seen from above it reads shorter)
+HAND_NAIL_RIM = (0.55, 0.40, 0.35)
+HAND_LINE = (0.47, 0.34, 0.29)       # creases and wrinkles
+
+
+def _hand_seg(pos, a, b):
+    ab = b - a
+    t = np.clip(((pos - a) @ ab) / max(float(ab @ ab), 1e-12), 0, 1)
+    return np.linalg.norm(pos - (a + t[..., None] * ab), axis=-1), t
+
+
+def hand_repaint(M, face_uv, skin, toned, hit, bones, joints, seed=11):
+    """The hands' skin repainted by rule (see HAND_PAINT above)."""
+    P = np.array(M.P)
+    pos, nrm, _, fid = texel_geometry(M, face_uv, "skin", P, normals_of(P, M.tris()))
+    parts = np.array(list(M.fpart) + ["none"])[fid].astype(str)
+    rng = np.random.default_rng(seed)
+    out = skin.copy()
+    B = {n: np.array(v, float) for n, v in bones.items()}
+    unit = lambda v: v / max(float(np.linalg.norm(v)), 1e-12)
+    perp = lambda v, n: unit(v - n * float(v @ n))
+    for sfx in ("_l", "_r"):
+        mine = hit & np.char.startswith(parts, "hand" + sfx)
+        if not mine.any():
+            continue
+        w = B["hand" + sfx]
+        k = {n: B["finger_%s_1%s" % (n, sfx)] for n in ("index", "middle", "ring", "little")}
+        along = unit((k["index"] + k["little"]) / 2 - w)
+        across = perp(k["little"] - k["index"], along)
+        back = perp(np.array(joints["hand_frame" + sfx][0], float), along)
+        back = perp(back - across * float(back @ across), along)
+        nb = (nrm * back).sum(-1)
+        t = (pos - w) @ along
+        tk = float(np.mean([(v - w) @ along for v in k.values()]))
+        # 1. the tone: smooth (masked blur of the toned paint, its hair strokes not yet laid on), the colour set by
+        # which way the skin faces, and the sheet's fine detail (the paint less its blur) at a third
+        m = mine.astype(float)[..., None]
+        soft = box_blur(toned * m, 5) / np.maximum(box_blur(m, 5), 1e-6)
+        detail = np.clip(toned - soft, -0.08, 0.08)
+        side_k = smooth01(-0.65, -0.2, nb)[..., None]   # (the sides of the hand tan, as the sheet: only the palm ruddy)
+        base = np.array(HAND_PALM_RGB) * (1 - side_k) + np.array(HAND_BACK_RGB) * side_k
+        lumv = soft.mean(-1, keepdims=True) / max(float(np.median(soft[mine].mean(-1))), 1e-6)
+        col = base * np.clip(1 + 0.35 * (lumv - 1), 0.85, 1.12) + HAND_DETAIL * detail
+        P_ = pos
+
+        def lay(mask, c, a):
+            """col toward colour c by a (0..1 per texel) where mask"""
+            a = np.clip(a, 0, 1)[..., None] * mask[..., None]
+            return col * (1 - a) + np.array(c) * a
+        # 2. the fingers: knuckle wrinkles over the middle and end joints (back), creases under them (palm), a soft
+        # pink over each knuckle, the nail on the last bone's back
+        digits = [(n, [B["finger_%s_%d%s" % (n, i, sfx)] for i in (1, 2, 3)], "hand%s_%s" % (sfx, n)) for n in ("index", "middle", "ring", "little")]
+        digits.append(("thumb", [B["thumb_%d%s" % (i, sfx)] for i in (1, 2, 3)], "hand%s_thumb" % sfx))
+        nails = 0
+        for n, js, part in digits:
+            # (each digit's frame from its own skin, as _finger_frame does: the bones sit off the fingers' middles,
+            # some above the back, so a radius from a bone pointed the wrong way; the bones give only where along the
+            # digit each joint is)
+            dmask = mine & (parts == part)
+            vids = np.array([i for i, p in enumerate(M.part) if p == part])
+            if not dmask.any() or not len(vids):
+                continue
+            Pv = P[vids]
+            d3 = unit(js[2] - js[1])
+            tip = Pv[np.argmax((Pv - js[2]) @ d3)]
+            d = unit(tip - js[0])
+            if n == "thumb":
+                fb = perp(back * 0.6 - across * 0.8, d)
+            else:
+                fb = perp(back, d)
+            sv = (Pv - js[0]) @ d
+            L = float(sv.max())
+            s = (pos - js[0]) @ d
+            idx = np.where(dmask)
+            Wv = _gauss(s[idx][:, None] - sv[None, :], 0.004)
+            cen = (Wv @ Pv) / np.maximum(Wv.sum(1), 1e-9)[:, None]
+            rad = np.zeros(pos.shape)
+            rad[idx] = pos[idx] - cen
+            rad -= (rad @ d)[..., None] * d
+            fac = (rad @ fb) / np.maximum(np.linalg.norm(rad, axis=-1), 1e-6)
+            # the nail: on the back of the last 1.5 cm, its cuticle curved back at the sides, its free edge lighter
+            nl = HAND_NAIL_LONG * (0.8 if n == "little" else 1.0)
+            u = np.clip(np.arccos(np.clip(fac, -1, 1)) / math.radians(58.0), 0, 2)
+            sb = L - nl + 0.004 * u * u
+            on = dmask & (u < 1.0) & (s > sb)
+            edge = np.clip(smooth01(0.75, 1.0, u) + smooth01(sb + 0.0016, sb, s), 0, 1)
+            free = smooth01(L - 0.0045, L - 0.0025, s)
+            ncol = np.array(HAND_NAIL) * (1 - free[..., None]) + np.array(HAND_NAIL_EDGE) * free[..., None]
+            ncol = ncol * (1 - edge[..., None] * 0.55) + np.array(HAND_NAIL_RIM) * (edge[..., None] * 0.55)
+            a = on[..., None] * 0.92
+            if "--nail-debug" in ARGS:
+                ncol = np.broadcast_to(np.array((0.0, 1.0, 0.0)), ncol.shape)
+                a = on[..., None] * 1.0
+            col = col * (1 - a) + ncol * a
+            nails += int(on.sum())
+            if "--band-debug" in ARGS:
+                col[dmask & (fac > 0.5)] = (1, 0, 0)
+                col[dmask & (fac < -0.5)] = (0, 0, 1)
+            # the joints: a pink flush on the back over each, three arcs over the middle and end joints, creases
+            # under them on the palm side
+            for ji, j in enumerate(js):
+                if n == "thumb" and ji == 0:
+                    continue
+                sj = s - float((j - js[0]) @ d)
+                if ji == 0 and n != "thumb":
+                    # (the knuckle: from the palm part as well; its flush only, and a crease where the finger meets
+                    # the palm)
+                    hand_ = mine & (parts == "hand" + sfx)
+                    q = pos - j
+                    q -= (q @ d)[..., None] * d
+                    pink = _gauss(sj + 0.004, 0.01) * _gauss(np.linalg.norm(q - fb * (q @ fb)[..., None], axis=-1), 0.009)
+                    col = lay((dmask | hand_) & (nb > 0.3), (0.80, 0.52, 0.46), 0.6 * pink)
+                    line = _gauss(sj - 0.006, 0.0007)
+                    col = lay(dmask & (fac < -0.45), HAND_LINE, 0.6 * line * smooth01(-0.45, -0.8, fac))
+                    continue
+                col = lay(dmask & (fac > 0.2), (0.80, 0.52, 0.46), 0.4 * _gauss(sj, 0.006) * smooth01(0.2, 0.6, fac))
+                curve = 0.0022 * (1 - np.clip(np.abs(fac), 0, 1))
+                for off_s, depth in ((-0.0028, 0.5), (0.0, 0.75), (0.0028, 0.5)):
+                    line = _gauss(sj - curve - off_s, 0.0006)
+                    col = lay(dmask & (fac > 0.5) & (np.abs(sj) < 0.006), HAND_LINE, depth * 0.6 * line * smooth01(0.5, 0.85, fac))
+                line = _gauss(sj, 0.0006)
+                col = lay(dmask & (fac < -0.45), HAND_LINE, 0.6 * line * smooth01(-0.45, -0.8, fac))
+            # the fingertip's pad on the palm side: paler
+            col = lay(dmask & (s > L - 0.02), (0.80, 0.62, 0.54), 0.35 * smooth01(-0.2, -0.6, fac))
+        # 3. the palm: ruddy, pale pads at the finger roots, three creases; in the palm's own map (u across from the
+        # index side, v along from the wrist to the knuckles)
+        ki, kl = k["index"], k["little"]
+        u = ((pos - ki) @ across) / max(float((kl - ki) @ across), 1e-6)
+        v = t / max(tk, 1e-6)
+        palm = mine & (parts == "hand" + sfx) & (nb < -0.2)
+        pk = smooth01(-0.2, -0.5, nb)
+        col = lay(palm, (0.80, 0.48, 0.43), 0.28 * pk * np.clip(_gauss(np.hypot((u - 0.15) / 0.45, (v - 0.35) / 0.5), 1.0) + 0.8 * _gauss(np.hypot((u - 0.55) / 0.45, (v - 0.55) / 0.4), 1.0), 0, 1))
+        col = lay(palm, (0.82, 0.66, 0.56), 0.5 * pk * _gauss((v - 0.93) / 0.07, 1.0))
+        col = lay(palm, (0.80, 0.64, 0.55), 0.35 * pk * _gauss(np.hypot((u - 0.95) / 0.2, (v - 0.4) / 0.35), 1.0))
+        W_ = float((kl - ki) @ across)
+        def pt(uu, vv):
+            return ki + across * (uu * W_) + along * (vv * tk) - back * 0.03
+        creases = [
+            [(1.08, 0.78), (0.8, 0.8), (0.55, 0.84), (0.32, 0.9)],                # the heart line, from the little side
+            [(-0.08, 0.72), (0.2, 0.66), (0.5, 0.6), (0.78, 0.55)],               # the head line, from the index side
+            [(-0.06, 0.70), (0.08, 0.5), (0.2, 0.28), (0.3, 0.05)],               # the life line round the thenar
+            [(0.55, 0.12), (0.52, 0.4), (0.5, 0.6)],                               # the fate line, faint
+        ]
+        for ci, line in enumerate(creases):
+            dmin = np.full(pos.shape[:2], 9.0)
+            for a_, b_ in zip(line, line[1:]):
+                a3, b3 = pt(*a_), pt(*b_)
+                # (measured in the palm's plane: the depth along `back` left out)
+                q = pos - (pos @ back)[..., None] * back
+                dd, _ = _hand_seg(q, a3 - back * float(a3 @ back), b3 - back * float(b3 @ back))
+                dmin = np.minimum(dmin, dd)
+            strength = 0.4 if ci == 3 else 0.9
+            col = lay(palm, (0.40, 0.25, 0.23), strength * pk * _gauss(dmin, 0.0013))
+            col = lay(palm, (0.86, 0.66, 0.58), 0.25 * pk * _gauss(dmin - 0.0018, 0.0008))
+        # 4. fine pale hair on the back of the hand and the first bones of the fingers
+        backz = mine & (nb > 0.3)
+        hp = pos[backz]
+        if len(hp):
+            hair = np.zeros(pos.shape[:2])
+            seeds = rng.uniform(0, 1, (420, 2))
+            for su, sv in seeds:
+                uu = -0.05 + 1.1 * su
+                vv = 0.2 + 0.95 * sv
+                c0 = ki + across * (uu * W_) + along * (vv * tk)
+                # onto the skin: the nearest back texel's place
+                j = int(np.argmin(np.linalg.norm(hp - c0, axis=1)))
+                c0 = hp[j]
+                dirv = unit(along * 0.85 + across * (0.45 + 0.2 * rng.standard_normal()))
+                ln = rng.uniform(0.003, 0.0055)
+                dd, tt = _hand_seg(pos, c0, c0 + dirv * ln)
+                hair = np.maximum(hair, _gauss(dd, 0.00045) * (0.6 + 0.4 * tt) * (np.linalg.norm(pos - c0, axis=-1) < 0.01))
+            fade = smooth01(0.15, 0.3, v) * (1 - smooth01(1.25, 1.35, v))
+            col = lay(backz, (0.86, 0.78, 0.68), 0.7 * hair * fade)
+        # into the forearm's paint over the first 3 cm past the wrist
+        kf = smooth01(0.0, 0.03, t)[..., None]
+        blend = np.where(mine[..., None], np.clip(col, 0, 1) * kf + skin * (1 - kf), out)
+        out = np.where(mine[..., None], blend, out)
+        print("CAPTAIN hand%s repainted by rule: %d texels, nails %d" % (sfx, int(mine.sum()), nails))
+    return out
+
+
+# (twenty-fifth round, the fist) The fingers had a ring of points only every 1.5 to 2 cm, so a bent joint folded over
+# one or two long faces and the fist's fingers came out as stubs with notches between them. One local subdivision: a
+# ring cut in either side of each joint (FINGER_RING_CUTS metres from it, along the finger), each new point on its edge
+# with its place, its UVs and its bone weights carried in proportion; faces of the palm beside a cut take the new
+# point too. Named and switchable (--adj finger_rings=0).
+FINGER_RING_CUTS = (-0.005, 0.005)
+
+
+def finger_rings(M, face_uv, weights, bones, joints):
+    on_ = ADJ_SET.get("finger_rings", 0)   # (off: two rings a joint cost 528 triangles a hand and the fist did not change visibly)
+    if not on_:
+        return 0
+    B = {n: np.array(p, float) for n, p, _ in bones}
+    P = M.P
+    n_faces0 = len(M.faces)
+    added_pts = 0
+    for sfx in ("_l", "_r"):
+        for n in ("index", "middle", "ring", "little"):
+            part = "hand%s_%s" % (sfx, n)
+            js = [B["finger_%s_%d%s" % (n, i, sfx)] for i in (1, 2, 3)]
+            vids = [i for i, p in enumerate(M.part) if p == part]
+            if not vids:
+                continue
+            Pv = np.array([P[i] for i in vids])
+            tip = Pv[np.argmax((Pv - js[2]) @ (js[2] - js[1]))]
+            d = tip - js[0]
+            d /= np.linalg.norm(d)
+            for j in js:
+                for off in FINGER_RING_CUTS:
+                    sc = float(j @ d) + off
+                    edge_pt = {}
+                    # the finger's edges that cross the cut
+                    for fi, f in enumerate(M.faces):
+                        if M.fpart[fi] != part:
+                            continue
+                        for k in range(len(f)):
+                            a, b = f[k], f[(k + 1) % len(f)]
+                            if M.part[a] != part or M.part[b] != part:
+                                continue
+                            sa, sb_ = float(np.asarray(P[a]) @ d) - sc, float(np.asarray(P[b]) @ d) - sc
+                            if sa * sb_ < 0 and abs(sa) > 1e-4 and abs(sb_) > 1e-4:
+                                key = (min(a, b), max(a, b))
+                                if key not in edge_pt:
+                                    t = sa / (sa - sb_)
+                                    pa, pb = np.asarray(P[a], float), np.asarray(P[b], float)
+                                    v = M.add(pa + (pb - pa) * t, part)
+                                    wa, wb = weights[a], weights[b]
+                                    w = {}
+                                    for kk in set(wa) | set(wb):
+                                        w[kk] = wa.get(kk, 0.0) * (1 - t) + wb.get(kk, 0.0) * t
+                                    w = dict(sorted(w.items(), key=lambda kv: -kv[1])[:4])
+                                    tw = sum(w.values()) or 1.0
+                                    weights.append({kk: x / tw for kk, x in w.items()})
+                                    edge_pt[key] = (v, a, t)
+                    if not edge_pt:
+                        continue
+                    added_pts += len(edge_pt)
+                    # every face holding a cut edge takes its point; one with two is split in two along them
+                    for fi in range(len(M.faces)):
+                        f = M.faces[fi]
+                        hits = []
+                        for k in range(len(f)):
+                            a, b = f[k], f[(k + 1) % len(f)]
+                            key = (min(a, b), max(a, b))
+                            if key in edge_pt:
+                                hits.append(k)
+                        if not hits:
+                            continue
+                        uvs = face_uv.get(fi)
+                        poly, puv, newi = [], [], []
+                        for k in range(len(f)):
+                            a, b = f[k], f[(k + 1) % len(f)]
+                            poly.append(a)
+                            if uvs:
+                                puv.append(np.array(uvs[1][k], float))
+                            if k in hits:
+                                v, a0, t = edge_pt[(min(a, b), max(a, b))]
+                                tt = t if a == a0 else 1 - t
+                                newi.append(len(poly))
+                                poly.append(v)
+                                if uvs:
+                                    ua, ub = np.array(uvs[1][k], float), np.array(uvs[1][(k + 1) % len(f)], float)
+                                    puv.append(ua + (ub - ua) * tt)
+                        if len(newi) == 2:
+                            i0, i1 = newi
+                            A = list(range(i0, i1 + 1))
+                            C = list(range(i1, len(poly))) + list(range(0, i0 + 1))
+                            M.faces[fi] = [poly[i] for i in A]
+                            if uvs:
+                                face_uv[fi] = (uvs[0], [tuple(puv[i]) for i in A])
+                            M.faces.append([poly[i] for i in C])
+                            M.fpart.append(M.fpart[fi])
+                            nf = len(M.faces) - 1
+                            if uvs:
+                                face_uv[nf] = (uvs[0], [tuple(puv[i]) for i in C])
+                            if fi in M.cell:
+                                M.cell[nf] = M.cell[fi]
+                            if fi in M.want:
+                                M.want[nf] = M.want[fi]
+                        else:
+                            M.faces[fi] = poly
+                            if uvs:
+                                face_uv[fi] = (uvs[0], [tuple(q) for q in puv])
+    tris_new = sum(len(f) - 2 for f in M.faces[n_faces0:])
+    print("CAPTAIN finger rings: %d points, %d faces added (all faces now %d triangles)" % (added_pts, len(M.faces) - n_faces0, sum(len(f) - 2 for f in M.faces)))
+    return added_pts
+
+
 def adjust(M, bones, joints):
     ctx = {"parts": list(M.part), "joints": joints, "bones": {n: p for n, p, _ in bones}}
     done = []
@@ -8647,6 +8950,8 @@ def adjust(M, bones, joints):
         for i, (bn, at_, par) in enumerate(bones):
             if bn in ctx["bone_moves"]:
                 bones[i] = (bn, Vector([float(v) for v in ctx["bone_moves"][bn]]), par)
+    M.tag["bones_now"] = {bn: np.array(at_, float) for bn, at_, _ in bones}
+    M.tag["hand_frame_l"] = joints["hand_frame_l"]
     print("CAPTAIN adjustments: %s" % ("; ".join(done) or "none"))
 
 
@@ -8679,6 +8984,7 @@ def finish(M, T, joints, sh):
     weights = neck_blend(M, weights)
     frozen_base(M)
     adjust(M, bones, joints)
+    finger_rings(M, face_uv, weights, bones, joints)
     print("CAPTAIN island shares: %s" % ", ".join("%s %.0f%%" % (n, 100 * w * h * sc * sc) for n, (pic, u0, v0, sc, (w, h)) in sorted(placed.items())))
     os.makedirs(TEX, exist_ok=True)
     for picture in ATLAS:
@@ -8705,6 +9011,7 @@ def finish(M, T, joints, sh):
     # (fourteenth round: one warm light tan for body and head, the body's painted-in shadow divided out)
     raw_skin = skin.copy()
     skin = even_tone(skin, shit)
+    toned_skin = skin.copy()
     skin = body_hair(skin, raw_skin, shit, spos)
     skin = hair_strokes(skin, shit, spos, joints)
     skin = red_accents(M, skin, shit, spos, joints)
@@ -8743,6 +9050,10 @@ def finish(M, T, joints, sh):
     face = bare_scalp(M, face, fpos, fhit)
     face = red_accents(M, face, fhit, fpos, joints, ears=True)
     skin = heal_seams(M, face_uv, "skin", skin, spos, shit)
+    # (twenty-fifth round: the hands repainted after the seams are healed: healing reaches 2 cm in 1.2 cm cubes, so on
+    # a finger it averaged nails, wrinkles, back and palm into one smear; the rules are the same on both sides of a seam)
+    if HAND_PAINT:
+        skin = hand_repaint(M, face_uv, skin, toned_skin, shit, {n: p for n, p, _ in bones}, joints)
     face = heal_seams(M, face_uv, "face", face, fpos, fhit)
     # (the texels round the islands taken again from the new edges: they held the old tone, a light line at seams)
     skin = fill_out(skin, shit, 64)
@@ -10449,6 +10760,9 @@ def lift_tattoo(sh, c0, c1, r0, r1, pix_all=None, mask_all=None):
 HAND_ANCHOR_BOX = ((418, 580), (440, 572))
 HAND_ANCHOR_AT = 0.55              # share of the way from the wrist's ring down to the knuckles (twenty-fourth round: 0.3 moved it across onto the knuckles, not toward the wrist: left at 0.55)
 HAND_ANCHOR_SIZE = 0.034           # metres tall
+HAND_ANCHOR_BACK = 0.5            # (twenty-fifth round) share of the way from the knuckles back to the wrist (0: the old way, by height)
+HAND_ANCHOR_LONG = 1.42            # (twenty-fifth round) the design drawn this much longer than its picture: the sheet's anchor is 4.9 cm long, 3.5 across
+HAND_ANCHOR_TURN = 180.0             # (twenty-fifth round) degrees added to its turn
 
 
 def hand_anchor(M, face_uv, face_island, pictures):
@@ -10474,6 +10788,18 @@ def hand_anchor(M, face_uv, face_island, pictures):
     tface = tri_faces(M)
     out = np.array((0.85, -0.25, 0.0))
     out /= np.linalg.norm(out)
+    # (twenty-fifth round: the place found in the hand's own frame from its bones, not by height: the sheet's back view
+    # has it between the index and middle fingers' tendons, nearer the index, HAND_ANCHOR_BACK of the way from the
+    # knuckles to the wrist. By height alone the best-facing face at that height was taken, which ran across the hand)
+    Bn = M.tag.get("bones_now")
+    target = None
+    if Bn and HAND_ANCHOR_BACK:
+        bw = np.array(Bn["hand_l"], float)
+        ki, km = np.array(Bn["finger_index_1_l"], float), np.array(Bn["finger_middle_1_l"], float)
+        kmid = ki * 0.62 + km * 0.38
+        target = kmid + (bw - kmid) * HAND_ANCHOR_BACK
+        out = np.array(M.tag["hand_frame_l"][0], float)
+        out /= np.linalg.norm(out)
     best = None
     for ti, t in enumerate(tris):
         fi = tface[ti]
@@ -10483,7 +10809,13 @@ def hand_anchor(M, face_uv, face_island, pictures):
         n = np.cross(b - a, c - a)
         n /= max(np.linalg.norm(n), 1e-12)
         cen = (a + b + c) / 3.0
-        score = abs(cen[2] - tz) * 20.0 - float(np.dot(n, out))
+        if target is not None:
+            if float(np.dot(n, out)) < 0.5:
+                continue
+            q = cen - target
+            score = float(np.linalg.norm(q - out * float(q @ out)))
+        else:
+            score = abs(cen[2] - tz) * 20.0 - float(np.dot(n, out))
         if best is None or score < best[0]:
             best = (score, ti, fi, cen)
     if best is None:
@@ -10503,6 +10835,10 @@ def hand_anchor(M, face_uv, face_island, pictures):
         return U[0] + s * (U[1] - U[0]) + w * (U[2] - U[0])
     uv = to_uv(cen)
     upd = np.array((0.0, 0.0, 1.0))         # toward the wrist
+    if target is not None:
+        upd = bw - kmid
+        upd = upd - out * float(upd @ out)
+        upd /= np.linalg.norm(upd)
     uv_up = to_uv(cen + upd * 0.01)
     isl = [n_ for n_, (p_, a0, b0, sc, w, h) in face_island.items()
            if p_ == pic and a0 - 1e-6 <= uv[0] <= a0 + w * sc + 1e-6 and b0 - 1e-6 <= uv[1] <= b0 + h * sc + 1e-6]
@@ -10512,13 +10848,21 @@ def hand_anchor(M, face_uv, face_island, pictures):
     _, a0, b0, sc, w, h = face_island[isl[0]]
     au = (uv_up - uv) / 0.01                # atlas units a metre, toward the wrist
     per_m = float(np.linalg.norm(au))
+    aspect = 1.0
+    if target is not None:
+        # (twenty-fifth round: the back of the hand's island is stretched unevenly (laid out from the sheet's flat
+        # hand): measured across as well as along, the picture sized by the across scale and its height by the along)
+        sd = np.cross(out, upd)
+        per_x = float(np.linalg.norm((to_uv(cen + sd * 0.01) - uv) / 0.01))
+        aspect = per_m / max(per_x, 1e-9) * HAND_ANCHOR_LONG
+        per_m = per_x
     ph, pw = rgba.shape[:2]
     width_m = (PAINT_ADJ["anchor_size"] or HAND_ANCHOR_SIZE) * pw / ph
-    turn = math.degrees(math.atan2(au[1], au[0])) - 90.0
-    print("CAPTAIN hand anchor: on %s at z %.3f (wrist %.3f), %.1f cm wide" % (isl[0], cen[2], wz, 100 * width_m))
+    turn = math.degrees(math.atan2(au[1], au[0])) - 90.0 + HAND_ANCHOR_TURN
+    print("CAPTAIN hand anchor: on %s at z %.3f (wrist %.3f), %.1f cm wide, turn %.0f, aspect %.2f" % (isl[0], cen[2], wz, 100 * width_m, turn, aspect))
     return {"picture": "captain_hand_anchor", "part": isl[0], "x": round(float((uv[0] - a0) / (w * sc)), 4),
             "y": round(float((uv[1] - b0) / (h * sc)), 4), "size": round(float(width_m * per_m / sc), 4),
-            "turn": round(turn, 1), "mirror": False, "strength": 1.0}
+            "turn": round(turn, 1), "mirror": False, "strength": 1.0, "aspect": round(aspect, 3)}
 
 
 def tri_faces(M):
@@ -10801,7 +11145,7 @@ def lay_tattoos(M, face_uv, placed, sh):
             continue
         ph, pw = img.shape[:2]
         wd = row["size"] * sc * size
-        ht = wd * ph / pw
+        ht = wd * ph / pw * row.get("aspect", 1.0)   # (twenty-fifth round: "aspect", the island's own stretch along the picture's height undone)
         cx = (a0 + row["x"] * w * sc) * size
         cy = (b0 + row["y"] * h * sc) * size
         reach = int(max(wd, ht) * 0.75) + 2

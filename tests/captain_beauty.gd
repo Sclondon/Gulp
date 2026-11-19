@@ -145,7 +145,8 @@ const HAND_FIST := [["curl3", "_l", [[85, 95, 55], [85, 95, 55], [88, 95, 55], [
 	["thumbrot", "_l", "thumb_2", "palm", -24.9], ["thumbrot", "_l", "thumb_2", "across", -15.3], ["thumbrot", "_l", "thumb_2", "along", 26.7],
 	["thumbrot", "_l", "thumb_3", "palm", -50.5], ["thumbrot", "_l", "thumb_3", "across", -13.3], ["thumbrot", "_l", "thumb_3", "along", 47.4],
 	# (the fingers drawn together at the knuckles, so the curled fingers close side by side, not as separate hooks)
-	["thumbrot", "_l", "finger_index_1", "palm", -7.0], ["thumbrot", "_l", "finger_ring_1", "palm", 5.0], ["thumbrot", "_l", "finger_little_1", "palm", 10.0]]
+	# (twenty-fifth round: drawn together harder, so neighbouring fingers touch along their length: was -7, 5, 10)
+	["thumbrot", "_l", "finger_index_1", "palm", -11.0], ["thumbrot", "_l", "finger_middle_1", "palm", -2.0], ["thumbrot", "_l", "finger_ring_1", "palm", 7.0], ["thumbrot", "_l", "finger_little_1", "palm", 15.0]]
 ## The relaxed hand of the sheet's back, palm and thumb views: the thumb turned out from under the palm about the
 ## hand's length (tried along +-40, across +-35, palm +-30 and pairs: this one lies as the sheet draws it), the
 ## fingers a little curved.
@@ -605,7 +606,7 @@ func _process(_delta: float) -> bool:
 		# (the sun over the camera's left shoulder for every shot, so no view is lit from behind)
 		var to := (at - eye).normalized()
 		var light := (to + _cam.global_transform.basis.x * -0.45 + Vector3(0, -0.6, 0)).normalized()
-		if shot.size() > 8:
+		if shot.size() > 8 and grey:   # (twenty-fifth round: the raking light for the grey tiles only; the painted tiles keep the usual light over the left shoulder: raked, the paint read far too dark)
 			# (twenty-fourth round: the hand views light from the picture's upper left, raking, in the camera's own
 			# frame: lit from the eye, the grey hands read as flat white cut-outs with no knuckles or folds)
 			light = (to * 0.8 + _cam.global_transform.basis.x * 0.45 - _cam.global_transform.basis.y * 0.55).normalized()
