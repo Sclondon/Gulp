@@ -12,6 +12,35 @@ var _model: Node3D
 var _shots: Array = []
 var _frame := 0
 var _sun: DirectionalLight3D
+var _grey := StandardMaterial3D.new()
+
+
+## Turns a bone about a world axis through its own joint, from its rest (degrees).
+func _turn(sk: Skeleton3D, bone: String, axis: Vector3, deg: float) -> void:
+	var b := sk.find_bone(bone)
+	if b < 0:
+		return
+	var g := sk.get_bone_global_rest(b).basis.orthonormalized()
+	var d := g.inverse() * Basis(axis, deg_to_rad(deg)) * g
+	sk.set_bone_pose_rotation(b, (sk.get_bone_rest(b).basis.orthonormalized() * d).get_rotation_quaternion())
+
+
+func _pose(name: String) -> void:
+	for sk: Skeleton3D in _model.find_children("*", "Skeleton3D", true, false):
+		sk.reset_bone_poses()
+		match name:
+			"up":
+				_turn(sk, "neck", Vector3.RIGHT, -10.0)
+				_turn(sk, "head", Vector3.RIGHT, -20.0)
+			"down":
+				_turn(sk, "neck", Vector3.RIGHT, 7.0)
+				_turn(sk, "head", Vector3.RIGHT, 13.0)
+			"turn":
+				_turn(sk, "neck", Vector3.UP, 15.0)
+				_turn(sk, "head", Vector3.UP, 30.0)
+			"bend":
+				_turn(sk, "hand_l", Vector3.FORWARD, 40.0)
+				_turn(sk, "hand_r", Vector3.BACK, 40.0)
 
 
 func _initialize() -> void:
@@ -44,6 +73,8 @@ func _initialize() -> void:
 		mesh.lod_bias = 64.0
 		if String(mesh.name).begins_with("captain_body_under"):
 			mesh.visible = false
+	_grey.albedo_color = Color(0.7, 0.7, 0.7)
+	_grey.roughness = 0.8
 	_cam = Camera3D.new()
 	_cam.fov = 35.0
 	_cam.near = 0.05
@@ -59,6 +90,19 @@ func _initialize() -> void:
 	_shots.append(["foot", Vector3(0.35, 0.5, 0.8).normalized(), Vector3(0.17, 0.05, 0.1), 0.7, true])
 	# (fifteenth round: the boxers close, from his front three-quarter)
 	_shots.append(["boxers", Vector3(0.55, 0.12, 0.83).normalized(), Vector3(0.0, 0.62, 0.0), 1.05, true])
+	# (seventeenth round, the user: "stop his chin and jaw phasing into his neck- have a pose where he is looking up to
+	# see what I mean"; "his forearms and wrists"): the head tilted back 30 degrees (a third of it on the neck), down 20,
+	# turned 45 to his left; painted and in grey (a plain grey material over everything); a close wrist from his left
+	for g in [false, true]:
+		var gt := "_grey" if g else ""
+		for b in [["front", Vector3(0, -0.1, 1)], ["three_quarter", Vector3(0.7, -0.1, 0.7)], ["side", Vector3(-1, -0.1, 0)]]:
+			_shots.append(["up_" + b[0] + gt, (b[1] as Vector3).normalized(), Vector3(0, 1.36, 0.03), 0.95, false, "up", g])
+		_shots.append(["down_three_quarter" + gt, Vector3(0.7, 0.1, 0.7).normalized(), Vector3(0, 1.36, 0.03), 0.95, false, "down", g])
+		_shots.append(["turn_front" + gt, Vector3(0, 0, 1), Vector3(0, 1.36, 0.03), 0.95, false, "turn", g])
+		_shots.append(["wrist_front" + gt, Vector3(0.2, 0.05, 1).normalized(), Vector3(0.45, 0.8, 0.0), 0.6, true, "", g])
+		_shots.append(["wrist_back" + gt, Vector3(0.2, 0.05, -1).normalized(), Vector3(0.45, 0.8, 0.0), 0.6, true, "", g])
+		_shots.append(["wrist_out" + gt, Vector3(1, 0.05, 0.1).normalized(), Vector3(0.45, 0.8, 0.0), 0.6, true, "", g])
+		_shots.append(["wrist_bent" + gt, Vector3(0.6, 0.05, 0.8).normalized(), Vector3(0.45, 0.8, 0.0), 0.6, true, "bend", g])
 
 
 func _process(_delta: float) -> bool:
@@ -71,6 +115,12 @@ func _process(_delta: float) -> bool:
 	if f % 5 == 0:
 		for mesh: MeshInstance3D in _model.find_children("captain_cap*", "MeshInstance3D", true, false):
 			mesh.visible = shot[4]
+		_pose(String(shot[5]) if shot.size() > 5 else "")
+		var grey: bool = shot.size() > 6 and bool(shot[6])
+		for mesh: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
+			mesh.material_override = _grey if grey and not String(mesh.name).begins_with("captain_ink") else null
+			if String(mesh.name).begins_with("captain_ink"):
+				mesh.visible = not grey
 		var at: Vector3 = shot[2]
 		# (the eye at about his eye height for the whole-body views, looking a little down at his middle)
 		var eye: Vector3 = at + (shot[1] as Vector3) * float(shot[3])

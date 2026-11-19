@@ -677,7 +677,10 @@ def arm(M, sh, T, side, J, E, W, joints):
         # (sixth round: the forearm narrows into the wrist; measured off the sheet, its last rings took the hand's
         # width and stood as a square cuff over the palm)
         if s > Lu + Lf - 0.05:
-            a = min(a, 0.047 if s < Lu + Lf - 0.01 else 0.04)
+            # (seventeenth round, the user: "why are his forearms and wrists such different sizes": the sheet's wrist
+            # measured 11.8 cm across at its narrowest (four views; 80% of the palm's 14.8), the model's 6.8: these
+            # caps were half widths of 4.7 and 4 cm; now a thick sailor's wrist, the hand's wrist loop widened to meet it)
+            a = WRIST_HALF[0] if s < Lu + Lf - 0.01 else WRIST_HALF[1]
         b = a * depth_ratio(s)
         # (seventh round, the user: "his shoulders need a little work": a heavy round deltoid over the top of the arm,
         # fuller out and a little forward; the upper arm's bulk under it)
@@ -1187,8 +1190,10 @@ HAND_ROWS = (70, 650)              # rows fitted and compared (the wrist's creas
 HAND_DROP_MORE = 0          # (tried 5: the count stayed 992 for the two hands, only moved between palm and fingers)
 # (fifteenth round, the second critic: "fused C-shaped claws": the brother's gentler hang, each finger curled a little
 # more than the one before it from the index to the little finger, the fingers a little apart, the thumb less tucked)
+# (seventeenth round, the third critic: "fingers clumped together, partly fused at the base ... relax the curl ...
+# rotate the thumb out about 30 degrees": the fingers no longer drawn together, the thumb swung out off the palm)
 HAND_POSE_RELAXED = {"curl": {"index": (0.0, 0.05, 0.03), "middle": (0.03, 0.08, 0.05), "ring": (0.06, 0.11, 0.06),
-                              "little": (0.09, 0.14, 0.08)}, "together": 0.25, "thumb_in": 0.6, "thumb_fwd": 0.32, "thumb_curl": 0.15}
+                              "little": (0.09, 0.14, 0.08)}, "together": 0.0, "thumb_in": 0.3, "thumb_fwd": 0.55, "thumb_curl": 0.12}
 HAND_POSE_THUMBVIEW = {"curl": (0.12, 0.08, 0.06), "together": 0.0, "thumb_in": 0.0, "thumb_fwd": 0.0, "thumb_curl": 0.1}
 HAND_THUMB_FAT = (1.12, 1.3)       # the thumb fuller round its line: its back half, its palm half
 HAND_WRIST_EASE = (0.75, 0.35)    # how far the forearm's last ring and the one before it are drawn to the hand's wrist
@@ -1507,12 +1512,101 @@ def base_hand_fit():
     # 3. the back view's outline: outline points moved onto the sheet's, the rest following
     for _ in range(12):
         hand_outline_round()
+    shape_fingers()
     HB["flat"] = HB["C"].copy()
     # 4. (the brother's hand was 5 cm off in its thumb-side view) the thumb-side view's pose found by trying, then the
     # hand's thickness pulled onto that view's outline (the back of the hand and the palm, front to back only)
     hand_thumb_fit()
     round_fingertips()
     hand_silhouettes()
+
+
+# Seventeenth round (the third critic: "claw mittens ... separate the fingers, round the tips, swing the thumb out from
+# a real thenar pad, knuckles, the wrist step blended"): the brother's shape_fingers (tools/build_brother.py,
+# 2026-11-18), copied unchanged in what it does, with the captain's numbers: round fingertips, flatter-backed fingers,
+# knuckle bumps, a thenar pad, and the wrist loop widened to the forearm so no cuff step shows.
+FINGER_THIN = 0.12
+THENAR = 0.007
+WRIST_WIDEN = (1.25, 1.15)
+WRIST_FADE = 0.03                # metres up the hand over which the widening fades out (the palm keeps the sheet's width)
+WRIST_HALF = (0.061, 0.058)      # the forearm's last two rings' half widths at most (metres)
+
+
+def shape_fingers():
+    """Sixth round (the critic: "stubby sausage fingers ... jagged spiky tips, no modelled knuckles, the thumb a tiny
+    nub"). On the fitted flat hand (x across toward the thumb, +y its back, z along the fingers):
+    - each digit's last stretch clipped to a half ellipsoid round its axis, so the base mesh's square end cap becomes a
+      round fingertip (the cap's corners pulled in, nothing pushed out);
+    - the fingers a little thinner from back to palm beyond their knuckles (the sheet's side views: flat-backed
+      fingers, not round sausages);
+    - knuckle bumps on the back over each finger's root and middle joint;
+    - a thenar pad: the palm's side under the thumb's root pushed out."""
+    C = HB["C"].copy()
+    J, label = HB["J"], HB["label"]
+    ydir = np.array((0.0, 1.0, 0.0))
+    for n in ("little", "ring", "middle", "index", "thumb"):
+        ids = np.where(label == n)[0]
+        js = [np.array(p, float) for p in J[n]]
+        d = js[3] - js[2]
+        d /= np.linalg.norm(d)
+        a = np.cross(ydir, d)
+        a /= np.linalg.norm(a)
+        b = np.cross(d, a)
+        Q = C[ids] - js[3]
+        s = Q @ d                                      # along, 0 at the tip joint's mark, negative toward the hand
+        ra, rb = Q @ a, Q @ b
+        s_tip = float(s.max())
+        # the finger's half widths a little behind the tip
+        band = (s > s_tip - 0.022) & (s < s_tip - 0.012)
+        if band.sum() < 4:
+            continue
+        Ra = float(np.abs(ra[band] - ra[band].mean()).max())
+        Rb = float(np.abs(rb[band] - rb[band].mean()).max())
+        ca, cb = float(ra[band].mean()), float(rb[band].mean())
+        La = min(Ra, Rb) * 1.05
+        s0 = s_tip - La
+        q = np.stack([np.clip(s - s0, 0, None) / La, (ra - ca) / Ra, (rb - cb) / Rb], 1)
+        r = np.linalg.norm(q, axis=1)
+        out = (s > s0) & (r > 1.0)
+        k = np.where(out, 1.0 / np.maximum(r, 1e-9), 1.0)
+        s_n = np.where(s > s0, s0 + (s - s0) * k, s)
+        ra_n = np.where(s > s0, ca + (ra - ca) * k, ra)
+        rb_n = np.where(s > s0, cb + (rb - cb) * k, rb)
+        C[ids] = js[3] + s_n[:, None] * d + ra_n[:, None] * a + rb_n[:, None] * b
+        if n != "thumb":
+            # thinner back to palm beyond the knuckle (fading in over the first centimetre)
+            Q = C[ids] - js[0]
+            dd = js[3] - js[0]
+            dd /= np.linalg.norm(dd)
+            t = smooth01(0.0, 0.012, Q @ dd)
+            yb = Q @ b
+            mid_b = np.median(yb)
+            C[ids] -= ((yb - mid_b) * FINGER_THIN * t)[:, None] * b
+    # knuckle bumps over the back (+y) and the thenar pad on the palm (-y)
+    bump = np.zeros(len(C))
+    for n in ("little", "ring", "middle", "index"):
+        for k, (h, rad) in enumerate(((0.0028, 0.011), (0.0014, 0.007))):
+            jp = np.array(J[n][k], float)
+            dist = np.linalg.norm((C - jp) * np.array((1.0, 0.0, 1.0)), axis=1)
+            on_back = np.clip((C[:, 1] - jp[1]) / 0.004, 0, 1)
+            bump = np.maximum(bump, h * np.exp(-(dist / rad) ** 2) * on_back)
+    C[:, 1] += bump
+    t0, t1 = np.array(J["thumb"][0], float), np.array(J["thumb"][1], float)
+    pad_c = t0 * 0.55 + t1 * 0.45 + np.array((-0.008, 0.0, -0.004))
+    dist = np.linalg.norm((C - pad_c) * np.array((1.0, 0.0, 1.0)), axis=1)
+    palm_side = np.clip((pad_c[1] - C[:, 1]) / 0.004, 0, 1)
+    C[:, 1] -= THENAR * np.exp(-(dist / 0.022) ** 2) * palm_side
+    # the wrist: the outline fit holds the base's wrist loop still, so it stayed the base hand's thin wrist (about
+    # 6.6 cm across against the sheet's 9 cm at the knot band) and the forearm met it as a cuff: the loop and the hand's
+    # heel widened, fading out by the palm's middle
+    loop = np.array(HB["loop"])
+    lc = C[loop].mean(0)
+    f = 1.0 - smooth01(float(lc[2]), float(lc[2]) + WRIST_FADE, C[:, 2])
+    C[:, 0] = lc[0] + (C[:, 0] - lc[0]) * (1.0 + (WRIST_WIDEN[0] - 1.0) * f)
+    C[:, 1] = lc[1] + (C[:, 1] - lc[1]) * (1.0 + (WRIST_WIDEN[1] - 1.0) * f)
+    print("%s HAND shaped: round tips, fingers %.0f%% thinner back to palm, knuckles %.1f mm, thenar %.1f mm" % (
+        WHO, FINGER_THIN * 100, 1000 * float(bump.max()), THENAR * 1000))
+    HB["C"] = C
 
 
 TIP_DOME = (0.42, 0.12)   # the share of the last bone from which each tip is domed; how far the very tip is drawn back
@@ -2304,7 +2398,8 @@ BASE_FEET = "--ring-feet" not in ARGS
 FOOT_PROFILE_ROWS = (1355, 1459)   # the body sheet's rows the foot is fitted over (just under the ankle ring to the sole)
 FOOT_HEIGHT_K = 1.0                # the base foot's height times this
 FOOT_BALL_K = 1.12                 # the ball's width over the sheet's measure (the critic: "broad, flat, wide bare feet")
-FOOT_LEN_K = 0.94                  # the length over the sheet's (short and broad, as the critic and the brief ask)
+FOOT_LEN_K = 1.12                  # (seventeenth round: the side view of the built foot measured 27.6 cm against the sheet's 33.1;
+                                   # the refine and the thinning shorten it, so it is made this much over the sheet's length)
 FOOT_TOE_PLUMP = (1.18, 1.45)      # the toes thickened about their own axes (across, up): short, thick toes
 FOOT_BLEND = 0.045                 # metres down from the foot's top over which it is drawn to the shin's last ring
 WHO = "CAPTAIN"
@@ -2542,6 +2637,22 @@ def fit_base_foot(base, prof, height_k=1.0, bumps=True, toe_plump=(1.12, 1.4)):
         w = np.clip((Q[:, 0] - root) / 0.012, 0, 1)[:, None]
         grow = np.array((1.0, toe_plump[0], toe_plump[1]))
         F[c] = Q + perp * (grow - 1.0) * w
+    # (seventeenth round, the third critic: "toes graded from a proper broad big toe down to a small little toe, not a
+    # row of same-size teeth"): each toe scaled about its root across and up (TOE_GRADE), the big toe set a little
+    # apart toward the inside and the small ones drawn a little back
+    for i, comp in enumerate(base["toes"]):
+        c = np.array(comp)
+        Q = F[c]
+        root = Q[:, 0].min()
+        w = np.clip((Q[:, 0] - root) / 0.012, 0, 1)
+        g, back = TOE_GRADE[i]
+        m = Q.mean(0)
+        Q[:, 1] = m[1] + (Q[:, 1] - m[1]) * (1.0 + (g - 1.0) * w)
+        Q[:, 2] = np.maximum(m[2] + (Q[:, 2] - m[2]) * (1.0 + (g - 1.0) * w), 0.0)
+        Q[:, 0] -= back * w
+        if i == 0:
+            Q[:, 1] -= 0.003 * w
+        F[c] = Q
     F[:, 2] = np.maximum(F[:, 2], 0.0)
     if bumps:
         L = L_sheet
@@ -2556,6 +2667,7 @@ def fit_base_foot(base, prof, height_k=1.0, bumps=True, toe_plump=(1.12, 1.4)):
     return base
 
 
+TOE_GRADE = ((1.3, 0.0), (1.0, 0.002), (0.9, 0.006), (0.82, 0.010), (0.74, 0.015))   # (big toe first: size, metres back)
 TOE_REFINE = (0.034, 3, 0.5)     # the toes' zone (metres behind the tips), smoothing rounds, strength
 
 
@@ -2819,8 +2931,9 @@ def paint_feet(rgb, pos, nrm, hit, mine, frame, toes, base_c, keep=0.25, shin=No
     rgb[gap] *= 0.84
     under = mine & (u > root_u) & (nz < -0.2) & (h > 0.004)
     rgb[under] *= 0.9
-    crease = mine & (np.abs(u - root_u) < 0.0025) & (nz > 0.3)
-    rgb[crease] *= 0.9
+    # (seventeenth round, the third critic: "a hard, lighter outline runs across the top of each foot ... white specks
+    # at the toe tips": the line drawn across the foot at the toes' root is gone, and the nails are soft pale shapes,
+    # faded in from their edge, with no rim)
     for i, (t, r) in enumerate(toes):
         t = np.array(t, float)
         c = t - f_ * (r * 0.9) + up * (r * 0.55)
@@ -2829,9 +2942,15 @@ def paint_feet(rgb, pos, nrm, hit, mine, frame, toes, base_c, keep=0.25, shin=No
         across = (dd * l_).sum(-1)
         e = (along_ / (r * 1.15)) ** 2 + (across / r) ** 2
         nail = mine & (e < 1.0) & ((nz > 0.25) | (nu > 0.5)) & (dd[..., 2] > -r * 0.6)
-        rgb[nail] = rgb[nail] * 0.35 + np.array((0.86, 0.74, 0.66)) * 0.65
-        rim = nail & (e > 0.62)
-        rgb[rim] *= 0.84
+        k = (0.4 * smooth01(1.0, 0.45, e))[nail][:, None]
+        rgb[nail] = rgb[nail] * (1 - k) + np.array((0.80, 0.70, 0.64)) * k
+    # (and every shade laid on above had a hard edge where its mask ended, the critic's "seam outline" across the top
+    # of the foot: the foot's texels blurred among themselves only, so the shades fade into each other)
+    m = mine.astype(float)[..., None]
+    num = box_blur(rgb * m, 6)
+    den = box_blur(m, 6)
+    soft2 = num / np.maximum(den, 1e-4)
+    rgb[mine] = soft2[mine]
     return rgb
 
 
@@ -5804,6 +5923,44 @@ def nose_round(Hm, sh, mir):
     print("CAPTAIN nose rounded: %d points" % moved)
 
 
+# Seventeenth round (the third critic: "a long, straight, narrow wedge with a drooping beak tip ... a big round bulb (a
+# ball about the size of the mouth's width) with flared round nostril wings and visible nostrils from below"): the
+# nose's front end laid round a ball (its radius, how far its middle sits behind the tip, its height on the bare sheet),
+# the bridge shortened by drawing the ball's top back toward the face, and two nostrils pressed into its underside.
+NOSE_BULB = (0.030, 0.027, 640.0)
+NOSTRILS = (0.013, 0.004, 0.009)   # (out from the middle, metres in, radius)
+
+
+def nose_bulb(Hm, mir):
+    P = np.array(Hm.P)
+    row = bare_row(P[:, 2])
+    R, back, brow_ = NOSE_BULB
+    zc = float(bare_z(brow_))
+    near_mid = (np.abs(P[:, 0]) < 0.02) & (np.abs(P[:, 2] - zc) < 0.03)
+    tip_y = float(P[near_mid, 1].min())
+    c = np.array((0.0, tip_y + back, zc))
+    d = P - c
+    r = np.linalg.norm(d, axis=1)
+    # (the nose's own points: in front of the cheeks, near the ball)
+    w = np.clip((1.7 * R - r) / (0.7 * R), 0.0, 1.0) * np.clip((NOSE_BACK + 0.012 - P[:, 1]) / 0.02, 0.0, 1.0)
+    w *= (row > 560) & (row < 700)
+    unit = d / np.maximum(r, 1e-9)[:, None]
+    want = c + unit * R
+    # (only outward toward the ball's surface where it lies inside it, inward where it stands out past it; the back half
+    # facing the face is left)
+    front = np.clip((-unit[:, 1] + 0.2) / 0.5, 0.0, 1.0)
+    k = (w * front)[:, None]
+    P = P * (1 - k) + want * k
+    # nostrils: pressed up into the ball's underside either side of the middle
+    N = normals_of(P, Hm.tris())
+    for s_ in (1.0, -1.0):
+        nc = c + np.array((s_ * NOSTRILS[0], -0.004, -R * 0.82))
+        g = np.exp(-np.sum((P - nc) ** 2, 1) / NOSTRILS[2] ** 2) * np.clip(-N[:, 2], 0, 1)
+        P[:, 2] += NOSTRILS[1] * g
+    Hm.P = [p for p in mirror_even(P, mir)]
+    print("CAPTAIN nose bulb: %d points onto a ball of %.1f cm radius" % (int((k[:, 0] > 0.05).sum()), R * 100))
+
+
 # The face's forms the outline cannot carry, carved along lines in the bare sheet's front view (px out from the
 # middle, row), both sides alike: (points, metres along the normal (negative in), width px). Read off the sheet: the deep
 # folds from the nose's wings round the mouth's corners, the slit eyes under puffy lids with bags below, the frown's
@@ -5894,6 +6051,7 @@ def finish_base_head(Hm, face_uv, sh):
     repin(H2, marks, frozen2, 1.0)
     nose_width(H2, sh, mir2)
     nose_round(H2, sh, mir2)
+    nose_bulb(H2, mir2)
     carve_face(H2)
     jowls_and_chin(H2)
     # (the eyes' lids eased: pinched into slits, a quad there folded over and showed as a hole)
@@ -6259,7 +6417,9 @@ def transplant_head(M, T, face_uv, weights, under, sh):
         b = step[E[:, 1]] == s - 1
         step[E[a, 1]] = np.minimum(step[E[a, 1]], s)
         step[E[b, 0]] = np.minimum(step[E[b, 0]], s)
-    share = {0: 0.55, 1: 0.8, 2: 0.95}
+    # (seventeenth round, the user: "stop his chin and jaw phasing into his neck": the under-jaw rows fully the head's,
+    # only the open edge itself (the throat) shared, mostly the neck's)
+    share = {0: 0.4, 1: 0.92, 2: 1.0}
     for s in step:
         t = share.get(int(s), 1.0)
         W.append({"head": t, "neck": 1.0 - t} if t < 1.0 else {"head": 1.0})
@@ -6282,6 +6442,7 @@ def transplant_head(M, T, face_uv, weights, under, sh):
 
 
 CAP_DROP = (0.016, 0.008)     # metres the band's bottom ring and the next are lowered at the back (none at the front)
+CAP_SNUG = 0.004               # metres the band's bottom stands off his head
 
 
 def cap_clear(Cm, R):
@@ -6301,6 +6462,10 @@ def cap_clear(Cm, R):
             th = math.atan2(P[v][0] - cen[0], -(P[v][1] - cen[1]))
             P[v][2] -= drop * (1.0 - math.cos(th)) / 2.0
     pushed = 0
+    # (seventeenth round, the third critic: "a large dark gap between the inner band and the scalp ... lower the cap so
+    # the band touches the skull all the way round": the band's bottom ring is drawn IN as well as out, to
+    # CAP_SNUG off the head (both bottom rings folded the band); the rings above are only pushed out)
+    snug = set(v for k in order[:1] for v in rings_[k])
     for ring in Cm.tag["rings"]:
         for v in ring:
             z = float(P[v][2])
@@ -6318,7 +6483,10 @@ def cap_clear(Cm, R):
             side = np.abs((s - sc) @ np.array((-u[1], u[0])))
             ok = side < 0.02
             reach = float(proj[ok].max()) if ok.any() else float(proj.max())
-            if r_ < reach + 0.006:
+            if v in snug:
+                P[v][:2] = sc + u * (reach + CAP_SNUG)
+                pushed += 1
+            elif r_ < reach + 0.006:
                 P[v][:2] = sc + u * (reach + 0.006)
                 pushed += 1
     Cm.P = [p for p in P]
@@ -6474,8 +6642,9 @@ TORSO_FORMS = (
     (0.085, 600.0, -1, 0.065, 0.075, 0.03, 0.030),     # the heavy pecs, sagging: soft above, their lower fold sharp
     (0.085, 655.0, -1, 0.07, 0.018, 0.03, -0.012),     # the fold under each pec, onto the belly
     (0.0, 600.0, -1, 0.022, 0.07, 0.05, -0.006),       # the breastbone's dip between them
-    (0.095, 545.0, 1, 0.06, 0.06, 0.07, 0.022),        # the shoulder blades under the fat
-    (0.0, 640.0, 1, 0.025, 0.2, 0.18, -0.014),         # the spine's groove, neck to waist
+    (0.095, 545.0, 1, 0.06, 0.06, 0.07, 0.028),        # the shoulder blades under the fat (seventeenth round: 0.022)
+    (0.0, 640.0, 1, 0.025, 0.2, 0.18, -0.018),         # the spine's groove, neck to waist (seventeenth round: -0.014)
+    (0.19, 640.0, 1, 0.05, 0.08, 0.06, 0.008),         # (seventeenth round, the third critic: "lat flare") the lats
     (0.13, 800.0, 0, 0.05, 0.04, 0.04, 0.010),         # the love handles over the band, at his sides
 )
 DELTOID = (0.016, 0.06)       # the deltoid's cap: metres out along the normal, spread round the shoulder's top
@@ -6850,6 +7019,161 @@ def refine_head(M, face_uv, weights, under):
     return M2, uv2, W2, under2
 
 
+# Seventeenth round (the third critic: "the upper body has no muscle ... huge traps from the skull to the shoulder points,
+# big deltoids, Popeye forearms; the model has narrow sloping shoulders, a column of a neck and tube arms"). Measured
+# first (the final .glb's front and back silhouettes over the body sheet, rows 380 to 900): from the deltoid down the
+# outer outline was already within 1 cm of the sheet (so the shoulders are NOT widened: the sheet wins over the
+# critic's "12 to 15 percent"), but from row 400 to 440 (the trapezius) he was 2 to 3.5 cm a side inside the sheet, the
+# forearm just below the elbow 2 cm narrower than drawn, and the lower forearm 1 to 3 cm narrower. So: the trapezius
+# filled out to the sheet from under the skull to the shoulder's top (the neck's rings and the head's lowest rows at
+# his sides and back), the forearm widened below the elbow and less tapered to the wrist, and the bulk the front view
+# cannot see put in depth: the deltoid's front and back heads, the biceps and triceps, the forearm's muscles below the
+# elbow; the wrist made shallower so the forearm is no longer thickest there.
+TRAP_FILL = ((380.0, 0.0), (392.0, 0.016), (402.0, 0.030), (418.0, 0.022), (432.0, 0.022), (448.0, 0.012),
+             (465.0, 0.0))                                       # (body-sheet row, metres out at his sides)
+TRAP_UP = 0.006            # the trapezius's slope lifted a little toward the skull at its outer part (metres)
+ARM_ACROSS = ((0.0, 0.0), (0.45, 0.0), (0.92, 0.04), (1.08, 0.08), (1.3, 0.04), (1.55, 0.03), (1.75, 0.03),
+              (1.9, 0.02), (2.0, 0.0))   # (along the arm: 0 shoulder, 1 elbow, 2 wrist; the share wider across)
+ARM_DEEP = ((0.0, 0.10), (0.2, 0.16), (0.5, 0.20), (0.8, 0.10), (1.0, 0.04), (1.12, 0.16), (1.35, 0.14), (1.65, 0.0),
+            (1.9, 0.0), (2.0, 0.0))   # (the same, the share deeper front to back)
+DELT_DEEP = (0.016, 0.065)  # the deltoid's front and back heads: metres out in depth, spread round the arm's root
+JAW_CREASE = (0.010, 0.005, 0.005, 0.004)   # metres: the throat back, up; the double chin down, forward
+WRIST_SMOOTH = (0.05, 10)       # the wrist's smoothing: reach from the joint (metres), rounds
+WRIST_FILL = (0.42, 0.012, 0.024)   # the wrist filled back out: share, metres along the arm past the joint, spread
+
+
+def upper_mass(M, joints):
+    P = np.array(M.P)
+    fams = np.array([part_family(p) for p in M.part])
+    row = body_row(P[:, 2])
+    ax = np.abs(P[:, 0])
+    # the trapezius: the torso's (neck's) points and the head's lowest, at his sides and back
+    gain = np.interp(row, [r for r, _ in TRAP_FILL], [g for _, g in TRAP_FILL])
+    side = smooth01(0.03, 0.10, ax)
+    behind = np.clip((P[:, 1] + 0.02) / 0.04, 0.0, 1.0)            # (the head's points only behind the jaw's angle)
+    who = np.isin(fams, ("torso", "neck")) | ((fams == "head") & (row > 388.0))
+    w = gain * side * who * np.where(fams == "head", behind, 1.0)
+    P[:, 0] += np.sign(P[:, 0]) * w
+    P[:, 2] += TRAP_UP * (w / 0.03) * smooth01(0.08, 0.16, ax) * (1.0 - smooth01(440.0, 470.0, row))
+    # the arms
+    moved = 0.0
+    for s_ in (1.0, -1.0):
+        sfx = "_l" if s_ > 0 else "_r"
+        J = mirror_x(np.array(joints["shoulder_l"]), s_)
+        E = mirror_x(np.array(joints["elbow_l"]), s_)
+        W = mirror_x(np.array(joints["wrist_l"]), s_)
+        sel = np.where(np.isin(np.array(M.part), ("arm" + sfx, "shoulder" + sfx)))[0]
+        Lu, Lf = np.linalg.norm(E - J), np.linalg.norm(W - E)
+        Du, Df = (E - J) / Lu, (W - E) / Lf
+        for v in sel:
+            p = P[v]
+            su = float(np.dot(p - J, Du)) / Lu
+            if su <= 1.0:
+                t = su
+                c = J + Du * (np.clip(su, 0.0, 1.0) * Lu)
+                d = Du
+            else:
+                sf = float(np.dot(p - E, Df)) / Lf
+                t = 1.0 + sf
+                c = E + Df * (np.clip(sf, 0.0, 1.0) * Lf)
+                d = Df
+            if t > 1.995:
+                continue                     # (the wrist's last ring: the hand is zipped to it)
+            rel = p - c
+            rel = rel - d * np.dot(rel, d)
+            fwd = np.array((0.0, -1.0, 0.0))
+            fwd = fwd - d * np.dot(fwd, d)
+            fwd /= np.linalg.norm(fwd)
+            across = np.cross(d, fwd)
+            ka = float(np.interp(t, [a for a, _ in ARM_ACROSS], [b for _, b in ARM_ACROSS]))
+            kd = float(np.interp(t, [a for a, _ in ARM_DEEP], [b for _, b in ARM_DEEP]))
+            new = p + across * np.dot(rel, across) * ka + fwd * np.dot(rel, fwd) * kd
+            moved = max(moved, float(np.linalg.norm(new - p)))
+            P[v] = new
+        # the deltoid's heads, in depth only, round the arm's root
+        hole = np.array([P[v] for v in M.tag["hole" + sfx]])
+        c = hole.mean(0)
+        c[0] += s_ * 0.02
+        r2 = np.sum((P - c) ** 2, 1)
+        near = np.isin(fams, ("torso", "arm", "shoulder")) & (np.sign(P[:, 0]) == s_)
+        g = DELT_DEEP[0] * np.exp(-r2 / DELT_DEEP[1] ** 2) * near
+        P[:, 1] += np.sign(P[:, 1] - c[1]) * g * np.clip(np.abs(P[:, 1] - c[1]) / 0.03, 0, 1)
+    # The wrist: the forearm's last ring, the zipper and the hand's widened loop smoothed together round the wrist's
+    # joint (plain Laplacian, strongest at the joint), so no step, ring or spike is left where the hand meets the arm
+    E0 = edges_of(M.faces)
+    deg = np.bincount(E0.ravel(), minlength=len(P)).astype(float)
+    for s_ in (1.0, -1.0):
+        Wj = mirror_x(np.array(joints["wrist_l"]), s_)
+        dist = np.linalg.norm(P - Wj, axis=1)
+        wgt = np.clip(1.0 - dist / WRIST_SMOOTH[0], 0, 1) * np.isin(fams, ("arm", "hand", "shoulder", "wrist")) * (deg > 0)
+        for _ in range(WRIST_SMOOTH[1]):
+            acc = np.zeros_like(P)
+            np.add.at(acc, E0[:, 0], P[E0[:, 1]])
+            np.add.at(acc, E0[:, 1], P[E0[:, 0]])
+            avg = acc / np.maximum(deg, 1)[:, None]
+            P += (avg - P) * (wgt * 0.5)[:, None]
+        # (the smoothing shrinks the waist it leaves: filled back out round the arm's line to the sheet's thick wrist)
+        Ej = mirror_x(np.array(joints["elbow_l"]), s_)
+        Df_ = (Wj - Ej) / np.linalg.norm(Wj - Ej)
+        rel = P - Wj
+        al = rel @ Df_
+        perp = rel - np.outer(al, Df_)
+        g = WRIST_FILL[0] * np.exp(-((al - WRIST_FILL[1]) / WRIST_FILL[2]) ** 2) * (np.linalg.norm(perp, axis=1) < 0.09)
+        g *= np.isin(fams, ("arm", "hand", "shoulder", "wrist"))
+        P += perp * g[:, None]
+        # (and the flanges: a few corners of the base hand's heel stood out past the wrist as sharp fins, in every round
+        # since the base hand came in. A hand point near the wrist further from the arm's line than 1.2 times its
+        # neighbours' middle at that place along the arm is drawn in to that)
+        rel = P - Wj
+        al = rel @ Df_
+        perp = rel - np.outer(al, Df_)
+        pr = np.linalg.norm(perp, axis=1)
+        mine = np.isin(np.array(M.part), ("hand" + ("_l" if s_ > 0 else "_r"), "arm" + ("_l" if s_ > 0 else "_r"))) & (np.abs(al) < 0.06) & (pr < 0.2)
+        idx = np.where(mine)[0]
+        pulled = 0
+        for i in idx:
+            if abs(al[i]) > 0.035:
+                continue
+            nb = idx[np.abs(al[idx] - al[i]) < 0.008]
+            lim = 1.2 * float(np.median(pr[nb]))
+            if pr[i] > lim:
+                P[i] = P[i] - perp[i] * (1.0 - lim / pr[i])
+                pulled += 1
+        print("CAPTAIN wrist%s: %d fin points drawn in" % ("_l" if s_ > 0 else "_r", pulled))
+        pr = np.linalg.norm(P - Wj - np.outer((P - Wj) @ Df_, Df_), axis=1)
+        odd = np.where((np.abs(al) < 0.05) & (pr > 0.072) & (pr < 0.2))[0]
+        print("CAPTAIN wrist%s: points standing out over 7.2 cm from the arm's line: %d %s" % (
+            "_l" if s_ > 0 else "_r", len(odd), sorted({M.part[i] for i in odd})))
+    # The under-jaw's crease (the user: "stop his chin and jaw phasing into his neck- have a pose where he is looking up
+    # to see what I mean"). In section the midline ran chin (y -0.189) -> head's open edge (-0.166) -> throat (-0.088)
+    # -> neck's base (-0.140) -> chest (-0.182) within 5 cm of height: a fold existed, but the under-jaw's last row and
+    # the throat met as one smooth surface, so tilted back the chin read as part of the neck. The head's open edge (the
+    # throat side of the zipper) is tucked back up into the fold and the row above it (the double chin) hung down over
+    # it, under the chin and the jaw only (in front of the ears).
+    b0, nh = M.tag["base_head"]
+    zip_pts = {v for f, p in zip(M.faces, M.fpart) if p == "neck" for v in f if v >= b0}
+    E = edges_of([f for f in M.faces])
+    ring1 = set()
+    for a_, b_ in E:
+        if a_ in zip_pts and b_ >= b0 and b_ not in zip_pts:
+            ring1.add(b_)
+        if b_ in zip_pts and a_ >= b0 and a_ not in zip_pts:
+            ring1.add(a_)
+    cyh = float(np.median(P[b0:b0 + nh, 1]))
+    for v in zip_pts:
+        f_ = float(np.clip((cyh - 0.02 - P[v][1]) / 0.04, 0, 1))
+        P[v][1] += JAW_CREASE[0] * f_
+        P[v][2] += JAW_CREASE[1] * f_
+    for v in ring1:
+        f_ = float(np.clip((cyh - 0.02 - P[v][1]) / 0.04, 0, 1))
+        P[v][2] -= JAW_CREASE[2] * f_
+        P[v][1] -= JAW_CREASE[3] * f_
+    M.P = [p for p in P]
+    print("CAPTAIN upper mass: the under-jaw's crease: %d throat points tucked, %d double-chin points hung over" % (len(zip_pts), len(ring1)))
+    print("CAPTAIN upper mass: trapezius out %.1f cm at most, arms moved %.1f cm at most" % (100 * float(w.max()), 100 * moved))
+    return M
+
+
 def finish(M, T, joints, sh):
     H = M.tag["head_rings"]
     bones = skeleton_joints(M, T, joints)
@@ -6861,6 +7185,7 @@ def finish(M, T, joints, sh):
     sculpt_head(M)
     # (twelfth round: the lofted head off, the base head on; FIGURE_HEADS.md)
     M, face_uv, weights, under = transplant_head(M, T, face_uv, weights, under, sh)
+    M = upper_mass(M, joints)
     print("CAPTAIN island shares: %s" % ", ".join("%s %.0f%%" % (n, 100 * w * h * sc * sc) for n, (pic, u0, v0, sc, (w, h)) in sorted(placed.items())))
     os.makedirs(TEX, exist_ok=True)
     for picture in ATLAS:
@@ -7654,22 +7979,88 @@ def paint_boxers(Bx, face_uv, placed, band_faces, G, info=None):
     rgb = np.ones((size, size, 3)) * np.array(BOXER_CLOTH)
     # hearts: a staggered lattice in each island's own metres (the islands are all at one scale)
     ax, ay, wd = HEARTS[0] * ppm, HEARTS[1] * ppm, HEARTS[2] * ppm
-    cover = np.zeros((size, size))
-    for ox, oy in ((0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)):
-        X = xs + ox - 0.5
-        Y = ys + oy - 0.5
-        row = np.floor(Y / ay)
-        shift = (row % 2) * 0.5
-        cx = (np.floor(X / ax - shift) + 0.5 + shift) * ax
-        cy = (row + 0.5) * ay
-        u = (X - cx) / (wd / 2.3)
-        v = (Y - cy) / (wd / 2.3)
-        cover += heart_cover(u, v) * 0.25
     band = np.isin(fid, list(band_faces))
-    cover[band] = 0.0
     fam0 = np.array([p for p in Bx.fpart] + ["none"])[fid]
     hem_t = np.char.startswith(fam0.astype(str), "boxers_hem")
-    cover[hem_t] = 0.0           # (sixteenth round: the turned-under hem plain, so no cut heart shows at its edge)
+    # (seventeenth round, the third critic: "hearts cut in half, sheared into triangles and red shards at the side
+    # seams, the hem and the crotch ... no heart may be cut by a seam": each heart of the staggered lattice is drawn
+    # whole or not at all. It is drawn only where all of it, with a margin, lies on texels of one island that are cloth:
+    # not over an island's edge (a seam), the band, the turned hem or the fly's placket)
+    zfly = float(body_z(BOXER_BAND[1] + BOXER_BAND_TALL))
+    cloth = hit & ~band & ~hem_t
+    flyzone = hit & (pos[..., 1] < -0.04) & (np.abs(pos[..., 0]) < 0.04) & (pos[..., 2] < zfly + 0.01) & (pos[..., 2] > zfly - 0.125)
+    cloth &= ~flyzone
+    cloth = erode(cloth, 1)
+    hem_line = float(body_z(BOXER_LOOSE_HEM)) + 0.012   # (no heart reaches the hem's last 1.2 cm, where the cloth turns)
+    cover = np.zeros((size, size))
+    half = int(math.ceil(wd * 0.75)) + 2
+    # (each island its own lattice: of sixteen shifts of the lattice the one that fits the most whole hearts in it)
+    lab = np.where(hit, np.arange(size * size).reshape(size, size), size * size)
+    for _ in range(2000):
+        prev = lab
+        m = lab.copy()
+        for sh_, axis in ((1, 0), (-1, 0), (1, 1), (-1, 1)):
+            m = np.minimum(m, np.where(hit, np.roll(lab, sh_, axis), size * size))
+        m = np.where(hit, m, size * size)
+        flat = np.append(m.ravel(), size * size)
+        lab = np.where(hit, flat[np.minimum(m, size * size)], size * size)
+        if np.array_equal(lab, prev):
+            break
+
+    def fits(cyc, cxc):
+        r0, r1 = int(cyc) - half, int(cyc) + half + 1
+        c0, c1 = int(cxc) - half, int(cxc) + half + 1
+        if r0 < 0 or c0 < 0 or r1 > size or c1 > size:
+            return None
+        Y, X = np.mgrid[r0:r1, c0:c1].astype(float) + 0.5
+        big = heart_cover((X - cxc) / (wd / 2.3 * 1.25), (Y - cyc) / (wd / 2.3 * 1.25))
+        if not cloth[r0:r1, c0:c1][big].all():
+            return None
+        # (and only where the picture is not stretched on him: across and down the heart, its 3D size within a third
+        # of the drawn size; at the crotch the cloth's UVs shear and a whole heart came out a sliver)
+        h2 = int(wd * 0.5)
+        ci, ri = int(cxc), int(cyc)
+        a_, b_ = pos[ri, ci - h2], pos[ri, ci + h2]
+        c_, d_ = pos[ri - h2, ci], pos[ri + h2, ci]
+        want = 2 * h2 / ppm
+        sx_ = float(np.linalg.norm(a_ - b_)) / want
+        sy_ = float(np.linalg.norm(c_ - d_)) / want
+        if not (0.75 < sx_ < 1.33 and 0.75 < sy_ < 1.33 and 0.8 < sx_ / sy_ < 1.25):
+            return None
+        ext = np.ptp(pos[r0:r1, c0:c1][big], axis=0)
+        if float(ext.max()) > 1.45 * (wd * 1.25 / ppm) or float(pos[r0:r1, c0:c1][big][:, 2].min()) < hem_line:
+            return None
+        return r0, r1, c0, c1, X, Y
+    drawn = skipped = 0
+    for isl in np.unique(lab[hit]):
+        rs, cs = np.where(lab == isl)
+        if len(rs) < wd * wd:
+            continue
+        best = []
+        for oy in (0.0, 0.25, 0.5, 0.75):
+            for ox in (0.0, 0.25, 0.5, 0.75):
+                got = []
+                for rr in range(int((rs.min() - ay) / ay) - 1, int(rs.max() / ay) + 2):
+                    shift = (rr % 2) * 0.5
+                    cyc = (rr + 0.5 + oy) * ay
+                    if cyc < rs.min() or cyc > rs.max():
+                        continue
+                    for cc in range(int(cs.min() / ax) - 2, int(cs.max() / ax) + 2):
+                        cxc = (cc + 0.5 + shift + ox) * ax
+                        if cxc < cs.min() or cxc > cs.max():
+                            continue
+                        f = fits(cyc, cxc)
+                        if f is not None and lab[int(cyc), int(cxc)] == isl:
+                            got.append((cyc, cxc, f))
+                if len(got) > len(best):
+                    best = got
+        for cyc, cxc, (r0, r1, c0, c1, X, Y) in best:
+            acc = np.zeros(X.shape)
+            for ox_, oy_ in ((-0.25, -0.25), (0.25, -0.25), (-0.25, 0.25), (0.25, 0.25)):
+                acc += heart_cover((X + ox_ - cxc) / (wd / 2.3), (Y + oy_ - cyc) / (wd / 2.3)) * 0.25
+            cover[r0:r1, c0:c1] = np.maximum(cover[r0:r1, c0:c1], acc)
+            drawn += 1
+    print("CAPTAIN boxer hearts: %d drawn whole, %d left out (they would cross a seam, the band, the hem or the fly)" % (drawn, skipped))
     rgb = rgb * (1 - cover[..., None]) + np.array(BOXER_RED) * cover[..., None]
     # the band: gathered elastic, fine upright gathers
     gathers = 0.94 + 0.06 * np.cos(xs * math.tau / max(0.006 * ppm, 2.0)) ** 2
@@ -7983,16 +8374,27 @@ def paint_head(M, face_uv, sh):
     sat = rgb.max(-1) - rgb.min(-1)
     # (fifteenth round, the second critic: "a dark, smeared horizontal band across the back of the head and neck": the
     # beard's zone reached round the back of his neck at its rows; now the face's front and sides only)
-    beard = headish & (z < bare_z(600)) & (z > bare_z(1000)) & (sat < 0.13) & (rgb.mean(-1) > 0.38) & (nz < 0.5) & (ny < 0.2)
+    # (seventeenth round, the third critic: "with the dark stubble paint it reads as a goatee ... recolour the stubble
+    # to a light, cool grey tint, even and short, not dark streaks": the darker texels in the shadow under his chin
+    # were left out of the zone by its lightness test and stayed dark streaks; now every texel of the zone that is not
+    # lip or nose red is evened, and the tint is lighter)
+    beard = headish & (z < bare_z(640)) & (z > bare_z(1000)) & (sat < 0.16) & (nz < 0.6) & (ny < 0.2)
     for _ in range(3):      # (closed: the stubble's gaps and the lip's edge in)
         beard = beard | (np.roll(beard, 1, 0) & np.roll(beard, -1, 0)) | (np.roll(beard, 1, 1) & np.roll(beard, -1, 1))
     bm = box_blur(box_blur(beard.astype(float)[..., None], 3), 3)[..., 0] * headish
     skin_c = np.median(rgb[headish & ~beard & (sat > 0.12) & (z < bare_z(560)) & (z > bare_z(760))], axis=0)
     rs2 = np.random.default_rng(11)
     speck = box_blur(rs2.random(rgb.shape[:2])[..., None], 1)[..., 0]
-    stub = skin_c * 0.62 + np.array((0.56, 0.55, 0.54)) * 0.38
-    stub = stub[None, None, :] * (0.94 + 0.12 * speck[..., None])
-    rgb = rgb * (1 - bm[..., None] * 0.85) + stub * (bm[..., None] * 0.85)
+    stub = skin_c * 0.6 + np.array((0.66, 0.66, 0.67)) * 0.4
+    stub = stub[None, None, :] * (0.96 + 0.08 * speck[..., None])
+    rgb = rgb * (1 - bm[..., None] * 0.9) + stub * (bm[..., None] * 0.9)
+    # the brows: the sheet's are bushy white-grey; projected they came out a blue-green grey smear. The low-saturation
+    # texels over each eye are made a warm white-grey, by how grey they are
+    x_ = np.abs(pos[..., 0])
+    browz = headish & (z < bare_z(452)) & (z > bare_z(515)) & (x_ > 0.012) & (x_ < 0.092) & (ny < -0.3)
+    grey = np.clip((0.16 - sat) / 0.08, 0, 1) * browz
+    grey = box_blur(grey[..., None], 1)[..., 0] * browz
+    rgb = rgb * (1 - grey[..., None] * 0.8) + np.array((0.74, 0.72, 0.69)) * (grey[..., None] * 0.8)
     print("CAPTAIN paint face: scalp plain over %d texels; beard zone evened over %d (stubble %s)"
           % (int((scalp > 0.5).sum()), int(beard.sum()), np.round(stub.mean((0, 1)), 3)))
     print("CAPTAIN paint face: %.0f%% of its texels seen by a view" % (100.0 * (good & hit).sum() / max(hit.sum(), 1)))
@@ -8100,8 +8502,10 @@ def heal_seams(M, face_uv, picture, rgb, pos, hit, reach=0.02, cell=0.012):
 # tan. The hair is found in the picture as painted (before the toning: greyer than the skin round it, not darker by
 # much, so not ink) and laid back over the toned skin as silver-grey strokes, keeping the painting's own light and
 # dark within them (roots darker).
-BODY_HAIR = (0.03, 0.035, 0.85)            # how much greyer than the skin round it (start, full); the most it covers
-HAIR_SILVER = (0.70, 0.69, 0.67)
+BODY_HAIR = (0.03, 0.035, 0.62)            # how much greyer than the skin round it (start, full); the most it covers
+# (seventeenth round, the third critic: "a chalk-white plume ... an ash grey-brown mat ... softer": darker ash grey, laid
+# on thinner, and its strokes softened by a light blur of the cover)
+HAIR_SILVER = (0.55, 0.53, 0.50)
 
 
 def body_hair(rgb, raw, hit, pos=None):
@@ -8118,7 +8522,8 @@ def body_hair(rgb, raw, hit, pos=None):
     skin_rb = float(np.percentile(rb[hit], 70))
     grey = np.maximum(lrb - rb, skin_rb - rb - 0.02)
     a = np.clip((grey - BODY_HAIR[0]) / BODY_HAIR[1], 0, 1) * np.clip((lum - llum + 0.06) / 0.06, 0, 1) * hit
-    a = np.clip(a, 0, 1) * BODY_HAIR[2]
+    a = np.clip(a, 0, 1)
+    a = box_blur(a[..., None], 1)[..., 0] * hit * BODY_HAIR[2]
     if pos is not None:
         # (not on the belly just over the band: the sheet's grey waistband lay there and came out as a white patch)
         a = a * (1.0 - smooth01(float(body_z(836.0)), float(body_z(852.0)), pos[..., 2]) * (pos[..., 1] < 0.0) * (pos[..., 2] > float(body_z(900.0))))
@@ -8162,14 +8567,14 @@ TATTOOS = (
     ("compass", "back", (2452, 2528), (466, 562)),
     ("squid_back", "back", (2096, 2184), (656, 724)),
     ("arm_back_l", "back", (1866, 1962), (556, 662)),
-    ("forearm_back_r", "back", (1776, 1862), (716, 852)),
-    ("forearm_back_l", "back", (2548, 2642), (726, 852)),
+    ("forearm_back_r", "back", (1776, 1862), (716, 818)),     # (seventeenth round: to 818, was 852: the box took the wrist's shade as a dark band)
+    ("forearm_back_l", "back", (2548, 2642), (726, 818)),
 )
-INK = (0.21, 0.26, 0.33)      # the ink's colour, a faded blue-black (fifteenth round: one colour, no longer mixed with the sheet's)
+INK = (0.22, 0.28, 0.27)      # (seventeenth round, the third critic: "thin, crisp, grey-green-blue as on the sheet": the sheet's faded green-grey)
 TATTOO_LINE = (0.022, 0.06)   # how much darker than the skin round it a texel must be to count as a line (start, full)
 TATTOO_STRENGTH = 0.8         # the lines' opacity over the skin (faded into it; sixteenth round, was 0.72)
-TATTOO_FILL = 0.62            # the designs' fills against their lines (sixteenth round)
-TATTOO_GROW = 1               # pixels the lines are thickened by (sixteenth round)
+TATTOO_FILL = 0.4            # the designs' fills against their lines (sixteenth round)
+TATTOO_GROW = 0               # pixels the lines are thickened by (sixteenth round)
 
 
 def lift_tattoo(sh, c0, c1, r0, r1):
