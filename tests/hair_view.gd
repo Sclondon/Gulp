@@ -3,7 +3,7 @@ extends SceneTree
 ## light), a 35 degree perspective camera, from the front, three-quarter, side, three-quarter back, back, above and
 ## below, then the head thrown back and turned; the concept sheet's views in a row above. One sheet a figure.
 ##   godot --path . --audio-driver Dummy --resolution 360x360 --position 2600,60 -s tests/hair_view.gd -- \
-##       --fig=brother|boy|captain|all --out=<folder> [--grey] [--beauty]
+##       --fig=brother|boy|captain|all --out=<folder> [--grey] [--beauty] [--zoom=<n>] [--each] [--flat]
 ## Attaching hair in the game: each piece is in its figure's model space at rest; put it under a BoneAttachment3D on
 ## `head` with the transform `attach()` gives it, and wear `material(fig)`.
 
@@ -18,7 +18,8 @@ const FIGS := {
 		"views": [[95, 40, 445, 560], [450, 40, 820, 560], [825, 40, 1200, 560], [1210, 40, 1570, 560],
 				[1575, 40, 1960, 560]],
 		"face": 1.0,
-		"look": {"sheen_gain": 0.7, "sheen_power": 2.0, "rim_gain": 0.35, "gloss_gain": 0.12, "sheen": Color(1.0, 0.42, 0.14)},
+		"look": {"sheen_gain": 0.45, "sheen_power": 3.0, "rim_gain": 0.3, "gloss_gain": 0.1, "sheen": Color(1.0, 0.42, 0.14),
+				"crest_gain": 0.35, "feather": 0.3, "root_dark": 0.15, "wrap": 0.55},
 	},
 	"boy": {
 		"pieces": ["hair"],
@@ -26,7 +27,7 @@ const FIGS := {
 		"views": [[80, 40, 440, 540], [440, 40, 820, 540], [820, 40, 1200, 540], [1200, 40, 1580, 540],
 				[1580, 40, 1940, 540]],
 		"face": 1.0,
-		"look": {"sheen_gain": 0.25, "rim_gain": 0.3, "gloss_gain": 0.18, "sheen": Color(1.0, 0.9, 0.6)},
+		"look": {"sheen_gain": 0.25, "rim_gain": 0.3, "gloss_gain": 0.18, "sheen": Color(1.0, 0.92, 0.7), "feather": 0.3},
 	},
 	"captain": {
 		"pieces": ["hair", "beard", "moustache", "brows"],
@@ -38,7 +39,8 @@ const FIGS := {
 		"bare_views": [[40, 100, 440, 670], [460, 100, 840, 670], [850, 100, 1240, 670], [1240, 100, 1620, 670],
 				[1640, 100, 1960, 450]],
 		"face": -1.0,
-		"look": {"sheen_gain": 0.0, "rim_gain": 0.25, "gloss_gain": 0.1, "sheen": Color(0.9, 0.92, 1.0)},
+		"look": {"sheen_gain": 0.0, "rim_gain": 0.25, "gloss_gain": 0.08, "sheen": Color(0.9, 0.92, 1.0),
+				"feather": 0.45, "crest_gain": 0.12, "wrap": 0.6, "root_dark": 0.12},
 	},
 }
 
@@ -260,7 +262,11 @@ func _apply(shot: Dictionary) -> void:
 	var az := deg_to_rad(shot["az"])
 	var dir := Vector3(-sin(az) * cos(el), sin(el), cos(az) * cos(el))
 	var target := _centre + Vector3(0, -0.035, 0)
-	_cam.position = target + dir * _reach * (1.8 if shot.has("close") else 1.5)
+	var zoom := 1.0
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--zoom="):
+			zoom = float(a.get_slice("=", 1))
+	_cam.position = target + dir * _reach * (1.8 if shot.has("close") else 1.5) / zoom
 	_cam.look_at(target, Vector3.UP if absf(shot["el"]) < 80.0 else Vector3.FORWARD)
 	_light_from_camera()
 

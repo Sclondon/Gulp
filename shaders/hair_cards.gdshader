@@ -1,7 +1,7 @@
 shader_type spatial;
 // Hair, beards and moustaches as painted lock cards (tools/build_hair.py has the decision and how they are built).
-// Each card carries a painted lock from a small atlas (colour and alpha); the alpha is cut, not blended (alpha
-// scissor: opaque pass, no sorting, works the same in GL Compatibility on a phone). Both sides are drawn, and a back
+// Each card carries a painted lock from a small atlas (colour and alpha); the alpha is cut, not blended (a discard,
+// dithered over `feather`: opaque pass, no sorting, works the same in GL Compatibility on a phone). Both sides are drawn, and a back
 // face keeps the normal it was given (the smooth hull's, outward), so every card shades as part of one soft mass.
 //
 // Vertex colour: r = layer shade (deep layers darker), g = along the lock (0 root .. 1 tip), b = 1 on cards, 0 on the
@@ -34,9 +34,24 @@ uniform float gloss_power = 30.0;
 // Wind or swimming: tips sway by this many metres (0 off).
 uniform float sway = 0.0;
 uniform float sway_rate = 1.3;
+// A soft edge (fourth pass): the cut is DITHERED over this much of the alpha round cut_off (a 4 x 4 ordered pattern on
+// screen), so painted tips and a beard's outline feather out instead of ending razor-cut; still opaque (no sorting).
+// 0 is a hard cut.
+uniform float feather = 0.0;
+// A soft light along the middle of each modelled lock and card (from the tile's u: 1 at the middle, 0 at the edges),
+// so a lock's crest is a highlight, not a geometric ridge. Applies where the vertex colour's blue is 1 (not the shell).
+uniform float crest_gain = 0.0;
 
 varying vec3 lie;
 varying float paint_light;
+
+float bayer4(vec2 p) {
+	ivec2 q = ivec2(mod(p, 4.0));
+	int i = q.x + q.y * 4;
+	// (the 4 x 4 Bayer matrix, row by row)
+	const float m[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+	return (m[i] + 0.5) / 16.0;
+}
 
 void vertex() {
 	if (sway > 0.0) {
@@ -50,11 +65,19 @@ void fragment() {
 	vec4 paint = texture(locks, UV);
 	vec2 px = UV * vec2(textureSize(locks, 0));
 	float mip = max(0.0, 0.5 * log2(max(dot(dFdx(px), dFdx(px)), dot(dFdy(px), dFdy(px)))));
-	ALPHA = paint.a * (1.0 + mip * keep_tips);
-	ALPHA_SCISSOR_THRESHOLD = cut_off;
+	float a = paint.a * (1.0 + mip * keep_tips);
+	// (cut by hand, not with ALPHA_SCISSOR: the threshold dithered over `feather`; nothing writes ALPHA, so it stays
+	// in the opaque pass)
+	if (a < cut_off + (bayer4(FRAGCOORD.xy) - 0.5) * feather) {
+		discard;
+	}
 	vec3 c = paint.rgb * tint;
 	c *= mix(1.0, COLOR.r, layer_shade);
 	c *= mix(1.0 - root_dark, 1.0, smoothstep(0.0, 0.5, COLOR.g));
+	if (crest_gain > 0.0) {
+		float u = fract(UV.x * 4.0) * 2.0 - 1.0;
+		c *= 1.0 + crest_gain * COLOR.b * (exp(-u * u * 3.0) - 0.45);
+	}
 	ALBEDO = c;
 	paint_light = dot(paint.rgb, vec3(0.3, 0.5, 0.2));
 	// (Godot turns a back face's normal round; give it back the hull's)

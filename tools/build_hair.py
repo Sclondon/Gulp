@@ -37,7 +37,35 @@ Alternatives: a modelled shell or chunky locks alone (Twilight Princess: cheap, 
   sheets show broken curls and ragged beards), many thin strand cards (a realistic look, thousands of triangles,
   sorting), shell fur (many layers drawn again: far too heavy for phones in GL Compatibility), Blender hair curves
   (not exportable to a game as they are).
-Shader: shaders/hair_cards.gdshader (new, alpha scissor, two-sided with the hull's normal kept on back faces).
+Shader: shaders/hair_cards.gdshader (new, alpha cut by hand, two-sided with the hull's normal kept on back faces).
+
+FOURTH PASS (2026-11-18): SOFT. The third pass read as wood chips (the brother) and paper flakes (the captain).
+  - The brother's mop: MODELLED LOCKS as soft arches (Builder.lock: four points across, thick in the middle, the edges
+    tucked down into the mass, 5 or 6 rows along, a tapered rounded point that rolls over), their normals the arch's own
+    blended 60% toward the smooth hull's, so the mop lights as one soft mass with the curls as a secondary rhythm. 48
+    locks, combed: each region (nape, back, crown, sides, upper ring, top, fringe) shares one comb and one sideways
+    bend, with only 4 degrees of jitter at the root, so neighbours lie nearly parallel; the top, crown, back and fringe
+    curls roll UNDER (the bend of each C makes the outline), the nape flicks out a little. A warm dark-brown under-shell
+    near the locks' own shade (no black holes), ending above the hairline so its edge never shows. Dark brown palette;
+    the amber-red is only the shader's sheen. The moustache: one thin soft shell on the upper lip, no cards.
+  - The captain's beard, moustache, brows and fringe: ONE smooth shell per mass (hull normals), painted with low-contrast
+    soft strokes; its edges a SOFT band (paint_lock's `soft`: the alpha falls off in a few broad points) that the
+    shader's dithered cut (`feather`) turns into a soft edge; only a few large soft-edged cards (6 on the beard, 6 on
+    the brows, none on the moustache or the fringe). The moustache is its own drooping pillow, thicker than the beard
+    where they meet, closed to the skin at its top and sides, a soft shadow on the beard under it (`shade_at`).
+  - The boy: soft tips (`soft`, `side_soft`), a lighter, cooler golden palette.
+
+JAW: WHAT EACH POINT FOLLOWS (for tools/face_rig.py's bind_to_face). A mass with a `jaw` function (head-frame angles
+  from that mass's own middle -> 0..1) writes, in its .blend object and its glb:
+    vertex groups `follow_jaw` (the weight) and `follow_head` (1 - the weight), and a point attribute `_JAW` (the same
+    weight; exported to the glb as the custom attribute _JAW).
+  1 = ride the jaw (open with the mouth), 0 = ride the head (the upper lip and the cheeks above the jaw). Now:
+    captain_beard: 1 under and round the chin and along the jaw, fading to 0 up the cheeks (above about 14 degrees
+      from the jaw's middle) and back along the sideburns (|azimuth| 72 to 100);
+    captain_moustache, brother_moustache: 0 everywhere (the upper lip: the head, or the upper lip's own shapes);
+    brows and hair: no `jaw` (the head).
+  The face builder can use it in place of (or to scale) the nearest-skin weights bind_to_face copies: for a beard
+  point, jaw weight = _JAW, head weight = 1 - _JAW; its shape-key moves are still taken from the nearest skin.
 """
 
 import bpy
@@ -218,7 +246,8 @@ def palette(tone, pal):
 
 
 def paint_lock(img, tile, pal, rng, length=0.95, width=0.8, curl=0.0, curl_start=0.5, bend=0.0, wave=0.0,
-               rag=0.3, strands=9, light=0.6, base=False, gloss_at=0.45, taper=0.85, tufts=3, curly=False, strokes=False):
+               rag=0.3, strands=9, light=0.6, base=False, gloss_at=0.45, taper=0.85, tufts=3, curly=False, strokes=False,
+               soft=0.0, points=2.0, brighten=0.0, side_soft=0.55):
     """One lock in a 128 x 256 tile: root at the top, tip toward the bottom. curl: radians it turns past curl_start
     (a hook), bend: a slow lean, wave: an S. base: a band of strands across the whole tile (the under-shell's edge)."""
     x0, y0 = (tile % 4) * TW, (tile // 4) * TH
@@ -233,6 +262,14 @@ def paint_lock(img, tile, pal, rng, length=0.95, width=0.8, curl=0.0, curl_start
         zone = 0.3
         f = np.clip((t - (end - zone)) / zone, 0, 1)
         alpha = ((t < end) & (np.abs(frac - 0.5) * 2 < 1.0 - f)).astype(float)
+        if soft > 0.0:
+            # (a SOFT band (fourth pass): no strands, the alpha falls off smoothly toward the edge, its end wavering in
+            # a few broad soft points; the shader's dithered cut (feather) turns it into a soft edge, not spikes)
+            ph = rng.uniform(0, 2 * math.pi, 2)
+            u = xx / TW
+            end = 0.98 - rag * (0.5 + 0.35 * np.sin(u * 2 * math.pi * points + ph[0])
+                                + 0.15 * np.sin(u * 2 * math.pi * points * 2.3 + ph[1]))
+            alpha = np.clip((end - t) / soft, 0, 1) ** 1.2
         alpha[t < 0.5] = 1.0
         tone = 0.42 + 0.14 * (sr[k % 64] - 0.5) + 0.08 * np.sin(frac * math.pi) - 0.08 * (1 - t)
         if curly:
@@ -260,8 +297,9 @@ def paint_lock(img, tile, pal, rng, length=0.95, width=0.8, curl=0.0, curl_start
                 half = np.clip(1 - v, 0, 1) ** 0.6 * (v > 0)
                 inside_s = np.abs(u) < half
                 body = np.clip(1 - np.abs(u) / np.maximum(half, 1e-3), 0, 1)
-                tone = np.where(inside_s, 0.46 + 0.22 * body * np.clip(1.2 - v, 0, 1), tone)
-                tone = tone - 0.08 * ((v > 1.0) & (v < 1.15) & (np.abs(u) < 0.5))
+                tone = np.where(inside_s, 0.48 + 0.12 * body * np.clip(1.2 - v, 0, 1), tone)
+                tone = tone - 0.04 * ((v > 1.0) & (v < 1.15) & (np.abs(u) < 0.5))
+        tone = tone + brighten
         rgb = palette(tone, pal)
     else:
         n = 120
@@ -307,6 +345,12 @@ def paint_lock(img, tile, pal, rng, length=0.95, width=0.8, curl=0.0, curl_start
         alpha = (inside & (t <= end) & (np.abs(ft - 0.5) * 2 < 1.0 - f ** 1.3)).astype(float)
         # (soft edge, a pixel wide)
         alpha *= np.clip((1.0 - np.abs(s)) * w, 0, 1)
+        if soft > 0.0:
+            # (a SOFT lock (fourth pass): no tufts; the alpha falls off smoothly toward its sides and its tapered tip,
+            # so with the shader's dithered cut the lock's outline is a big soft point, not a razor-cut flake)
+            alpha = ((np.abs(s) < 1.0) & ~((i == 0) & (q < -0.5))).astype(float) \
+                * np.clip((1.0 - np.abs(s)) / side_soft, 0, 1) * np.clip((1.0 - t) / soft, 0, 1) \
+                * np.clip((1.0 - ((i == n - 1) & (q > 0)) * q / 6.0), 0, 1)
         tone = 0.4 + 0.28 * (1 - s * s) + 0.1 * (sr[k] - 0.5) - 0.1 * (1 - np.sin(frac * math.pi)) ** 4
         # (a dark groove where two tufts part)
         tone -= 0.18 * np.clip(1 - np.abs(ft - 0.5) * 2 - 0.75, 0, 1) * 4 * np.clip((t - 0.4) / 0.3, 0, 1) \
@@ -609,10 +653,14 @@ class Builder:
                     t1, s1 = t0 + 0.25, s0 + 0.5
                 (p00, n00, _), (p01, n01, _) = ring[0][r], ring[0][r + 1]
                 (p10, n10, _), (p11, n11, _) = ring[1][r], ring[1][r + 1]
-                uvs = [tile_uv(0, s0, t0), tile_uv(0, s0, t1), tile_uv(0, s1, t1), tile_uv(0, s1, t0)]
+                st = m.get("shell_tile", 0)
+                uvs = [tile_uv(st, s0, t0), tile_uv(st, s0, t1), tile_uv(st, s1, t1), tile_uv(st, s1, t0)]
                 shade = m.get("shell_shade", 0.45)
                 g0, g1 = 0.5 + 0.5 * r / rows, 0.5 + 0.5 * (r + 1) / rows
-                cl = [(shade, g0, 0, 1), (shade, g1, 0, 1), (shade, g1, 0, 1), (shade, g0, 0, 1)]
+                # (shade_at darkens the shell too: the soft shadow under a moustache)
+                sa = m.get("shade_at", lambda _a, _e: 1.0)
+                sh = [shade * sa(*angles(q - self.h.c)) for q in (p00, p01, p11, p10)]
+                cl = [(sh[0], g0, 0, 1), (sh[1], g1, 0, 1), (sh[2], g1, 0, 1), (sh[3], g0, 0, 1)]
                 self.add([p00, p01, p11, p10], uvs, cl, [n00, n01, n11, n10])
             # (a fan to the top, when the shell reaches it)
             hi0 = min(m.get("high", lambda _a: 91.0)(a0), m.get("shell_top", 86.0))
@@ -621,7 +669,8 @@ class Builder:
                 ptop = self.h.c + dtop * (self.h.skin(dtop) + self.thick(dtop) * m["shell_frac"] + 0.002)
                 ntop = self.hull_normal(dtop)
                 (p00, n00, _), (p10, n10, _) = ring[0][0], ring[1][0]
-                uvs = [tile_uv(0, 0.5, 0.0), tile_uv(0, 0, 0.05), tile_uv(0, 1, 0.05)]
+                st = m.get("shell_tile", 0)
+                uvs = [tile_uv(st, 0.5, 0.0), tile_uv(st, 0, 0.05), tile_uv(st, 1, 0.05)]
                 shade = m.get("shell_shade", 0.45)
                 self.add([ptop, p00, p10], uvs, [(shade, 0.2, 0, 1)] * 3, [ntop, n00, n10])
 
@@ -765,7 +814,8 @@ class Builder:
         S across the head), ending in a rounded cap. k: a (azimuth), e (elevation) of the root; comb (a function of
         the direction, the way to go along the head); length, width (head sizes); curl, curl_from (the share of the
         length where the roll starts); swing; depth (root, body: shares of the mass's thickness); shade.
-        About 33 triangles: 5 rows x 6 + a cap of 3."""
+        Since the fourth pass the section is a soft arch (see the comment in the body; keys across, round, hull,
+        taper, tip, crest, edge): 6 rows x 3 quads + a cap of 3 = 39 triangles (33 with 5 rows)."""
         h, m = self.h, self.m
         size = h.size
         length, width = k["length"] * size, k["width"] * size
@@ -834,53 +884,62 @@ class Builder:
                 frames[r][2] = (a0 * math.cos(phi) + n0 * sign * math.sin(phi)).normalized()
         shade = k.get("shade", 1.0)
         tile = k.get("tile", 1)
-        hull_k = k.get("hull", 0.35)
+        # FOURTH PASS (2026-11-18): the lock is a SOFT ARCH, not a crested prism. The third pass's triangular section lit
+        # as two flat planes meeting at a hard crest and read as wood chips. Now: an arch of `across` points (4 by
+        # default: s -1, -1/3, 1/3, 1), thick in the middle, its edges tucked down into the mass under it, so it has
+        # no edge to show and no belly to draw (the shader draws both sides with the outward normal); the normal at
+        # every point is the arch's own (turning across it, and along it with the curl) blended `hull` (0.6) toward
+        # the smooth hull's, so the whole mop lights as one soft mass with the locks as a secondary rhythm; the crest
+        # is the shader's soft highlight (`crest_gain`, from the tile's u), not a ridge; the width tapers to a
+        # rounded point that rolls over with the curl.
+        hull_k = k.get("hull", 0.6)
+        ns = k.get("across", 4)
+        ss = [-1.0 + 2.0 * i / (ns - 1) for i in range(ns)]
+        taper = k.get("taper", [(0.0, 0.72), (0.18, 1.0), (0.6, 0.9), (0.85, 0.62), (1.0, 0.34)])
         rings = []
         for r, (p, n, along, across) in enumerate(frames):
             t = r / rows
-            w = width * pw([(0.0, 0.62), (0.25, 1.0), (0.7, 0.92), (1.0, 0.68)], t)
-            ht = w * k.get("crest", 0.32) * pw([(0.0, 0.5), (0.3, 1.0), (1.0, 0.85)], t)
-            L = p - across * w * 0.5 - n * ht * 0.15
-            C = p + n * ht
-            R = p + across * w * 0.5 - n * ht * 0.15
+            w = width * pw(taper, t)
+            ht = w * k.get("crest", 0.3) * pw([(0.0, 0.55), (0.3, 1.0), (1.0, 0.8)], t)
             hn = self.hull_normal(p - h.c)
-            # (normals: the lock's own round section, leaned toward the whole mass's)
-            nL = (-across * 0.85 + n * 0.55).normalized().lerp(hn, hull_k).normalized()
-            nC = n.lerp(hn, hull_k).normalized()
-            nR = (across * 0.85 + n * 0.55).normalized().lerp(hn, hull_k).normalized()
-            out = []
-            for q in (L, C, R):
+            pts, nors = [], []
+            for s in ss:
+                # (a soft arch: up by cos across, the edges dipped under the root line)
+                lift_s = ht * (math.cos(s * math.pi / 2) ** 0.8) - ht * 0.35 * s * s
+                q = p + across * (s * w * 0.5) + n * lift_s
                 dd = q - h.c
                 if dd.length < h.skin(dd) + 0.002:
                     q = h.c + dd.normalized() * (h.skin(dd) + 0.002)
-                out.append(q)
-            rings.append((out, (nL, nC, nR), -n, t, along))
-        edge, belly = k.get("edge", 0.62), k.get("belly", 0.4)
+                th = s * math.radians(k.get("round", 62.0))
+                own = (n * math.cos(th) + across * math.sin(th)).normalized()
+                pts.append(q)
+                nors.append(own.lerp(hn, hull_k).normalized())
+            rings.append((pts, nors, t, along, n))
+        edge = k.get("edge", 0.86)
         for r in range(rows):
-            (q0, n0, b0, t0, _), (q1, n1, b1, t1, _) = rings[r], rings[r + 1]
-            for s, (i, j) in enumerate(((0, 1), (1, 2))):
-                si, sj = i * 0.5, j * 0.5
-                ci = shade * (1.0 if i == 1 else edge)
-                cj = shade * (1.0 if j == 1 else edge)
+            (q0, n0, t0, _, _), (q1, n1, t1, _, _) = rings[r], rings[r + 1]
+            for i in range(ns - 1):
+                j = i + 1
+                si, sj = (ss[i] + 1) / 2, (ss[j] + 1) / 2
+                ci = shade * lerp(edge, 1.0, 1.0 - ss[i] ** 2)
+                cj = shade * lerp(edge, 1.0, 1.0 - ss[j] ** 2)
                 self.add([q0[i], q1[i], q1[j], q0[j]],
                          [tile_uv(tile, si, t0), tile_uv(tile, si, t1), tile_uv(tile, sj, t1), tile_uv(tile, sj, t0)],
                          [(ci, t0, 1, 1), (ci, t1, 1, 1), (cj, t1, 1, 1), (cj, t0, 1, 1)],
                          [n0[i], n1[i], n1[j], n0[j]])
-            cb = shade * belly
-            self.add([q0[0], q0[2], q1[2], q1[0]],
-                     [tile_uv(tile, 0.0, t0), tile_uv(tile, 1.0, t0), tile_uv(tile, 1.0, t1), tile_uv(tile, 0.0, t1)],
-                     [(cb, t0, 1, 1)] * 2 + [(cb, t1, 1, 1)] * 2, [b0, b0, b1, b1])
-        # (a rounded end: the three edges meet a point a little past the last ring)
-        q, nn, b, t, along = rings[-1]
-        w = (q[2] - q[0]).length
-        tip = (q[0] + q[1] + q[2]) / 3 + along * w * k.get("tip", 0.25)
-        nt = (along + nn[1]).normalized()
-        cs = [(shade * edge, 1, 1, 1), (shade, 1, 1, 1), (shade * edge, 1, 1, 1)]
-        for i, j in ((0, 1), (1, 2)):
-            self.add([q[i], q[j], tip], [tile_uv(tile, i * 0.5, 0.97), tile_uv(tile, j * 0.5, 0.97),
-                                         tile_uv(tile, 0.5, 1.0)], [cs[i], cs[j], (shade, 1, 1, 1)], [nn[i], nn[j], nt])
-        self.add([q[2], q[0], tip], [tile_uv(tile, 1, 0.97), tile_uv(tile, 0, 0.97), tile_uv(tile, 0.5, 1.0)],
-                 [(shade * belly, 1, 1, 1)] * 3, [b, b, (b + along).normalized()])
+        # (a rounded end: the last ring's points meet a point a little past it, its normal the end's own, softened)
+        q, nn, t, along, n = rings[-1]
+        w = (q[-1] - q[0]).length
+        mid = sum(q, Vector()) / len(q)
+        tip = mid + along * w * k.get("tip", 0.55) - n * w * 0.08
+        nt = (along * 0.5 + n).normalized().lerp(self.hull_normal(tip - h.c), hull_k).normalized()
+        for i in range(ns - 1):
+            j = i + 1
+            ci = shade * lerp(edge, 1.0, 1.0 - ss[i] ** 2)
+            cj = shade * lerp(edge, 1.0, 1.0 - ss[j] ** 2)
+            self.add([q[i], q[j], tip], [tile_uv(tile, (ss[i] + 1) / 2, 0.97), tile_uv(tile, (ss[j] + 1) / 2, 0.97),
+                                         tile_uv(tile, 0.5, 1.0)], [(ci, 1, 1, 1), (cj, 1, 1, 1), (shade, 1, 1, 1)],
+                     [nn[i], nn[j], nt])
 
     def build(self):
         if self.m.get("shell_cols"):
@@ -919,6 +978,17 @@ class Builder:
         me.materials.append(mat)
         ob = bpy.data.objects.new(name, me)
         bpy.context.scene.collection.objects.link(ob)
+        if "jaw" in self.m:
+            # (what each point follows, for the face rig: see JAW in the module's docstring)
+            w = [min(max(float(self.m["jaw"](*angles(v.co - self.h.c))), 0.0), 1.0) for v in me.vertices]
+            att = me.attributes.new("_JAW", "FLOAT", "POINT")
+            att.data.foreach_set("value", w)
+            gj, gh = ob.vertex_groups.new(name="follow_jaw"), ob.vertex_groups.new(name="follow_head")
+            for i, x in enumerate(w):
+                if x > 1e-4:
+                    gj.add([i], x, "REPLACE")
+                if x < 1.0 - 1e-4:
+                    gh.add([i], 1.0 - x, "REPLACE")
         return ob
 
 
@@ -942,7 +1012,9 @@ def brother():
     # Thick tousled mop of curls, shorter at the sides, falling on the forehead (the user); concept_brother_head3.jpg
     # (the settled sheet, top row): the curls stand 4 to 6 cm off the skull all round, wider than the head at the
     # temples, tall on top, a tousled fringe on the forehead, a ragged outline of fat curled locks.
-    pal = [(0.12, 0.075, 0.055), (0.27, 0.17, 0.1), (0.41, 0.26, 0.15), (0.6, 0.36, 0.18), (0.8, 0.5, 0.26)]
+    # (fourth pass: dark brown overall, fixed: the colours read from the sheet came out orange; the amber-red is the
+    # shader's sheen only, "dark hair but amberish red in the right light")
+    pal = [(0.1, 0.064, 0.042), (0.21, 0.13, 0.08), (0.34, 0.215, 0.125), (0.48, 0.31, 0.175), (0.63, 0.42, 0.25)]
     # THIRD PASS (2026-11-18): MODELLED LOCKS. Cards and fins (the first two passes) read as a nest of small flakes in
     # a tight cap; the sheet's mop is a big soft mass of 25 to 40 large readable curls. So the mop is now chunky
     # modelled locks (Builder.lock: fat crested ribbons 3 to 6 cm wide, about 33 triangles each, rolled over in a C at
@@ -972,99 +1044,100 @@ def brother():
         return lambda d: (tg - d)
 
     def locks(rng):
+        # FOURTH PASS: combed, not jumbled. Every lock in a region shares its comb and its sideways bend (swing), with
+        # only 4 degrees of jitter at the root and about 10 degrees in the bend, so neighbours lie nearly parallel and
+        # shingle from the crown outward like roof tiles; all roll over in a C at their ends (rounded points), so the
+        # outline is a row of curl ends.
         out = []
 
-        def add(a, share, comb, length, width, curl, curl_from=0.5, swing=0.0, depth=(0.45, 0.85), shade=1.0,
-                lift=0.0, ja=9.0, js=0.07, rows=5):
-            a = a + rng.uniform(-ja, ja)
-            s = min(max(share + rng.uniform(-js, js), 0.0), 0.98)
-            out.append(dict(a=a, e=at(a, s), comb=comb, length=length * rng.uniform(0.8, 1.2),
-                            width=width * rng.uniform(0.88, 1.12), curl=curl * rng.uniform(0.8, 1.15),
-                            curl_from=curl_from, swing=swing, depth=depth, shade=shade * rng.uniform(0.9, 1.04),
-                            lift=lift, rows=rows, crest=0.3, edge=0.72, belly=0.6, tile=rng.choice((1, 2))))
+        def add(a, share, comb, length, width, curl, curl_from=0.5, swing=0.0, depth=(0.55, 0.85), shade=1.0,
+                lift=0.0, rows=6):
+            a = a + rng.uniform(-4, 4)
+            s = min(max(share + rng.uniform(-0.06, 0.06), 0.0), 0.98)
+            out.append(dict(a=a, e=at(a, s), comb=comb, length=length * rng.uniform(0.82, 1.18),
+                            width=width * rng.uniform(0.9, 1.1), curl=curl * rng.uniform(0.75, 1.25),
+                            curl_from=curl_from, swing=swing + rng.uniform(-0.17, 0.17), depth=depth,
+                            shade=shade * rng.uniform(0.95, 1.03), lift=lift, rows=rows, crest=0.34, edge=0.82,
+                            hull=0.6, tile=rng.choice((1, 2)), tip=0.32,
+                            taper=[(0.0, 0.9), (0.2, 1.0), (0.6, 0.92), (0.85, 0.7), (1.0, 0.48)]))
 
-        def sw():
-            return rng.uniform(-0.9, 0.9)
-
-        # Rows from the nape up, each shingled over the roots of the row under it (as hair lies), all lying ON the
-        # under-shell's outside (depth about its own 0.8), so the shell gives the volume and the locks its surface.
-        # Every lock rolls over in a C at its end and bends sideways (an S).
-        # the nape: falling, the ends rolled up and out (a full curly nape)
+        # Curls on the top, the crown and the back roll UNDER (curl < 0): the bend of each C is what shows, so the
+        # outline is a row of rounded curl backs, not points; the nape and the sides over the ears roll OUT.
+        # the nape: falling to the neck's top, the ends rolled up and out (a full curly nape)
         for a in (180, 160, -160, 140, -140, 120, -120):
-            add(a, 0.06, away(0.6), 0.32, 0.32, 1.9, 0.4, sw(), (0.4, 0.62), 0.88, rows=4)
-        # the back, two rows
-        for a in (168, -168, 144, -144, 120, -120):
-            add(a, 0.34, away(0.45), 0.5, 0.36, 1.4, 0.5, sw(), (0.6, 0.85), 0.92)
-        for a in (180, 156, -156, 132, -132):
-            add(a, 0.56, away(0.35), 0.5, 0.36, 1.3, 0.5, sw(), (0.7, 0.92), 0.96)
-        # the sides, shorter (the user): down and back over the ears' tops, curling out
+            add(a, 0.06, away(0.8), 0.2, 0.3, 1.0, 0.45, 0.2 * math.copysign(1, a) if a != 180 else 0.0,
+                (0.5, 0.75), 0.92, rows=5)
+        # the back, two rows, shingled over the nape's roots
+        for a in (180, 158, -158, 136, -136, 114, -114):
+            add(a, 0.3, away(0.5), 0.4, 0.27, -1.5, 0.45, 0.2 * math.copysign(1, a) if a != 180 else 0.0,
+                (0.65, 0.92), 0.94)
+        for a in (169, -169, 146, -146, 123, -123):
+            add(a, 0.56, away(0.35), 0.4, 0.27, -1.4, 0.45, 0.15 * math.copysign(1, a), (0.72, 0.95), 0.97, rows=5)
+        # the crown: the whorl, short locks lying close
+        for a in (180, 135, -135, 90, -90):
+            add(a, 0.88, away(0.1), 0.32, 0.26, -1.2, 0.45, 0.6, (0.8, 0.95), 1.0, rows=5)
+        # the sides, shorter (the user): down and a little back to the ears' tops, curling out
         for sg in (1, -1):
-            add(sg * 102, 0.08, away(0.55), 0.38, 0.32, 1.4, 0.45, sg * 0.4, (0.45, 0.66), 0.88, rows=4)
-            add(sg * 78, 0.1, away(0.5), 0.38, 0.32, 1.0, 0.45, sg * 0.5, (0.45, 0.66), 0.9, rows=4)
-            add(sg * 92, 0.4, away(0.4), 0.45, 0.36, 1.5, 0.5, sw(), (0.65, 0.9), 0.95)
-            add(sg * 62, 0.38, away(0.35), 0.45, 0.36, 1.5, 0.5, sw(), (0.65, 0.9), 0.95)
-        # the upper ring
-        for a in (150, -150, 112, -112, 76, -76, 40, -40):
-            add(a, 0.7, away(0.25), 0.5, 0.38, 1.3, 0.5, sw(), (0.78, 0.97), 0.98)
-        # the crown: the whorl, locks spun round it, lying close
-        for a in (180, 115, -115):
-            add(a, 0.9, away(0.05), 0.4, 0.36, 1.0, 0.5, 1.0, (0.82, 0.95), 1.0)
-        # the top: swept up and back off the forehead, the ends lifting so the mop stands tall
-        for a in (-44, -16, 14, 42):
-            add(a, 0.06, toward(crown), 0.48, 0.36, 0.9, 0.55, sw(), (0.6, 0.95), 1.0, 0.0)
-        for a in (-30, 2, 32):
-            add(a, 0.45, toward(crown), 0.45, 0.36, 1.0, 0.5, sw(), (0.8, 0.97), 1.0)
-        # the fringe: a few locks from behind the hairline falling forward onto the forehead and sweeping to one
-        # side, their ends turning up
-        for a, s in ((-26, 0.7), (6, 0.5), (34, -0.6)):
-            add(a, 0.22, lambda d: Vector((0, -1, -0.5)), 0.5, 0.36, 1.6, 0.62, s, (0.9, 1.05), 1.04)
+            add(sg * 96, 0.3, away(0.7), 0.22, 0.27, -1.2, 0.4, sg * 0.3, (0.6, 0.8), 0.92, rows=5)
+            add(sg * 72, 0.3, away(0.65), 0.22, 0.27, -1.2, 0.4, sg * 0.3, (0.6, 0.8), 0.92, rows=5)
+            add(sg * 88, 0.5, away(0.45), 0.36, 0.27, -1.4, 0.45, sg * 0.2, (0.7, 0.92), 0.96)
+            add(sg * 62, 0.5, away(0.4), 0.36, 0.27, -1.4, 0.45, sg * 0.2, (0.7, 0.92), 0.96)
+        # the upper ring, from the crown outward
+        for a in (106, -106, 74, -74, 42, -42):
+            add(a, 0.74, away(0.25), 0.38, 0.28, -1.3, 0.45, 0.2 * math.copysign(1, a), (0.8, 0.97), 0.99)
+        # the top: swept up and back off the forehead, rolling under at the crown
+        for a in (-36, -12, 12, 36):
+            add(a, 0.04, toward(crown), 0.42, 0.28, -1.1, 0.5, 0.2, (0.66, 0.95), 1.0)
+        # the fringe: from behind the hairline falling forward onto the forehead, all swept to one side (the
+        # figure's left, as the sheet's front view), the ends curling under
+        side = lambda d: Vector((0.55, -1, -0.65))
+        for a, ln in ((-24, 0.34), (4, 0.42), (22, 0.58)):
+            add(a, 0.36, side, ln, 0.28, -1.8, 0.6, 0.25, (0.95, 1.06), 1.03)
         for sg in (1, -1):
-            add(sg * 52, 0.22, lambda d, sg=sg: Vector((sg * 0.6, -1, -0.6)), 0.42, 0.34, 1.4, 0.55, -sg * 0.3,
-                (0.8, 1.0), 1.0)
+            add(sg * 52, 0.26, lambda d, sg=sg: Vector((sg * 0.6, -1, -0.65)), 0.34, 0.26, -1.5, 0.5, sg * 0.2,
+                (0.85, 1.0), 1.0)
         return out
 
     hair = dict(
         low=low,
         # (how far down a lock may fall: the fringe to the brows' top, the nape to the neck's top)
         fall=lambda a: 4.0 * math.sin(a * 0.21) + 2.5 * math.sin(a * 0.53 + 1.0)
-        + pw([(0, 12), (30, 11), (45, 5), (60, -6), (75, -12), (100, -13), (108, -8), (128, -8), (138, -18),
+        + pw([(0, -2), (12, -7), (24, -4), (36, 4), (45, 5), (60, -6), (75, -12), (100, -13), (108, -8), (128, -8), (138, -18),
               (150, -32), (180, -40)], abs(a)),
         # (the mop's thickness off the skull, head sizes (0.2 m): about 3 cm at the sides, 5 to 6 cm on top; the
         # locks' crests stand a centimetre or two over it)
-        thick=lambda a, e: lerp(pw([(0, 0.22), (60, 0.27), (100, 0.27), (130, 0.26), (180, 0.22)], abs(a)), 0.31,
-                                sstep(20, 75, e)) * (0.6 + 0.4 * sstep(-40, 10, e)),
+        # (fourth pass: a broad rounded top, not a peak: the top no thicker than the temples, the temples fuller)
+        thick=lambda a, e: lerp(pw([(0, 0.2), (55, 0.3), (100, 0.3), (130, 0.26), (180, 0.22)], abs(a)), 0.25,
+                                sstep(30, 80, e)) * (0.6 + 0.4 * sstep(-40, 10, e)),
         comb=away(0.25),
-        shell_cols=20, shell_rows=5, shell_frac=0.82, shell_shade=0.62, shell_past=lambda a: pw([(0, -10), (40, -8), (90, 0), (130, 3), (180, 4)], abs(a)),
+        # (the under-shell a warm dark brown near the locks' own shade, so no black holes between them; it stops
+        # short of the hairline (the locks hang past it), so its edge never shows as a jagged band from below)
+        shell_cols=18, shell_rows=5, shell_frac=0.8, shell_shade=0.92,
+        shell_past=lambda a: pw([(0, -9), (40, -8), (90, -3), (125, 2), (150, 7), (180, 8)], abs(a)),
         locks=locks,
     )
-    sh = "concept_brother_head3.jpg"
-    pal = dict(fixed=pal, sheet=dict(src=sh, box=(2190, 80, 2690, 560), key="dark", darken=1.35, saturate=1.3))
     tiles = [
-        # (the under-shell painted by script in the sheet's colours: a patch lifted from the sheet read grey between
-        # the locks)
-        dict(base=True, strands=3, rag=0.45),
-        dict(surface=dict(grooves=3.0, lo=0.36, hi=0.6, streak=0.05)),
-        dict(surface=dict(grooves=2.0, lo=0.36, hi=0.56, streak=0.05)),
-        # (the moustache's card)
-        dict(wave=0.25, width=0.8, taper=0.7, length=1.0, light=0.8, strands=8, curl=1.6, curl_start=0.65, rag=0.35),
+        # (the under-shell: a soft surface, low in contrast (strands striped it); it ends above the hairline, so it
+        # needs no band of tips)
+        dict(surface=dict(grooves=4.0, lo=0.4, hi=0.5, streak=0.03)),
+        dict(surface=dict(grooves=3.0, lo=0.42, hi=0.62, streak=0.04)),
+        dict(surface=dict(grooves=2.0, lo=0.42, hi=0.6, streak=0.04)),
+        # (the moustache: lighter and softer than the mop, as the sheet paints it)
+        dict(surface=dict(grooves=6.0, lo=0.56, hi=0.66, streak=0.03)),
     ]
-    # A thin young moustache (the user), read from the jaw's middle like the captain's; the stubble is left to the face
-    # paint (a faint tint there), not cards: at the game's half-size picture single hairs only shimmer.
+    # A thin young man's moustache (the user's settled sheet): a thin soft dark-brown shell on the upper lip, no cards
+    # (the cards read as a bristly orange strip); the stubble is left to the face paint. It follows the upper lip
+    # (the head), not the jaw: see JAW in the module's docstring.
     moustache = dict(
         centre=(0.09, -0.32),
-        high=lambda a: pw([(0, -3), (14, -5), (24, -9)], abs(a)),
-        low=lambda a: pw([(0, -8), (14, -10), (24, -14)], abs(a)),
-        reach=25,
+        high=lambda a: pw([(0, -4.5), (12, -5.5), (20, -8.5)], abs(a)),
+        low=lambda a: pw([(0, -7.5), (12, -8.5), (20, -11.5)], abs(a)),
+        reach=20, shell_tile=3,
         fall=lambda a: pw([(0, -11), (24, -19)], abs(a)),
-        # (thin, young and soft (the user's settled sheet): close to the lip, lighter than the mop, no ragged ends)
-        thick=lambda a, e: 0.016,
+        thick=lambda a, e: 0.022 * (1.0 - 0.5 * sstep(10, 22, abs(a))),
         comb=lambda a, e, d: Vector((math.copysign(1.0, a) if abs(a) > 2 else 0.0, -0.1, -0.7)),
-        shell_cols=6, shell_rows=2, shell_frac=0.5, shell_shade=1.0, top_band=True, shell_band=2.0,
-        shell_past=0.0, shell_top=90.0,
-        layers=[
-            dict(count=7, band=(0.0, 1.0), spacing=6, length=(0.06, 0.085), width=(0.06, 0.075), tiles=[3],
-                 depth=(0.5, 0.8), lift=(0.0, 0.0), shade=1.0, spin=0.0, rows=2, cup=0.1),
-        ],
+        shell_cols=8, shell_rows=2, shell_frac=0.9, shell_shade=1.0, top_band=False, shell_band=2.0,
+        shell_past=0.0, shell_top=90.0, jaw=lambda a, e: 0.0,
     )
     return pal, tiles, {"hair": hair, "moustache": moustache}
 
@@ -1097,21 +1170,21 @@ def boy():
     # under-shell is painted with a patch of that view, its broad light taken out: the first pass drew it as even
     # strands, which showed as faint straight streaks over the crown)
     sh = "concept_boy_head2.jpg"
-    pal = dict(fixed=pal, sheet=dict(src=sh, box=(2200, 80, 2650, 520), key="blond", darken=1.1, saturate=1.1, lit=0.5,
-                                        tint=(1.06, 1.0, 0.88)))
+    pal = dict(fixed=pal, sheet=dict(src=sh, box=(2200, 80, 2650, 520), key="blond", darken=1.16, saturate=0.92, lit=0.65,
+                                        tint=(1.06, 1.06, 1.02)))
     tiles = [
         # (the under-shell painted by script in the sheet's colours: the patch lifted from the sheet showed as grey-olive
         # patches on the crown from above)
         dict(base=True, strands=4, rag=0.5),
-        dict(bend=0.35, width=0.78, taper=0.92, length=1.0, light=0.7, strands=8, rag=0.35, tufts=3),
-        dict(bend=-0.3, width=0.78, taper=0.92, length=1.0, light=0.7, strands=8, rag=0.35, tufts=3),
-        dict(wave=0.18, width=0.75, taper=0.92, length=1.0, light=0.8, strands=8, rag=0.4, tufts=3),
-        dict(bend=0.15, curl=0.9, curl_start=0.55, width=0.72, taper=0.94, length=0.98, light=0.8, strands=7,
-             rag=0.35, tufts=2),
-        dict(bend=-0.15, curl=-0.9, curl_start=0.55, width=0.72, taper=0.94, length=0.98, light=0.8, strands=7,
-             rag=0.35, tufts=2),
-        dict(curl=1.3, curl_start=0.45, width=0.7, taper=0.95, length=0.95, light=0.9, strands=6, rag=0.3, tufts=2),
-        dict(curl=-1.3, curl_start=0.45, width=0.7, taper=0.95, length=0.95, light=0.9, strands=6, rag=0.3, tufts=2),
+        dict(bend=0.35, width=0.78, taper=0.8, length=1.0, light=0.7, strands=8, rag=0.22, tufts=2, soft=0.3, side_soft=0.25),
+        dict(bend=-0.3, width=0.78, taper=0.8, length=1.0, light=0.7, strands=8, rag=0.22, tufts=2, soft=0.3, side_soft=0.25),
+        dict(wave=0.18, width=0.75, taper=0.8, length=1.0, light=0.8, strands=8, rag=0.22, tufts=2, soft=0.3, side_soft=0.25),
+        dict(bend=0.15, curl=0.9, curl_start=0.55, width=0.72, taper=0.8, length=0.98, light=0.8, strands=7,
+             rag=0.22, tufts=2, soft=0.3, side_soft=0.25),
+        dict(bend=-0.15, curl=-0.9, curl_start=0.55, width=0.72, taper=0.8, length=0.98, light=0.8, strands=7,
+             rag=0.22, tufts=2, soft=0.3, side_soft=0.25),
+        dict(curl=1.3, curl_start=0.45, width=0.7, taper=0.8, length=0.95, light=0.9, strands=6, rag=0.22, tufts=2, soft=0.3, side_soft=0.25),
+        dict(curl=-1.3, curl_start=0.45, width=0.7, taper=0.8, length=0.95, light=0.9, strands=6, rag=0.22, tufts=2, soft=0.3, side_soft=0.25),
     ]
     return pal, tiles, {"hair": hair}
 
@@ -1142,33 +1215,40 @@ def captain():
         * (1.0 - 0.35 * sstep(-58, -70, e)) + 0.012,
         comb=lambda a, e, d: down + Vector((0, -0.25, 0)) + d * 0.2,
         # (a soft shadow under the moustache: the beard's locks rooted just below it darker)
-        shade_at=lambda a, e: 1.0 - 0.2 * sstep(40, 15, abs(a)) * sstep(-42, -24, e),
-        shell_cols=16, shell_rows=6, shell_frac=0.88, shell_shade=0.88, top_band=True, shell_band=6.0,
+        shade_at=lambda a, e: 1.0 - 0.3 * sstep(40, 15, abs(a)) * sstep(-42, -24, e),
+        # FOURTH PASS: ONE smooth rounded shell (the hull's normals: one soft mass), painted with broad soft lock bands
+        # (tile 0's soft strokes), its lower edge and cheek line a SOFT band (tile 0's lower half: alpha falling off in
+        # a few broad points, dithered by the shader's feather), and only a FEW large soft-edged cards (8) round the
+        # lower outline to break it into big soft points. The third pass's 20 jagged cards read as paper flakes.
+        shell_cols=16, shell_rows=6, shell_frac=0.92, shell_shade=0.94, top_band=True, shell_band=6.0, shell_tile=4,
         shell_past=0.0, shell_top=90.0,
         layers=[
-            dict(count=10, band=(0.0, 0.8), spacing=18, length=(0.32, 0.44), width=(0.38, 0.46), tiles=[1, 2, 3],
-                 depth=(0.65, 1.0), lift=(0.0, 0.01), shade=0.95, spin=0.06, clump=0.15, cup=0.25),
-            dict(count=10, band=(0.15, 1.0), spacing=17, length=(0.28, 0.38), width=(0.34, 0.42), tiles=[1, 2, 3],
-                 depth=(0.88, 1.06), lift=(0.0, 0.01), shade=0.98, spin=0.08, clump=0.15, cup=0.25),
+            dict(count=6, band=(0.0, 0.3), spacing=26, length=(0.34, 0.42), width=(0.42, 0.5), tiles=[1, 2],
+                 depth=(0.75, 0.9), lift=(0.0, 0.0), shade=0.96, spin=0.0, clump=0.0, cup=0.28),
         ],
+        # (what it follows, for the face rig: the jaw under and round the chin, fading to the head up the cheeks and
+        # the sideburns)
+        jaw=lambda a, e: sstep(100, 72, abs(a)) * sstep(14, -6, e),
     )
     moustache = dict(
         # (a big drooping walrus moustache over the mouth: two full lobes from a parting under the nose)
         centre=(0.09, -0.32),
-        high=lambda a: pw([(0, -1), (20, -3), (40, -10)], abs(a)),
-        low=lambda a: pw([(0, -12), (20, -15), (40, -22)], abs(a)),
-        gap=2.5, reach=40,
-        fall=lambda a: pw([(0, -20), (20, -30), (44, -40)], abs(a)),
-        thick=lambda a, e: 0.17 * (0.55 + 0.45 * sstep(2, 14, abs(a))),
+        high=lambda a: pw([(0, 3), (14, -2), (28, -14), (44, -32)], abs(a)),
+        low=lambda a: pw([(0, -16), (14, -22), (28, -34), (44, -50)], abs(a)),
+        gap=2.0, reach=44,
+        fall=lambda a: pw([(0, -26), (20, -40), (46, -56)], abs(a)),
+        # (fourth pass: thicker than the beard everywhere they meet, so the walrus stands out of it as its own mass)
+        thick=lambda a, e: (0.17 + 0.12 * sstep(2, 16, abs(a))) * sstep(46, 30, abs(a)) * (0.5 + 0.5 * sstep(2, 8, abs(a))),
         comb=lambda a, e, d: Vector((0.55 * math.copysign(1.0, a), -0.15, -0.9)),
-        shell_cols=10, shell_rows=3, shell_frac=0.75, shell_shade=0.95, top_band=False,
+        # (fourth pass: the two lobes are the smooth shell, lighter than the beard, and only two big soft cards a side
+        # at the drooping ends; the beard's locks under it are darker (shade_at): the soft shadow that parts them)
+        shell_cols=12, shell_rows=5, shell_frac=0.95, shell_shade=1.0, top_band=True, shell_band=3.0, shell_tile=5,
         shell_past=0.0, shell_top=90.0,
-        layers=[
-            dict(count=12, band=(0.0, 1.0), spacing=7, length=(0.24, 0.32), width=(0.2, 0.26), tiles=[4, 5],
-                 depth=(0.6, 1.12), lift=(0.01, 0.03), shade=1.0, spin=0.1, rows=3, clump=0.6, cup=0.3),
-        ],
+        layers=[],
+        # (it follows the upper lip: the head, not the jaw)
+        jaw=lambda a, e: 0.0,
     )
-    c_high = lambda a: 3.0 * math.sin(a * 0.41) + pw([(78, 8), (95, 20), (120, 26), (180, 26)], abs(a))
+    c_high = lambda a: 3.0 * math.sin(a * 0.41) + pw([(78, 10), (95, 24), (120, 30), (180, 30)], abs(a))
     c_low = lambda a: pw([(78, 5), (96, 6), (104, 6), (122, 0), (134, -22), (155, -32), (180, -35)], abs(a))
 
     def cap_locks(rng):
@@ -1180,16 +1260,13 @@ def captain():
             out.append(dict(a=a, e=lo + (hi - lo) * (share + rng.uniform(-0.05, 0.05)),
                             comb=lambda d: Vector((0, 1.0, -0.55)), length=length * rng.uniform(0.85, 1.15),
                             width=width * rng.uniform(0.9, 1.1), curl=0.5 * rng.uniform(0.6, 1.2), curl_from=0.55,
-                            swing=swing, depth=depth, shade=rng.uniform(0.93, 1.0), rows=rows, crest=0.16,
-                            edge=0.86, belly=0.72, tip=0.3, tile=7, hull=0.55))
+                            swing=swing, depth=depth, shade=rng.uniform(0.93, 1.0), rows=rows, crest=0.18,
+                            edge=0.9, tip=0.35, tile=7, hull=0.75))
         # the upper row, round from just behind the temples to the back, swept back and down to the nape's middle
         for a in (100, 116, 132, 148, 164):
             for sg in (1, -1):
                 add(sg * a, 0.45, 0.3, 0.32, -sg * 0.25, (0.45, 0.95))
         add(180, 0.45, 0.3, 0.32, 0.0, (0.45, 0.95))
-        # the nape, under it
-        for a in (180, 152, -152, 126, -126):
-            add(a, 0.08, 0.26, 0.3, rng.uniform(-0.3, 0.3), (0.3, 0.8))
         return out
 
     hair = dict(
@@ -1197,20 +1274,22 @@ def captain():
         # nothing, its top edge broken by sparse wisps into the bald crown (with the cap off it must not read as a
         # headband); under the cap nothing comes through (under_cap: points are pulled inside it)
         under_cap=True,
-        high=lambda a: 3.0 * math.sin(a * 0.41) + pw([(78, 8), (95, 20), (120, 26), (180, 26)], abs(a)),
+        high=lambda a: 3.0 * math.sin(a * 0.41) + pw([(78, 10), (95, 24), (120, 30), (180, 30)], abs(a)),
         low=lambda a: pw([(78, 5), (96, 6), (104, 6), (122, 0), (134, -22), (155, -32), (180, -35)], abs(a)),
         gap=78,
         fall=lambda a: 2.5 * math.sin(a * 0.37) + pw([(50, 0), (70, -4), (96, 4), (122, -4), (134, -28), (180, -41)],
                                                      abs(a)),
-        thick=lambda a, e: (0.02 + 0.09 * sstep(18, 2, e) * pw([(80, 0.5), (100, 1.0), (180, 1.15)], abs(a))) * (0.4 + 0.6 * sstep(78, 95, abs(a))),
+        thick=lambda a, e: (0.025 + 0.11 * sstep(22, 2, e) * pw([(80, 0.5), (100, 1.0), (180, 1.15)], abs(a))) * (0.4 + 0.6 * sstep(78, 95, abs(a))),
         comb=lambda a, e, d: Vector((0, 1.0, -0.55)),
-        shell_cols=22, shell_rows=4, shell_frac=0.75, shell_shade=0.85, top_band=True, shell_band=10.0,
+        shell_cols=22, shell_rows=5, shell_frac=0.85, shell_shade=0.92, top_band=True, shell_band=12.0,
         shell_top=90.0,
         # (third pass: the cards read as a band of shards; the fringe is now soft FLAT MODELLED LOCKS swept back and
         # down (as the bare sheet and the swimming pose paint it), low crests, light bellies, a slight flick at the
         # end; no wisps over the crown (thin locks there read as lines across the bald head): the top edge feathers
         # through the under-shell's taller band of strands)
-        locks=lambda rng: cap_locks(rng),
+        # (fourth pass: no modelled locks: they read as a laurel wreath of leaves with dark notches; the fringe is the
+        # smooth shell alone (one soft mass), painted with soft swept strokes, both its edges soft bands that
+        # feather out through the shader's dither. cap_locks is kept for a later try.)
         layers=[],
     )
     brows = dict(
@@ -1219,24 +1298,31 @@ def captain():
         low=lambda a: pw([(10, -1), (30, 1), (46, -2)], abs(a)),
         gap=8, reach=46,
         fall=lambda a: -9.0,
-        thick=lambda a, e: 0.09,
+        thick=lambda a, e: 0.08 * (0.6 + 0.4 * sstep(10, 26, abs(a))),
         comb=lambda a, e, d: Vector((math.copysign(1.0, a), -0.45, 0.1)),
+        # (fourth pass: each brow a small soft shell (a bushy tuft) and three big soft cards out over the eye; the
+        # third pass's ten pointed cards read as feathers)
+        shell_cols=8, shell_rows=2, shell_frac=0.8, shell_shade=0.98, top_band=True, shell_band=3.0,
+        shell_past=0.0, shell_top=90.0,
         layers=[
-            dict(count=10, band=(0.0, 1.0), spacing=9, length=(0.18, 0.24), width=(0.18, 0.22), tiles=[6],
-                 depth=(0.5, 1.15), lift=(0.01, 0.03), shade=1.0, spin=0.15, rows=2, clump=0.4),
+            dict(count=6, band=(0.2, 0.9), spacing=10, length=(0.2, 0.24), width=(0.2, 0.24), tiles=[3],
+                 depth=(0.7, 1.05), lift=(0.0, 0.02), shade=1.0, spin=0.0, rows=2, clump=0.0, cup=0.15),
         ],
     )
     # (the under-shell painted with the fringe of concept_captain_head_bare.jpg's back view (3168 x 1344), its
     # broad light taken out; the locks drawn by script in the beard's own colours, low in contrast)
     tiles = [
-        dict(lift=[dict(src="concept_captain_head_bare.jpg", at=(2820, 505), length=120, width=1.0, region=(0.0, 0.5),
-                        solid=True, lift_to=0.74, flat=0.85)],
-             **{"else": dict(base=True, strands=3, rag=0.35, strokes=True)}),
-        dict(wave=0.18, width=0.9, taper=0.7, length=1.0, light=0.22, strands=9, rag=0.1, tufts=1),
-        dict(wave=-0.16, bend=0.15, width=0.9, taper=0.7, length=1.0, light=0.22, strands=9, rag=0.1, tufts=1),
-        dict(wave=0.1, bend=-0.2, width=0.86, taper=0.72, length=1.0, light=0.25, strands=8, rag=0.12, tufts=1),
-        dict(curl=0.7, curl_start=0.4, width=0.95, taper=0.6, length=1.0, light=0.7, strands=8, rag=0.1, tufts=1),
-        dict(curl=-0.7, curl_start=0.4, width=0.95, taper=0.6, length=1.0, light=0.7, strands=8, rag=0.1, tufts=1),
+        # (fourth pass: the fringe's under-shell painted by script, soft strokes; the patch lifted from the bare sheet
+        # carried its dark strokes and a line of skin)
+        dict(base=True, strands=3, rag=0.25, strokes=True, soft=0.35, points=1.3),
+        # (fourth pass: big soft-edged points: the beard's outline cards, then the moustache's and brows')
+        dict(wave=0.1, width=0.9, taper=0.7, length=1.0, light=0.2, strands=9, rag=0.0, tufts=1, soft=0.45),
+        dict(wave=-0.1, bend=0.15, width=0.9, taper=0.7, length=1.0, light=0.2, strands=9, rag=0.0, tufts=1, soft=0.45),
+        dict(bend=0.25, width=0.9, taper=0.72, length=1.0, light=0.3, strands=8, rag=0.0, tufts=1, soft=0.45),
+        # (the beard's shell: soft broad strokes, low in contrast, its edge a soft band of a few broad points)
+        dict(base=True, strands=3, rag=0.22, strokes=True, soft=0.35, points=1.2, brighten=0.08),
+        # (the moustache's shell: lighter than the beard, a clean soft surface)
+        dict(base=True, strands=3, rag=0.3, strokes=True, soft=0.4, points=1.0, brighten=0.1),
         dict(bend=0.3, width=0.95, taper=0.65, length=0.9, light=0.35, strands=7, rag=0.12, tufts=1),
         # (the fringe's modelled locks)
         dict(surface=dict(grooves=3.0, lo=0.55, hi=0.85, streak=0.04)),
@@ -1292,7 +1378,8 @@ def build(fig):
         bpy.context.view_layer.objects.active = ob
         bpy.ops.export_scene.gltf(filepath=os.path.join(ROOT, "models", "hair", fig + "_" + piece + ".glb"),
                                   export_format="GLB", use_selection=True, export_yup=True, export_normals=True,
-                                  export_tangents=False, export_vertex_color="ACTIVE", export_materials="EXPORT",
+                                  export_tangents=False, export_vertex_color="ACTIVE", export_attributes=True,
+                                  export_materials="EXPORT",
                                   export_image_format="NONE")
     # (keep only the hair in the .blend)
     for o in list(bpy.data.objects):
