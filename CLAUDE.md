@@ -1024,3 +1024,10 @@ the research (with sources), the numbers, what is checked and what is rough. Con
   flat stomach, no gut; made in the NPC conversation /app/a896ddb450545c99). `tools/build_brother.py` builds both by
   `-- --figure brother|man_big`. His pose sheet `concept_brother_poses.jpg` shows the bulkier build: use it for poses
   only.
+- And again (the user, 2026-11-18, 5:40 PM, of `concept_brother_tpose7.jpg`): "Not stocky enough now and he lost thair,
+  though make a body on that one". So tpose7 is a townsperson too (`models/npc/man_trim.glb`), tpose6 is `man_big`, and
+  the BROTHER'S body is still owed: `concept_brother_tpose8.jpg`, between the two: thick and stocky like tpose6 with a
+  full firm stomach but no hanging gut, and as hairy as tpose6. Gemini's limit was reached again at 5:42 PM (resets
+  6:15 PM) even on the upgraded plan after about 25 pictures in the afternoon: draw tpose8 then, in the NPC
+  conversation, and tell the brother's builder. `tools/build_brother.py` is to build `brother`, `man_big` and `man_trim`
+  by `-- --figure`.
