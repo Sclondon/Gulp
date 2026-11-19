@@ -1075,3 +1075,13 @@ browser after this push.
   line; a heavier loop under the captain's chin. Small folded faces remain in laughs (its self-test fails on them).
 - The captain's pose test is `tests/captain_beauty.gd -- --poses`, the boy's `tests/boy_view.gd -- --poses`; all three
   rigs already have three bones a finger and thumb (`finger_<name>_1..3_<side>`, `thumb_1..3_<side>`).
+- **Figures are adjusted, not rebuilt** (the user, 2026-11-18, late evening, after about ten rounds a figure): "Are you
+  rebuilding the whole head each revision? I'm not seeing improvement, you should just be making adjustments". What was
+  happening: every round regenerated the model from its build script and a fresh builder edited steps in the middle of
+  it, so one fix moved other things (the brother's nose shortened, the captain's jaw folding more), and Claude had just
+  ordered a whole new head for the brother. The rule now, for heads, hands and feet of every figure: the current mesh is
+  FROZEN as a saved base the build loads; the earlier steps that made it are not edited and nothing is refitted; changes
+  are a final ordered list of small named adjustments (one feature each, a local move with smooth falloff, its own
+  switch and amount); every adjustment is shown as a before/after pair (same camera and light, grey and lit, beside
+  the sheet's view) and kept only if it visibly moves toward the sheet. The user is shown those pairs. Paint the same
+  way: adjust what is there.
