@@ -1160,3 +1160,17 @@ browser after this push.
   bodies but not on faces and hands; dozens of rounds of critique-and-fix moved slowly and often sideways; if this is
   picked up again, start by asking the user how they want faces made (for example by hand in Blender, from a bought or
   commissioned base, or a simpler stylised face like the mask heads the user's other games use) before running builders.
+- **The older brother's character bible** (the user, 2026-11-19, with five pictures they generated themselves: "I've
+  generated new key art for the character these should be the the character bible"). These five ARE his look now and
+  every earlier brother sheet is retired for him (kept in place; `tpose6`/`tpose7` are still the townsfolk `man_big` /
+  `man_trim`): `tools/art_src/concept_brother_bible_face.jpg` (front close-up), `_bible_body.jpg` (front, side, back
+  in white drawers), `_bible_head.jpg` (five-view head with hair), `_bible_bare.jpg` (the same man shaved bald and
+  clean-shaven, five-view head and three-view body: the sheet to model the bare base from), `_bible_poses.jpg` (six
+  expressions; four poses in his work rig). What they show (Claude's reading of the pictures): a tousled mop of brown
+  curls falling on the forehead; a broad square face on a thick neck; a round button nose; hazel-green eyes, a bit
+  downturned with soft bags; a small mole on each cheek under the eye; a thick ginger-auburn moustache, ginger stubble
+  and sideburns (redder than his hair); stocky and padded with a soft belly, hairy chest, belly, forearms and legs;
+  tattoos: an anchor on his right forearm, a swallow over a rope knot on his left forearm, an anchor on his left upper
+  arm; work rig: cream henley with rolled sleeves, stained blue bib overalls with rolled cuffs, brown boots. The sheets
+  draw him short-legged; the user's earlier "should be the tallest of the 3" has not been withdrawn: ask before
+  building. Figure work is still tabled (below is unchanged): this only replaces what he is built to when it resumes.
