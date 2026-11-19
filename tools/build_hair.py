@@ -98,14 +98,31 @@ class Head:
     def __init__(self, fig):
         bpy.ops.wm.read_factory_settings(use_empty=True)
         bpy.ops.import_scene.gltf(filepath=os.path.join(ROOT, "models", fig + ".glb"))
-        body = bpy.data.objects[fig + "_body"]
+        # (the body, and the head when tools/face_rig.py has split it off into a mesh of its own)
         dg = bpy.context.evaluated_depsgraph_get()
-        me = body.evaluated_get(dg).to_mesh()
-        mw = body.matrix_world
-        verts = [mw @ v.co for v in me.vertices]
-        self.bvh = BVHTree.FromPolygons(verts, [tuple(p.vertices) for p in me.polygons])
-        g = body.vertex_groups["head"].index
-        hv = [verts[v.index] for v in body.data.vertices if any(x.group == g and x.weight > 0.5 for x in v.groups)]
+        verts, polys, hv = [], [], []
+        for name in (fig + "_body", fig + "_head"):
+            body = bpy.data.objects.get(name)
+            if body is None or body.type != "MESH":
+                continue
+            me = body.evaluated_get(dg).to_mesh()
+            mw = body.matrix_world
+            base = len(verts)
+            vs = [mw @ v.co for v in me.vertices]
+            verts += vs
+            polys += [tuple(base + i for i in p.vertices) for p in me.polygons]
+            if "head" in body.vertex_groups:
+                g = body.vertex_groups["head"].index
+                hv += [vs[v.index] for v in body.data.vertices
+                       if any(x.group == g and x.weight > 0.5 for x in v.groups)]
+        self.bvh = BVHTree.FromPolygons(verts, polys)
+        # (the cap, when the figure wears one: hair under it is kept inside it)
+        self.cap = None
+        cap = bpy.data.objects.get(fig + "_cap")
+        if cap is not None and cap.type == "MESH":
+            cm = cap.evaluated_get(dg).to_mesh()
+            cv = [cap.matrix_world @ v.co for v in cm.vertices]
+            self.cap = BVHTree.FromPolygons(cv, [tuple(p.vertices) for p in cm.polygons])
         nose = min(hv, key=lambda p: p.y)
         top = max(p.z for p in hv)
         crown = [p for p in hv if p.z > nose.z]
@@ -118,16 +135,19 @@ class Head:
         print("HAIR head", fig, "centre", tuple(round(x, 3) for x in self.c), "size", round(self.size, 3),
               "nose", [round(x) for x in self.nose], "chin", [round(x) for x in self.chin])
 
-    def recentred(self, dy, dz):
+    def recentred(self, dy, dz, reach=None):
         """The same head read from another middle (dy back, dz up, in head sizes): a beard is read from the jaw's
-        middle, where rays meet the jaw, the chin's underside and the throat instead of passing under them."""
+        middle, where rays meet the jaw, the chin's underside and the throat instead of passing under them. reach (head
+        sizes): no skin further than that from the middle, so below the chin, where the rays go on to the throat and the
+        chest, the beard closes into a rounded mass instead of hanging down the chest."""
         h = copy.copy(self)
         h.c = self.c + Vector((0.0, dy * self.size, dz * self.size))
+        h.limit = reach * self.size if reach else None
         h._rays()
         return h
 
     def _rays(self):
-        reach = 2.2 * self.size
+        reach = getattr(self, "limit", None) or 2.2 * self.size
         na, ne = int(360 / self.STEP), int(180 / self.STEP) + 1
         s = np.zeros((ne, na))
         for i in range(ne):
@@ -145,6 +165,8 @@ class Head:
                     far = (hit[0] - self.c).length
                     o = hit[0] + d * 1e-4
                     n += 1
+                if getattr(self, "limit", None):
+                    far = min(far, reach) if far > 0 else reach
                 s[i, j] = far if far > 0 else (s[i - 1, j] if i else self.size)
         # (an opening, the smallest then the largest over 24 degrees round and 12 up, takes the ears out; then a blur)
         def roll_min(x, k, ax):
@@ -306,6 +328,142 @@ def paint_lock(img, tile, pal, rng, length=0.95, width=0.8, curl=0.0, curl_start
     img[y0:y0 + TH, x0:x0 + TW, 3] = alpha
 
 
+_SHEETS = {}
+
+
+def sheet(name):
+    """A concept sheet as an array (rows from the top, RGB 0..1), loaded once."""
+    if name not in _SHEETS:
+        im = bpy.data.images.load(os.path.join(HERE, "art_src", name))
+        w, h = im.size
+        _SHEETS[name] = np.array(im.pixels[:], dtype=np.float32).reshape(h, w, 4)[::-1, :, :3].copy()
+    return _SHEETS[name]
+
+
+def blur(x, r):
+    """A box blur r pixels each way, three times (near a gaussian), edges held."""
+    for _ in range(3):
+        for ax in (0, 1):
+            p = np.pad(x, [(r, r) if a == ax else (0, 0) for a in range(x.ndim)], mode="edge")
+            c = np.cumsum(p, axis=ax)
+            c = np.concatenate([np.zeros_like(np.take(c, [0], axis=ax)), c], axis=ax)
+            n = x.shape[ax]
+            x = (np.take(c, range(2 * r + 1, 2 * r + 1 + n), axis=ax) - np.take(c, range(0, n), axis=ax)) / (2 * r + 1)
+    return x
+
+
+KEYS = {
+    # (which pixels of a sheet are hair: the light grey ground and the skin are not)
+    # dark brown curls: darker than the skin and the ground
+    "dark": lambda c: sstep_np(0.52, 0.44, lum(c)),
+    # blond: yellow, its blue well under its red (the pink skin keeps more blue, the ground nearly all)
+    "blond": lambda c: sstep_np(0.7, 0.64, c[..., 2] / np.maximum(c[..., 0], 1e-3)) * sstep_np(0.9, 0.82, lum(c)),
+    # white-grey: low colour, warm or neutral (the ground is cool blue-grey), not the pink skin, not too dark
+    "grey": lambda c: sstep_np(-0.035, -0.005, c[..., 0] - c[..., 2]) * sstep_np(0.11, 0.07, c[..., 0] - c[..., 2])
+    * sstep_np(0.3, 0.4, lum(c)),
+}
+
+
+def lum(c):
+    return c[..., 0] * 0.3 + c[..., 1] * 0.55 + c[..., 2] * 0.15
+
+
+def sstep_np(e0, e1, x):
+    t = np.clip((x - e0) / (e1 - e0), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def sample(src, x, y):
+    """Bilinear sample of src (rows from the top) at pixel coordinates x, y (arrays)."""
+    h, w = src.shape[:2]
+    x = np.clip(x, 0, w - 1.001)
+    y = np.clip(y, 0, h - 1.001)
+    x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int)
+    fx, fy = (x - x0)[..., None], (y - y0)[..., None]
+    a, b = src[y0, x0], src[y0, x0 + 1]
+    c, d = src[y0 + 1, x0], src[y0 + 1, x0 + 1]
+    return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy
+
+
+def lift(img, tile, src, at, length, tip=0.0, width=0.5, key="dark", region=(0.0, 1.0), solid=False, lift_to=0.55,
+         flat=0.85, side=0.88, gain=1.0, warm=(1.0, 1.0, 1.0), taper=0.0):
+    """A lock LIFTED FROM THE CONCEPT SHEET into a tile (or part of one: region, the share of the tile's height):
+    a strip of the painting `length` sheet pixels long (`width` of that across), centred at `at` (x, y in the sheet's
+    own pixels, from its top left), its tip toward `tip` degrees (0 down the sheet, 90 to the right, -90 to the left,
+    180 up), turned so the root is at the top of the tile and the tip at the bottom. The hair is cut from the ground
+    and the skin by `key`, so the tip keeps the painting's own ragged outline; the sides fade (`side`) so a cut
+    neighbour does not leave a straight edge. The painting's broad light and shade is taken out (`flat`: its large
+    blur is divided away and replaced by `lift_to`), so the mass is shaded by the game's light, while its strokes,
+    curls and colour stay. solid: no cut (an inside patch, for the under-shell)."""
+    pic = sheet(src)
+    x0, y0 = (tile % 4) * TW, (tile // 4) * TH
+    r0, r1 = int(region[0] * TH), int(region[1] * TH)
+    hh = r1 - r0
+    vv, uu = np.mgrid[0:hh, 0:TW].astype(float)
+    a = math.radians(tip)
+    tx, ty = math.sin(a), math.cos(a)
+    px_, py_ = math.cos(a), -math.sin(a)
+    along = ((vv + 0.5) / hh - 0.5) * length
+    across = ((uu + 0.5) / TW - 0.5) * length * width
+    sx = at[0] + along * tx + across * px_
+    sy = at[1] + along * ty + across * py_
+    # (supersampled 2 x 2: the sheet's pixels are finer than the tile's along the lock)
+    rgb = np.zeros((hh, TW, 3))
+    for ox in (-0.25, 0.25):
+        for oy in (-0.25, 0.25):
+            dl, dc = oy * length / hh, ox * length * width / TW
+            rgb += sample(pic, sx + dl * tx + dc * px_, sy + dl * ty + dc * py_) / 4
+    if solid:
+        alpha = np.ones((hh, TW))
+    else:
+        alpha = KEYS[key](rgb)
+        s = np.abs((uu + 0.5) / TW * 2 - 1)
+        t = (vv + 0.5) / hh
+        # (the sides fade out, more toward the root, where the strip cuts across its neighbours; the root's corners
+        # rounded off)
+        alpha *= sstep_np(1.0, side, s)
+        alpha *= sstep_np(1.0, 0.75, s + 0.35 * np.clip(0.2 - t, 0, None) / 0.2)
+        # (and narrow toward the tip, as a lock does, so a card's sides never show as straight edges)
+        alpha *= sstep_np(1.0, 0.85, s + taper * t ** 1.5)
+    if not solid:
+        # (the edge pixels are part ground: give every pixel short of full hair the colour of the hair near it, so a
+        # cut edge has no pale halo)
+        core = (KEYS[key](rgb) > 0.95).astype(float)
+        near = blur(rgb * core[..., None], 3) / np.maximum(blur(core, 3), 1e-3)[..., None]
+        far = blur(rgb * core[..., None], 12) / np.maximum(blur(core, 12), 1e-3)[..., None]
+        fill = np.where((blur(core, 3) > 0.02)[..., None], near, far)
+        rgb = np.where((core > 0.5)[..., None], rgb, fill)
+    # (take the painting's broad light out: divide by its large blur, weighted to the hair, put back a flat tone)
+    L = lum(rgb)
+    wgt = np.clip(alpha, 0.05, 1.0)
+    big = blur(L * wgt, 18) / np.maximum(blur(wgt, 18), 1e-3)
+    k = (lift_to / np.maximum(big, 0.05)) ** flat * gain
+    rgb = np.clip(rgb * k[..., None] * np.array(warm), 0.0, 1.0)
+    # (the outermost pixels clear, so mipmaps do not bleed one tile into the next)
+    if not solid:
+        alpha[:, :2] = 0
+        alpha[:, -2:] = 0
+        alpha[-2:, :] = 0
+    img[y0 + r0:y0 + r1, x0:x0 + TW, :3] = rgb
+    img[y0 + r0:y0 + r1, x0:x0 + TW, 3] = np.clip(alpha, 0, 1)
+
+
+def palette_from(src, box, key, darken=1.0, saturate=1.0):
+    """The five colours of paint_lock's palette (darkest to lightest) read from the hair in a box of a concept sheet
+    (x0, y0, x1, y1 in its pixels): the mean colour of the hair at five bands of lightness."""
+    x0, y0, x1, y1 = box
+    c = sheet(src)[y0:y1, x0:x1].reshape(-1, 3)
+    c = c[KEYS[key](c) > 0.9]
+    c = c[np.argsort(lum(c))]
+    n = len(c)
+    out = []
+    for lo, hi in ((0.0, 0.08), (0.25, 0.4), (0.55, 0.7), (0.85, 0.93), (0.97, 1.0)):
+        m = c[int(lo * n):max(int(hi * n), int(lo * n) + 1)].mean(axis=0)
+        m = lum(m) + (m - lum(m)) * saturate
+        out.append(tuple(float(min(max(x, 0.0), 1.0)) * darken for x in m))
+    return out
+
+
 def save_image(img, name, path):
     im = bpy.data.images.new(name, ATLAS, ATLAS, alpha=True)
     im.pixels.foreach_set(np.ascontiguousarray(img[::-1]).ravel().astype(np.float32))
@@ -356,6 +514,23 @@ class Builder:
 
     def add(self, pts, uvs, cols, nors):
         """One face (3 or 4 corners) with its own UVs, colours and normals; wound so it faces like its normals."""
+        if len(pts) == 4:
+            # (two triangles, each wound by its own normals: a bent quad's halves can face apart)
+            self.add(pts[:3], uvs[:3], cols[:3], nors[:3])
+            self.add([pts[0], pts[2], pts[3]], [uvs[0], uvs[2], uvs[3]], [cols[0], cols[2], cols[3]],
+                     [nors[0], nors[2], nors[3]])
+            return
+        cap = getattr(self, "cap", None)
+        if cap is not None:
+            # (under a cap: nothing may come through it; a point the cap lies between the head's middle and is
+            # pulled back inside it, 4 mm under its inner side)
+            out = []
+            for p in pts:
+                d = p - self.h.c
+                hit = cap.ray_cast(self.h.c, d.normalized(), d.length + 0.004)
+                out.append(self.h.c + d.normalized() * max((hit[0] - self.h.c).length - 0.004, 0.0)
+                           if hit[0] is not None else p)
+            pts = out
         a, b, c = pts[:3]
         if (b - a).cross(c - a).dot(sum(nors, Vector())) < 0:
             pts, uvs, cols, nors = pts[::-1], uvs[::-1], cols[::-1], nors[::-1]
@@ -463,7 +638,7 @@ class Builder:
         for k in range(fine):
             d = pts[-1]
             a, e = angles(d)
-            g = m["comb"](a, e, d)
+            g = layer.get("comb", m["comb"])(a, e, d)
             g = (g - d * g.dot(d))
             if g.length < 1e-6:
                 break
@@ -494,10 +669,10 @@ class Builder:
         r0, r1 = layer["depth"]
         shade = layer["shade"]
         spin = rng.uniform(-1, 1) * layer.get("spin", 0.0)
-        rowsets = []
+        # (first the lock's frame row by row along the hull: where, its hull normal, along and across)
+        frames = []
         for r, d in enumerate(dirs):
             t = r / rows
-            a, e = angles(d)
             base = max(self.h.skin(d), self.h.skin_raw(d) if m.get("over_raw") else 0.0)
             rad = base + self.thick(d) * lerp(r0, r1, sstep(0.0, 0.7, t)) + lift * t * t + 0.003
             p = self.h.c + d * rad
@@ -511,6 +686,34 @@ class Builder:
             across = n.cross(along).normalized()
             # (a small twist about the lock, so neighbouring cards are not all flat to the hull)
             across = (across + n * spin * t).normalized()
+            if layer.get("fin"):
+                # (a FIN: the card stands up from the mass instead of lying on it, half inside, half out, so its
+                # painted curl is seen whole wherever the lock is on the outline (shells and fins, as fur is drawn
+                # in games); seen face on it is edge on, and the mass behind covers it)
+                across = (n + across * spin).normalized()
+            frames.append([p, n, along, across])
+        # (a HOOK: past hook_from the lock rolls over in a C, its end turning out from the head (or, sign -1, under
+        # it): a curl in the lock itself, so the outline breaks into curls, not flat flaps)
+        hook = rng.uniform(*layer.get("hook", (0.0, 0.0)))
+        if hook > 0.0:
+            k0 = next((r for r in range(rows + 1) if r / rows >= layer.get("hook_from", 0.5)), rows)
+            sign = 1.0 if rng.random() < layer.get("hook_out", 0.8) else -1.0
+            p0, n0, a0, c0 = frames[k0]
+            segs = [(frames[r + 1][0] - frames[r][0]).length for r in range(k0, rows)]
+            total = max(sum(segs), 1e-6)
+            P, phi = p0.copy(), 0.0
+            for i, r in enumerate(range(k0 + 1, rows + 1)):
+                mid = phi + hook * segs[i] / total * 0.5
+                P = P + (a0 * math.cos(mid) + n0 * sign * math.sin(mid)) * segs[i]
+                phi += hook * segs[i] / total
+                frames[r][0] = P.copy()
+                frames[r][1] = (n0 * math.cos(phi) - a0 * sign * math.sin(phi)).normalized()
+                frames[r][2] = (a0 * math.cos(phi) + n0 * sign * math.sin(phi)).normalized()
+                frames[r][3] = c0
+        clump = layer.get("clump", 0.0)
+        rowsets = []
+        for r, (p, n, along, across) in enumerate(frames):
+            t = r / rows
             w = width * (1.0 - 0.25 * t)
             cup = layer.get("cup", 0.18) * w
             row = []
@@ -521,7 +724,10 @@ class Builder:
                 dd = (q - self.h.c)
                 if dd.length < self.h.skin(dd) + 0.002:
                     q = self.h.c + dd.normalized() * (self.h.skin(dd) + 0.002)
+                # (the normal: the hull's (one soft mass) leaned toward the lock's own, rounded across it (clump), so
+                # each lock has its own lit side and shadow side within the mass)
                 nn = self.hull_normal(q - self.h.c).lerp(n, 0.5).normalized()
+                nn = (nn + across * (2 * s - 1) * clump).normalized()
                 su = (1 - s) if flip else s
                 row.append((q, tile_uv(tile, su, t), (shade, t, 1, 1), nn))
             rowsets.append(row)
@@ -583,42 +789,66 @@ def comb_from(crown, fall, forward=0.0):
 
 
 def brother():
-    # Thick tousled mop of curls, shorter at the sides, falling on the forehead (the user); concept_brother_head2.jpg.
+    # Thick tousled mop of curls, shorter at the sides, falling on the forehead (the user); concept_brother_head3.jpg
+    # (the settled sheet, top row): the curls stand 4 to 6 cm off the skull all round, wider than the head at the
+    # temples, tall on top, a tousled fringe on the forehead, a ragged outline of fat curled locks.
     pal = [(0.12, 0.075, 0.055), (0.27, 0.17, 0.1), (0.41, 0.26, 0.15), (0.6, 0.36, 0.18), (0.8, 0.5, 0.26)]
     hair = dict(
         # hairline: elevation the hair reaches down to, by azimuth (0 = the face): forehead, temple, before the ear,
         # over the ear, behind it, the nape
-        low=lambda a: pw([(0, 26), (25, 26), (45, 17), (60, 5), (75, -4), (100, -6), (108, -2), (128, -2), (138, -14),
-                          (150, -34), (180, -44)], abs(a)),
-        # how far down a lock may fall (a wobble, so the fringe is not cut straight)
-        fall=lambda a: 3.5 * math.sin(a * 0.21) + pw([(0, 8), (30, 10), (45, 6), (60, -2), (75, -8), (100, -8), (108, -4),
-                                                       (128, -4), (138, -18), (150, -42), (180, -50)], abs(a)),
-        # thickness of the mop off the head (in head sizes): full on top, short at the sides, thinner at the nape
-        thick=lambda a, e: lerp(pw([(0, 0.2), (60, 0.24), (100, 0.15), (130, 0.22), (180, 0.24)], abs(a)), 0.5,
-                                sstep(15, 70, e)) * (0.35 + 0.65 * sstep(-35, 20, e)),
+        low=lambda a: 3.0 * math.sin(a * 0.37) + pw([(0, 25), (25, 24), (45, 15), (60, 4), (75, -5), (100, -7),
+                                                      (108, -3), (128, -3), (138, -12), (150, -24), (180, -30)], abs(a)),
+        # how far down a lock may fall (two wobbles, so the fringe and the nape are ragged, not cut straight)
+        fall=lambda a: 4.0 * math.sin(a * 0.21) + 2.5 * math.sin(a * 0.53 + 1.0)
+        + pw([(0, 14), (30, 13), (45, 7), (60, -4), (75, -10), (100, -11), (108, -6), (128, -6), (138, -16), (150, -30),
+              (180, -38)], abs(a)),
+        # thickness of the mop off the head (in head sizes; the head is 0.185 m nose to crown): about a quarter all
+        # round (4 to 5 cm), more on top, still full over the ears (the sheet's mop is wider than the head there)
+        thick=lambda a, e: lerp(pw([(0, 0.24), (60, 0.32), (100, 0.31), (130, 0.32), (180, 0.3)], abs(a)), 0.48,
+                                sstep(20, 75, e)) * (0.62 + 0.38 * sstep(-40, 10, e)),
         comb=comb_from(direction(180, 62), 0.25, 0.0),
-        shell_cols=20, shell_rows=5, shell_frac=0.85, shell_shade=0.85,
+        shell_cols=20, shell_rows=5, shell_frac=0.85, shell_shade=0.8,
         layers=[
-            dict(count=26, band=(0.0, 0.75), spacing=21, length=(0.5, 0.65), width=(0.4, 0.5), tiles=[1, 2, 3],
-                 depth=(0.5, 0.95), lift=(0.0, 0.04), shade=0.8, spin=0.2),
-            # (the fringe: curls from the front hairline hanging over the forehead, over the shell's edge)
-            dict(count=13, band=(0.0, 0.22), arc=75, spacing=12, length=(0.42, 0.62), width=(0.36, 0.46),
-                 tiles=[1, 2, 4, 5], depth=(0.5, 0.3), lift=(0.0, 0.02), shade=0.9, spin=0.15),
-            dict(count=26, band=(0.15, 1.0), spacing=19, length=(0.45, 0.6), width=(0.4, 0.5), tiles=[1, 2, 4, 5],
-                 depth=(0.7, 1.05), lift=(0.02, 0.06), shade=0.92, spin=0.3),
-            dict(count=30, rows=2, band=(0.2, 1.0), spacing=16, length=(0.34, 0.46), width=(0.34, 0.42), tiles=[4, 5, 6, 7],
-                 depth=(0.8, 1.1), lift=(0.0, 0.03), shade=1.0, spin=0.35),
+            # (fewer, bigger locks than the first pass: fat curls 4 to 6 cm across, each HOOKED in a C at its end (out
+            # from the head, now and then under), with its own lit and shadow side (clump), so the outline breaks
+            # into curls all round)
+            dict(count=18, band=(0.0, 0.8), spacing=25, length=(0.55, 0.75), width=(0.46, 0.58), tiles=[1, 2, 3, 6, 7],
+                 depth=(0.45, 0.9), lift=(0.0, 0.02), shade=0.74, spin=0.12, cup=0.3, rows=3, hook=(0.4, 0.9),
+                 hook_from=0.45, clump=0.7),
+            # (the fringe: curls from the front hairline tumbling onto the forehead, curling up at their ends)
+            dict(count=8, band=(0.0, 0.25), arc=70, spacing=16, length=(0.45, 0.62), width=(0.42, 0.54),
+                 tiles=[1, 4, 5, 7], depth=(0.6, 0.5), lift=(0.0, 0.01), shade=0.92, spin=0.1, cup=0.3, rows=4,
+                 hook=(0.5, 1.0), hook_from=0.5, hook_out=0.9, clump=0.7),
+            dict(count=16, band=(0.15, 1.0), spacing=25, length=(0.5, 0.66), width=(0.46, 0.56),
+                 tiles=[1, 2, 3, 4, 5, 6, 7], depth=(0.75, 1.05), lift=(0.0, 0.03), shade=0.9, spin=0.15, cup=0.3,
+                 rows=3, hook=(0.4, 0.9), hook_from=0.45, clump=0.7),
+            dict(count=12, band=(0.1, 0.9), spacing=27, length=(0.36, 0.5), width=(0.4, 0.5), tiles=[4, 5, 6, 7],
+                 depth=(0.95, 1.1), lift=(0.01, 0.03), shade=1.0, spin=0.2, cup=0.3, rows=3, hook=(0.4, 0.9),
+                 hook_from=0.5, clump=0.7),
+            # (fins: curls standing out of the mass all round, its ragged outline from every side)
+            dict(count=28, band=(0.05, 0.95), spacing=19, length=(0.55, 0.75), width=(0.42, 0.55),
+                 tiles=[1, 2, 4, 5, 6, 7], depth=(0.25, 0.95), lift=(0.0, 0.02), shade=0.95, spin=0.1, cup=0.0,
+                 rows=3, fin=True),
         ],
     )
+    # (from concept_brother_head3.jpg, 2752 x 1536: the colours are the mop's own, read from the top row's back view
+    # (x 2167..2697), and the under-shell is painted with a patch of that view's curls, its broad light taken out. The
+    # locks are drawn by script in those colours: whole curls LIFTED from the sheet were tried (2026-11-18, the side and
+    # back views' outline curls cut from the ground) and read as bark chips: a curl's painted light belongs to the
+    # painting's light, not the card's, and cut neighbours left hard edges.)
+    sh = "concept_brother_head3.jpg"
+    pal = dict(fixed=pal, sheet=dict(src=sh, box=(2190, 80, 2690, 560), key="dark", darken=1.35, saturate=1.3))
     tiles = [
-        dict(base=True, strands=3, rag=0.45, curly=True),
-        dict(curl=3.6, curl_start=0.5, width=0.8, taper=0.7, length=1.0, light=0.8, strands=8, bend=0.15, rag=0.3),
-        dict(curl=-3.4, curl_start=0.45, width=0.8, taper=0.7, length=1.0, light=0.7, strands=8, bend=-0.15, rag=0.3),
-        dict(wave=0.3, width=0.78, taper=0.7, length=1.0, light=0.8, strands=8, curl=2.0, curl_start=0.7, rag=0.35),
-        dict(curl=4.2, curl_start=0.4, width=0.76, taper=0.72, length=0.95, light=1.0, strands=7, rag=0.3),
-        dict(curl=-4.0, curl_start=0.35, width=0.76, taper=0.72, length=0.95, light=0.9, strands=7, bend=0.2, rag=0.3),
-        dict(curl=4.8, curl_start=0.3, width=0.72, taper=0.75, length=0.9, light=1.1, strands=6, bend=-0.2, tufts=2),
-        dict(curl=-4.6, curl_start=0.3, width=0.72, taper=0.75, length=0.9, light=1.1, strands=6, tufts=2),
+        dict(lift=[dict(src=sh, at=(2442, 315), length=250, width=1.0, region=(0.0, 0.5), solid=True, lift_to=0.24,
+                        flat=0.7)],
+             **{"else": dict(base=True, strands=3, rag=0.45)}),
+        dict(curl=2.4, curl_start=0.5, width=0.84, taper=0.7, length=1.0, light=0.8, strands=8, bend=0.15, rag=0.3),
+        dict(curl=-2.2, curl_start=0.45, width=0.84, taper=0.7, length=1.0, light=0.7, strands=8, bend=-0.15, rag=0.3),
+        dict(wave=0.25, width=0.8, taper=0.7, length=1.0, light=0.8, strands=8, curl=1.6, curl_start=0.65, rag=0.35),
+        dict(curl=3.0, curl_start=0.4, width=0.8, taper=0.72, length=0.95, light=1.0, strands=7, rag=0.3),
+        dict(curl=-2.8, curl_start=0.35, width=0.8, taper=0.72, length=0.95, light=0.9, strands=7, bend=0.2, rag=0.3),
+        dict(curl=3.4, curl_start=0.3, width=0.76, taper=0.75, length=0.9, light=1.1, strands=6, bend=-0.2, tufts=2),
+        dict(curl=-3.2, curl_start=0.3, width=0.76, taper=0.75, length=0.9, light=1.1, strands=6, tufts=2),
     ]
     # A thin young moustache (the user), read from the jaw's middle like the captain's; the stubble is left to the face
     # paint (a faint tint there), not cards: at the game's half-size picture single hairs only shimmer.
@@ -628,13 +858,14 @@ def brother():
         low=lambda a: pw([(0, -8), (14, -10), (24, -14)], abs(a)),
         reach=25,
         fall=lambda a: pw([(0, -11), (24, -19)], abs(a)),
-        thick=lambda a, e: 0.025,
+        # (thin, young and soft (the user's settled sheet): close to the lip, lighter than the mop, no ragged ends)
+        thick=lambda a, e: 0.016,
         comb=lambda a, e, d: Vector((math.copysign(1.0, a) if abs(a) > 2 else 0.0, -0.1, -0.7)),
-        shell_cols=6, shell_rows=2, shell_frac=0.6, shell_shade=0.8, top_band=True, shell_band=2.0,
+        shell_cols=6, shell_rows=2, shell_frac=0.5, shell_shade=1.0, top_band=True, shell_band=2.0,
         shell_past=0.0, shell_top=90.0,
         layers=[
-            dict(count=8, band=(0.0, 1.0), spacing=5, length=(0.07, 0.1), width=(0.07, 0.09), tiles=[3],
-                 depth=(0.5, 1.0), lift=(0.0, 0.0), shade=0.9, spin=0.05, rows=2),
+            dict(count=7, band=(0.0, 1.0), spacing=6, length=(0.06, 0.085), width=(0.06, 0.075), tiles=[3],
+                 depth=(0.5, 0.8), lift=(0.0, 0.0), shade=1.0, spin=0.0, rows=2, cup=0.1),
         ],
     )
     return pal, tiles, {"hair": hair, "moustache": moustache}
@@ -645,11 +876,11 @@ def boy():
     # covered, straight locks breaking into pointed tips all round.
     pal = [(0.44, 0.34, 0.18), (0.66, 0.53, 0.31), (0.81, 0.68, 0.42), (0.91, 0.81, 0.56), (0.98, 0.93, 0.72)]
     hair = dict(
-        low=lambda a: pw([(0, 30), (30, 28), (55, 14), (75, 2), (98, -2), (106, 8), (128, 6), (140, -16),
-                          (160, -36), (180, -42)], abs(a)),
+        low=lambda a: pw([(0, 30), (30, 28), (55, 14), (75, 2), (98, -2), (106, 8), (128, 6), (140, -18),
+                          (160, -40), (180, -47)], abs(a)),
         fall=lambda a: 3.0 * math.sin(a * 0.23) + pw([(0, 10), (30, 9), (55, 0), (75, -8), (98, -6), (106, 4),
-                                                       (128, 2), (140, -22), (160, -44), (180, -50)], abs(a)),
-        thick=lambda a, e: lerp(pw([(0, 0.18), (60, 0.24), (100, 0.16), (130, 0.24), (180, 0.22)], abs(a)), 0.34,
+                                                       (128, 2), (140, -24), (160, -48), (180, -56)], abs(a)),
+        thick=lambda a, e: lerp(pw([(0, 0.18), (50, 0.27), (75, 0.27), (100, 0.2), (130, 0.24), (180, 0.22)], abs(a)), 0.34,
                                 sstep(15, 70, e)) * (0.4 + 0.6 * sstep(-35, 20, e)),
         comb=comb_from(direction(180, 58), 0.35, 0.0),
         shell_cols=20, shell_rows=5, shell_frac=0.85, shell_shade=0.85,
@@ -664,8 +895,15 @@ def boy():
                  tiles=[5, 6, 7], depth=(0.8, 1.12), lift=(0.02, 0.07), shade=1.0, spin=0.4),
         ],
     )
+    # (the colours are the boy's own, read from concept_boy_head2.jpg's top-row back view (x 2174..2670 of 2752); the
+    # under-shell is painted with a patch of that view, its broad light taken out: the first pass drew it as even
+    # strands, which showed as faint straight streaks over the crown)
+    sh = "concept_boy_head2.jpg"
+    pal = dict(fixed=pal, sheet=dict(src=sh, box=(2200, 80, 2650, 520), key="blond", darken=1.0, saturate=1.3))
     tiles = [
-        dict(base=True, strands=4, rag=0.5),
+        dict(lift=[dict(src=sh, at=(2420, 300), length=240, width=1.0, region=(0.0, 0.5), solid=True, lift_to=0.52,
+                        flat=0.92, warm=(1.04, 1.0, 0.9))],
+             **{"else": dict(base=True, strands=4, rag=0.5)}),
         dict(bend=0.35, width=0.78, taper=0.92, length=1.0, light=0.7, strands=8, rag=0.35, tufts=3),
         dict(bend=-0.3, width=0.78, taper=0.92, length=1.0, light=0.7, strands=8, rag=0.35, tufts=3),
         dict(wave=0.18, width=0.75, taper=0.92, length=1.0, light=0.8, strands=8, rag=0.4, tufts=3),
@@ -682,83 +920,102 @@ def boy():
 def captain():
     # A full white beard and moustache, white-grey hair in a fringe round the back and sides under his cap, heavy grey
     # brows (the user); concept_captain_head.jpg (the beard, the cap on), concept_captain_head_bare.jpg (the fringe).
-    # Warm greys, not white: the earlier rounds came out "too white" and flat.
-    pal = [(0.42, 0.41, 0.38), (0.58, 0.57, 0.53), (0.71, 0.7, 0.66), (0.82, 0.81, 0.77), (0.91, 0.9, 0.87)]
+    # Second pass (2026-11-18), to the sheet: the beard a full ROUNDED soft near-white mass, warm grey only in its
+    # shadows, wider than the jaw, its lower edge a few big soft points; a drooping walrus moustache in two lobes; heavy
+    # bushy brows that overhang the eyes; the fringe thinning upward into the bald crown in sparse wisps.
+    fixed = [(0.5, 0.47, 0.42), (0.64, 0.61, 0.56), (0.76, 0.74, 0.69), (0.86, 0.85, 0.81), (0.93, 0.92, 0.89)]
+    pal = dict(fixed=fixed, sheet=dict(src="concept_captain_head.jpg", box=(230, 590, 600, 830), key="grey",
+                                       darken=1.22, saturate=1.1))
     down = Vector((0, 0, -1))
     beard = dict(
+        # (angles from the jaw's middle, about the mouth's height, 0.09 back; the skin is read no further than 0.62
+        # head sizes from there, so under the chin the beard closes round instead of following the throat down)
+        centre=(0.09, -0.32, 0.78),
         # the cheek line (top) and how far under the chin and down the jaw it reaches (bottom); in front of the ear
         # it runs up as a sideburn to the cap
-        # (angles from the jaw's middle, about the nose's height: see centre)
-        centre=(0.09, -0.32),
-        high=lambda a: pw([(0, -13), (14, -12), (24, -4), (40, 6), (60, 10), (80, 18), (95, 28), (102, 28)], abs(a)),
-        low=lambda a: pw([(0, -58), (40, -57), (70, -53), (88, -46), (98, -30), (105, -6)], abs(a)),
-        reach=105,
-        fall=lambda a: pw([(0, -67), (60, -64), (90, -54), (105, -26)], abs(a)),
-        # how far the beard stands off: full at the chin and hanging below it, close on the cheeks and sideburns
-        thick=lambda a, e: (0.05 + 0.17 * sstep(-15, -40, e) * sstep(108, 15, abs(a)))
-        * (1.0 - 0.5 * sstep(-55, -65, e)),
-        comb=lambda a, e, d: down + Vector((0, -0.25, 0)) + d * 0.15,
-        shell_cols=16, shell_rows=6, shell_frac=0.85, shell_shade=0.85, top_band=True, shell_band=6.0,
+        high=lambda a: pw([(0, -13), (14, -12), (24, -4), (40, 6), (60, 10), (80, 18), (95, 28), (106, 28)], abs(a)),
+        low=lambda a: pw([(0, -70), (40, -66), (70, -58), (88, -48), (98, -30), (106, -6)], abs(a)),
+        reach=106,
+        fall=lambda a: 3.0 * math.sin(a * 0.3) + pw([(0, -78), (30, -75), (60, -66), (90, -52), (106, -26)], abs(a)),
+        # how far the beard stands off: full round the chin and the jaw (wider than the jaw), close on the cheeks,
+        # thinning to nothing at the sideburn's back edge (no cut in front of the ear)
+        thick=lambda a, e: (0.06 + 0.2 * sstep(-8, -40, e) * sstep(112, 40, abs(a))) * sstep(110, 92, abs(a))
+        * (1.0 - 0.35 * sstep(-58, -70, e)) + 0.012,
+        comb=lambda a, e, d: down + Vector((0, -0.25, 0)) + d * 0.2,
+        shell_cols=16, shell_rows=6, shell_frac=0.88, shell_shade=0.9, top_band=True, shell_band=6.0,
         shell_past=0.0, shell_top=90.0,
         layers=[
-            dict(count=22, band=(0.0, 0.8), spacing=13, length=(0.24, 0.34), width=(0.24, 0.3), tiles=[1, 2, 3],
-                 depth=(0.55, 1.0), lift=(0.0, 0.02), shade=0.92, spin=0.1),
-            dict(count=22, band=(0.15, 1.0), spacing=12, length=(0.2, 0.3), width=(0.2, 0.26), tiles=[1, 2, 3],
-                 depth=(0.8, 1.12), lift=(0.0, 0.03), shade=1.0, spin=0.25),
+            dict(count=17, band=(0.0, 0.8), spacing=15, length=(0.28, 0.38), width=(0.3, 0.38), tiles=[1, 2, 3],
+                 depth=(0.65, 1.0), lift=(0.0, 0.01), shade=0.95, spin=0.06, clump=0.15, cup=0.25),
+            dict(count=17, band=(0.15, 1.0), spacing=14, length=(0.24, 0.34), width=(0.28, 0.34), tiles=[1, 2, 3],
+                 depth=(0.88, 1.06), lift=(0.0, 0.01), shade=1.0, spin=0.08, clump=0.15, cup=0.25),
         ],
     )
     moustache = dict(
+        # (a big drooping walrus moustache over the mouth: two full lobes from a parting under the nose)
         centre=(0.09, -0.32),
-        high=lambda a: pw([(0, -2), (20, -4), (34, -10)], abs(a)),
-        low=lambda a: pw([(0, -10), (20, -13), (34, -18)], abs(a)),
-        reach=34,
-        fall=lambda a: pw([(0, -14), (20, -24), (40, -32)], abs(a)),
-        thick=lambda a, e: 0.07,
-        comb=lambda a, e, d: Vector((math.copysign(1.0, a) if abs(a) > 2 else 0.0, -0.1, -0.9)),
-        shell_cols=8, shell_rows=3, shell_frac=0.7, shell_shade=0.85, top_band=True, shell_band=4.0,
+        high=lambda a: pw([(0, -1), (20, -3), (40, -10)], abs(a)),
+        low=lambda a: pw([(0, -12), (20, -15), (40, -22)], abs(a)),
+        gap=2.5, reach=40,
+        fall=lambda a: pw([(0, -20), (20, -30), (44, -40)], abs(a)),
+        thick=lambda a, e: 0.17 * (0.55 + 0.45 * sstep(2, 14, abs(a))),
+        comb=lambda a, e, d: Vector((0.55 * math.copysign(1.0, a), -0.15, -0.9)),
+        shell_cols=10, shell_rows=3, shell_frac=0.75, shell_shade=0.9, top_band=True, shell_band=4.0,
         shell_past=0.0, shell_top=90.0,
         layers=[
-            dict(count=12, band=(0.0, 1.0), spacing=6, length=(0.16, 0.24), width=(0.13, 0.17), tiles=[4, 5],
-                 depth=(0.6, 1.1), lift=(0.0, 0.01), shade=0.95, spin=0.15, rows=2),
+            dict(count=16, band=(0.0, 1.0), spacing=6, length=(0.2, 0.3), width=(0.15, 0.21), tiles=[4, 5],
+                 depth=(0.6, 1.12), lift=(0.01, 0.03), shade=1.0, spin=0.1, rows=3, clump=0.6, cup=0.3),
         ],
     )
     hair = dict(
-        # the fringe: round the back and sides from the temples, swept back; thin at its top, where the cap fits
-        # close (so it stays inside the cap), full below the cap's edge
-        high=lambda a: pw([(50, 14), (70, 24), (100, 30), (140, 32), (180, 30)], abs(a)),
-        low=lambda a: pw([(50, 6), (70, 2), (96, 8), (104, 6), (122, 4), (134, -16), (155, -24), (180, -26)], abs(a)),
-        gap=50,
-        fall=lambda a: pw([(50, 0), (70, -4), (96, 4), (122, 0), (134, -22), (180, -32)], abs(a)),
-        thick=lambda a, e: 0.03 + 0.07 * sstep(14, 4, e),
+        # the fringe: round the back and sides from the temples, swept back; full low down, thinning upward to
+        # nothing, its top edge broken by sparse wisps into the bald crown (with the cap off it must not read as a
+        # headband); under the cap nothing comes through (under_cap: points are pulled inside it)
+        under_cap=True,
+        high=lambda a: 3.0 * math.sin(a * 0.41) + pw([(50, 12), (70, 20), (100, 26), (140, 28), (180, 26)], abs(a)),
+        low=lambda a: pw([(50, 6), (70, 2), (96, 8), (104, 6), (122, 0), (134, -22), (155, -32), (180, -35)], abs(a)),
+        gap=62,
+        fall=lambda a: 2.5 * math.sin(a * 0.37) + pw([(50, 0), (70, -4), (96, 4), (122, -4), (134, -28), (180, -41)],
+                                                     abs(a)),
+        thick=lambda a, e: 0.02 + 0.09 * sstep(18, 2, e) * pw([(50, 0.7), (100, 1.0), (180, 1.15)], abs(a)),
         comb=lambda a, e, d: Vector((0, 1.0, -0.55)),
-        shell_cols=22, shell_rows=4, shell_frac=0.8, shell_shade=0.85, top_band=True, shell_band=6.0,
+        shell_cols=22, shell_rows=4, shell_frac=0.75, shell_shade=0.85, top_band=True, shell_band=7.0,
         shell_top=90.0,
         layers=[
-            dict(count=26, band=(0.0, 0.85), spacing=13, length=(0.22, 0.32), width=(0.2, 0.26), tiles=[7, 1],
-                 depth=(0.5, 1.05), lift=(0.0, 0.0), shade=0.9, spin=0.1, rows=2),
+            dict(count=22, band=(0.0, 0.7), spacing=14, length=(0.22, 0.32), width=(0.22, 0.28), tiles=[7, 1],
+                 depth=(0.5, 1.05), lift=(0.0, 0.0), shade=0.9, spin=0.1, rows=2, clump=0.3),
+            # (wisps: short thin locks from the top edge, combed up and back over the bald crown)
+            dict(count=10, band=(0.6, 1.0), spacing=14, length=(0.16, 0.24), width=(0.05, 0.07), tiles=[7],
+                 depth=(0.2, 0.5), lift=(0.0, 0.01), shade=1.0, spin=0.15, rows=2,
+                 comb=lambda a, e, d: Vector((0, 0.6, 0.9))),
         ],
     )
     brows = dict(
-        high=lambda a: pw([(10, 6), (30, 8), (55, 4)], abs(a)),
-        low=lambda a: pw([(10, -2), (30, 0), (55, -4)], abs(a)),
-        gap=9, reach=52,
-        fall=lambda a: -10.0,
-        thick=lambda a, e: 0.05,
-        comb=lambda a, e, d: Vector((math.copysign(1.0, a), -0.2, 0.35)),
+        # (heavy and bushy, standing out over the eyes)
+        high=lambda a: pw([(10, 10), (30, 12), (55, 7)], abs(a)),
+        low=lambda a: pw([(10, -1), (30, 1), (55, -3)], abs(a)),
+        gap=8, reach=56,
+        fall=lambda a: -9.0,
+        thick=lambda a, e: 0.09,
+        comb=lambda a, e, d: Vector((math.copysign(1.0, a), -0.45, 0.1)),
         layers=[
-            dict(count=18, band=(0.0, 1.0), spacing=5, length=(0.1, 0.14), width=(0.09, 0.12), tiles=[6],
-                 depth=(0.5, 1.2), lift=(0.0, 0.01), shade=1.0, spin=0.1, rows=2),
+            dict(count=17, band=(0.0, 1.0), spacing=6, length=(0.14, 0.19), width=(0.12, 0.16), tiles=[6],
+                 depth=(0.5, 1.15), lift=(0.01, 0.03), shade=1.0, spin=0.15, rows=2, clump=0.4),
         ],
     )
+    # (the under-shell painted with the fringe of concept_captain_head_bare.jpg's back view (3168 x 1344), its
+    # broad light taken out; the locks drawn by script in the beard's own colours, low in contrast)
     tiles = [
-        dict(base=True, strands=4, rag=0.5, strokes=True),
-        dict(wave=0.22, width=0.86, taper=0.8, length=1.0, light=0.35, strands=9, rag=0.4, tufts=3),
-        dict(wave=-0.2, bend=0.15, width=0.86, taper=0.8, length=1.0, light=0.35, strands=9, rag=0.4, tufts=3),
-        dict(wave=0.12, bend=-0.2, width=0.8, taper=0.85, length=1.0, light=0.4, strands=8, rag=0.45, tufts=4),
-        dict(curl=1.1, curl_start=0.3, width=0.8, taper=0.92, length=1.0, light=0.7, strands=8, rag=0.3, tufts=2),
-        dict(curl=-1.1, curl_start=0.3, width=0.8, taper=0.92, length=1.0, light=0.7, strands=8, rag=0.3, tufts=2),
-        dict(bend=0.3, width=0.9, taper=0.7, length=0.9, light=0.5, strands=7, rag=0.55, tufts=4),
-        dict(bend=0.1, width=0.8, taper=0.88, length=1.0, light=0.6, strands=8, rag=0.4, tufts=3),
+        dict(lift=[dict(src="concept_captain_head_bare.jpg", at=(2820, 505), length=120, width=1.0, region=(0.0, 0.5),
+                        solid=True, lift_to=0.74, flat=0.85)],
+             **{"else": dict(base=True, strands=4, rag=0.5, strokes=True)}),
+        dict(wave=0.18, width=0.9, taper=0.9, length=1.0, light=0.22, strands=9, rag=0.25, tufts=2),
+        dict(wave=-0.16, bend=0.15, width=0.9, taper=0.9, length=1.0, light=0.22, strands=9, rag=0.25, tufts=2),
+        dict(wave=0.1, bend=-0.2, width=0.86, taper=0.92, length=1.0, light=0.25, strands=8, rag=0.3, tufts=3),
+        dict(curl=0.9, curl_start=0.35, width=0.86, taper=0.9, length=1.0, light=0.35, strands=8, rag=0.25, tufts=2),
+        dict(curl=-0.9, curl_start=0.35, width=0.86, taper=0.9, length=1.0, light=0.35, strands=8, rag=0.25, tufts=2),
+        dict(bend=0.3, width=0.9, taper=0.75, length=0.9, light=0.35, strands=7, rag=0.5, tufts=4),
+        dict(bend=0.1, width=0.8, taper=0.88, length=1.0, light=0.35, strands=8, rag=0.4, tufts=3),
     ]
     return pal, tiles, {"hair": hair, "beard": beard, "moustache": moustache, "brows": brows}
 
@@ -771,9 +1028,18 @@ def build(fig):
     nrng = np.random.default_rng(11)
     head = Head(fig)
     pal, tiles, masses = FIGURES[fig]()
+    if isinstance(pal, dict):
+        # (the colours taken from the figure's concept sheet; with --scripted the fixed ones written beside them)
+        pal = pal["fixed"] if SCRIPTED else palette_from(**pal["sheet"])
+    print("HAIR palette", [tuple(round(x, 2) for x in c) for c in pal])
     img = np.zeros((ATLAS, ATLAS, 4))
     for i, t in enumerate(tiles):
-        paint_lock(img, i, pal, nrng, **t)
+        # (the lock painted by script (its shape and light), then whatever is lifted from the sheet laid over it)
+        if "else" in t or "lift" not in t:
+            paint_lock(img, i, pal, nrng, **t.get("else", t))
+        if "lift" in t and not SCRIPTED:
+            for part in t["lift"]:
+                lift(img, i, **part)
     os.makedirs(os.path.join(ROOT, "textures", "hair"), exist_ok=True)
     os.makedirs(os.path.join(ROOT, "models", "hair"), exist_ok=True)
     os.makedirs(os.path.join(HERE, "blend", "hair"), exist_ok=True)
@@ -788,6 +1054,8 @@ def build(fig):
         o.hide_set(True)
     for piece, mass in masses.items():
         b = Builder(head.recentred(*mass["centre"]) if "centre" in mass else head, mass, rng)
+        if mass.get("under_cap") and head.cap is not None:
+            b.cap = head.cap
         b.build()
         ob = b.to_object(fig + "_" + piece, mat)
         tris = sum(len(p.vertices) - 2 for p in ob.data.polygons)
@@ -809,7 +1077,12 @@ def build(fig):
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "blend", "hair", fig + ".blend"), compress=True)
 
 
+SCRIPTED = False
+
 if __name__ == "__main__":
     args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else ["all"]
+    # (--scripted: the locks painted by script only, the fallback, to compare with the ones lifted from the sheets)
+    SCRIPTED = "--scripted" in args
+    args = [a for a in args if not a.startswith("--")] or ["all"]
     for f in (FIGURES if args[0] == "all" else args):
         build(f)

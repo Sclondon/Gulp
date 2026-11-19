@@ -14,11 +14,11 @@ const CELL := 360
 const FIGS := {
 	"brother": {
 		"pieces": ["hair", "moustache"],
-		"sheet": "res://tools/art_src/concept_brother_head2.jpg",
-		"views": [[130, 40, 520, 530], [500, 40, 870, 530], [870, 40, 1230, 530], [1220, 40, 1560, 530],
-				[1540, 40, 1950, 530]],
+		"sheet": "res://tools/art_src/concept_brother_head3.jpg",
+		"views": [[95, 40, 445, 560], [450, 40, 820, 560], [825, 40, 1200, 560], [1210, 40, 1570, 560],
+				[1575, 40, 1960, 560]],
 		"face": 1.0,
-		"look": {"sheen_gain": 0.55, "rim_gain": 0.45, "gloss_gain": 0.12, "sheen": Color(1.0, 0.42, 0.12)},
+		"look": {"sheen_gain": 0.3, "rim_gain": 0.35, "gloss_gain": 0.1, "sheen": Color(1.0, 0.5, 0.2)},
 	},
 	"boy": {
 		"pieces": ["hair"],
@@ -33,6 +33,10 @@ const FIGS := {
 		"sheet": "res://tools/art_src/concept_captain_head.jpg",
 		"views": [[90, 80, 490, 690], [520, 80, 950, 690], [1000, 80, 1480, 690], [1520, 80, 1920, 690],
 				[1490, 680, 1940, 1100]],
+		# (the head without its cap, for the shots with the cap off; the beard there is a stubble, judge only the fringe)
+		"bare": "res://tools/art_src/concept_captain_head_bare.jpg",
+		"bare_views": [[40, 100, 440, 670], [460, 100, 840, 670], [850, 100, 1240, 670], [1240, 100, 1620, 670],
+				[1640, 100, 1960, 450]],
 		"face": -1.0,
 		"look": {"sheen_gain": 0.0, "rim_gain": 0.25, "gloss_gain": 0.1, "sheen": Color(0.9, 0.92, 1.0)},
 	},
@@ -50,6 +54,7 @@ var _skel: Skeleton3D
 var _hair: Array = []
 var _shots: Array = []
 var _images: Array = []
+var _rows: Array = []  # (the shot each row of five angles starts at: a concept row goes above each)
 var _frame := 0
 var _fig := ""
 var _centre := Vector3.ZERO
@@ -66,15 +71,24 @@ static func material(fig: String) -> ShaderMaterial:
 	return m
 
 
-## The transform a hair piece needs under a BoneAttachment3D on `head` of `skel`, inside `model` (both at rest).
-static func attach(model: Node3D, skel: Skeleton3D) -> Transform3D:
+## Which bone a piece rides: the beard and moustache go on `jaw` when the figure has one (tools/face_rig.py adds it,
+## a child of `head` at the jaw hinge), so they open with the mouth; everything else on `head`. Rigid for now:
+## face_rig.bind_to_face would weight them to the jaw and its shapes instead.
+static func bone_for(piece: String, skel: Skeleton3D) -> String:
+	if piece in ["beard", "moustache"] and skel.find_bone("jaw") >= 0:
+		return "jaw"
+	return "head"
+
+
+## The transform a hair piece needs under a BoneAttachment3D on `bone` of `skel`, inside `model` (both at rest).
+static func attach(model: Node3D, skel: Skeleton3D, bone := "head") -> Transform3D:
 	# (walked by local transforms, so it works before the nodes are in the tree)
 	var to_skel := Transform3D.IDENTITY
 	var n: Node = skel
 	while n != model and n is Node3D:
 		to_skel = (n as Node3D).transform * to_skel
 		n = n.get_parent()
-	var rest := skel.get_bone_global_rest(skel.find_bone("head"))
+	var rest := skel.get_bone_global_rest(skel.find_bone(bone))
 	return (to_skel * rest).affine_inverse()
 
 
@@ -135,15 +149,18 @@ func _next_figure() -> bool:
 	_shots.clear()
 	var face: float = FIGS[_fig]["face"]
 	if _beauty:
-		# (three-quarter and side, close, cap on)
-		_shots.append({"az": 38.0 * face, "el": 6.0, "state": "", "close": 1})
-		_shots.append({"az": 90.0 * face, "el": 4.0, "state": "", "close": 1})
+		# (a column a figure, the captain twice (cap on, cap off): front, three-quarter, side, close)
+		for st in (["", "nocap"] if _fig == "captain" else [""]):
+			for az in [0.0, 38.0, 90.0]:
+				_shots.append({"az": az * face, "el": 5.0, "state": st, "close": 1})
 		return true
 	_images.clear()
+	_rows.clear()
 	var states := [""]
 	if _fig == "captain":
 		states = ["", "nocap"]
 	for st in states:
+		_rows.append(_shots.size())
 		for az in [0.0, 40.0, 90.0, 140.0, 180.0]:
 			_shots.append({"az": az * face, "el": 4.0, "state": st})
 	_shots.append({"az": 25.0 * face, "el": 62.0, "state": states[-1]})
@@ -167,9 +184,6 @@ func _load(fig: String, at: Vector3) -> void:
 			var g := StandardMaterial3D.new()
 			g.albedo_color = Color(0.7, 0.7, 0.7)
 			mesh.material_override = g
-	var bone := BoneAttachment3D.new()
-	bone.bone_name = "head"
-	_skel.add_child(bone)
 	var mat := material(fig)
 	_hair.clear()
 	var box := AABB()
@@ -179,8 +193,12 @@ func _load(fig: String, at: Vector3) -> void:
 		if not ResourceLoader.exists(path):
 			continue
 		var h := (load(path) as PackedScene).instantiate() as Node3D
+		var on := bone_for(piece, _skel)
+		var bone := BoneAttachment3D.new()
+		bone.bone_name = on
+		_skel.add_child(bone)
 		bone.add_child(h)
-		h.transform = attach(_model, _skel)
+		h.transform = attach(_model, _skel, on)
 		for mi: MeshInstance3D in h.find_children("*", "MeshInstance3D", true, false):
 			mi.material_override = mat
 			if OS.get_cmdline_user_args().has("--flat"):
@@ -227,11 +245,13 @@ func _apply(shot: Dictionary) -> void:
 			_turn("neck", Vector3.UP, 20.0)
 			_turn("head", Vector3.UP, 30.0)
 			_turn("head", Vector3.FORWARD, 12.0)
+			# (the mouth a little open, when there is a jaw: the beard and moustache must go with it)
+			_turn("jaw", Vector3.RIGHT, 12.0)
 	var el := deg_to_rad(shot["el"])
 	var az := deg_to_rad(shot["az"])
 	var dir := Vector3(-sin(az) * cos(el), sin(el), cos(az) * cos(el))
 	var target := _centre + Vector3(0, -0.035, 0)
-	_cam.position = target + dir * _reach * (2.0 if shot.has("close") else 2.3)
+	_cam.position = target + dir * _reach * (1.8 if shot.has("close") else 1.5)
 	_cam.look_at(target, Vector3.UP if absf(shot["el"]) < 80.0 else Vector3.FORWARD)
 	_light_from_camera()
 
@@ -275,39 +295,52 @@ func _process(_delta: float) -> bool:
 func _save_beauty() -> void:
 	var w: int = (_images[0] as Image).get_width()
 	var h: int = (_images[0] as Image).get_height()
-	# (a column a figure: three-quarter above, side below)
-	var sheet := Image.create(w * 3, h * 2, false, Image.FORMAT_RGB8)
+	# (a column a figure (the captain twice: cap on, cap off): front, three-quarter, side)
+	var cols := int(ceil(_images.size() / 3.0))
+	var sheet := Image.create(w * cols, h * 3, false, Image.FORMAT_RGB8)
 	for i in _images.size():
 		var im: Image = _images[i]
 		im.convert(Image.FORMAT_RGB8)
-		sheet.blit_rect(im, Rect2i(0, 0, w, h), Vector2i(w * (i / 2), h * (i % 2)))
+		sheet.blit_rect(im, Rect2i(0, 0, w, h), Vector2i(w * (i / 3), h * (i % 3)))
 	sheet.save_png(_out.path_join("hair_beauty.png"))
 	print("HAIR saved beauty")
 
 
-func _save_sheet() -> void:
-	var cols := 5
-	var rows := int(ceil(_images.size() / float(cols))) + 1
-	var sheet := Image.create(CELL * cols, CELL * rows, false, Image.FORMAT_RGB8)
-	sheet.fill(Color(0.82, 0.84, 0.86))
-	var conf: Dictionary = FIGS[_fig]
-	var src := Image.load_from_file(ProjectSettings.globalize_path(conf["sheet"]))
+func _concept_row(sheet: Image, path: String, views: Array, y: int) -> void:
+	var src := Image.load_from_file(ProjectSettings.globalize_path(path))
 	src.convert(Image.FORMAT_RGB8)
 	var k := src.get_width() / 2000.0
-	for i in conf["views"].size():
-		var v: Array = conf["views"][i]
+	for i in views.size():
+		var v: Array = views[i]
 		var r := Rect2i(int(v[0] * k), int(v[1] * k), int((v[2] - v[0]) * k), int((v[3] - v[1]) * k))
 		var crop := src.get_region(r)
 		var s := minf(float(CELL) / r.size.x, float(CELL) / r.size.y)
 		crop.resize(int(r.size.x * s), int(r.size.y * s), Image.INTERPOLATE_BILINEAR)
 		sheet.blit_rect(crop, Rect2i(Vector2i.ZERO, crop.get_size()),
-				Vector2i(CELL * i + (CELL - crop.get_width()) / 2, (CELL - crop.get_height()) / 2))
+				Vector2i(CELL * i + (CELL - crop.get_width()) / 2, y + (CELL - crop.get_height()) / 2))
+
+
+func _save_sheet() -> void:
+	# (rows: the sheet's five views, the same five angles lit; for the captain again for the cap off, over the bare
+	# head's sheet; then the extra angles: above, below, thrown back, turned)
+	var cols := 5
+	var conf: Dictionary = FIGS[_fig]
+	var concept_rows := 2 if conf.has("bare") else 1
+	var rows := int(ceil(_images.size() / float(cols))) + concept_rows
+	var sheet := Image.create(CELL * cols, CELL * rows, false, Image.FORMAT_RGB8)
+	sheet.fill(Color(0.82, 0.84, 0.86))
+	_concept_row(sheet, conf["sheet"], conf["views"], 0)
+	if conf.has("bare"):
+		_concept_row(sheet, conf["bare"], conf["bare_views"], CELL * 2)
 	for i in _images.size():
 		var im: Image = _images[i]
 		im.convert(Image.FORMAT_RGB8)
 		if im.get_width() != CELL:
 			im.resize(CELL, CELL)
-		sheet.blit_rect(im, Rect2i(0, 0, CELL, CELL), Vector2i(CELL * (i % cols), CELL * (1 + i / cols)))
+		var row := i / cols
+		# (render rows sit under their concept rows: row 0 under concept 0, row 1 under concept 1 (the bare head))
+		var y := 1 + row + (mini(row + 1, concept_rows) - 1 if concept_rows > 1 else 0)
+		sheet.blit_rect(im, Rect2i(0, 0, CELL, CELL), Vector2i(CELL * (i % cols), CELL * y))
 	var name := "%s_hair%s.png" % [_fig, "_grey" if _grey else ""]
 	sheet.save_png(_out.path_join(name))
 	print("HAIR saved ", name)
