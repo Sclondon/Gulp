@@ -99,12 +99,64 @@ FIT_ROUNDS = int(arg("--rounds", "6"))
 # and the nose's red kept (1 the sheet's; the brother's is pulled back to a mild flush: the user, "a bit too red button
 # nosed").
 FIGURES = {
-    "brother": {"sheet": "concept_brother_tpose6.jpg", "warp": None,
+    # (eighth round: his own settled sheets. The BODY is concept_brother_tpose8.jpg, warped as man_trim's: measured
+    # (scratchpad brother8/rows.py, chin.py) its chin row 330 (10 px above the end of the jaw's underside in the side
+    # view, as tpose6's 308 is), its soles row 1501 (the side view's last row), its middles 578 (front), 1402 (side:
+    # 28 px of tpose6 in front of the ankle's middle, as tpose6's 1440 is) and 2210 (back): times 0.982, so its own
+    # widths, depths and the trunk/leg split are kept almost pixel for pixel. Its waistband, crotch, hem, knee and
+    # ankle then fall within 7 px (1 cm) of tpose6's rows, so the row tables written for tpose6 hold. The HEAD is the
+    # bottom row of concept_brother_head3_bare.jpg (shaved, clean), warped into head2's bottom-row frame (crown row
+    # 862, chin row 1332, its views' middles at the same share of each skull as head2's); its face's own landmarks are
+    # the "marks" below, read off that warped picture.)
+    "brother": {"sheet": "concept_brother_tpose8.jpg",
+                "warp": {"chin": 330.0, "sole": 1501.0, "mid": {"front": 578.0, "side": 1402.0, "back": 2210.0},
+                         "ground_cols": (1010, 1240)},
+                "head": {"sheet": "concept_brother_head3_bare.jpg", "crown": 862.0, "chin": 1332.0, "rows": (800, 1536),
+                         "spans": {"front": (0, 640), "q": (640, 1170), "side": (1170, 1720), "qb": (1720, 2180),
+                                   "back": (2180, 2752)},
+                         "mid": {"front": 359.0, "q": 813.0, "side": 1285.0, "qb": 1852.0, "back": 2419.0},
+                         # (read off the warped picture, scratchpad brother8/hw_front.png and hw_side.png: head2-frame
+                         # rows; front columns out from the middle; side columns)
+                         "marks": {
+                             "HEAD_PROFILE_ROWS": {"brow": (985, 1025), "tip": (1085, 1130), "chin": (1195, 1240),
+                                                   "back": (880, 1060), "lips": (1145, 1172)},
+                             "HEAD_WIDTH_ROWS": (1078, 1196, 1235),
+                             "EAR_ROWS": (1020, 1137), "EAR_COLS": (1415, 1342), "EAR_LOBE": (1390.0, 1137.0),
+                             "EAR_HIDES": (1025, 1150), "FACE_PLANE": (1035, 1135),
+                             "NOSE": ((1042, 28.0), (1058, 30.0), (1074, 33.0), (1090, 38.0), (1100, 46.0), (1108, 62.0),
+                                      (1116, 76.0), (1124, 76.0), (1131, 66.0), (1137, 46.0), (1141, 30.0)),
+                             "NOSE_WINGS": ((1105, 0.0), (1115, 0.12), (1124, 0.2), (1133, 0.15)),
+                             "JAW_ANGLE": (1408.0, 1158.0), "CHIN_BOTTOM": (1560.0, 1250.0), "NECK_ROW": 1270,
+                             "SMILE": (1168.0, 6.0, 62.0, -0.0025),
+                             "BASE_FACE_FORMS": ((1100, 84, 20, 24, 0.0035), (1140, 52, 9, 7, -0.002),
+                                                 (985, 125, 18, 14, -0.002), (1010, 62, 6, 22, 0.0018),
+                                                 (1158, 0, 5, 24, 0.0016), (1180, 0, 4, 20, 0.0022),
+                                                 (1163, 60, 4, 4, -0.0016), (1132, 15, 3, 6, -0.0025)),
+                             "JAW_FIRM": (1162.0, 0.0012, (1162.0, 1255.0), (0.03, 0.095)),
+                             "EYE_INNER": (35.0, 1047.0), "EYE_OUTER": (96.0, 1053.0), "EYE_TOP": (58.0, 1035.0),
+                             "EYE_LOW": (60.0, 1060.0), "EYE_IRIS": (64.0, 1048.0, 13.0), "EYE_ZONE": (40.0, 24.0)}},
                 "glb": ("models", "brother.glb"), "tex": ("textures", "brother"), "blend": ("blend", "brother.blend"),
-                "tattoos": None, "side_hand": None, "belly": 1.0, "nose_red": 0.35,
+                "tattoos": (("anchor", "front", (786, 864), (430, 594)),
+                            ("forearm_l", "front", (860, 932), (652, 754)),
+                            ("forearm_r", "front", (238, 292), (652, 748))),
+                # (tpose8's arm, read off the warped sheet (scratchpad brother8/sw_arm.png): the elbow higher and the
+                # wrist 33 px lower than tpose6's, a forearm of 23 cm, not 16)
+                "consts": {"SHOULDER_ROW": 400, "ELBOW_ROW": 630, "WRIST_ROW": 790, "ARM_SAMPLE": (560, 786),
+                           "HAND_LEN": 0.224, "TATTOO_CLOSE": 2,   # (tpose8 draws a 25 cm hand; the hands sheet 21: between, toward the hands sheet)
+                           # (the side view: the arm hangs further back, its deltoid's middle 5.5 cm and its wrist 2 cm
+                           # behind the side view's middle; the back behind it read 10 px further back than tpose6's)
+                           "ARM_Y": (0.07, 0.02),
+                           # (his neck: tpose8 draws it 14 cm across under the jaw: the torso's top ring and the
+                           # jaw's neck column widened to it, from 0.088 and 0.092 m half widths)
+                           "TORSO_UNDER_ARMS": {538: 0.272, 490: 0.284, 442: 0.268, 398: 0.226, 368: 0.2, 345: 0.162,
+                                                318: 0.098},
+                           "NECK_HALF": 0.097,
+                           "SIDE_BACK": {368: 1342, 398: 1332, 442: 1328, 490: 1327, 538: 1329, 580: 1331, 610: 1334,
+                                         640: 1337, 665: 1340}},
+                "side_hand": ((1385, 775), (1530, 962)), "belly": 0.5, "nose_red": 0.35,
                 # (his eyes, the user: "a bit down turned eyes and more prominent world weary bags": the outer corners
                 # 6 px (about 4 mm) lower, a pouch of 1.8 mm under each; the townsmen keep the plain eyes)
-                "eye_down": 6.0, "bags": 0.0018, "iris": "hazel"},
+                "eye_down": 2.0, "bags": 0.0018, "iris": "hazel"},
     "man_big": {"sheet": "concept_brother_tpose6.jpg", "warp": None,
                 "glb": ("models", "npc", "man_big.glb"), "tex": ("textures", "npc", "man_big"),
                 "blend": ("blend", "npc", "man_big.blend"),
@@ -114,7 +166,11 @@ FIGURES = {
                           "ground_cols": (1040, 1260)},
                  "glb": ("models", "npc", "man_trim.glb"), "tex": ("textures", "npc", "man_trim"),
                  "blend": ("blend", "npc", "man_trim.blend"),
-                 "tattoos": (), "side_hand": ((1400, 790), (1540, 1000)), "belly": 0.0, "nose_red": 1.0},
+                 "tattoos": (), "side_hand": ((1400, 790), (1540, 1000)), "belly": 0.0, "nose_red": 1.0,
+                 # (eighth round: its silhouette gap of 12.5 cm was its hands: tpose7 hangs the forearm as long as tpose8
+                 # does, so the brother's tpose8 arm rows and hand length)
+                 "consts": {"SHOULDER_ROW": 400, "ELBOW_ROW": 630, "WRIST_ROW": 790, "ARM_SAMPLE": (560, 786),
+                            "HAND_LEN": 0.224}},
 }
 FIGURE_NAME = arg("--figure", "brother")
 FIGURE = FIGURES[FIGURE_NAME]
@@ -345,6 +401,37 @@ def warp_sheet(pix, w, fill=None):
     return out
 
 
+def warp_head_sheet(pix, hw):
+    """A figure's own bald head row resampled into head2's bottom-row frame (see FIGURES "head"): one uniform scale
+    per sheet (its crown to chin onto HEAD_CROWN to HEAD_CHIN), each view's middle onto HEAD_VIEWS' middle; source
+    rows outside the bald row (`rows`) are the ground."""
+    h, wd, _ = pix.shape
+    bg = np.median(pix[5:30, 5:200].reshape(-1, 3), 0)
+    out = np.broadcast_to(bg, pix.shape).copy()
+    k = (HEAD_CHIN - HEAD_CROWN) / (hw["chin"] - hw["crown"])
+    rows = np.arange(h, dtype=np.float32)
+    r_src = hw["crown"] + (rows - HEAD_CROWN) / k
+    done = np.zeros(wd, bool)
+    for view in ("front", "q", "side", "qb", "back"):
+        _, mid, (c0, c1) = HEAD_VIEWS[view]
+        c0 = max(c0, int(np.where(~done)[0].min())) if not done.all() else c1
+        cols = np.arange(c0, min(c1, wd), dtype=np.float32)
+        if not len(cols):
+            continue
+        c_src = hw["mid"][view] + (cols - mid) / k
+        R, C = np.meshgrid(r_src, c_src, indexing="ij")
+        s0, s1 = hw["spans"][view]
+        ok = (R >= hw["rows"][0]) & (R < min(hw["rows"][1], h - 1)) & (C >= max(0, s0)) & (C < min(wd - 1, s1))
+        R0, C0 = np.clip(np.floor(R).astype(int), 0, h - 2), np.clip(np.floor(C).astype(int), 0, wd - 2)
+        fr, fc = (R - R0)[..., None], (C - C0)[..., None]
+        v = (pix[R0, C0] * (1 - fr) * (1 - fc) + pix[R0 + 1, C0] * fr * (1 - fc) + pix[R0, C0 + 1] * (1 - fr) * fc
+             + pix[R0 + 1, C0 + 1] * fr * fc)
+        out[:, c0:c0 + len(cols)] = np.where(ok[..., None], v, bg)
+        done[c0:c0 + len(cols)] = True
+    print("%s head sheet %s warped into head2's frame: times %.4f" % (WHO, hw["sheet"], k))
+    return out
+
+
 class Sheets:
     def __init__(self):
         # (the guide lines painted out of the pictures that are painted from as well: they crossed his eyes and neck)
@@ -360,9 +447,18 @@ class Sheets:
             self.body_mask = flood_mask(self.body_pix)
         if OUT and FIGURE["warp"]:
             save_rgb(os.path.join(OUT, "sheet_warped.png"), self.body_pix * (0.5 + 0.5 * self.body_mask[..., None]))
-        raw = load_picture(HEAD_SHEET)
+            save_rgb(os.path.join(OUT, "sheet_warped_plain.png"), self.body_pix)
+        hw = FIGURE.get("head")
+        raw = load_picture(os.path.join(ART, hw["sheet"]) if hw else HEAD_SHEET)
         self.head_pix = unline_rows(raw, guide_rows(raw))
+        if hw:
+            self.head_pix = warp_head_sheet(self.head_pix, hw)
         self.head_mask = figure_mask(self.head_pix)
+        if OUT and hw:
+            save_rgb(os.path.join(OUT, "head_warped.png"), self.head_pix * (0.5 + 0.5 * self.head_mask[..., None]))
+            save_rgb(os.path.join(OUT, "head_warped_plain.png"), self.head_pix)
+            if "--sheets" in ARGS:
+                raise SystemExit("BROTHER --sheets: the warped head sheet written")
         raw = load_picture(HANDS_SHEET)
         self.hands_pix = unline_rows(raw, guide_rows(raw))
         self.hands_mask = figure_mask(self.hands_pix)
@@ -2164,6 +2260,14 @@ def loop_at_angles(P, loop, angle, targets):
     return np.stack([np.interp(t, ae, Qe[:, k]) for k in range(3)], 1)
 
 
+# The rows of the bald side view searched for the brow's, the nose tip's and the chin's most forward points and the
+# skull's back (a figure's own head sheet overrides them: FIGURES "head" "marks").
+HEAD_PROFILE_ROWS = {"brow": (975, 1015), "tip": (1050, 1115), "chin": (1185, 1238), "back": (880, 1060),
+                     "lips": (1130, 1165)}
+# head_landmarks' front-view width rows: the ears, the jaw at its angle, the jaw by the chin
+HEAD_WIDTH_ROWS = (1060, 1176, 1225)
+
+
 def sheet_head_marks(sh):
     """The bald row's landmarks as model (y, z): the side view's profile (brow, the bridge's dip, nose tip, mouth,
     chin, chin's underside, the back of the skull) and the front view's skull half width above the ears."""
@@ -2183,17 +2287,17 @@ def sheet_head_marks(sh):
     out = {}
     top = int(np.where(side.any(1))[0].min())
     out["crown"] = (None, float(head_z(top)))
-    cb, rb = fwd(975, 1015)
-    ct, rt = fwd(1050, 1115)
+    cb, rb = fwd(*HEAD_PROFILE_ROWS["brow"])
+    ct, rt = fwd(*HEAD_PROFILE_ROWS["tip"])
     cn, rn = min(((front_col(r), r) for r in range(rb + 3, rt - 15)))
     out["brow"] = (y_of(cb), float(head_z(rb)))
     out["tip"] = (y_of(ct), float(head_z(rt)))
     out["nasion"] = (y_of(cn), float(head_z(rn)))
     out["mouth"] = (y_of(front_col(int(SMILE[0]))), float(head_z(SMILE[0])))
-    cc, rc = fwd(1185, 1238)
+    cc, rc = fwd(*HEAD_PROFILE_ROWS["chin"])
     out["chin"] = (y_of(cc), float(head_z(rc)))
     out["chin_bottom"] = (y_of(CHIN_BOTTOM[0]), float(head_z(CHIN_BOTTOM[1])))
-    back = min(int(np.where(side[r])[0].min()) for r in range(880, 1060))
+    back = min(int(np.where(side[r])[0].min()) for r in range(*HEAD_PROFILE_ROWS["back"]))
     out["back"] = (y_of(back), None)
     fr = head_target(sh, "front")
     _, fmid, (f0, f1) = HEAD_VIEWS["front"]
@@ -2328,6 +2432,70 @@ def head_smooth(M, rounds=2, lam=0.5, mu=-0.53, only=None):
     M.P = [p for p in P]
 
 
+# The lips' meeting line of the base head (its own vertex numbers, his right corner to his left: the corners, then
+# through the upper corner quad to the middle line): kept as one edge loop and laid on the painted lip line
+# (snap_mouth_line), where the face rig cuts the mouth open (tools/FACE_RIG.md, "Integration").
+MOUTH_LINE_BASE = (268, 153, 168, 271, 183, 286, 40, 128, 25, 10, 125)
+MOUTH_DRAG = 0.006            # snap_mouth_line: metres round the loop over which its neighbours follow it up or down
+
+
+def snap_mouth_line(M):
+    """The lips' meeting loop (MOUTH_LINE_BASE, with every point the refines put on its edges) moved up or down onto
+    the painted lip line (SMILE's curve in the head sheet, where the face picture paints the mouth), its neighbours
+    within MOUTH_DRAG following; the SMILE groove lies on the same curve, so the mouth has one modelled crease."""
+    line = M.tag.get("mouth_line")
+    if not line:
+        return
+    P = np.array(M.P)
+    nb = {}
+    for f in M.faces:
+        for a, b in zip(f, list(f[1:]) + [f[0]]):
+            nb.setdefault(a, set()).add(b)
+            nb.setdefault(b, set()).add(a)
+    path = [line[0]]
+    for a, b in zip(line[:-1], line[1:]):
+        prev = {a: None}
+        todo = [a]
+        while todo and b not in prev:
+            nxt = []
+            for v in todo:
+                for w_ in nb.get(v, ()):
+                    if w_ not in prev:
+                        prev[w_] = v
+                        nxt.append(w_)
+            todo = nxt
+        seg = []
+        v = b
+        while v is not None and v != a:
+            seg.append(v)
+            v = prev.get(v)
+        path += seg[::-1]
+    col = np.abs(P[:, 0]) / HEAD_SX
+    r0, rise, half, _ = SMILE
+    want = head_z(r0 - rise * np.clip(col / half, 0, 1.2) ** 2)
+    dz = np.zeros(len(P))
+    dz[path] = want[path] - P[path, 2]
+    hp = np.array(M.tag["base_head_pts"])
+    on = np.zeros(len(P), bool)
+    on[hp] = True
+    on[path] = False
+    kd = kdtree.KDTree(len(path))
+    for k, v in enumerate(path):
+        kd.insert(Vector(P[v]), k)
+    kd.balance()
+    for v in np.where(on)[0]:
+        _, k, d = kd.find(Vector(P[v]))
+        if d < MOUTH_DRAG:
+            dz[v] = dz[path[k]] * (1.0 - float(smooth01(0.0, MOUTH_DRAG, d)))
+    P[:, 2] += dz
+    M.P = [p for p in P]
+    M.tag["mouth_loop"] = path
+    zs = P[path, 2]
+    print("%s MOUTH loop: %d points (an edge path, his right corner to his left), z %.4f at the middle, %.4f / %.4f at the corners, x %.4f to %.4f; moved at most %.1f mm" % (
+        WHO, len(path), float(P[path[len(path) // 2], 2]), float(zs[0]), float(zs[-1]), float(P[path, 0].min()),
+        float(P[path, 0].max()), 1000 * float(np.abs(dz[path]).max())))
+
+
 def base_head(M, sh, top_ring):
     """The base head put on him: placed, warped by landmarks, fitted to the bald row's outlines, bridged to the
     torso's top ring. Its points and faces go into M (part "head"; the bridge "neck"); its own UVs are kept per face
@@ -2429,6 +2597,7 @@ def base_head(M, sh, top_ring):
         kept.append(len(M.faces) - 1)
     M.tag["base_head_faces"] = kept
     M.tag["base_head_pts"] = idx
+    M.tag["mouth_line"] = [idx[i] for i in MOUTH_LINE_BASE]
     M.tag["ear_l"] = [idx[i] for i in ear_b[1]]
     M.tag["ear_r"] = [idx[i] for i in ear_b[-1]]
     loops = open_loops([M.faces[i] for i in kept])
@@ -4093,14 +4262,15 @@ def head_landmarks(M, sh):
                 best = (cols.max(), r)
         return best
 
-    for name, rows in (("nose tip", (1050, 1115)), ("brow", (975, 1015)), ("lips", (1130, 1165)), ("chin", (1185, 1238))):
+    for name, rows in (("nose tip", HEAD_PROFILE_ROWS["tip"]), ("brow", HEAD_PROFILE_ROWS["brow"]),
+                       ("lips", HEAD_PROFILE_ROWS["lips"]), ("chin", HEAD_PROFILE_ROWS["chin"])):
         a, b = forward(side_s, rows), forward(side_m, rows)
         out[name] = round(math.hypot(a[0] - b[0], a[1] - b[1]) * HEAD_SX * 100, 2)
 
     def width(mask, r):
         cols = np.where(mask[r])[0]
         return cols.min(), cols.max()
-    for name, r in (("ears' width", 1060), ("jaw at its angle", 1176), ("jaw by the chin", 1225)):
+    for name, r in zip(("ears' width", "jaw at its angle", "jaw by the chin"), HEAD_WIDTH_ROWS):
         a, b = width(front_s, r), width(front_m, r)
         out[name] = round(max(abs(a[0] - b[0]), abs(a[1] - b[1])) * HEAD_SX * 100, 2)
     # the ear's lobe: the sheet's (side view: the lowest ear pixel, read off the sheet) against the model's ear's lowest
@@ -4184,7 +4354,7 @@ def skeleton_joints(M, T, joints):
         ("neck", torso_centre(M, T, 1.615), "chest"),
     ]
     head_at = torso_centre(M, T, 1.615)
-    head_at.z = 1.735
+    head_at.z = HEAD_PIVOT_Z
     head_at.y += 0.012
     bones.append(("head", head_at, "neck"))
     for s, sfx in ((1, "_l"), (-1, "_r")):
@@ -4251,6 +4421,17 @@ def chain_weights(s, names, ends, blend):
     return w
 
 
+# The skin's blends (eighth round, the pose test; the seventh round's numbers in brackets): the torso's share of
+# the upper arm near the shoulder (most, from, to: 0.45, 0.085, 0.2 m), the arm's share of the chest at its root (most,
+# over: 0.4, 0.1 m), the head's nape band (1.638 to 1.672 by height alone before) and the neck bridge's most of the head.
+SHOULDER_BLEND = (0.5, 0.07, 0.26)
+ARM_ROOT_BLEND = (0.45, 0.15)
+HEAD_NAPE = (1.64, 1.71)
+HEAD_NECK_SHARE = 0.55
+HEAD_PIVOT_Z = 1.70           # the head bone's joint (1.735 before: half way up the ears, so a turned head swung its chin)
+CLAVICLE_SHARE = 0.45        # the most of the clavicle in the shoulder's top (none before: the bone carried no skin)
+
+
 def weights_of(M, T, bones, joints):
     at = {n: np.array(p) for n, p, _ in bones}
     P = np.array(M.P)
@@ -4262,19 +4443,35 @@ def weights_of(M, T, bones, joints):
         sfx = "_l" if part.endswith("_l") or "_l_" in part else ("_r" if part.endswith("_r") or "_r_" in part else ("_l" if p[0] >= 0 else "_r"))
         w = {}
         if fam in ("head", "nose", "ear", "neck"):
-            w = {"head": 1.0}
-            if fam in ("head", "neck") and p[2] < 1.672:
-                t = float(smooth01(1.638, 1.672, p[2]))
-                w = {"head": t, "neck": 1 - t}
+            # (eighth round, the pose test: the chin's underside and the jaw went with the NECK while the face went
+            # with the head (a band by height alone, 1.638 to 1.672 m, under the chin at 1.63), so a head thrown back
+            # sheared the jaw into a shelf. Now the whole head as the base mesh has it goes with the head bone but the
+            # nape low at its back; the neck's bridge blends from the neck at the torso to about half head at the jaw,
+            # its throat side more)
+            front = float(smooth01(-0.01, -0.07, p[1]))
+            if fam in ("nose", "ear"):
+                t = 1.0
+            elif fam == "head":
+                t = max(front, float(smooth01(HEAD_NAPE[0], HEAD_NAPE[1], p[2])))
+            else:
+                t = HEAD_NECK_SHARE * float(smooth01(HEAD_NAPE[0] - 0.08, HEAD_NAPE[1] - 0.03, p[2])) * (0.75 + 0.25 * front)
+            w = {"head": t, "neck": 1 - t}
         elif fam == "torso":
             w = chain_weights(p[2], ["hips", "spine", "chest", "neck"], [zt["hips_spine"], zt["spine_chest"], zt["chest_neck"]], 0.07)
             # near the shoulder: some of the upper arm
             for s, sx in ((1, "_l"), (-1, "_r")):
                 d = np.linalg.norm(p - at["upper_arm" + sx])
-                k = 0.45 * (1 - float(smooth01(0.085, 0.2, d)))
+                k = SHOULDER_BLEND[0] * (1 - float(smooth01(SHOULDER_BLEND[1], SHOULDER_BLEND[2], d)))
                 if k > 0:
                     w = {n: v * (1 - k) for n, v in w.items()}
                     w["upper_arm" + sx] = w.get("upper_arm" + sx, 0) + k
+                # (eighth round: the shoulder's top and the trapezius over it partly on the clavicle, which the poses
+                # raise with an arm lifted past the horizontal, as a shoulder blade and collarbone do)
+                ua = at["upper_arm" + sx]
+                kc = CLAVICLE_SHARE * float(smooth01(ua[2] - 0.05, ua[2] + 0.03, p[2])) * (1 - float(smooth01(0.06, 0.2, d))) * float(smooth01(0.04, 0.1, s * p[0]))
+                if kc > 0.01:
+                    w = {n: v * (1 - kc) for n, v in w.items()}
+                    w["clavicle" + sx] = w.get("clavicle" + sx, 0) + kc
                 # near the hip: some of the thigh
                 if p[2] < at["hips"][2] + 0.02 and s * p[0] > 0.02:
                     k = 0.62 * (1 - float(smooth01(at["thigh" + sx][2] - 0.06, at["hips"][2] + 0.05, p[2]))) * float(smooth01(0.0, 0.08, s * p[0]))
@@ -4283,7 +4480,7 @@ def weights_of(M, T, bones, joints):
             if vi in M.tag["crotch"]:
                 w = {"hips": 0.6, "thigh_l": 0.2, "thigh_r": 0.2}
         elif fam == "shoulder":
-            w = {"chest": 0.55, "upper_arm" + sfx: 0.45}
+            w = {"chest": 0.3, "clavicle" + sfx: 0.3, "upper_arm" + sfx: 0.4}
         elif fam == "arm":
             J, E, W = at["upper_arm" + sfx], at["forearm" + sfx], at["hand" + sfx]
             Lu = np.linalg.norm(E - J)
@@ -4291,7 +4488,7 @@ def weights_of(M, T, bones, joints):
             if s > Lu - 0.06:
                 s = Lu + along(p, E, W)
             w = chain_weights(s, ["upper_arm" + sfx, "forearm" + sfx, "hand" + sfx], [Lu, Lu + np.linalg.norm(W - E) + 0.005], 0.055)
-            k = 0.4 * (1 - float(smooth01(0.0, 0.1, s)))
+            k = ARM_ROOT_BLEND[0] * (1 - float(smooth01(0.0, ARM_ROOT_BLEND[1], s)))
             if k > 0:
                 w = {n: v * (1 - k) for n, v in w.items()}
                 w["chest"] = w.get("chest", 0) + k
@@ -5179,7 +5376,8 @@ def smooth_armpits(M, reach=0.1, rounds=12):
             deg = np.bincount(E.ravel(), minlength=len(P))[:, None]
             avg = acc / np.maximum(deg, 1)
             P[sel] += (avg[sel] - P[sel]) * w[sel]
-        moved = max(moved, float(np.linalg.norm(P[sel] - before, axis=1).max()))
+        if sel.any():
+            moved = max(moved, float(np.linalg.norm(P[sel] - before, axis=1).max()))
     # A spike: a torso point standing out sideways past both its neighbours up and down the same column by more than
     # 1.5 cm (the sheet's front view, where the arm meets his side, measured him too wide on one ring) is put back
     # between them.
@@ -5468,6 +5666,7 @@ def base_face_forms(M):
 # must at least fall back, the rows it works over (from, to), the |x| range (m) it works over).
 JAW_FIRM = (1150.0, 0.0012, (1150.0, 1250.0), (0.03, 0.095))
 SMILE_HALF = 0.78              # the smile's groove ends this share of SMILE's half width out (it ran on as a crease)
+CHIN_ROUND = (0.03, 6)         # firm_jaw: (metres round the opening's front, Taubin rounds); None: none
 
 
 # Seventh round (the critic: "ears small, flat and pinned to the head ... little inner-ear detail"): EAR_SHAPE =
@@ -5554,6 +5753,27 @@ def firm_jaw(R):
             np.add.at(acc, E[:, 1], P[E[:, 0]])
             avg = acc / np.maximum(deg, 1)[:, None]
             P[sel] += (avg[sel] - P[sel]) * f
+    if CHIN_ROUND:
+        # (eighth round, the critic: "the chin as a shelf with a hard undercut from below": the head's opening loop
+        # under the chin, its two head rings and the neck bridge's first ring there rounded together (the loop
+        # moved too), so the jaw's underside turns into the throat instead of meeting it at an edge)
+        loop = np.array(R.tag["neck_loop"])
+        front = loop[P[loop, 1] < -0.03]
+        near = np.zeros(len(P), bool)
+        if len(front):
+            d = np.min(np.linalg.norm(P[:, None, :] - P[front][None, :, :], axis=2), axis=1)
+            near = (d < CHIN_ROUND[0]) & (P[:, 1] < -0.02)
+        rings = R.tag.get("neck_rings", [])
+        allowed = np.isin(np.arange(len(P)), np.concatenate([hp, loop] + [np.array(r) for r in rings[:1]]))
+        sel2 = near & allowed
+        for _ in range(CHIN_ROUND[1]):
+            for f in (0.5, -0.53):
+                acc = np.zeros_like(P)
+                np.add.at(acc, E[:, 0], P[E[:, 1]])
+                np.add.at(acc, E[:, 1], P[E[:, 0]])
+                avg = acc / np.maximum(deg, 1)[:, None]
+                P[sel2] += (avg[sel2] - P[sel2]) * f
+        print("%s CHIN rounded into the throat: %d points" % (WHO, int(sel2.sum())))
     R.P = [p for p in P]
     print("%s JAW firmed: the pouch pulled back up to %.1f mm on %d points; %d points evened" % (
         WHO, 1000 * float(push.max()), int((push > 0.0005).sum()), int(sel.sum())))
@@ -5605,7 +5825,7 @@ def refine_base_head(M, face_uv, weights, under, sh):
     # (and the jaw's sides below the mouth's corners, where the base's jaw loop was drawn into a crease from the lobe
     # to the chin)
     rows_h = head_row(Pn[hp, 2])
-    near[hp[(rows_h > 1135) & (np.abs(Pn[hp, 0]) > 0.035)]] = True
+    near[hp[(rows_h > SMILE[0] - SMILE[1] + 1) & (np.abs(Pn[hp, 0]) > 0.035)]] = True
     E = edges_of(R.faces)
     deg = np.bincount(E.ravel(), minlength=len(Pn)).astype(float)
     for _ in range(4):
@@ -5640,6 +5860,7 @@ EYE_OUTER = (89.0, 1034.0)
 EYE_TOP = (58.0, 1021.0)
 EYE_LOW = (55.0, 1042.0)
 EYE_IRIS = (60.0, 1031.0, 9.5)
+EYE_ZONE = (36.0, 20.0)           # open_eyes: the half width and height (px) round the iris where the face is split again
 EYE_R = 0.0125 * K_HEAD               # the eyeball's depth and height radius (metres)
 EYE_RX = 0.0205 * K_HEAD              # its half width: an ellipsoid, wide enough to fill the almond's corners (the sheet's eye is 3.5 cm long)
 EYE_RAD = np.array((EYE_RX, EYE_R, EYE_R))
@@ -5793,7 +6014,7 @@ def open_eyes(M, face_uv, weights, under):
         f = M.faces[fi]
         c = P[f].mean(0)
         col, row = abs(c[0]) / HEAD_SX, float(head_row(c[2]))
-        if c[1] < 0 and ((col - 62.0) / 36.0) ** 2 + ((row - 1031.0) / 20.0) ** 2 < 1.0:
+        if c[1] < 0 and ((col - EYE_IRIS[0] - 2.0) / EYE_ZONE[0]) ** 2 + ((row - EYE_IRIS[1]) / EYE_ZONE[1]) ** 2 < 1.0:
             sel.add(fi)
     n_old = len(M.P)
     R, face_uv, weights, ch = refine(M, sel, face_uv, weights)
@@ -6130,6 +6351,9 @@ def apply_figure():
         TATTOOS = tuple(tt)
     if FIGURE["side_hand"]:
         SIDE_HAND = FIGURE["side_hand"]
+    if FIGURE.get("head"):
+        globals().update(FIGURE["head"]["marks"])
+    globals().update(FIGURE.get("consts", {}))
     for r in (610, 640, 665, 690):
         if r in BODY_FORMS:
             BODY_FORMS[r] = {j: tuple(v * FIGURE["belly"] for v in vals) for j, vals in BODY_FORMS[r].items()}
@@ -6242,6 +6466,7 @@ def finish(M, T, joints, sh):
     M, face_uv, weights, under = refine_forms(M, face_uv, weights, under, joints)
     M, face_uv, weights, under = refine_base_head(M, face_uv, weights, under, sh)
     M, face_uv, weights, under, eye_cut, eyes = open_eyes(M, face_uv, weights, under)
+    snap_mouth_line(M)
     os.makedirs(TEX, exist_ok=True)
     for picture in ("skin", "face"):
         write_layout(face_uv, placed, picture, os.path.join(TEX, "brother_%s_layout.png" % picture))
@@ -6917,7 +7142,7 @@ def paint_head(M, face_uv, sh):
             # (and the jaw's edge and the neck under it, which each view sees near its outline, where the sheet
             # draws its jaw line and shadow: they painted red-brown smears along the jaw and a second chin line)
             rq = head_row(Q[:, 2])
-            seen &= ~((rq > 1165) & (facing < 0.6))
+            seen &= ~((rq > SMILE[0] + 19) & (facing < 0.6))
             if view == "head_side":
                 seen &= (left if mirrored else ~left)
             colour = sh.head_pix[rows, cols]
@@ -6955,6 +7180,7 @@ TATTOO_GROW = 1.4      # each tattoo this much bigger than its box on the sheet 
 TATTOO_INK = (0.2, 0.25, 0.33)   # (seventh round: one blue-black, darker, as old sailor work reads)
 TATTOO_LINE = (0.022, 0.06)      # lift_tattoo: how much darker than the skin round it a line is (start, full)
 TATTOO_FILL = 0.45               # lift_tattoo: the designs' fills against their lines
+TATTOO_CLOSE = 0                  # lift_tattoo: pixels the lines are closed over (a figure's "consts" sets it)
 TATTOOS = (
     ("anchor", "side", (1384, 1456), (622, 716)),
     ("banner_anchor", "front", (786, 866), (436, 556)),
@@ -6988,6 +7214,16 @@ def lift_tattoo(sh, c0, c1, r0, r1):
     near = blur((a > 0.3).astype(float)[..., None], 3)[..., 0]
     a[near < 0.12] = 0.0
     a[~sh.body_mask[r0:r1, c0:c1]] = 0.0
+    if TATTOO_CLOSE:
+        # (eighth round: tpose8 paints his forearm designs under thick hair, and the hairs cut the lines into lace: the
+        # lines closed (grown then shrunk TATTOO_CLOSE pixels), and the arm's own dark outline, which ran along the
+        # anchor's box, left out (the figure shrunk 4 pixels))
+        def grow(x, n, op):
+            for _ in range(n):
+                x = op.reduce([x, np.roll(x, 1, 0), np.roll(x, -1, 0), np.roll(x, 1, 1), np.roll(x, -1, 1)])
+            return x
+        a = grow(grow(a, TATTOO_CLOSE, np.maximum), TATTOO_CLOSE, np.minimum)
+        a[~erode(sh.body_mask, 4)[r0:r1, c0:c1]] = 0.0
     a = np.clip(a, 0, 1) * 0.9
     ink = np.broadcast_to(np.array(TATTOO_INK, np.float32), pix.shape).copy()
     return np.concatenate([ink, a[..., None]], 2).astype(np.float32)
@@ -7268,7 +7504,10 @@ def paint_skin(M, face_uv, sh, tris_all, Pc, no_arms_c, reject, joints=None):
     phi_t = np.arctan2(pos[..., 0], -(pos[..., 1] - 0.03))
     band_t = BOXER_BAND[0] + (BOXER_BAND[1] - BOXER_BAND[0]) * ((1.0 + np.cos(phi_t)) / 2.0) ** 1.6
     box = hit & np.isin(tex_fam, ("torso", "leg")) & (z < body_z(band_t + 6)) & (z > body_z(BOXERS[1] - 14))
-    box |= good & is_boxers(rgb)
+    # (eighth round: only near the shorts' own rows: tpose8 paints his lit skin pale enough to pass for the cream, and
+    # whole arms and thighs were painted out)
+    box |= (good & is_boxers(rgb) & np.isin(tex_fam, ("torso", "leg")) & (z < body_z(BOXERS[0] - 25))
+            & (z > body_z(BOXERS[1] + 25)))
     # (the beard hangs over his upper chest in the body sheet: its grey is not skin)
     mx, mn = rgb.max(-1), rgb.min(-1)
     beard = np.zeros_like(good)

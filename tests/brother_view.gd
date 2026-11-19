@@ -15,6 +15,7 @@ var _pose := false
 var _winding := false
 var _persp := false
 var _posed := false
+var _poses := false
 var _grey: StandardMaterial3D
 var _cam: Camera3D
 var _sun: DirectionalLight3D
@@ -36,6 +37,8 @@ func _initialize() -> void:
 			_persp = true
 		if a == "--posed":
 			_posed = true
+		if a == "--poses":
+			_poses = true
 		if a.begins_with("--model="):
 			# (another figure of tools/build_brother.py: --model=res://models/npc/man_big.glb)
 			_model_path = a.get_slice("=", 1)
@@ -71,7 +74,7 @@ func _initialize() -> void:
 	_cam = Camera3D.new()
 	_cam.projection = Camera3D.PROJECTION_ORTHOGONAL
 	world.add_child(_cam)
-	if _persp or _posed:
+	if _persp or _posed or _poses:
 		# As the game would show him: a perspective lens of 35 degrees at about eye height, a sun from the upper
 		# front-left (as the camera sees him from the front) with shadows, a soft pale ambient.
 		_cam.projection = Camera3D.PROJECTION_PERSPECTIVE
@@ -108,6 +111,22 @@ func _initialize() -> void:
 					["walk", Vector3(-1, 0, 0), true], ["walk", Vector3(-0.64, 0, 0.77), true], ["sit", Vector3(-1, 0, 0), true], ["sit", Vector3(-0.64, 0, 0.77), true],
 					["reach", Vector3(-0.64, 0, 0.77), true]]:
 				_shots.append({"name": "x_%s_%s%s" % [v[0], "side" if v[1].x < -0.9 else "q", "_grey" if v[2] else ""], "dir": v[1], "at": Vector3(0, 0.92, 0), "dist": 3.45, "eye": eye.y, "pose": v[0], "grey": v[2]})
+		if _poses:
+			# The pose test (tools/FIGURE_HEADS.md, "The pose test"): the eight poses of
+			# tools/art_src/concept_brother_poses.jpg, each from about the sheet's own angle painted and grey, and from a
+			# second angle in grey. POSE_SHOTS: [pose, sheet's angle (from him to the camera), second angle, look-at
+			# height, distance, camera height]
+			# (a first shot thrown away: the first frames drew him unposed)
+			_shots.append({"name": "y_warm", "dir": Vector3(0, 0, 1), "at": Vector3(0, 1, 0), "dist": 3.4, "eye": 1.3, "pose": "laugh", "grey": true})
+			for v in POSE_SHOTS:
+				var at := Vector3(0, v[3], 0)
+				_shots.append({"name": "y_%s_a" % v[0], "dir": v[1], "at": at, "dist": v[4], "eye": v[5], "pose": v[0], "grey": false})
+				_shots.append({"name": "y_%s_a_grey" % v[0], "dir": v[1], "at": at, "dist": v[4], "eye": v[5], "pose": v[0], "grey": true})
+				_shots.append({"name": "y_%s_b_grey" % v[0], "dir": v[2], "at": at, "dist": v[4], "eye": v[5], "pose": v[0], "grey": true})
+			# close looks where poses break: under the jaw with the head thrown back, the shoulder with the arm
+			# overhead, the hips seated, the gripping hands
+			for c in POSE_CLOSE:
+				_shots.append({"name": c[0], "dir": c[2], "at": c[3], "dist": c[4], "eye": c[5], "pose": c[1], "grey": c[6]})
 		return
 	if _pose:
 		_bend()
@@ -213,6 +232,200 @@ func _set_pose(pose: String) -> void:
 			_arm_pose("l", 38.0, 0.0, 0.0)
 			_arm_pose("r", 30.0, 80.0, 100.0)
 			_put("head", Basis(Vector3.UP, deg_to_rad(30.0)))
+		_:
+			if POSES.has(pose):
+				_pose_spec(POSES[pose])
+
+
+# ------------------------------------------------------------------------------------------------------------------
+# The pose test's eight poses (concept_brother_poses.jpg), the body only (faces are the face rig's work). He faces +Z,
+# +X is his left. Each bone: "aim" (the world direction its segment points: to its child joint), "g" (its world turn
+# from rest, as [[axis, degrees], ...] in order), or "r" (its turn relative to its parent in the chain); unnamed bones
+# keep their rest turn relative to their parent. The rig hangs the shin and foot from the hips, so the chain used here
+# is thigh > shin > foot (as title_figures.gd's _leg works it out). "hips": [offset, [[axis, degrees]...]]; "ground":
+# the lower ankle set back at its rest height. Hands: [grip, spread] for the left and right (grip 1 a fist, 0 rest,
+# negative straighter; spread opens the fingers apart in the palm's plane).
+# ------------------------------------------------------------------------------------------------------------------
+const POSES := {
+	"laugh": {"hips": [Vector3(0, 0, 0.03), []], "ground": true,
+		"spine": {"aim": Vector3(0, 1, -0.12)}, "chest": {"aim": Vector3(0.05, 1, -0.28)},
+		"neck": {"aim": Vector3(0, 1, -0.5)}, "head": {"aim": Vector3(0, 0.72, -0.7)},
+		"upper_arm_r": {"aim": Vector3(-0.3, -0.95, 0.2)}, "forearm_r": {"aim": Vector3(-0.12, -0.75, 0.6)},
+		"upper_arm_l": {"aim": Vector3(0.25, -0.85, 0.47)}, "forearm_l": {"aim": Vector3(-0.78, -0.21, 0.59)},
+		"thigh_l": {"aim": Vector3(0.14, -0.85, 0.5)}, "shin_l": {"aim": Vector3(0.05, -1, -0.25)}, "foot_l": {"g": []},
+		"thigh_r": {"aim": Vector3(-0.22, -0.88, 0.42)}, "shin_r": {"aim": Vector3(-0.06, -1, -0.25)}, "foot_r": {"g": []},
+		"hands": [[0.25, 0.0], [-0.2, 0.3]]},
+	"shock": {"hips": [Vector3.ZERO, []], "ground": true,
+		"spine": {"aim": Vector3(0, 1, -0.1)}, "chest": {"aim": Vector3(0, 1, -0.15)}, "head": {"aim": Vector3(0, 1, -0.22)},
+		"upper_arm_l": {"aim": Vector3(0.95, 0.25, 0.18)}, "forearm_l": {"aim": Vector3(0.22, 1, 0.12)},
+		"upper_arm_r": {"aim": Vector3(-0.95, 0.25, 0.18)}, "forearm_r": {"aim": Vector3(-0.22, 1, 0.12)},
+		"hand_l": {"r": [["x", -10]]}, "hand_r": {"r": [["x", -10]]},
+		"thigh_l": {"aim": Vector3(0.12, -0.35, 0.93)}, "shin_l": {"aim": Vector3(0.08, -0.92, -0.3)},
+		"thigh_r": {"aim": Vector3(-0.06, -1, 0.04)}, "shin_r": {"aim": Vector3(-0.04, -1, -0.02)}, "foot_r": {"g": []},
+		"hands": [[-0.3, 1.0], [-0.3, 1.0]]},
+	"swim": {"hips": [Vector3(0, 0.0, 0), [["x", 90]]],
+		"spine": {"aim": Vector3(0, 0.1, 1)}, "chest": {"aim": Vector3(0, 0.15, 1)},
+		"neck": {"aim": Vector3(0, 0.4, 0.92)}, "head": {"aim": Vector3(0, 0.62, 0.78)},
+		"upper_arm_r": {"aim": Vector3(-0.18, 0.08, 1)}, "forearm_r": {"aim": Vector3(-0.1, 0.0, 1)},
+		"upper_arm_l": {"aim": Vector3(0.4, -0.25, 0.88)}, "forearm_l": {"aim": Vector3(0.25, -0.2, 0.95)},
+		"thigh_l": {"aim": Vector3(0.08, 0.05, -1)}, "shin_l": {"aim": Vector3(0.08, 0.25, -0.97)},
+		"foot_l": {"aim": Vector3(0.0, -0.35, -1)},
+		"thigh_r": {"aim": Vector3(-0.08, -0.12, -1)}, "shin_r": {"aim": Vector3(-0.08, -0.06, -1)},
+		"foot_r": {"aim": Vector3(0.0, -0.4, -1)},
+		"hands": [[-0.2, 0.0], [-0.3, 0.1]]},
+	"rope": {"hips": [Vector3(0, 0, -0.08), []], "ground": true,
+		"spine": {"aim": Vector3(0, 1, -0.35)}, "chest": {"aim": Vector3(0, 1, -0.3)}, "neck": {"aim": Vector3(0, 1, -0.05)},
+		"head": {"g": [["y", 25]]},
+		"upper_arm_l": {"aim": Vector3(0.12, -0.3, 0.95)}, "forearm_l": {"aim": Vector3(-0.2, 0.05, 1)},
+		"upper_arm_r": {"aim": Vector3(-0.15, -0.2, 0.97)}, "forearm_r": {"aim": Vector3(0.12, 0.05, 1)},
+		"thigh_l": {"aim": Vector3(0.18, -0.85, 0.5)}, "shin_l": {"aim": Vector3(0.12, -0.9, 0.42)}, "foot_l": {"g": []},
+		"thigh_r": {"aim": Vector3(-0.12, -0.92, -0.08)}, "shin_r": {"aim": Vector3(-0.06, -0.85, -0.5)},
+		"foot_r": {"g": [["x", -10]]},
+		"hands": [[1.0, 0.0], [1.0, 0.0]]},
+	"cast": {"hips": [Vector3.ZERO, []], "ground": true,
+		"spine": {"aim": Vector3(0, 1, -0.05)}, "chest": {"g": [["y", -25]]}, "head": {"g": [["y", 15]]},
+		"upper_arm_r": {"aim": Vector3(-0.55, 0.8, -0.12)}, "forearm_r": {"aim": Vector3(0.5, 0.55, -0.45)},
+		"upper_arm_l": {"aim": Vector3(-0.05, 0.35, 0.95)}, "forearm_l": {"aim": Vector3(-0.85, 0.5, 0.1)},
+		"thigh_l": {"aim": Vector3(0.28, -0.95, 0.18)}, "shin_l": {"aim": Vector3(0.18, -1, -0.04)}, "foot_l": {"g": []},
+		"thigh_r": {"aim": Vector3(-0.28, -0.95, -0.12)}, "shin_r": {"aim": Vector3(-0.2, -1, -0.04)}, "foot_r": {"g": []},
+		"hands": [[1.0, 0.0], [1.0, 0.0]]},
+	"seated": {"hips": [Vector3(0, -0.43, -0.08), []],
+		"spine": {"aim": Vector3(0, 1, 0.9)}, "chest": {"aim": Vector3(0, 1, 1.3)}, "neck": {"aim": Vector3(0, 1, 0.6)},
+		"head": {"aim": Vector3(0, 1, -0.1)},
+		"upper_arm_l": {"aim": Vector3(0.02, -0.94, 0.33)}, "forearm_l": {"aim": Vector3(-0.57, -0.08, 0.82)},
+		"upper_arm_r": {"aim": Vector3(-0.02, -0.94, 0.33)}, "forearm_r": {"aim": Vector3(0.57, -0.08, 0.82)},
+		"thigh_l": {"aim": Vector3(0.16, -0.06, 1)}, "shin_l": {"aim": Vector3(0.03, -1, 0.06)}, "foot_l": {"g": []},
+		"thigh_r": {"aim": Vector3(-0.16, -0.06, 1)}, "shin_r": {"aim": Vector3(-0.03, -1, 0.06)}, "foot_r": {"g": []},
+		"hands": [[0.5, 0.0], [0.5, 0.0]]},
+	"helmet": {"hips": [Vector3.ZERO, []], "ground": true,
+		"chest": {"g": [["y", 10]]}, "head": {"g": [["y", 12], ["z", -6]]},
+		"upper_arm_r": {"aim": Vector3(-0.28, -0.95, 0.08)}, "forearm_r": {"aim": Vector3(-0.1, -0.08, 1)},
+		"upper_arm_l": {"aim": Vector3(0.85, 0.42, 0.2)}, "forearm_l": {"aim": Vector3(0.12, 1, 0.12)},
+		"thigh_l": {"aim": Vector3(0.06, -0.95, 0.32)}, "shin_l": {"aim": Vector3(0.03, -1, 0.0)}, "foot_l": {"g": []},
+		"thigh_r": {"aim": Vector3(-0.06, -0.97, -0.2)}, "shin_r": {"aim": Vector3(-0.03, -0.9, -0.42)},
+		"foot_r": {"g": [["x", 20]]},
+		"hands": [[-0.3, 0.9], [0.7, 0.0]]},
+	"up": {"hips": [Vector3.ZERO, []], "ground": true,
+		"neck": {"aim": Vector3(0, 1, -0.25)}, "head": {"aim": Vector3(0, 0.55, -0.85)},
+		"upper_arm_l": {"aim": Vector3(0.55, 0.8, 0.1)}, "forearm_l": {"aim": Vector3(-0.85, 0.4, 0.25)},
+		"hand_l": {"aim": Vector3(-0.9, 0.05, 0.4)},
+		"thigh_l": {"aim": Vector3(0.05, -1, 0.0)}, "shin_l": {"aim": Vector3(0.03, -1, 0.0)}, "foot_l": {"g": []},
+		"hands": [[-0.3, 0.0], [0.15, 0.0]]},
+}
+const POSE_SHOTS := [
+	["laugh", Vector3(-0.35, 0, 0.94), Vector3(-1, 0, 0.05), 0.9, 3.3, 1.3],
+	["shock", Vector3(-0.3, 0, 0.95), Vector3(1, 0, 0.1), 0.98, 3.5, 1.3],
+	["swim", Vector3(-0.6, 0.3, 0.75), Vector3(-1, 0.1, 0.1), 0.9, 2.9, 1.7],
+	["rope", Vector3(0.8, 0, 0.6), Vector3(-0.6, 0, 0.8), 0.85, 3.4, 1.2],
+	["cast", Vector3(0.6, 0, 0.8), Vector3(-1, 0, -0.1), 1.05, 3.6, 1.3],
+	["seated", Vector3(0.2, 0, 1), Vector3(-1, 0, 0.1), 0.7, 3.0, 1.0],
+	["helmet", Vector3(0.4, 0, 0.9), Vector3(-0.7, 0, -0.7), 0.95, 3.4, 1.3],
+	["up", Vector3(0.3, 0, 0.95), Vector3(-1, 0, 0.05), 1.0, 3.4, 1.3],
+]
+# [name, pose, direction, look-at, distance, camera height, grey]
+const POSE_CLOSE := [
+	["y_laugh_neck_grey", "laugh", Vector3(-0.75, -0.25, 0.6), Vector3(0, 1.6, 0.04), 0.75, 1.45, true],
+	["y_up_neck_grey", "up", Vector3(-0.95, 0, 0.3), Vector3(0, 1.68, 0.03), 0.75, 1.6, true],
+	["y_cast_shoulder_grey", "cast", Vector3(-0.5, 0, 0.86), Vector3(-0.1, 1.55, 0.0), 1.0, 1.6, true],
+	["y_shock_shoulder_grey", "shock", Vector3(0.6, 0.2, 0.8), Vector3(0.3, 1.55, 0.0), 1.1, 1.75, true],
+	["y_seated_hips_grey", "seated", Vector3(-0.85, 0, 0.5), Vector3(0, 0.55, 0.15), 1.3, 0.8, true],
+	["y_rope_hands", "rope", Vector3(0.6, 0.3, 0.75), Vector3(0, 1.15, 0.5), 0.8, 1.45, false],
+	["y_laugh_belly_grey", "laugh", Vector3(0.2, 0, 1), Vector3(0, 1.1, 0.1), 1.0, 1.2, true],
+	["y_up_hand", "up", Vector3(0.6, 0.2, 0.8), Vector3(0.05, 1.8, 0.1), 0.7, 1.9, false],
+]
+# (the upper arm hangs from the clavicle here, though the rig parents it to the chest: an arm lifted past the
+# horizontal raises the clavicle (CLAVICLE_RAISE: degrees of clavicle a degree of arm past LIFT_FROM, at most CLAVICLE_MAX),
+# which carries the shoulder joint up and in, as the shoulder blade and collarbone do)
+const CHAIN := {"shin_l": "thigh_l", "foot_l": "shin_l", "shin_r": "thigh_r", "foot_r": "shin_r",
+	"upper_arm_l": "clavicle_l", "upper_arm_r": "clavicle_r"}
+const LIFT_FROM := 70.0
+const CLAVICLE_RAISE := 0.3
+const CLAVICLE_MAX := 25.0
+const SEG := {"spine": "chest", "chest": "neck", "neck": "head", "upper_arm_l": "forearm_l", "forearm_l": "hand_l",
+	"hand_l": "finger_middle_1_l", "upper_arm_r": "forearm_r", "forearm_r": "hand_r", "hand_r": "finger_middle_1_r",
+	"thigh_l": "shin_l", "shin_l": "foot_l", "foot_l": "toe_l", "thigh_r": "shin_r", "shin_r": "foot_r", "foot_r": "toe_r"}
+
+
+func _turns(list: Array) -> Basis:
+	var b := Basis.IDENTITY
+	for t in list:
+		var ax: Vector3 = {"x": Vector3.RIGHT, "y": Vector3.UP, "z": Vector3.BACK}[t[0]]
+		b = Basis(ax, deg_to_rad(float(t[1]))) * b
+	return b
+
+
+## The bones' world transforms worked out from the spec down the chain, then each bone's pose set from its skeleton
+## parent's.
+func _pose_spec(spec: Dictionary) -> void:
+	var sk := _skeleton()
+	var n := sk.get_bone_count()
+	var rest_g: Array = []
+	for i in n:
+		rest_g.append(sk.get_bone_global_rest(i).origin)
+	var specs := spec.duplicate(true)
+	# the hands: grip and spread turned into the finger bones' own turns (the palm faces in, toward the body's middle,
+	# the fingers hang along -Y at rest; the curl is about Z, the spread about X)
+	var hands: Array = spec.get("hands", [[0.0, 0.0], [0.0, 0.0]])
+	for k in 2:
+		var sfx := "_l" if k == 0 else "_r"
+		var s := 1.0 if k == 0 else -1.0
+		var g: float = hands[k][0]
+		var sp: float = hands[k][1]
+		var fan := {"index": -12.0, "middle": -4.0, "ring": 4.0, "little": 12.0}
+		for f in fan:
+			for j in [1, 2, 3]:
+				var curl: float = g * [55.0, 80.0, 55.0][j - 1]
+				var t: Array = [["z", -s * curl]]
+				if j == 1:
+					t = [["x", fan[f] * sp], ["z", -s * curl]]
+				specs["finger_%s_%d%s" % [f, j, sfx]] = {"r": t}
+		specs["thumb_1" + sfx] = {"r": [["y", -s * 35.0 * maxf(g, 0.0) + s * 15.0 * sp], ["z", -s * 15.0 * g]]}
+		specs["thumb_2" + sfx] = {"r": [["z", -s * 35.0 * g]]}
+		specs["thumb_3" + sfx] = {"r": [["z", -s * 40.0 * g]]}
+	for sfx in ["_l", "_r"]:
+		var ua: Dictionary = specs.get("upper_arm" + sfx, {})
+		if ua.has("aim") and not specs.has("clavicle" + sfx):
+			var lift := rad_to_deg((ua["aim"] as Vector3).angle_to(Vector3.DOWN))
+			var c := clampf((lift - LIFT_FROM) * CLAVICLE_RAISE, 0.0, CLAVICLE_MAX)
+			specs["clavicle" + sfx] = {"g": [["z", c if sfx == "_l" else -c]]}
+	var G: Array = []
+	G.resize(n)
+	for i in n:
+		var name := sk.get_bone_name(i)
+		var sp_i := sk.get_bone_parent(i)
+		var lp := sk.find_bone(CHAIN[name]) if CHAIN.has(name) else sp_i
+		var t := Transform3D()
+		if lp < 0:
+			var h: Array = spec.get("hips", [Vector3.ZERO, []])
+			t = Transform3D(_turns(h[1]), rest_g[i] + h[0])
+		else:
+			var pg: Transform3D = G[lp]
+			t.origin = pg.origin + pg.basis * (rest_g[i] - rest_g[lp])
+			t.basis = pg.basis
+			if specs.has(name):
+				var d: Dictionary = specs[name]
+				if d.has("aim") and (SEG.has(name) or name == "head"):
+					var a: Vector3 = Vector3.UP if name == "head" else (rest_g[sk.find_bone(SEG[name])] - rest_g[i]).normalized()
+					var want: Vector3 = (d["aim"] as Vector3).normalized()
+					var axis := a.cross(want)
+					t.basis = Basis.IDENTITY if axis.length() < 1e-5 else Basis(axis.normalized(), a.angle_to(want))
+				elif d.has("g"):
+					t.basis = _turns(d["g"])
+				elif d.has("r"):
+					t.basis = pg.basis * _turns(d["r"])
+		G[i] = t
+	if spec.get("ground", false):
+		var low := minf(G[sk.find_bone("foot_l")].origin.y, G[sk.find_bone("foot_r")].origin.y)
+		var dy: float = rest_g[sk.find_bone("foot_l")].y - low
+		for i in n:
+			var tt: Transform3D = G[i]
+			tt.origin.y += dy
+			G[i] = tt
+	for i in n:
+		var sp_i := sk.get_bone_parent(i)
+		var L: Transform3D = G[i] if sp_i < 0 else (G[sp_i] as Transform3D).affine_inverse() * G[i]
+		sk.set_bone_pose_position(i, L.origin)
+		sk.set_bone_pose_rotation(i, L.basis.get_rotation_quaternion())
 
 
 func _set_lit(lit: bool) -> void:
