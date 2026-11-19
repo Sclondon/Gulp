@@ -6344,13 +6344,38 @@ R7_BACK = 0.022
 R7 = {}
 # The adjustments, in order: (name, on, amount). Each kept only if its before/after pair beside the sheet showed it
 # moving toward the sheet (scratchpad brother11/adjustments.png).
-R7_ADJUST = [("nose_less_red", True, 0.6),          # kept: the nose no redder than the cheeks (pair_n1)
-             ("nose_bridge_straight", False, 0.004),  # dropped: no visible change at game distance (pair_n4)
-             ("nose_tip_planes", False, 0.0015),      # dropped: moved two points only
-             ("eyes_downturn", False, 3.0),           # dropped: the cut no longer met round seven's painted lids (e1)
-             ("eye_bags", False, 0.0008)]             # dropped with it
+# Twelfth round: every pair rendered in Godot's light (tests/brother_view.gd --headonly), lit and grey, beside head3's
+# top row (scratchpad brother12/adjustments.png). Paint ones act on the carried picture; geometry ones are fields of
+# position, and the picture is looked up backward through them, so paint and form stay together.
+R7_ADJUST = [("face_delight", True, 1.0),        # kept: the old painted light divided out before the carry: no clipped yellow face, skull and face one peach
+             ("forehead_bands", True, 1.0),      # kept: the stripes above the brows and the skull's blocks smoothed (6 mm field; brows left out)
+             ("neck_patch", True, 1.0),          # kept: the blocks under the jaw and down the neck blended (2 cm field)
+             ("teal_patch", True, 1.0),          # kept: the blue-green patch on the upper lip gone
+             ("cheeks_less_red", True, 0.5),     # kept: half the cheeks' red over the skin taken off, its edge softened
+             ("nose_less_red", True, 0.6),       # kept (eleventh round): the nose no redder than the cheeks
+             ("nose_shine", False, 1.0),          # off: the user likes the button nose (shape and colour left as round seven's, nose_less_red only)
+             ("nose_split", False, 1.0),          # off: (as above) the nose's shape is the frozen head's
+             ("nose_angular", False, 5.0),        # off: (as above); also nose_narrow, nose_tip_down, nose_wing_crease (tried, off)
+             ("eyes_downturn", True, 1.5),       # kept: outer corners 1.5 mm lower, the painted lids moving with the cut (2.5 put the rig's eyes_closed folds from 3 to 4)
+             ("lid_heavy", False, 2.0),          # dropped: no visible change
+             ("eye_bags", True, 2.0),            # kept: bag form +2 mm and a soft shade under each eye (1.0 hardly showed)
+             ("socket_clean", False, 0.8),       # dropped: no visible change (the grey under the brows is mostly the brow's cast shadow)
+             ("iris_hazel", False, 0.5),         # (amber-brown to olive; 1.0 read orange) replaced by iris_sheet
+             ("iris_sheet", True, 1.0),          # kept: the iris in head3's measured colours: brown amber round the pupil, light golden olive, a darker rim
+             ("sclera_warm", True, 1.0),         # kept: warm cream whites (they read blue-grey)
+             ("eyes_open", False, 0.25),         # dropped: a quarter taller looked nearer the sheet, but the rig's eyes_closed folds went from 3 to 12 (wider along it opened holes past the ball)
+             ("socket_fill", True, 3.5),         # kept, small: the upper lid's skin under the brow 3.5 mm forward, so the brow's cast shadow over it is smaller
+             ("lid_clean", False, 0.85),         # dropped: no visible change (the dark block is mostly the brow's shadow)
+             ("brows_thin", False, 0.2),         # (see below)
+             ("jaw_lift", False, 2.5),           # dropped: no visible change at 2.5 mm
+             ("nasolabial_soft", False, 0.7),    # dropped: no visible change
+             ("nose_bridge_straight", False, 0.004),  # dropped (eleventh round): no visible change at game distance
+             ("nose_tip_planes", False, 0.0015)]      # dropped (eleventh round): moved two points only
 if "--r7adj" in ARGS:     # (trying adjustments: `-- --r7adj name=amount,name=amount` in place of the list)
     R7_ADJUST = [(k, True, float(v)) for k, v in (s.split("=") for s in arg("--r7adj", "").split(",") if s)]
+if "--r7add" in ARGS:     # (one more on top of the list: `-- --r7add name=amount,...`; a name already listed takes the amount)
+    for k_, v_ in (s.split("=") for s in arg("--r7add", "").split(",") if s):
+        R7_ADJUST = [a_ for a_ in R7_ADJUST if a_[0] != k_] + [(k_, True, float(v_))]
 MOUTH_SNAP_MAX = 1.0      # snap_mouth_line: the most (m) the lips' loop is moved (the r7 head: a few millimetres)
 
 
@@ -6402,6 +6427,17 @@ def r7_face(M, face_uv, tone):
     pos, nrm, hit, fid = texel_geometry(M, face_uv, "face", P, normals_of(P, M.tris()))
     bad = ~(np.isfinite(pos).all(-1))
     hit = hit & ~bad
+    look = pos
+    if getattr(M, "P_rest", None) is not None and len(M.P_rest) == len(P):
+        # (r7_eye_warp moved the eyes' points: each texel takes the colour from where its place was before)
+        Pr = np.array(M.P_rest)
+        look, _, hr, _ = texel_geometry(M, face_uv, "face", Pr, normals_of(Pr, M.tris()))
+        look = np.where((hr & np.isfinite(look).all(-1))[..., None], look, pos)
+    if "geo_marks" in R7:
+        # (nose_angular and jaw_lift moved points by fields of position: each texel looks where it was before)
+        sh_ = look.shape
+        lk = np.nan_to_num(look.reshape(-1, 3))
+        look = (lk - r7_geo_field(lk)).reshape(sh_)
     kd = kdtree.KDTree(len(cpos))
     for i, p in enumerate(cpos):
         kd.insert(Vector(p), i)
@@ -6410,12 +6446,27 @@ def r7_face(M, face_uv, tone):
     dist = np.zeros(pos.shape[:2])
     ii = np.argwhere(hit)
     for r_, c_ in ii:
-        _, k, dd = kd.find(Vector(pos[r_, c_]))
+        _, k, dd = kd.find(Vector(look[r_, c_]))
         out[r_, c_] = crgb[k]
         dist[r_, c_] = dd
     far = int((dist > 0.004).sum())
     skin = np.median(crgb, 0)
     lum = lambda x: x.mean(-1, keepdims=True)
+    k_del = r7_amount("face_delight")
+    if k_del > 0:
+        # (twelfth round, "face_delight": the old picture had its light and shade painted in, and its own projection's
+        # facets and bands (the forehead's stripes, the blocks on the neck and the skull's sides); scaled up to the new
+        # peach the lit parts clipped red at 1 and went pale yellow. The old colours' slow changes, measured in 3D from
+        # its plain skin only (the blush, brows, lips and lid lines left out of the measure, so they keep their
+        # difference from the skin round them), divided out toward the old median skin, `k` of the way, before the
+        # carry to the new tone)
+        rg = (out[..., 0] - out[..., 1]) / np.maximum(out[..., 0], 1e-3)
+        srg = (skin[0] - skin[1]) / skin[0]
+        lu = out.mean(-1)
+        plain = hit & (rg < srg + 0.06) & (lu > 0.7 * skin.mean())
+        L = field3d(out, pos, plain, hit, cell=R7_DELIGHT_CELL, spread=3)
+        out = np.where(hit[..., None], out * (skin / np.maximum(L, 0.05)) ** k_del, out)
+        print("%s R7 adjust face_delight: %.2f, measured on %d plain texels" % (WHO, k_del, int(plain.sum())))
     # (the colour's ratio to the old plain skin, laid on the new one: a texel as red as the old cheeks stays as red
     # against the new skin)
     out = np.where(hit[..., None], np.clip(out / np.maximum(skin, 1e-3) * tone, 0, 1), 0.0)
@@ -6427,10 +6478,191 @@ def r7_face(M, face_uv, tone):
     return out, pos, hit, np.array(tone, float)
 
 
+R7_DELIGHT_CELL = 0.012   # face_delight: the cube (m) its slow field is measured in (spread over 3 either way)
+
+
+def r7_amount(name):
+    """The amount of a named round-seven adjustment, 0 when it is off or not listed."""
+    for n, on, amt in R7_ADJUST:
+        if n == name and on:
+            return float(amt)
+    return 0.0
+
+
+def field3d(rgb, pos, use, hit, cell=0.012, spread=3):
+    """A slow colour field over the surface, measured IN 3D from the texels in `use` only (cubes of `cell`, summed with
+    their neighbours `spread` times along each axis), read back at every texel in `hit`."""
+    lo_ = pos[hit].min(0) - cell * (spread + 2)
+    idx = np.floor((pos - lo_) / cell).astype(int)
+    shape = tuple(idx[hit].max(0) + spread + 3)
+    s = np.zeros(shape + (rgb.shape[-1],))
+    n = np.zeros(shape)
+    iu = idx[use]
+    np.add.at(s, (iu[:, 0], iu[:, 1], iu[:, 2]), rgb[use])
+    np.add.at(n, (iu[:, 0], iu[:, 1], iu[:, 2]), 1.0)
+    for _ in range(spread):
+        for ax in range(3):
+            s = s + np.roll(s, 1, ax) + np.roll(s, -1, ax)
+            n = n + np.roll(n, 1, ax) + np.roll(n, -1, ax)
+    out = np.zeros_like(rgb)
+    ih = idx[hit]
+    nn = n[ih[:, 0], ih[:, 1], ih[:, 2]]
+    v = s[ih[:, 0], ih[:, 1], ih[:, 2]] / np.maximum(nn, 1e-6)[:, None]
+    # (a texel with no measured texel in reach keeps its own colour)
+    v = np.where((nn > 0)[:, None], v, rgb[hit])
+    out[hit] = v
+    return out
+
+
+def r7_nose_split(R, face_uv, weights, under):
+    """(twelfth round, "nose_split") The nose's faces (from 2.2 cm under its tip to 5 cm over it, within 2.8 cm of the
+    middle, the front) split once more, the new points on the curved surface (refine), so that nose_angular has points
+    to make planes with. The rest of the head is untouched; the paint is carried onto them as onto any point."""
+    P = np.array(R.P)
+    mk = r7_marks(R)
+    tip = mk["tip"]
+    sel = set()
+    for fi in R.tag["base_head_faces"]:
+        c = P[R.faces[fi]].mean(0)
+        if abs(c[0]) < 0.028 and tip[2] - 0.022 < c[2] < tip[2] + 0.05 and c[1] < tip[1] + 0.035:
+            sel.add(fi)
+    n_old = len(R.P)
+    M = R
+    R, face_uv, weights, ch = refine(M, sel, face_uv, weights)
+    under = remap_tags(R, M, ch, under)
+    R.base_uv = {}
+    R.tag["base_head_pts"] = list(M.tag["base_head_pts"]) + [i for i in range(n_old, len(R.P)) if R.part[i] == "head"]
+    print("%s R7 adjust nose_split: %d faces split, %d points added" % (WHO, len(sel), len(R.P) - n_old))
+    return R, face_uv, weights, under
+
+
+def r7_nose_field(P, mk, amt):
+    """(twelfth round, "nose_angular", mm) The user: "a bit too red button nosed, needs to be a tad angular". A smooth
+    field over the nose's points as a group, by position only (so the face picture is looked up through it backward):
+    the bridge narrowed and its dip filled toward a straight line from its root to above the tip; the tip's horizontal
+    section squared (a superellipse: a flatter front plane meeting flatter sides at soft corners, the corners standing
+    out, so the nose does not shrink); a groove where the wings meet the cheeks. `amt` 3 is about 1.5 mm on the bridge,
+    1.5 mm at the tip's corners, 1 mm in the grooves."""
+    a = amt / 3.0
+    tip = mk["tip"]
+    x, y, z = P[:, 0], P[:, 1], P[:, 2]
+    ax = np.abs(x)
+    d = np.zeros_like(P)
+    front = (y < tip[1] + 0.04).astype(float)
+    # the bridge (from 1 cm over the tip to its root 4.5 cm over)
+    wb = smooth01(tip[2] + 0.006, tip[2] + 0.016, z) * (1.0 - smooth01(tip[2] + 0.04, tip[2] + 0.055, z))
+    wb = wb * (1.0 - smooth01(0.012, 0.022, ax)) * front
+    d[:, 0] -= np.sign(x) * 0.0015 * a * wb * smooth01(0.0, 0.01, ax)
+    zs, ys = mk["mid_z"], mk["mid_y"]
+    if len(zs) > 2:
+        z0, z1 = tip[2] + 0.01, tip[2] + 0.042
+        y0, y1 = np.interp(z0, zs, ys), np.interp(z1, zs, ys)
+        ym = np.interp(z, zs, ys)
+        line = y0 + (y1 - y0) * (z - z0) / (z1 - z0)
+        dip = np.clip(ym - line, 0, 0.004)
+        d[:, 1] -= dip * min(1.0, 0.7 * a) * wb
+    # the tip squared (its horizontal section about a middle 1.1 cm behind its front)
+    cy = tip[1] + 0.011
+    rel_x, rel_y = x, y - cy
+    r = np.hypot(rel_x, rel_y)
+    th = np.arctan2(rel_y, rel_x)
+    n = 2.0 + 1.5 * a
+    f = (np.abs(np.cos(th)) ** n + np.abs(np.sin(th)) ** n) ** (-1.0 / n)
+    f = f / 1.0
+    wt = np.exp(-((z - (tip[2] - 0.001)) / 0.009) ** 2) * (1.0 - smooth01(0.012, 0.02, r)) * (rel_y < 0.002)
+    grow = (f - 1.0) * r * wt
+    d[:, 0] += np.cos(th) * grow
+    d[:, 1] += np.sin(th) * grow
+    # the wings' grooves (where each wing meets the cheek: 2 cm out, 0.5 cm under the tip)
+    for s_ in (1, -1):
+        wg = np.exp(-((x - s_ * 0.02) / 0.0035) ** 2 - ((z - (tip[2] - 0.006)) / 0.007) ** 2) * front
+        d[:, 1] += 0.001 * a * wg
+    return d
+
+
+def r7_jaw_field(P, mk, amt):
+    """(twelfth round, "jaw_lift", mm) Younger: the jowly lower face lifted: the jaw's underside and the cheeks' lower
+    edge, from 1.5 cm under the mouth's corners down to the jaw's edge and out to the sides, moved up `amt` and in half
+    of it, most at the jowls (4.5 cm out, 3 cm under the mouth), none at the chin's middle, the mouth or the neck's base."""
+    x, y, z = P[:, 0], P[:, 1], P[:, 2]
+    ax = np.abs(x)
+    zm = mk["mouth_z"]
+    w = np.exp(-((ax - 0.045) / 0.02) ** 2 - ((z - (zm - 0.03)) / 0.016) ** 2)
+    w = w * smooth01(0.012, 0.03, ax) * (y < mk["mouth_y"] + 0.09)
+    d = np.zeros_like(P)
+    d[:, 2] = 0.001 * amt * w
+    d[:, 0] = -np.sign(x) * 0.0005 * amt * w
+    return d
+
+
+R7_GEO = ("nose_angular", "jaw_lift", "nose_narrow", "nose_tip_down", "nose_wing_crease")
+
+
+def r7_nose_more(P, mk):
+    """(twelfth round, nose only: the user's "too red button nosed, needs to be a tad angular", against head3's top
+    row) Further nose fields by position, each named:
+    "nose_narrow" (a share): the tip and wings drawn in toward the middle (the sheet's nose across its wings is 0.62 of
+    the distance between the pupils, the model's was 0.70), most at the wings' height, none above the bridge's middle
+    or out on the cheeks; the length and projection kept.
+    "nose_tip_down" (mm): the tip's underside and lobule moved down and a little forward, so the tip points down over a
+    columella that slopes back up to the lip (the sheet's profile), not a ball tucked under.
+    "nose_wing_crease" (mm): the crease round each wing (where it meets the cheek and the tip) pressed in, so the wings
+    read as their own forms."""
+    tip = mk["tip"]
+    x, y, z = P[:, 0], P[:, 1], P[:, 2]
+    ax = np.abs(x)
+    d = np.zeros_like(P)
+    front = smooth01(tip[1] + 0.05, tip[1] + 0.035, y)
+    a = r7_amount("nose_narrow")
+    if a > 0:
+        wv = np.exp(-((z - (tip[2] - 0.004)) / 0.016) ** 2) * (1 - smooth01(tip[2] + 0.012, tip[2] + 0.03, z))
+        wx = 1.0 - smooth01(0.03, 0.042, ax)
+        d[:, 0] -= x * a * wv * wx * front
+    a = 0.001 * r7_amount("nose_tip_down")
+    if a > 0:
+        # (the tip's lower half: from its front back 1.6 cm, from its middle down to the nostrils' floor)
+        w = np.exp(-((z - (tip[2] - 0.008)) / 0.008) ** 2) * np.exp(-((y - (tip[1] + 0.004)) / 0.009) ** 2) * (1 - smooth01(0.012, 0.022, ax))
+        d[:, 2] -= a * w
+        d[:, 1] -= 0.4 * a * w
+    a = 0.001 * r7_amount("nose_wing_crease")
+    if a > 0:
+        for s_ in (1, -1):
+            # (a ring round each wing: 1.1 cm out from the middle at the tip's back, curving down to the nostril's end)
+            cx, cz = s_ * 0.017, tip[2] - 0.004
+            r = np.hypot((x - cx) / 0.0095, (z - cz) / 0.0085)
+            ring = np.exp(-((r - 1.0) / 0.22) ** 2) * (s_ * (x - cx) > -0.004) * front
+            d[:, 1] += a * ring
+    return d
+
+
+def r7_geo_field(P):
+    """The sum of the named geometry fields that move points by position only (nose_angular, jaw_lift): what the
+    carried face picture is looked up backward through."""
+    d = np.zeros_like(P)
+    mk = R7.get("geo_marks")
+    if mk is None:
+        return d
+    if r7_amount("nose_angular") > 0:
+        d += r7_nose_field(P, mk, r7_amount("nose_angular"))
+    if r7_amount("jaw_lift") > 0:
+        d += r7_jaw_field(P, mk, r7_amount("jaw_lift"))
+    if any(r7_amount(n_) > 0 for n_ in ("nose_narrow", "nose_tip_down", "nose_wing_crease")):
+        d += r7_nose_more(P, mk)
+    return d
+
+
 def adjust_r7(R):
     """The named adjustments on the laid round-seven head (geometry); the paint ones are in r7_paint_adjust."""
     if HEAD_ROUTE != "r7":
         return
+    if any(r7_amount(n_) > 0 for n_ in R7_GEO):
+        Pq = np.array(R.P)
+        hp_ = np.array(R.tag["base_head_pts"])
+        mk = r7_marks(R)
+        mid = hp_[(np.abs(Pq[hp_, 0]) < 0.0015) & (Pq[hp_, 1] < mk["tip"][1] + 0.03) & (Pq[hp_, 2] > mk["tip"][2]) & (Pq[hp_, 2] < mk["tip"][2] + 0.06)]
+        o = np.argsort(Pq[mid, 2])
+        mk["mid_z"], mk["mid_y"] = Pq[mid[o], 2], Pq[mid[o], 1]
+        R7["geo_marks"] = mk
     P = np.array(R.P)
     hp = np.zeros(len(P), bool)
     hp[R.tag["base_head_pts"]] = True
@@ -6440,10 +6672,20 @@ def adjust_r7(R):
     face = hp & (P[:, 1] < -0.02)
     g = lambda r0, c0, sr, sc: np.exp(-(((row - r0) / sr) ** 2 + ((col - c0) / sc) ** 2))
     for name, on, amt in R7_ADJUST:
-        if not on or name in R7_PAINT_ADJ or name in R7_EYE_ADJ:
+        if not on or name in R7_PAINT_ADJ or name in R7_EYE_ADJ or name in ("nose_split",):
             continue
         d = np.zeros_like(P)
-        if name == "nose_bridge_straight":
+        if name == "nose_angular":
+            d = r7_nose_field(P, R7["geo_marks"], amt) * hp[:, None]
+        elif name == "jaw_lift":
+            d = r7_jaw_field(P, R7["geo_marks"], amt) * hp[:, None]
+        elif name in ("nose_narrow", "nose_tip_down", "nose_wing_crease"):
+            if name != "nose_narrow" and r7_amount("nose_narrow") > 0:
+                continue
+            if name == "nose_wing_crease" and r7_amount("nose_tip_down") > 0:
+                continue
+            d = r7_nose_more(P, R7["geo_marks"]) * hp[:, None]
+        elif name == "nose_bridge_straight":
             # (the user: "a tad angular": the bridge's dip filled toward a straight line from the brow to the tip, the
             # bridge's middle only)
             w = g(1062.0, 0.0, 22.0, 13.0) * face
@@ -6455,26 +6697,268 @@ def adjust_r7(R):
         else:
             raise RuntimeError("no such head adjustment: %s" % name)
         P += d
-        print("%s R7 adjust %s: %.1f mm, %d points moved" % (WHO, name, amt * 1000, int((np.linalg.norm(d, axis=1) > 0.0003).sum())))
+        print("%s R7 adjust %s: %s, %d points moved" % (WHO, name, ("%.1f mm" % amt) if name in ("nose_angular", "jaw_lift") else ("%.1f mm" % (amt * 1000)), int((np.linalg.norm(d, axis=1) > 0.0003).sum())))
     R.P = [p for p in P]
 
 
-R7_PAINT_ADJ = ("nose_less_red",)
-R7_EYE_ADJ = ("eyes_downturn", "eye_bags")
+R7_PAINT_ADJ = ("nose_less_red", "face_delight", "forehead_bands", "socket_clean", "lid_clean", "teal_patch", "nose_shine", "cheeks_less_red", "neck_patch", "brows_thin", "nasolabial_soft", "iris_hazel", "bag_shade", "iris_sheet", "sclera_warm", "eye_paint", "jaw_lift_paint")
+R7_EYE_ADJ = ("eyes_downturn", "eye_bags", "lid_heavy", "eyes_open", "socket_fill")
 
 
 def r7_eye_adjust():
+    # (twelfth round: "eyes_downturn" is no longer the cut's own outline (that left round seven's painted lids behind,
+    # e1): it is r7_eye_warp, after the cut. "eye_bags" adds to the figure's bag form (mm per unit) here and a soft
+    # shade in r7_paint_more.)
     for name, on, amt in R7_ADJUST:
-        if on and name == "eyes_downturn":
-            FIGURE["eye_down"] = FIGURE.get("eye_down", 0.0) + amt
-        elif on and name == "eye_bags":
-            FIGURE["bags"] = FIGURE.get("bags", 0.0) + amt
-        else:
-            continue
-        print("%s R7 adjust %s: %+.4f (eye_down %.1f px, bags %.1f mm)" % (WHO, name, amt, FIGURE.get("eye_down", 0.0), 1000 * FIGURE.get("bags", 0.0)))
+        if on and name == "eye_bags":
+            FIGURE["bags"] = FIGURE.get("bags", 0.0) + 0.001 * amt
+            print("%s R7 adjust eye_bags: form +%.1f mm (bags %.1f mm)" % (WHO, amt, 1000 * FIGURE["bags"]))
+
+
+def r7_eye_warp(M, eyes):
+    """(twelfth round, "eyes_downturn", mm; "lid_heavy", mm) The outer half of each eye, with its lids, the skin round
+    them and the brow's underside, moved down by a smooth field (none at the inner corner, all of it at and past the
+    outer corner, fading above the brow and below the bag); points on the ball's front kept on it. "lid_heavy" lowers
+    the outer upper lid more (the upper lid's band only). The points' places before the warp are kept as M.P_rest: the
+    carried face picture is looked up there (r7_face), so the painted lids, lashes and lines move with the cut."""
+    M.tag["eyes"] = [(np.array(C, float), s) for C, s in eyes]
+    down = 0.001 * r7_amount("eyes_downturn")
+    heavy = 0.001 * r7_amount("lid_heavy")
+    opn = r7_amount("eyes_open")
+    fill = 0.001 * r7_amount("socket_fill")
+    if down <= 0 and heavy <= 0 and opn <= 0 and fill <= 0:
+        return
+    P = np.array(M.P)
+    M.P_rest = P.copy()
+    hp = np.zeros(len(P), bool)
+    hp[[i for i in range(len(P)) if M.part[i] == "head"]] = True
+    mid_row = 0.5 * (EYE_TOP[1] + EYE_LOW[1])
+    mid_col = 0.5 * (EYE_INNER[0] + EYE_OUTER[0])
+    half_c = 0.5 * (EYE_OUTER[0] - EYE_INNER[0])
+    half_r = 0.5 * (EYE_LOW[1] - EYE_TOP[1])
+    moved = 0
+    for C, s in eyes:
+        mine = hp & (s * P[:, 0] > 0) & (P[:, 1] < C[1] + 0.01)
+        col = s * P[:, 0] / HEAD_SX
+        row = np.asarray(head_row(P[:, 2]), float)
+        c_out = EYE_OUTER[0]
+        t = (col - EYE_INNER[0]) / (c_out - EYE_INNER[0])
+        wt = smooth01(0.25, 1.0, t) * (1.0 - smooth01(1.45, 2.0, t))
+        wv = np.exp(-((row - mid_row) / 26.0) ** 2)
+        # (the upper lid's band: from the margin's top up to the crease)
+        wu = np.exp(-((row - (EYE_TOP[1] + 2.0)) / 7.0) ** 2) * (row < mid_row + 2)
+        dz = -(down * wt * wv + heavy * wt * wu) * mine
+        dx = np.zeros(len(P))
+        if opn > 0:
+            # ("eyes_open", a share: the opening, its lids and the skin round them spread up and down from the almond's
+            # middle line, all of it within the almond, none beyond twice its size. Not along it: spreading the corners
+            # outward opened them past the ball's edge (holes at the outer corners, pair e2))
+            rr = np.hypot((col - mid_col) / half_c, (row - mid_row) / half_r)
+            wo = (1.0 - smooth01(1.0, 2.2, rr)) * mine
+            dz += -(row - mid_row) * HEAD_SX * opn * wo
+        dy = np.zeros(len(P))
+        if fill > 0:
+            # ("socket_fill", mm: in the game's sun the heavy brow over a deep socket cast a dark block over the upper lid
+            # (the grey render shows it as shadow, not paint); head3's upper lids are lit. The skin between 1 mm over the
+            # upper lid's margin and the brow's underside brought forward, most in the middle of the band)
+            zr = P[:, 2] - C[2]
+            wb = smooth01(0.0068, 0.0095, zr) * (1 - smooth01(0.024, 0.033, zr)) * (1 - smooth01(0.018, 0.028, np.abs(P[:, 0] - C[0])))
+            dy = -fill * wb * mine
+        x0 = P[:, 0].copy()
+        z0 = P[:, 2].copy()
+        P[:, 0] = x0 + dx
+        P[:, 1] += dy
+        P[:, 2] = z0 + dz
+        # (on the ball's front: kept at the same height over it)
+        for i in np.where((np.abs(dz) > 1e-6) | (np.abs(dx) > 1e-6))[0]:
+            dn = (M.P_rest[i] - C) / EYE_RAD
+            if np.linalg.norm(dn) < 1.35:
+                k0 = 1.0 - ((x0[i] - C[0]) / EYE_RAD[0]) ** 2 - ((z0[i] - C[2]) / EYE_RAD[2]) ** 2
+                k1 = 1.0 - ((P[i, 0] - C[0]) / EYE_RAD[0]) ** 2 - ((P[i, 2] - C[2]) / EYE_RAD[2]) ** 2
+                if k0 > 0.05 and k1 > 0.05:
+                    P[i, 1] += ball_y(P[i, 0], P[i, 2], C) - ball_y(x0[i], z0[i], C)
+        moved += int((np.sqrt(dx ** 2 + dy ** 2 + dz ** 2) > 0.0003).sum())
+    M.P = [p for p in P]
+    print("%s R7 adjust eyes_downturn %.1f mm, lid_heavy %.1f mm, eyes_open %.2f, socket_fill %.1f mm: %d points moved" % (WHO, 1000 * down, 1000 * heavy, opn, 1000 * fill, moved))
+
+
+def r7_marks(M):
+    """Where the laid round-seven face is: the nose's tip, the mouth's middle height and corners' reach (from the lips'
+    loop), and the side of the head (m)."""
+    P = np.array(M.P)
+    hp = np.array(M.tag["base_head_pts"])
+    nz = hp[np.abs(P[hp, 0]) < 0.006]
+    tip = P[nz[np.argmin(P[nz, 1])]]
+    line = M.tag["mouth_line"]
+    return {"tip": tip, "mouth_z": float(np.mean(P[line, 2])), "mouth_x": float(np.abs(P[line, 0]).max()),
+            "mouth_y": float(P[line, 1].min())}
+
+
+def r7_paint_more(face, fpos, fhit, M):
+    """Twelfth round's paint adjustments on the carried face (each named in R7_ADJUST, 0 or absent = off)."""
+    mk = r7_marks(M)
+    tip = mk["tip"]
+    x, y, z = fpos[..., 0], fpos[..., 1], fpos[..., 2]
+    face = face.copy()
+    eyes_ = M.tag.get("eyes") or []
+    cz = float(np.mean([C[2] for C, _ in eyes_])) if eyes_ else tip[2] + 0.044
+    sat = (face[..., 0] - face[..., 2]) / np.maximum(face[..., 0], 1e-3)
+    sat0 = float(np.median(sat[fhit]))
+    lu0 = float(np.median(face[fhit].mean(-1)))
+    brow = (sat > sat0 + 0.08) & (face.mean(-1) < lu0 * 0.8)
+    amt = r7_amount("forehead_bands")
+    if amt > 0:
+        # (faint level stripes across the forehead and blocks over the skull, painted into the old picture by its
+        # projection: from 3.4 cm over the eyes' middle (above the brows) and over the whole skull, the colour drawn
+        # toward a fine 3D field of itself (6 mm cubes, the brows' own texels left out), which keeps the slow tone and
+        # loses the steps)
+        w = smooth01(cz + 0.034, cz + 0.044, z) * fhit * ~brow * amt
+        fine = field3d(face, fpos, fhit & (z > cz + 0.028) & ~brow, fhit, cell=0.006, spread=3)
+        face = face * (1 - w[..., None]) + fine * w[..., None]
+        print("%s R7 adjust forehead_bands: %.2f on %d texels" % (WHO, amt, int((w > 0.5 * amt).sum())))
+    amt = r7_amount("teal_patch")
+    if amt > 0:
+        # (a cold blue-green patch on the upper lip under the nose, and flecks like it, from the old picture: texels below
+        # the eyes whose green or blue stands up to their red (no skin, lip or blush does) drawn to a 3D field of the
+        # plain skin round them, softly at the patch's edge)
+        lowz = (z < cz - 0.015)
+        cold = np.clip((np.maximum(face[..., 1], face[..., 2] * 1.08) - face[..., 0] * 0.93) / 0.05, 0, 1) * fhit * lowz
+        cold = np.clip(blur(cold, 2) * 2.0, 0, 1) * fhit * lowz
+        plain = fhit & (cold < 0.05) & ~brow
+        Ls = field3d(face, fpos, plain, fhit, cell=0.008, spread=3)
+        w = cold * amt
+        face = face * (1 - w[..., None]) + Ls * w[..., None]
+        print("%s R7 adjust teal_patch: %.2f on %d texels" % (WHO, amt, int((w > 0.3 * amt).sum())))
+    amt = r7_amount("nose_shine")
+    if amt > 0:
+        # (the old picture painted two shining spots on the nose's ball, which the game's light then shines again: they
+        # made the "button". Within 2.5 cm of the tip, texels lighter than a fine 3D field of the nose round them brought
+        # down to it, `amt` of the way)
+        dn = np.linalg.norm(fpos - tip, axis=-1)
+        near = fhit & (dn < 0.03)
+        Ls = field3d(face, fpos, near, fhit, cell=0.005, spread=3)
+        over = np.clip((face.mean(-1) - Ls.mean(-1)) / np.maximum(Ls.mean(-1), 1e-3) / 0.06, 0, 1)
+        w = over * (1 - smooth01(0.018, 0.026, dn)) * fhit * amt
+        face = face * (1 - w[..., None]) + np.minimum(face, Ls) * w[..., None]
+        print("%s R7 adjust nose_shine: %.2f on %d texels" % (WHO, amt, int((w > 0.3 * amt).sum())))
+    amt = r7_amount("lid_clean")
+    if amt > 0 and eyes_:
+        # (head3's lids are clean light skin from the lash line up to the brow, with one soft crease; the old picture
+        # paints a grey-brown block there, which read as a bruise in the game's light. Between 1.2 mm over the upper
+        # lid's margin and the brow (its own texels kept), within 2.6 cm of each eye's middle across, each texel's
+        # darkness against the plain skin round the eyes (a broad field measured outside that band) taken off `amt` of
+        # the way; the colour kept, only lightness and greyness moved)
+        band = np.zeros(z.shape)
+        for C, s_ in eyes_:
+            top = C[2] + 0.0095 + 0.0
+            band = np.maximum(band, smooth01(C[2] + 0.0072, C[2] + 0.0095, z) * (1 - smooth01(C[2] + 0.03, C[2] + 0.036, z))
+                              * (1 - smooth01(0.022, 0.03, np.abs(x - C[0]))) * (y < C[1]))
+        band = band * fhit * ~brow
+        use = fhit & (band < 0.05) & ~brow & (face.mean(-1) > lu0 * 0.8) & (z > cz - 0.03) & (z < cz + 0.06)
+        Ls = field3d(face, fpos, use, fhit, cell=0.012, spread=3)
+        w = band * amt
+        face = face * (1 - w[..., None]) + Ls * w[..., None]
+        print("%s R7 adjust lid_clean: %.2f on %d texels" % (WHO, amt, int((w > 0.5 * amt).sum())))
+    amt = r7_amount("socket_clean")
+    if amt > 0 and eyes_:
+        # (grey blocks between the brows and the upper lids, the old picture's painted socket shade: there, texels
+        # darker and greyer than the plain skin (not the brows' brown, not the lid's line within 2 mm of the opening)
+        # drawn `amt` of the way to a fine field of the plain skin round them)
+        plain = fhit & ~brow & (face.mean(-1) > lu0 * 0.85)
+        Ls = field3d(face, fpos, plain, fhit, cell=0.006, spread=3)
+        band = np.zeros(z.shape)
+        for C, s_ in eyes_:
+            band = np.maximum(band, smooth01(C[2] + 0.004, C[2] + 0.008, z) * (1 - smooth01(C[2] + 0.03, C[2] + 0.036, z))
+                              * (1 - smooth01(0.03, 0.038, np.abs(x - C[0]))) * (y < C[1]))
+        grey = np.clip((Ls.mean(-1) - face.mean(-1)) / np.maximum(Ls.mean(-1), 1e-3) / 0.12, 0, 1) * (sat < sat0 + 0.02)
+        w = band * grey * fhit * amt
+        face = face * (1 - w[..., None]) + Ls * w[..., None]
+        print("%s R7 adjust socket_clean: %.2f on %d texels" % (WHO, amt, int((w > 0.3 * amt).sum())))
+    amt = r7_amount("neck_patch")
+    if amt > 0:
+        # (blocks under the jaw and down the neck's side where the old picture's neck meets the new bridge: below the
+        # mouth's corners and behind the chin's front, the colour drawn toward a broad 3D field of itself (2 cm cubes),
+        # fading in over 2.5 cm)
+        below = 1.0 - smooth01(mk["mouth_z"] - 0.045, mk["mouth_z"] - 0.02, z)
+        behind = smooth01(mk["mouth_y"] + 0.02, mk["mouth_y"] + 0.045, y)
+        w = np.maximum(below * behind, (1.0 - smooth01(mk["mouth_z"] - 0.07, mk["mouth_z"] - 0.05, z))) * fhit * amt
+        broad = field3d(face, fpos, fhit, fhit, cell=0.02, spread=3)
+        face = face * (1 - w[..., None]) + broad * w[..., None]
+        print("%s R7 adjust neck_patch: %.2f on %d texels" % (WHO, amt, int((w > 0.5 * amt).sum())))
+    amt = max(r7_amount("eye_bags"), r7_amount("bag_shade"))
+    if amt > 0 and M.tag.get("eyes"):
+        # (the user: "more prominent world weary bags for soft gentle kind eyes": a soft shade under each eye, a
+        # little cool and darker, centred 12 mm under the ball's middle, most toward the outer side; no line)
+        w = np.zeros(z.shape)
+        for C, s in M.tag["eyes"]:
+            dx = (s * (x - C[0]) - 0.002) / 0.013
+            dz_ = (z - (C[2] - 0.0125)) / 0.0045
+            outer = 0.75 + 0.25 * np.clip(s * (x - C[0]) / 0.012, -1, 1)
+            w = np.maximum(w, np.exp(-dx ** 2 - dz_ ** 2) * outer * (y < C[1]))
+        w = w * fhit * min(amt, 2.0)
+        face = face * (1 - 0.09 * w[..., None]) * (1 - 0.04 * w[..., None] * np.array((0.0, 1.0, 0.4)))
+        print("%s R7 adjust eye_bags: shade %.2f on %d texels" % (WHO, amt, int((w > 0.3).sum())))
+    amt = r7_amount("brows_thin")
+    if amt > 0 and M.tag.get("eyes"):
+        # (younger: the brows thinner (by `amt` of their height, taken off top and bottom) and a touch lighter. A brow
+        # texel: in the band 0.6 to 3.4 cm over an eye's middle, much darker than the plain skin round it. Their edges
+        # are eaten in from both sides in the picture (n texels), what is taken painted as the skin round it)
+        Ls = field3d(face, fpos, fhit & (face.mean(-1) > np.median(face[fhit].mean(-1)) * 0.85), fhit, cell=0.01, spread=3)
+        dark = np.clip((Ls.mean(-1) - face.mean(-1)) / np.maximum(Ls.mean(-1), 1e-3) / 0.35, 0, 1)
+        band = np.zeros(z.shape)
+        for C, s in M.tag["eyes"]:
+            band = np.maximum(band, smooth01(C[2] + 0.004, C[2] + 0.008, z) * (1 - smooth01(C[2] + 0.032, C[2] + 0.036, z))
+                              * (1 - smooth01(0.032, 0.04, np.abs(x - C[0]))) * (y < C[1]))
+        b = dark * band * fhit
+        n = max(1, int(round(amt * 12)))
+        core = (b > 0.35).astype(float)
+        er = core.copy()
+        for _ in range(n):
+            er = np.minimum(er, np.minimum(np.minimum(np.roll(er, 1, 0), np.roll(er, -1, 0)), np.minimum(np.roll(er, 1, 1), np.roll(er, -1, 1))))
+        er = np.clip(blur(er, 2) * 1.2, 0, 1)
+        keep_b = np.minimum(b, er) + b * (1 - core)
+        gone = np.clip(b - keep_b, 0, 1)[..., None] * (band[..., None] > 0)
+        face = face * (1 - gone) + Ls * gone
+        lift = 0.12 * min(amt * 5, 1.0) * keep_b[..., None]
+        face = face * (1 - lift) + Ls * lift
+        print("%s R7 adjust brows_thin: %.2f, %d texels eaten in, brow texels %d -> %d" % (
+            WHO, amt, n, int((b > 0.35).sum()), int((keep_b > 0.35).sum())))
+    amt = r7_amount("nasolabial_soft")
+    if amt > 0:
+        # (younger: the shade from the nose's wings to the mouth's corners softer: there, the colour drawn `amt` of the
+        # way toward a broad 3D field of itself (1 cm cubes), so the line goes and the cheek's tone stays)
+        w = np.exp(-((np.abs(x) - (mk["mouth_x"] - 0.002)) / 0.012) ** 2 - ((z - (mk["mouth_z"] + 0.014)) / 0.014) ** 2)
+        w = w * smooth01(0.012, 0.02, np.abs(x)) * (y < mk["mouth_y"] + 0.035) * fhit * amt
+        broad = field3d(face, fpos, fhit, fhit, cell=0.01, spread=3)
+        face = face * (1 - w[..., None]) + np.maximum(face, broad) * w[..., None]
+        print("%s R7 adjust nasolabial_soft: %.2f on %d texels" % (WHO, amt, int((w > 0.3 * amt).sum())))
+    amt = r7_amount("cheeks_less_red")
+    if amt > 0:
+        # (in the game's light the cheeks were hot pink discs and the nose a pink ball; the sheet's flush is duller and
+        # soft-edged. The red over the local plain skin (red minus green, against a 3D field of the skin round it),
+        # everywhere but the lips and the ears, cut by `amt` and its edge softened (half of it from a 6 mm field); what
+        # is taken comes off red and goes to green and blue, so the skin keeps its lightness)
+        rg = face[..., 0] - face[..., 1]
+        Ls = field3d(face, fpos, fhit & (rg / np.maximum(face[..., 0], 1e-3) < np.median(rg[fhit] / np.maximum(face[fhit][:, 0], 1e-3)) + 0.04), fhit, cell=0.012, spread=3)
+        e = np.clip(rg - (Ls[..., 0] - Ls[..., 1]), 0, None) * fhit
+        lips = np.exp(-(((z - mk["mouth_z"]) / 0.012) ** 2)) * (np.abs(x) < mk["mouth_x"] + 0.01) * (y < mk["mouth_y"] + 0.03)
+        # (not the nose: its colour stays round seven's with nose_less_red only, the user's call)
+        lips = np.maximum(lips, 1.0 - smooth01(0.022, 0.032, np.linalg.norm(fpos - tip, axis=-1)))
+        ears = smooth01(0.06, 0.07, np.abs(x)) * (y > tip[1] + 0.07)
+        keep_ = np.clip(lips + ears, 0, 1)
+        es = field3d(e[..., None], fpos, fhit, fhit, cell=0.006, spread=2)[..., 0]
+        target = (1 - amt) * (0.5 * e + 0.5 * es)
+        d = (e - target) * (1 - keep_)
+        face[..., 0] -= 0.55 * d
+        face[..., 1] += 0.45 * d
+        face[..., 2] += 0.35 * d
+        print("%s R7 adjust cheeks_less_red: %.2f, red over the skin %.3f -> %.3f (99th pct)" % (
+            WHO, amt, float(np.percentile(e[fhit], 99)), float(np.percentile((e - d)[fhit], 99))))
+    return np.clip(face, 0, 1)
 
 
 def r7_paint_adjust(face, fpos, fhit, M):
+    face = r7_paint_more(face, fpos, fhit, M)
     for name, on, amt in R7_ADJUST:
         if not (on and name == "nose_less_red"):
             continue
@@ -6568,6 +7052,8 @@ def refine_base_head(M, face_uv, weights, under, sh):
         under2 |= set(ch.get(fi, []))
     if HEAD_ROUTE == "r7":
         r7_place(R)
+        if r7_amount("nose_split") > 0:
+            R, uv1, W1, under2 = r7_nose_split(R, uv1, W1, under2)
         adjust_r7(R)
         return R, uv1, W1, under2
     mir = head_mirror(R)
@@ -7028,6 +7514,9 @@ def eye_texture(path, size=256):
     rp = ri * 0.36
     img = np.zeros((size, size, 3))
     sclera = np.array((0.93, 0.9, 0.86))
+    if HEAD_ROUTE == "r7" and r7_amount("sclera_warm") > 0:
+        # (head3's whites are warm cream, a little darker than the skin; in the game's light the old white read blue-grey)
+        sclera = sclera * (1 - r7_amount("sclera_warm")) + np.array((0.92, 0.86, 0.77)) * r7_amount("sclera_warm")
     img[:] = sclera * (1.0 - 0.18 * np.clip((r - 0.75) / 0.25, 0, 1))[..., None]
     img[:] = img * (1.0 - 0.05 * np.clip((r - ri) / 0.4, 0, 1))[..., None] + np.array((0.03, -0.01, -0.02)) * np.clip((r - 0.7) / 0.3, 0, 1)[..., None]
     t = np.clip(r / ri, 0, 1)
@@ -7042,6 +7531,21 @@ def eye_texture(path, size=256):
         # out to 0.42 of the radius, browner; green from there out)
         amber, green = np.array((0.45, 0.32, 0.15)), np.array((0.4, 0.4, 0.22))
         g = np.clip((t - 0.4) / 0.3, 0, 1)[..., None] ** 1.1
+        ka = r7_amount("iris_hazel") if HEAD_ROUTE == "r7" else 0.0
+        if ka > 0:
+            # (twelfth round, "iris_hazel": in the game's light the iris read grey-green; head3's top row paints a light
+            # golden hazel. A warmer, lighter amber-brown out to 0.55 of the radius, a yellow-olive green beyond)
+            amber = amber * (1 - ka) + np.array((0.62, 0.42, 0.16)) * ka
+            green = green * (1 - ka) + np.array((0.5, 0.5, 0.2)) * ka
+            g = np.clip((t - 0.4 - 0.15 * ka) / 0.3, 0, 1)[..., None] ** 1.1
+        ks = r7_amount("iris_sheet") if HEAD_ROUTE == "r7" else 0.0
+        if ks > 0:
+            # (measured on head3's top row: round the pupil a brown amber (0.46, 0.36, 0.2), the middle of the iris a
+            # light golden olive (0.65, 0.55, 0.36), the rim darker (0.48, 0.38, 0.24). The amber round the pupil out to
+            # 0.45 of the radius, then the golden olive; the rim's ring below)
+            amber = amber * (1 - ks) + np.array((0.5, 0.36, 0.18)) * ks
+            green = green * (1 - ks) + np.array((0.62, 0.56, 0.3)) * ks
+            g = np.clip((t - 0.3) / 0.25, 0, 1)[..., None] ** 1.1
         iris = amber * (1 - g) + green * g
         iris = iris * (1.0 - 0.18 * np.clip((0.5 - t) / 0.5, 0, 1))[..., None]
         iris = iris * (1.0 + rays[..., None] * (t[..., None] > 0.3))
@@ -7597,6 +8101,8 @@ def finish(M, T, joints, sh):
     M, face_uv, weights, under = refine_base_head(M, face_uv, weights, under, sh)
     M, face_uv, weights, under, eye_cut, eyes = open_eyes(M, face_uv, weights, under)
     snap_mouth_line(M)
+    if HEAD_ROUTE == "r7":
+        r7_eye_warp(M, eyes)
     os.makedirs(TEX, exist_ok=True)
     for picture in ("skin", "face"):
         write_layout(face_uv, placed, picture, os.path.join(TEX, "brother_%s_layout.png" % picture))

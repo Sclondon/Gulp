@@ -16,6 +16,7 @@ var _winding := false
 var _persp := false
 var _posed := false
 var _poses := false
+var _headonly := false
 var _grey: StandardMaterial3D
 var _cam: Camera3D
 var _sun: DirectionalLight3D
@@ -37,6 +38,10 @@ func _initialize() -> void:
 			_persp = true
 		if a == "--posed":
 			_posed = true
+		if a == "--headonly":
+			# (twelfth round: only the large head views and the eyes, painted and grey, for quick before/after pairs)
+			_persp = true
+			_headonly = true
 		if a == "--poses":
 			_poses = true
 		if a.begins_with("--model="):
@@ -87,6 +92,22 @@ func _initialize() -> void:
 		_grey.roughness = 0.75
 		var eye := Vector3(0, 1.62, 0)
 		if _persp:
+			if _headonly:
+				for v in [["p_bigf", Vector3(0, 0, 1)], ["p_bigq", Vector3(-0.6, 0, 0.8)], ["p_bigs", Vector3(-1, 0, 0.02)]]:
+					_shots.append({"name": v[0], "dir": v[1], "at": Vector3(0, 1.775, 0.06), "dist": 0.8, "eye": 1.79, "pose": "", "grey": false})
+					_shots.append({"name": v[0] + "_grey", "dir": v[1], "at": Vector3(0, 1.775, 0.06), "dist": 0.8, "eye": 1.79, "pose": "", "grey": true})
+				_shots.append({"name": "p_eyes", "dir": Vector3(-0.25, 0, 1), "at": Vector3(0, 1.81, 0.12), "dist": 0.42, "eye": 1.82, "pose": "", "grey": false})
+				_shots.append({"name": "p_eyes_grey", "dir": Vector3(-0.25, 0, 1), "at": Vector3(0, 1.81, 0.12), "dist": 0.42, "eye": 1.82, "pose": "", "grey": true})
+				# (the nose close, from the three-quarter front and the side, painted and grey)
+				# (the eyes close: front, three-quarter and side, painted and grey, the eyes' height level with the camera)
+				for v in [["p_eyef", Vector3(0, 0, 1), Vector3(0, 1.79, 0.13)], ["p_eyeq", Vector3(-0.6, 0, 0.8), Vector3(0, 1.79, 0.13)], ["p_eyesd", Vector3(-1, 0, 0.05), Vector3(-0.046, 1.79, 0.12)]]:
+					_shots.append({"name": v[0], "dir": v[1], "at": v[2], "dist": 0.42, "eye": 1.79, "pose": "", "grey": false})
+					_shots.append({"name": v[0] + "_grey", "dir": v[1], "at": v[2], "dist": 0.42, "eye": 1.79, "pose": "", "grey": true})
+				# [name, direction, camera height]: front, three-quarter (the sheet's), side, from below
+				for v in [["p_nosef", Vector3(0, 0, 1), 1.76], ["p_nose", Vector3(-0.55, 0, 0.85), 1.76], ["p_noses", Vector3(-1, 0, 0.05), 1.76], ["p_noseb", Vector3(-0.2, -0.75, 0.65), 1.45]]:
+					_shots.append({"name": v[0], "dir": v[1], "at": Vector3(0, 1.75, 0.17), "dist": 0.4, "eye": v[2], "pose": "", "grey": false})
+					_shots.append({"name": v[0] + "_grey", "dir": v[1], "at": Vector3(0, 1.75, 0.17), "dist": 0.4, "eye": v[2], "pose": "", "grey": true})
+				return
 			# [name, direction from him to the camera, look-at point, distance, pose, grey]
 			for v in [["p_front", Vector3(0, 0, 1)], ["p_q", Vector3(-0.64, 0, 0.77)], ["p_side", Vector3(-1, 0, 0)], ["p_qb", Vector3(-0.64, 0, -0.77)]]:
 				_shots.append({"name": v[0], "dir": v[1], "at": Vector3(0, 0.98, 0), "dist": 3.45, "eye": eye.y, "pose": "", "grey": false})
