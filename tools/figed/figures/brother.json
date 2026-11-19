@@ -1,0 +1,67 @@
+{
+ "bones": {
+  "calf.girth": 0.85,
+  "calf.length": 0.775,
+  "clavicle.length": 1.1,
+  "foot.size": 1.025,
+  "hand.size": 1.55,
+  "lowerarm.girth": 1.275,
+  "lowerarm.length": 1.25,
+  "neck.girth": 1.225,
+  "neck.length": 0.975,
+  "pelvis.width": 0.8,
+  "spine_03.width": 1.08,
+  "thigh.girth": 1.15,
+  "thigh.length": 0.925,
+  "torso.depth": 1.02,
+  "torso.width": 0.92,
+  "upperarm.girth": 1.15,
+  "upperarm.length": 0.95
+ },
+ "macro": {
+  "muscle": 0.09999999999999998,
+  "proportions": 0.75,
+  "weight": 0.8
+ },
+ "pose": {
+  "arms_back": 1.5,
+  "arms_down": 9,
+  "elbows": 0.0
+ },
+ "shift": {
+  "back": 0.0,
+  "front": 1.0,
+  "side": 0.0
+ },
+ "targets": {
+  "ankle": 0.75,
+  "belly_tone": -0.375,
+  "buttocks": -0.625,
+  "calf": 0.25,
+  "chest": 0.25,
+  "finger_thickness": 0.25,
+  "head_depth": 0.125,
+  "head_height": 0.375,
+  "head_width": 0.625,
+  "hip-scale-depth": -0.5,
+  "hips": 0.5,
+  "knee": 0.5,
+  "leg-valgus": 0.125,
+  "lowerarm-fat": 0.125,
+  "lowerarm-muscle": 0.75,
+  "lowerleg-muscle": 1.125,
+  "pecs": 0.5,
+  "ribs": 0.375,
+  "shoulder_muscle": -0.25,
+  "stomach-tone": -0.25,
+  "thigh_thickness": 0.75,
+  "torso-scale-depth": -0.25,
+  "torso_length": -0.375,
+  "upper_arm_thickness": 0.5,
+  "upperarm-muscle": -0.125,
+  "upperleg-scale-horiz": 0.125,
+  "waist": 0.5,
+  "waist_to_hip": -0.75,
+  "wrist": -0.25
+ }
+}

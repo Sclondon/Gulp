@@ -1206,3 +1206,12 @@ browser after this push.
   arm; work rig: cream henley with rolled sleeves, stained blue bib overalls with rolled cuffs, brown boots. The sheets
   draw him short-legged; the user's earlier "should be the tallest of the 3" has not been withdrawn: ask before
   building. Figure work is still tabled (below is unchanged): this only replaces what he is built to when it resumes.
+- **Figures restart as an editor, not build scripts** (the user, 2026-11-19, lifting the tabling for this method: "Lets
+  try to build a new model from scratch and this time rather than adjust minute details, lets take a generic model,
+  then categorize the vertices so that we can make intelligent edits ... so we can essentially make a character
+  editor. Then we use these functions to sculpt the body to fit the art for the most part, and THEN we can work on
+  tiny detail corrections"; and of the brother: "He should still be the tallest, but those proportions are correct").
+  `tools/figed/` (README there is the decision record): a figure is MakeHuman's CC0 generic human (outside the repo,
+  `C:\Projects\reference\makehuman\mpfb2`) plus a table of slider values (`tools/figed/figures/brother.json`), and
+  `figed_fit.py` moves the sliders by itself until the outline matches the bible's sheets. The old figure builders
+  (`build_brother.py`, `build_captain.py`, `build_boy.py`, `build_npc.py`) stay tabled. Nothing is in the game.
