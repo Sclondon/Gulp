@@ -1108,3 +1108,7 @@ browser after this push.
   remaining difference, fix it, look again) until it reads as the same part as the drawing; only then the next part.
   No lists of eight things a round. The user is shown that part's rows, iteration by iteration. First parts
   (Claude's pick): the captain's hands, the brother's nose, the boy's nose.
+- The brother's nose stays buttony (the user, 2026-11-18, late evening, of the restored 6 PM head): "I think I actually
+  like the more buttony nose on the brother". This replaces their earlier "a bit too red button nosed, needs to be a tad
+  angular": leave the frozen head's nose shape alone (only its redness was eased, `nose_less_red`). His part in work is
+  the eyes (downturned, soft bags, hazel).
