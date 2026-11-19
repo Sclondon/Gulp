@@ -167,6 +167,16 @@ func _initialize() -> void:
 			for e in [["eye_front", 0.0], ["eye_q", 40.0]]:
 				var a := deg_to_rad(float(e[1]))
 				_shots.append([(e[0] as String) + ("_grey" if grey else ""),Vector3(-sin(a), 0, cos(a)), Vector3(0.045, HEAD_MID_Y + 46.0 * HEAD_S, 0), 110.0 * HEAD_S, true, "", 5.0, grey])
+	# (--nose, thirteenth pass: the nose close up, 106 head-sheet pixels across (0.06 m), from the sheet's front,
+	# three-quarter and side and from below, painted and grey: for the nose's before/after pairs)
+	if "--nose" in OS.get_cmdline_user_args():
+		_shots.clear()
+		var tip := Vector3(0, 1.326, 0.13)
+		for grey in [false, true]:
+			for e in [["nose_front", 0.0, 0.0], ["nose_q", float(_azimuth["hq"]), 0.0], ["nose_side", float(_azimuth["hside"]), 0.0], ["nose_below", 0.0, -0.75]]:
+				var a := deg_to_rad(float(e[1]))
+				var d := Vector3(-sin(a), float(e[2]), cos(a)).normalized()
+				_shots.append([(e[0] as String) + ("_grey" if grey else ""), d, tip, 106.0 * HEAD_S, true, "", 5.0, grey])
 	# (--hand=fist,point,...: ninth pass, close-ups of his left hand in those finger presets, the arm hanging a little
 	# out from his side, seen from the hand's own back, palm, thumb side, little-finger side and fingertips, lit and grey)
 	for a in OS.get_cmdline_user_args():
