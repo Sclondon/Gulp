@@ -233,9 +233,12 @@ func _process(_delta: float) -> bool:
 		var d: Dictionary = _shots[i]
 		if f % 3 == 0:
 			_set_lit(true)
-			_sun.light_energy = 0.7
+			# (sixth round: measured, the old 0.7 sun and 0.45 ambient lit his chest at about 2.3 times its albedo
+			# (sheet-coloured texture rendered 255,215,173) and left his back at 0.4 (116,92,76): a softer key and
+			# more fill put both sides near the sheet's own peach-tan)
+			_sun.light_energy = 0.24
 			_env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
-			_env.ambient_light_energy = 0.45
+			_env.ambient_light_energy = 0.72
 			_set_pose(d["pose"])
 			for mesh: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
 				if not String(mesh.name).begins_with("brother_body_under"):
