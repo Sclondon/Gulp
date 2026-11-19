@@ -73,6 +73,10 @@ func _initialize() -> void:
 		return
 	for mesh: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
 		mesh.lod_bias = 64.0
+		# (thirteenth round, diagnosis: --no-shadow-from=<name part> stops those pieces casting shadows)
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--no-shadow-from=") and String(mesh.name).contains(a.get_slice("=", 1)):
+				mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		# (the skin under the shorts is never drawn: whatever he wears covers it)
 		if String(mesh.name).begins_with("brother_body_under"):
 			mesh.visible = false
@@ -103,6 +107,8 @@ func _initialize() -> void:
 				for v in [["p_eyef", Vector3(0, 0, 1), Vector3(0, 1.79, 0.13)], ["p_eyeq", Vector3(-0.6, 0, 0.8), Vector3(0, 1.79, 0.13)], ["p_eyesd", Vector3(-1, 0, 0.05), Vector3(-0.046, 1.79, 0.12)]]:
 					_shots.append({"name": v[0], "dir": v[1], "at": v[2], "dist": 0.42, "eye": 1.79, "pose": "", "grey": false})
 					_shots.append({"name": v[0] + "_grey", "dir": v[1], "at": v[2], "dist": 0.42, "eye": 1.79, "pose": "", "grey": true})
+				# (thirteenth round: the eyes from the front unlit, the albedo only)
+				_shots.append({"name": "p_eyef_flat", "dir": Vector3(0, 0, 1), "at": Vector3(0, 1.79, 0.13), "dist": 0.42, "eye": 1.79, "pose": "", "grey": false, "unlit": true})
 				# [name, direction, camera height]: front, three-quarter (the sheet's), side, from below
 				for v in [["p_nosef", Vector3(0, 0, 1), 1.76], ["p_nose", Vector3(-0.55, 0, 0.85), 1.76], ["p_noses", Vector3(-1, 0, 0.05), 1.76], ["p_noseb", Vector3(-0.2, -0.75, 0.65), 1.45]]:
 					_shots.append({"name": v[0], "dir": v[1], "at": Vector3(0, 1.75, 0.17), "dist": 0.4, "eye": v[2], "pose": "", "grey": false})
@@ -496,6 +502,9 @@ func _process(_delta: float) -> bool:
 			_sun.light_energy = 0.12
 			_env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 			_env.ambient_light_energy = 0.55
+			if d.get("unlit", false):
+				# (thirteenth round: the painted pictures alone, no light: what is paint and what is shadow)
+				_set_lit(false)
 			_set_pose(d["pose"])
 			for mesh: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
 				if not String(mesh.name).begins_with("brother_body_under"):

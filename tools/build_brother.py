@@ -6366,6 +6366,16 @@ R7_ADJUST = [("face_delight", True, 1.0),        # kept: the old painted light d
              ("eyes_open", False, 0.25),         # dropped: a quarter taller looked nearer the sheet, but the rig's eyes_closed folds went from 3 to 12 (wider along it opened holes past the ball)
              ("socket_fill", True, 3.5),         # kept, small: the upper lid's skin under the brow 3.5 mm forward, so the brow's cast shadow over it is smaller
              ("lid_clean", False, 0.85),         # dropped: no visible change (the dark block is mostly the brow's shadow)
+             # Thirteenth round (scratchpad brother13/eyes.png): the eyes only, against head3's top row
+             ("socket_skin", True, 1.0),         # kept: the grey-brown box round each eye was round seven's painted socket (unlit it shows with faceted edges): repainted as clean skin, brows kept, a soft crease shade
+             ("eyes_forward", True, 9.0),        # kept: the ball's front lay 20 mm behind the brow's front: ball, lids and the skin round them 9 mm forward (the brow's cast shadow over the eye shrank to a soft band)
+             ("eyes_big", True, 0.4),            # kept: openings 0.40 -> 0.53 of the distance between the pupils wide, 0.15 -> 0.21 tall; iris and ball scaled with them (EYES_BIG_TALL, EYES_BIG_RX)
+             ("lash_ribbon", True, 1.0),         # kept: a clean dark upper lash line as a thin strip of its own (painted, it came out as teeth)
+             ("lash_line", True, 1.0),           # kept: the soft lower line (the painted upper line gives way to the ribbon)
+             ("bag_line", True, 2.0),            # kept: the bags' soft fill and curved line under each eye (1.0 hardly showed)
+             ("iris_warm", True, 1.0),           # kept: amber-brown round the pupil to golden olive (it read yellow-green)
+             ("lid_uv", False, 0.6),             # dropped: more picture round the margins by moving the margins' places; the faces folded over each other
+             ("iris_big", False, 0.25),          # dropped: with eyes_big the iris is already 0.25 of the distance between the pupils (head3: 0.24)
              ("brows_thin", False, 0.2),         # (see below)
              ("jaw_lift", False, 2.5),           # dropped: no visible change at 2.5 mm
              ("nasolabial_soft", False, 0.7),    # dropped: no visible change
@@ -6702,7 +6712,8 @@ def adjust_r7(R):
 
 
 R7_PAINT_ADJ = ("nose_less_red", "face_delight", "forehead_bands", "socket_clean", "lid_clean", "teal_patch", "nose_shine", "cheeks_less_red", "neck_patch", "brows_thin", "nasolabial_soft", "iris_hazel", "bag_shade", "iris_sheet", "sclera_warm", "eye_paint", "jaw_lift_paint")
-R7_EYE_ADJ = ("eyes_downturn", "eye_bags", "lid_heavy", "eyes_open", "socket_fill")
+R7_EYE_ADJ = ("eyes_downturn", "eye_bags", "lid_heavy", "eyes_open", "socket_fill", "eyes_big", "eyes_forward")
+R7_PAINT_ADJ = R7_PAINT_ADJ + ("socket_skin", "lash_line", "bag_line", "iris_big", "lid_uv", "lash_ribbon", "iris_warm")
 
 
 def r7_eye_adjust():
@@ -6713,6 +6724,35 @@ def r7_eye_adjust():
         if on and name == "eye_bags":
             FIGURE["bags"] = FIGURE.get("bags", 0.0) + 0.001 * amt
             print("%s R7 adjust eye_bags: form +%.1f mm (bags %.1f mm)" % (WHO, amt, 1000 * FIGURE["bags"]))
+    a = r7_amount("eyes_big")
+    if a > 0:
+        # (thirteenth round, "eyes_big", a share: head3's top row draws large open eyes: against the distance between
+        # the pupils, each opening 0.53 wide and 0.21 tall at the iris, the iris 0.24 across; round twelve's were 0.40,
+        # 0.15 and 0.18. The almond's marks scaled about the iris's middle, `a` along it and `EYES_BIG_TALL` times that
+        # up and down; the iris and the ball scaled with them (the ball's front stays where the skin was: a bigger
+        # ball sits further back), so the corners stay wrapped round it; the zone split again round the eye grown too)
+        g = globals()
+        ic, ir_, irad = EYE_IRIS
+        kh, kv = 1.0 + a, 1.0 + a * EYES_BIG_TALL
+        sc = lambda p: (ic + (p[0] - ic) * kh, ir_ + (p[1] - ir_) * kv)
+        for k_ in ("EYE_INNER", "EYE_OUTER", "EYE_TOP", "EYE_LOW"):
+            g[k_] = sc(g[k_])
+        g["EYE_IRIS"] = (ic, ir_, irad * kh)
+        g["EYE_RX"] = EYE_RX * kh * EYES_BIG_RX
+        g["EYE_R"] = EYE_R * (1.0 + a * EYES_BIG_BALL)
+        g["EYE_RAD"] = np.array((g["EYE_RX"], g["EYE_R"], g["EYE_R"]))
+        g["EYE_ZONE"] = (EYE_ZONE[0] * kh, EYE_ZONE[1] * kv)
+        FIGURE["eye_down"] = FIGURE.get("eye_down", 0.0) * kv
+        g["EYE_CAP"] = 105.0
+        print("%s R7 adjust eyes_big %.2f: almond %s to %s, top %s, low %s, iris %.1f px, ball %.1f x %.1f mm" % (
+            WHO, a, np.round(EYE_INNER, 1), np.round(EYE_OUTER, 1), np.round(EYE_TOP, 1), np.round(EYE_LOW, 1),
+            EYE_IRIS[2], 1000 * EYE_RX, 1000 * EYE_R))
+
+
+EYES_BIG_TALL = 0.9     # eyes_big: the opening grows this many times as much up and down as along
+EYES_BIG_BALL = 1.0     # eyes_big: the ball's height and depth radius grows this many times the share
+EYES_BIG_RX = 1.12      # eyes_big: the ball this much wider again than the almond (its corners sat on the ball's rim, where its front
+                        # curves back to its middle: from three-quarter the head's inside showed past it at the inner corner)
 
 
 def r7_eye_warp(M, eyes):
@@ -6726,7 +6766,8 @@ def r7_eye_warp(M, eyes):
     heavy = 0.001 * r7_amount("lid_heavy")
     opn = r7_amount("eyes_open")
     fill = 0.001 * r7_amount("socket_fill")
-    if down <= 0 and heavy <= 0 and opn <= 0 and fill <= 0:
+    fwd = 0.001 * r7_amount("eyes_forward")
+    if down <= 0 and heavy <= 0 and opn <= 0 and fill <= 0 and fwd <= 0:
         return
     P = np.array(M.P)
     M.P_rest = P.copy()
@@ -6778,7 +6819,25 @@ def r7_eye_warp(M, eyes):
                 if k0 > 0.05 and k1 > 0.05:
                     P[i, 1] += ball_y(P[i, 0], P[i, 2], C) - ball_y(x0[i], z0[i], C)
         moved += int((np.sqrt(dx ** 2 + dy ** 2 + dz ** 2) > 0.0003).sum())
+        if fwd > 0:
+            # ("eyes_forward", mm: measured down the eye's middle, the ball's front lay 20 mm behind the brow's front
+            # (and level with the cheek), so in the game's sun the brow cast a block of shadow over the whole eye
+            # (gone with the body's shadows off). The ball, the margin, the lids and the skin round them brought
+            # forward, all of it within the almond grown 1.3 times, none past 2.6 times, fading out before the brow
+            # (from 1.6 cm over the eye's middle to 2.3) and down the cheek)
+            col = s * P[:, 0] / HEAD_SX
+            row = np.asarray(head_row(P[:, 2]), float)
+            rr = np.hypot((col - mid_col) / half_c, (row - mid_row) / half_r)
+            zr = P[:, 2] - C[2]
+            wf = (1.0 - smooth01(1.3, 2.6, rr)) * (1.0 - smooth01(0.016, 0.023, zr)) * (1.0 - smooth01(0.018, 0.026, -zr))
+            wf = wf * mine
+            P[:, 1] -= fwd * wf
+            moved += int((fwd * wf > 0.0003).sum())
+            C[1] -= fwd
     M.P = [p for p in P]
+    M.tag["eyes"] = [(np.array(C, float), s) for C, s in eyes]
+    if fwd > 0:
+        print("%s R7 adjust eyes_forward %.1f mm: balls now at %s" % (WHO, 1000 * fwd, [np.round(C, 4) for C, _ in eyes]))
     print("%s R7 adjust eyes_downturn %.1f mm, lid_heavy %.1f mm, eyes_open %.2f, socket_fill %.1f mm: %d points moved" % (WHO, 1000 * down, 1000 * heavy, opn, 1000 * fill, moved))
 
 
@@ -6874,6 +6933,34 @@ def r7_paint_more(face, fpos, fhit, M):
         w = band * grey * fhit * amt
         face = face * (1 - w[..., None]) + Ls * w[..., None]
         print("%s R7 adjust socket_clean: %.2f on %d texels" % (WHO, amt, int((w > 0.3 * amt).sum())))
+    amt = r7_amount("socket_skin")
+    if amt > 0 and eyes_:
+        # (thirteenth round, "socket_skin": the grey-brown box round each eye in the game's light is PAINT: round
+        # seven's projected picture painted a dark socket there (unlit, the face picture shows it with straight,
+        # faceted edges; texels at about 0.62 of the skin's lightness). lid_clean and socket_clean missed most of it
+        # (their bands were too small and the "brow" mask took the block's browner texels for brow). Here: round each
+        # eye, from under the brow to the top of the cheek and out to the temple, every texel that is not brow drawn
+        # to a 3D field of the plain skin round the eyes; the brows kept by colour (much darker and browner than the
+        # skin) and only above the opening; the lash line, lid crease and bags are painted on clean skin after)
+        lum = face.mean(-1)
+        plain = fhit & ~brow & (lum > lu0 * 0.92) & (z > cz - 0.05) & (z < cz + 0.07)
+        Lsk = field3d(face, fpos, plain, fhit, cell=0.01, spread=3)
+        reg = np.zeros(z.shape)
+        above = np.zeros(z.shape)
+        for C, s_ in eyes_:
+            u = s_ * (x - C[0])
+            hx = np.where(u > 0, u / 0.038, -u / 0.027)
+            hz = np.where(z > C[2], (z - C[2]) / 0.032, (C[2] - z) / 0.024)
+            reg = np.maximum(reg, (1.0 - smooth01(0.72, 1.0, np.hypot(hx, hz))) * (y < C[1] + 0.006))
+            above = np.maximum(above, smooth01(C[2] + 0.008, C[2] + 0.013, z) * (np.abs(x - C[0]) < 0.045))
+        dk = 1.0 - lum / np.maximum(Lsk.mean(-1), 1e-3)
+        bw = smooth01(0.4, 0.5, dk) * smooth01(0.42, 0.47, sat) * above
+        bw = np.clip(blur(bw, 1) * 1.4, 0, 1) * above
+        w = reg * (1.0 - bw) * fhit * amt
+        face = face * (1 - w[..., None]) + Lsk * w[..., None]
+        print("%s R7 adjust socket_skin: %.2f on %d texels (%d kept as brow)" % (WHO, amt, int((w > 0.5 * amt).sum()), int((reg * bw > 0.5).sum())))
+    if (r7_amount("lash_line") > 0 or r7_amount("socket_skin") > 0 or r7_amount("bag_line") > 0) and M.tag.get("eye_loops"):
+        face = r7_lids_paint(face, fpos, fhit, M)
     amt = r7_amount("neck_patch")
     if amt > 0:
         # (blocks under the jaw and down the neck's side where the old picture's neck meets the new bridge: below the
@@ -6955,6 +7042,183 @@ def r7_paint_more(face, fpos, fhit, M):
         print("%s R7 adjust cheeks_less_red: %.2f, red over the skin %.3f -> %.3f (99th pct)" % (
             WHO, amt, float(np.percentile(e[fhit], 99)), float(np.percentile((e - d)[fhit], 99))))
     return np.clip(face, 0, 1)
+
+
+BAG_LINE = (0.010, 0.0016, 0.22, 0.07)   # bag_line: the line's distance under the lower lid, its spread (m), its depth, the fill's
+LID_SHADE = (0.0045, 0.0016, 0.10)  # socket_skin: the lid crease's height over the margin, its spread (m) and depth
+LID_SOFT = (0.003, 0.012, 0.05)      # socket_skin: the broad soft shade from the crease to under the brow (m, m, depth)
+R7_LASH = (0.0006, 0.0014, 0.0006)      # lash_line: the upper line's thickness at the inner and outer end, the lower's (m)
+R7_LASH_RGB = (0.24, 0.15, 0.11)        # lash_line: its colour (head3's dark brown line)
+
+
+def eye_chains(M, s, loop):
+    """The lid margin's upper and lower halves as (out, z) arrays sorted along `out` (s * x), from its current points."""
+    L = np.array(M.P)[loop]
+    u = s * L[:, 0]
+    i0, i1 = int(np.argmin(u)), int(np.argmax(u))
+    n = len(loop)
+    a = [(i0 + k) % n for k in range((i1 - i0) % n + 1)]
+    b = [(i1 + k) % n for k in range((i0 - i1) % n + 1)]
+    if L[a, 2].mean() < L[b, 2].mean():
+        a, b = b, a
+    ch = []
+    for c in (a, b):
+        o = np.argsort(u[c])
+        ch.append((u[c][o], L[c][o, 2], L[c][o, 1]))
+    return ch[0], ch[1], (u[i0], L[i0, 2]), (u[i1], L[i1, 2])
+
+
+def r7_lids_paint(face, fpos, fhit, M):
+    """(thirteenth round) Painted on clean skin (socket_skin) along each eye's margin, as head3's top row draws them:
+    "socket_skin": a soft lid crease over the upper lid and a broad warm shade from it up under the brow, fading out
+    at both ends (no box); "lash_line": a clean dark upper lash line along the margin's top, thicker toward the outer
+    corner with a small flick past it, and a soft thin line under the lower margin."""
+    x, y, z = fpos[..., 0], fpos[..., 1], fpos[..., 2]
+    face = face.copy()
+    ks, kl = r7_amount("socket_skin"), r7_amount("lash_line")
+    for (C, s), (s2, loop) in zip(M.tag["eyes"], M.tag["eye_loops"]):
+        up, lo, inn, out = eye_chains(M, s, loop)
+        u = s * x
+        span = out[0] - inn[0]
+        t = (u - inn[0]) / span
+        front = fhit & (y < C[1] + 0.004)
+        z_top = np.interp(u, up[0], up[1])
+        z_low = np.interp(u, lo[0], lo[1])
+        h = z - z_top
+        along = smooth01(-0.12, 0.08, t) * (1.0 - smooth01(0.95, 1.2, t))
+        if ks > 0:
+            sh = LID_SHADE[2] * np.exp(-((h - LID_SHADE[0]) / LID_SHADE[1]) ** 2)
+            sh = sh + LID_SOFT[2] * smooth01(0.0, LID_SOFT[0], h) * (1.0 - smooth01(LID_SOFT[0], LID_SOFT[1], h))
+            sh = sh * along * front * ks * (h > -0.0005)
+            face = face * (1 - sh[..., None] * np.array((0.9, 1.05, 1.0)))
+        if kl > 0:
+            th = R7_LASH[0] + (R7_LASH[1] - R7_LASH[0]) * np.clip(t, 0, 1) ** 1.2
+            a_up = (r7_amount("lash_ribbon") <= 0) * (1.0 - smooth01(0.55 * th, th, h)) * (h > -0.0015) * (z > 0.5 * (z_top + z_low)) * smooth01(0.02, 0.12, t) * (t < 1.0)
+            # (the flick: past the outer corner a short tapering line, a little down)
+            tf = (u - out[0]) / 0.004
+            zf = out[1] - 0.0008 * np.clip(tf, 0, 1)
+            a_fl = (tf > -0.05) * (1.0 - smooth01(0.4, 1.0, tf)) * (1.0 - smooth01(0.4 * R7_LASH[1] * (1 - 0.7 * np.clip(tf, 0, 1)), R7_LASH[1] * (1 - 0.7 * np.clip(tf, 0, 1)), np.abs(z - zf)))
+            hl = z_low - z
+            a_lo = 0.4 * (1.0 - smooth01(0.4 * R7_LASH[2], R7_LASH[2], hl)) * (hl > -0.0003) * (z < 0.5 * (z_top + z_low)) * smooth01(0.1, 0.35, t) * (1.0 - smooth01(0.85, 1.0, t))
+            a_fl = a_fl * (r7_amount("lash_ribbon") <= 0)
+            a_ = np.clip(np.maximum(np.maximum(a_up, a_fl), a_lo), 0, 1) * front * kl
+            a_ = a_ * (np.abs(x - C[0]) < 0.05)
+            face = face * (1 - a_[..., None]) + np.array(R7_LASH_RGB) * a_[..., None]
+        kb = r7_amount("bag_line")
+        if kb > 0:
+            # ("bag_line": head3's world-weary bags: under each eye a soft warm shade filling the pouch and, at its
+            # foot, a clear soft line following the lower lid's curve, deepest under the outer half, fading toward
+            # both corners; BAG_LINE says how far under the lid, how wide and how dark)
+            hl = z_low - z
+            dz_ = BAG_LINE[0] * (0.45 + 0.75 * np.clip(np.sin(np.pi * np.clip(0.1 + 0.85 * t, 0, 1)), 0, 1) ** 0.8)
+            ln = BAG_LINE[2] * np.exp(-((hl - dz_) / BAG_LINE[1]) ** 2)
+            fill = BAG_LINE[3] * smooth01(0.0015, 0.004, hl) * (1.0 - smooth01(dz_ - 0.001, dz_ + 0.002, hl))
+            wb = (ln + fill) * smooth01(-0.05, 0.2, t) * (1.0 - smooth01(0.95, 1.25, t)) * (0.75 + 0.25 * np.clip(t, 0, 1))
+            wb = wb * front * (hl > 0) * kb
+            face = face * (1 - wb[..., None] * np.array((0.85, 1.0, 0.95)))
+    print("%s R7 lids painted: socket_skin %.2f, lash_line %.2f, bag_line %.2f" % (WHO, ks, kl, r7_amount("bag_line")))
+    return face
+
+
+LASH_RIBBON = (0.0011, 0.003, 0.004)   # lash_ribbon: thickness at the inner end and at the outer corner (m), the flick's length
+LASH_RIBBON_RGB = (0.16, 0.1, 0.075)     # lash_ribbon: its colour (head3's dark brown upper line)
+
+
+def lash_ribbons(M, weights, cut):
+    """(thirteenth round, "lash_ribbon": head3 draws a clean dark upper lash line along each upper lid. Painted into the
+    face picture it came out as teeth (the skin round the margin is two or three texels wide there). So it is a thin
+    strip of its own on the lid's skin, along the upper margin from the inner corner to a short flick past the outer
+    corner, thicker toward the outer end, a fraction of a millimetre proud of the skin and lapping the margin's edge;
+    each point weighted as the margin point it starts from, so it moves with the lid.) Gives (points, faces, weights)."""
+    P = np.array(M.P)
+    N = normals_of(P, M.tris())
+    kept = [M.faces[fi] for fi in range(len(M.faces)) if fi not in cut]
+    nb = {}
+    for f in kept:
+        for i in range(len(f)):
+            a, b = f[i], f[(i + 1) % len(f)]
+            nb.setdefault(a, set()).add(b)
+            nb.setdefault(b, set()).add(a)
+    out_P, out_F, out_W = [], [], []
+    for (C, s), (s2, loop) in zip(M.tag["eyes"], M.tag["eye_loops"]):
+        lp = set(loop)
+        L = P[loop]
+        u = s * L[:, 0]
+        i0, i1 = int(np.argmin(u)), int(np.argmax(u))
+        n = len(loop)
+        a = [(i0 + k) % n for k in range((i1 - i0) % n + 1)]
+        b = [(i1 + k) % n for k in range((i0 - i1) % n + 1)]
+        up = a if L[a, 2].mean() > L[b, 2].mean() else b[::-1]
+        if up[0] != i0:
+            up = up[::-1]
+        vs = [loop[k] for k in up]
+        # (a few more points along each margin segment, so the strip follows the lid's curve smoothly)
+        pts, ws, dirs, nrm = [], [], [], []
+        for j, v in enumerate(vs):
+            out_nb = [w for w in nb.get(v, ()) if w not in lp]
+            d = (np.mean(P[out_nb], 0) - P[v]) if out_nb else np.array((0.0, 0.0, 1.0))
+            d = d - N[v] * float(d @ N[v])
+            d = d / max(np.linalg.norm(d), 1e-9)
+            pts.append(P[v])
+            ws.append(weights[v])
+            dirs.append(d)
+            nrm.append(N[v])
+        pts, dirs, nrm = np.array(pts), np.array(dirs), np.array(nrm)
+        # (the skin's facing at each point from the line's own run and the way up the lid, not the margin's vertex
+        # normal, which the lid's thickness strip turns in toward the ball)
+        raw = []
+        for v in vs:
+            out_nb = [w for w in nb.get(v, ()) if w not in lp]
+            raw.append((np.mean(P[out_nb], 0) - P[v]) if out_nb else np.array((0.0, 0.0, 1.0)))
+        raw = np.array(raw)
+        tan_ = np.gradient(pts, axis=0)
+        nrm = np.cross(tan_, raw)
+        nrm *= np.where(nrm[:, 1] > 0, -1.0, 1.0)[:, None]
+        nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9)
+        dirs = raw - nrm * np.sum(raw * nrm, axis=1, keepdims=True)
+        dirs /= np.maximum(np.linalg.norm(dirs, axis=1, keepdims=True), 1e-9)
+        # (evened along the line: each point's direction a little toward its neighbours')
+        for _ in range(2):
+            dirs[1:-1] = dirs[1:-1] * 0.5 + (dirs[:-2] + dirs[2:]) * 0.25
+            dirs /= np.linalg.norm(dirs, axis=1, keepdims=True)
+            nrm[1:-1] = nrm[1:-1] * 0.5 + (nrm[:-2] + nrm[2:]) * 0.25
+            nrm /= np.linalg.norm(nrm, axis=1, keepdims=True)
+        seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+        t = np.concatenate([[0.0], np.cumsum(seg)]) / max(seg.sum(), 1e-9)
+        # (the flick: two points past the outer corner along the line's last direction, a little down, tapering)
+        tan = pts[-1] - pts[-2]
+        tan = tan / max(np.linalg.norm(tan), 1e-9)
+        flick = []
+        for k_, f_ in enumerate((0.5, 1.0)):
+            q = pts[-1] + tan * LASH_RIBBON[2] * f_ - np.array((0.0, 0.0, 0.0006)) * f_
+            flick.append(q)
+        base = len(out_P)
+        rows = []
+        allp = list(pts) + flick
+        alld = list(dirs) + [dirs[-1]] * 2
+        alln = list(nrm) + [nrm[-1]] * 2
+        allw = list(ws) + [ws[-1]] * 2
+        allt = list(t) + [1.0, 1.0]
+        for k_, (p, d, nn, w, tt) in enumerate(zip(allp, alld, alln, allw, allt)):
+            th = LASH_RIBBON[0] + (LASH_RIBBON[1] - LASH_RIBBON[0]) * min(tt, 1.0) ** 1.3
+            if k_ >= len(pts):
+                th *= (0.55, 0.12)[k_ - len(pts)]
+            # (the inner end tapers in over the first tenth)
+            th *= 0.35 + 0.65 * smooth01(0.0, 0.12, tt) if k_ < len(pts) else 1.0
+            lo = p - d * 0.0004 + nn * 0.0005
+            hi = p + d * th + nn * 0.0006
+            out_P += [lo, hi]
+            out_W += [dict(w), dict(w)]
+            rows.append((base + 2 * k_, base + 2 * k_ + 1))
+        for k_ in range(len(rows) - 1):
+            f = [rows[k_][0], rows[k_ + 1][0], rows[k_ + 1][1], rows[k_][1]]
+            Q = np.array([out_P[i] for i in f])
+            fn = np.cross(Q[1] - Q[0], Q[3] - Q[0])
+            if fn @ alln[min(k_, len(alln) - 1)] < 0:
+                f = f[::-1]
+            out_F.append(f)
+    print("%s R7 lash ribbons: %d points, %d faces" % (WHO, len(out_P), len(out_F)))
+    return np.array(out_P), out_F, out_W
 
 
 def r7_paint_adjust(face, fpos, fhit, M):
@@ -7488,6 +7752,33 @@ def open_eyes(M, face_uv, weights, under):
             for v, q_ in zip(f, face_uv[fi][1]):
                 if v in lp and v not in uv_of:
                     uv_of[v] = q_
+        kz = r7_amount("lid_uv") if HEAD_ROUTE == "r7" else 0.0
+        if kz > 0 and uv_of:
+            # (thirteenth round, "lid_uv", a share: the face picture held the ring of skin round each margin in a
+            # band only two or three texels wide, so a painted lash line came out as teeth. The opening's own place
+            # in the picture is never drawn (its faces are cut), so the margin's places are drawn `kz` of the way
+            # toward its middle: the ring round the margin gets that much more of the picture. The picture is
+            # painted from each texel's place on the surface, so nothing else changes)
+            cu = np.mean([uv_of[v] for v in loop if v in uv_of], axis=0)
+            # (up and down only: drawn in along the eye too, the faces at the corners folded over their neighbours
+            # in the picture and carried the lash line down across the lower lid)
+            # (toward the chord from corner to corner, none at the corners themselves: drawn toward one middle line
+            # the downturned outer corner's faces flipped over the lower lid's and painted lash there)
+            qs = np.array([uv_of[v] for v in loop if v in uv_of])
+            a0, a1 = qs[np.argmin(qs[:, 0])], qs[np.argmax(qs[:, 0])]
+
+            def lid_q(q_):
+                t_ = float(np.clip((q_[0] - a0[0]) / max(a1[0] - a0[0], 1e-9), 0, 1))
+                vc = a0[1] + (a1[1] - a0[1]) * t_
+                return (q_[0], vc + (q_[1] - vc) * (1.0 - kz * math.sin(math.pi * t_) ** 0.5))
+            uv_of = {v: lid_q(q_) for v, q_ in uv_of.items()}
+            for fi in hole:
+                face_uv.pop(fi, None)
+            for fi, f in enumerate(M.faces):
+                if fi in cut or fi not in face_uv or face_uv[fi][0] != "face":
+                    continue
+                if any(v in lp for v in f):
+                    face_uv[fi] = ("face", [uv_of[v] if v in uv_of else q_ for v, q_ in zip(f, face_uv[fi][1])])
         n = len(loop)
         for j in range(n):
             a, b = loop[j], loop[(j + 1) % n]
@@ -7500,6 +7791,8 @@ def open_eyes(M, face_uv, weights, under):
             fi = len(M.faces) - 1
             face_uv[fi] = ("face", [uv_of.get(v if v in uv_of else loop[ring2.index(v)], (0.0, 0.0)) for v in f])
         eyes.append((C, s))
+        # (thirteenth round: the margin's points kept, for painting the lash line along the lids' edge)
+        M.tag.setdefault("eye_loops", []).append((s, list(loop)))
         print("BROTHER EYES %s: opening of %d faces, margin %d points, ball at %s" % ("left" if s > 0 else "right", len(hole), n, np.round(C, 4)))
     return M, face_uv, weights, under, cut, eyes
 
@@ -7511,6 +7804,10 @@ def eye_texture(path, size=256):
     X, Y = np.meshgrid(k, k)
     r = np.hypot(X * EYE_RX / EYE_R, Y)    # (the ball is wider than tall: the iris round on it, an ellipse here)
     ri = EYE_IRIS[2] * HEAD_SX / EYE_R * FIGURE.get("iris_k", 1.0)   # the iris's radius over the ball's height radius
+    if HEAD_ROUTE == "r7":
+        # (thirteenth round, "iris_big", a share: head3's iris is 0.24 of the distance between the pupils; with eyes_big
+        # the model's was 0.19)
+        ri *= 1.0 + r7_amount("iris_big")
     rp = ri * 0.36
     img = np.zeros((size, size, 3))
     sclera = np.array((0.93, 0.9, 0.86))
@@ -7546,7 +7843,19 @@ def eye_texture(path, size=256):
             amber = amber * (1 - ks) + np.array((0.5, 0.36, 0.18)) * ks
             green = green * (1 - ks) + np.array((0.62, 0.56, 0.3)) * ks
             g = np.clip((t - 0.3) / 0.25, 0, 1)[..., None] ** 1.1
+        kw = r7_amount("iris_warm") if HEAD_ROUTE == "r7" else 0.0
+        if kw > 0:
+            # (thirteenth round, "iris_warm": in Godot's light the iris read yellow-green (green over red 0.93, rendered
+            # 0.49, 0.44, 0.23); head3's middle iris renders 0.56, 0.47, 0.30 (0.83): warmer and lighter, amber-brown
+            # round the pupil to a golden olive, green only toward the rim)
+            amber = amber * (1 - kw) + np.array((0.54, 0.41, 0.24)) * kw
+            green = green * (1 - kw) + np.array((0.7, 0.58, 0.36)) * kw
+            g = np.clip((t - 0.35 - 0.05 * kw) / 0.3, 0, 1)[..., None] ** 1.1
         iris = amber * (1 - g) + green * g
+        if kw > 0:
+            # (olive toward the rim: a touch of green in the outer band)
+            olive = np.clip((t - 0.68) / 0.16, 0, 1)[..., None] * kw
+            iris = iris * (1 - 0.5 * olive) + np.array((0.5, 0.5, 0.28)) * 0.5 * olive
         iris = iris * (1.0 - 0.18 * np.clip((0.5 - t) / 0.5, 0, 1))[..., None]
         iris = iris * (1.0 + rays[..., None] * (t[..., None] > 0.3))
         ring = np.clip((t - 0.84) / 0.16, 0, 1)[..., None]
@@ -7570,15 +7879,19 @@ def eye_texture(path, size=256):
     save_rgb(path, img[::-1])
 
 
+EYE_CAP = 100.0     # eye_balls: degrees from the pole the cap reaches (thirteenth round: 125 with the bigger openings,
+                    # whose inner corners showed the head's inside past the cap's edge from three-quarter)
+
+
 def eye_balls(eyes):
-    """Two balls' front caps (12 round, 6 rows out to 100 degrees from the pole: the rest is always behind the lids;
+    """Two balls' front caps (12 round, 6 rows out to EYE_CAP degrees from the pole: the rest is always behind the lids;
     the whole ball was 768 triangles for the pair), their poles straight ahead; UVs planar from the front."""
     P, F, UV = [], [], []
     nu, nv = 12, 6
     for C, s in eyes:
         base = len(P)
         for i in range(nv + 1):
-            th = math.radians(100.0) * i / nv
+            th = math.radians(EYE_CAP) * i / nv
             for j in range(nu):
                 ph = math.tau * j / nu
                 d = np.array((math.sin(th) * math.cos(ph), -math.cos(th), math.sin(th) * math.sin(ph)))
@@ -8215,6 +8528,12 @@ def finish(M, T, joints, sh):
         for li, q in zip(poly.loop_indices, uv):
             uvl.data[li].uv = q
     print("BROTHER EYES balls: %d triangles" % sum(len(f) - 2 for f, _ in Fe))
+    if HEAD_ROUTE == "r7" and r7_amount("lash_ribbon") > 0 and M.tag.get("eye_loops"):
+        Pl, Fl, Wl = lash_ribbons(M, weights, eye_cut)
+        ob = mesh_object("brother_lash", Pl, Fl, armature, Wl)
+        mat_l = plain_material("brother_lash", LASH_RIBBON_RGB, rough=0.8)
+        mat_l.use_backface_culling = False     # (a thin strip: seen from either side)
+        ob.data.materials.append(mat_l)
     skin_object("brother_body_under", sorted(under))
     Bx = build_boxers(M, T, sh, weights, under, armature)
     # His tattoos: lifted from the sheet, placed by the table, drawn as a see-through layer over his arms.
