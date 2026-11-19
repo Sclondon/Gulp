@@ -1041,3 +1041,10 @@ the research (with sources), the numbers, what is checked and what is rough. Con
   `concept_brother_head3.jpg` and the model.
 - The brother's eye colour (the user, 2026-11-18): "And tehy should be amber brown green": hazel, amber-brown shading to
   green (not the blue-grey of his earlier sheets).
+
+## Pushed 2026-11-18 (evening)
+Game build a8f7d82 (source 3eb0d1e), site PR #214 (cart ?v=a8f7d82): the real bay with the drawn trench and terraced
+walls, the eight biomes, denser kelp, sea grass on Warren's field spawning, Atlantis in the canyon basin, caustics on
+everything, surf with curling barrels and rogue waves, only nearby animals awake. The pack is 61 MB (it was 39.6):
+first load on a phone is a worry. The preview film on the arcade is still the old one. Not tried on a phone or in a
+browser after this push.
