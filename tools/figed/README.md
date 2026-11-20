@@ -787,3 +787,29 @@ cuffs and braces hanging at the hips: `tools/art_src/concept_brother_bible_outfi
   60 px, range 0.8..1.04, power 0.9) and fades to none from 5 cm under the nipples down, so no nipples or stomach
   muscles show; it stands 19 mm off the body over the belly, 4 mm at the waist, and lies on the shoulders (19 mm
   everywhere made the straps float). A thin red sliver shows at the corner of his right strap: not yet found.
+
+### The two work outfits (2026-11-20, first pass)
+
+The user, with a sheet of two (`tools/art_src/concept_brother_bible_outfits_work.png`): "letys make these next".
+Left: cream cable roll-neck jumper, yellow oilskin bib overalls on black straps with clips, black rubber boots.
+Right: grey work shirt with sleeves rolled above the elbow and an open collar, dark green-black bib overalls with
+brass buckles and a chest pocket, brown boots, a flat cap; forearm tattoos.
+
+- Outfit files: `figures/brother_outfit_oilskin.json`, `figures/brother_outfit_work.json` (`prefix` names their
+  pictures, `figures/brother_<prefix><garment>.png`; `wear` lists the garments to pass to `--wear`).
+- New garments in `rules()`: `jumper` (to the wrists by the hand's weights, a roll up the neck to just under the
+  head joint; `neck_01` is the neck's BASE, 7 cm above it is only the shoulders), `shirt` (to above the elbow, a
+  collar band), `bib` (legs to 20 cm over the ankle, a bib in front to 6 cm under the shoulder joints, a lower
+  panel behind), `bib_straps` (bands over the shoulders), `boots` (shafts to 27 cm over the ankle), `cap`.
+- `SMOOTH` (set in `rules()`): heavy cloth is smoothed after it is pushed out, so overalls do not show the navel
+  or crotch. Smoothing pulled cloth inside the thighs and seat, so THE BODY UNDER CLOTHES IS NOT DRAWN: the render
+  deletes body faces whose points are all well inside a worn garment (f > 0.015). The export must do the same.
+- `extras()`: hard parts no body surface gives, as convex hulls riding one bone (`_rigid` carries them into the
+  pose): a boot foot round each foot (the body has toes), the cap's peak.
+- `"paint": "plain"`: no drawing needed. A colour lit as if painted (the body's rest normals against a lamp from
+  above, in front, his right), soft blotches, a turned edge, and `knit` (cables and stitch rows), `weave`, `gloss`.
+- Rough, all of it Claude's first guess: flat colours with none of the sheet's painted folds; the jumper's
+  cables run round the sleeves (they follow x) and it has no ribbed cuffs or hem; the roll neck is thin; the bib
+  still follows his belly, has no pocket, clips or buckles, and its straps are plain bands; the boot feet are
+  slipper-shaped hulls with no heel or sole; the shirt has no collar points, placket, buttons or rolled cuff; the
+  cap is a dome with a peak, not a flat cap's forward-leaning crown; hair, moustache and tattoos are not on him.

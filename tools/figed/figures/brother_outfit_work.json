@@ -1,0 +1,48 @@
+{
+ "about": "For garments.py (the user, 2026-11-20, with a sheet of two outfits, tools/art_src/concept_brother_bible_outfits_work.png: \"letys make these next\"). Every garment here is painted \"plain\": its colour (Claude, by eye from the sheet), lit as if painted, with a cloth pattern (knit / weave / gloss). This one: grey work shirt with the sleeves rolled above the elbow, dark green-black bib overalls, brown boots, a flat cap.",
+ "prefix": "work_",
+ "wear": "shirt,bib,bib_straps,boots,cap",
+ "shirt": {
+  "paint": "plain",
+  "colour": [
+   0.35,
+   0.36,
+   0.35
+  ],
+  "weave": 0.004
+ },
+ "bib": {
+  "paint": "plain",
+  "colour": [
+   0.17,
+   0.2,
+   0.17
+  ],
+  "weave": 0.005
+ },
+ "bib_straps": {
+  "paint": "plain",
+  "colour": [
+   0.15,
+   0.18,
+   0.15
+  ]
+ },
+ "boots": {
+  "paint": "plain",
+  "colour": [
+   0.3,
+   0.24,
+   0.18
+  ]
+ },
+ "cap": {
+  "paint": "plain",
+  "colour": [
+   0.23,
+   0.25,
+   0.23
+  ],
+  "weave": 0.004
+ }
+}

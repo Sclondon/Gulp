@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import figed  # noqa: E402
 import figed_fit  # noqa: E402
 
+SMOOTH = {}                                           # garment -> smoothing passes (set by rules())
 INFO = {}                                             # what rules() learns that paint() needs
 SIZE = 1024
 BIND = 0.013                                          # width of a bound edge, metres
@@ -84,6 +85,38 @@ def rules(fig, P, H, skin_px=None):
     loose = 0.004 + 0.015 * np.clip((z - (waist + 0.01)) / 0.07, 0, 1)   # (hangs loose: the user's second outfit picture)
     loose = loose - 0.013 * np.clip((z - (zs - 0.09)) / 0.07, 0, 1)      # ... but the straps lie on the shoulders   # loose on the chest, tucked flat at the waist
     out["tank"] = (f, torso, loose, (0.88, 0.86, 0.80))                 # (11 mm all the way down came through the waistband)
+    # THE WORK OUTFITS (the user, 2026-11-20, with a sheet of two: "letys make these next"): a roll-neck jumper or a
+    # work shirt with rolled sleeves, bib overalls with shoulder straps, boots, a flat cap.
+    handw = _w(base, ("hand", "thumb", "index", "middle", "ring", "pinky"))
+    lowerw = _w(base, ("lowerarm",)) + handw
+    legs = _w(base, ("thigh", "calf", "foot", "ball"))
+    zh = H["head"][2]                                                # (neck_01 is the neck's BASE: zn + 7 cm is only the shoulders)
+    body_top = np.where(arm + up < 0.3, zh - 0.015 - z, 1.0)         # the roll neck's top; no limit along the arms
+    top_half = (head < 0.6) & (z > waist - 0.1) & (legs < 0.3)
+    thick = 0.013 + 0.014 * np.clip((z - (zs + 0.02)) / 0.03, 0, 1) * (arm + up < 0.3)   # the roll stands off further
+    SMOOTH.update(jumper=4, shirt=3, bib=7, boots=5, cap=2)
+    out["jumper"] = (np.minimum(np.minimum(z - (waist - 0.06), body_top), (0.5 - handw) * 0.1),
+                     top_half, thick, (0.86, 0.80, 0.66))
+    collar = np.where(arm + up < 0.3, zh - 0.06 - z, 1.0)
+    out["shirt"] = (np.minimum(np.minimum(z - (waist - 0.06), collar), (0.3 - lowerw) * 0.1),
+                    top_half, np.full(len(P), 0.008), (0.34, 0.35, 0.34))
+    front = y < yn
+    bib_top = np.where(front, zs - 0.06, zs - 0.11)                   # the bib in front, a lower panel behind
+    bib_wide = np.where(front, 0.115, 0.085)
+    rim = waist + 0.07 + (bib_top - waist - 0.07) * np.clip((bib_wide - np.abs(x)) / 0.035, 0, 1) ** 0.5
+    leg_end = H["foot_l"][2] + 0.2
+    wears = (arm < 0.3) & (up < 0.4) & (head < 0.3)
+    puff = 0.03 + 0.012 * np.clip((knee + 0.1 - z) / 0.25, 0, 1)    # (and smoothed: overalls do not show the body)
+    out["bib"] = (np.minimum(rim - z, z - leg_end), wears, puff, (0.80, 0.58, 0.12))
+    out["bib_straps"] = (np.minimum(0.016 - np.abs(np.abs(x) - 0.088), z - (bib_top - 0.1)),
+                         (arm < 0.3) & (up < 0.75) & (head < 0.3), np.full(len(P), 0.02), (0.10, 0.10, 0.11))
+    shaft = _w(base, ("calf", "foot", "ball")) > 0.5
+    out["boots"] = (np.minimum(H["foot_l"][2] + 0.27 - z, z - (H["foot_l"][2] - 0.02)), shaft,
+                    np.full(len(P), 0.012), (0.09, 0.09, 0.10))
+    crown = float(z[head > 0.8].max())
+    INFO["cap_line"] = crown - 0.1
+    out["cap"] = (z - INFO["cap_line"], head > 0.5, 0.014 + 0.016 * np.clip((crown - z) / 0.06, 0, 1),
+                  (0.22, 0.24, 0.22))
     if skin_px is not None:                              # the drawers: where the skin picture is painted as cloth
         cloth = skin_px & lower
         if cloth.sum() > 50:
@@ -138,6 +171,12 @@ def cut(fig, P, posed, f, may, offset, name):
         push = v.normal * v[lo]
         v.co += push
         v[lp] = tuple(np.array(v[lp]) + np.array(push))
+    if SMOOTH.get(name):                                  # heavy cloth does not show the body under it: smoothed,
+        before = {v.index: v.co.copy() for v in bm.verts}  # the same move given to the posed copy
+        for _ in range(SMOOTH[name]):
+            bmesh.ops.smooth_vert(bm, verts=bm.verts, factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+        for v in bm.verts:
+            v[lp] = tuple(np.array(v[lp]) + np.array(v.co - before[v.index]))
     mesh = bpy.data.meshes.new(name)
     bm.to_mesh(mesh)
     bm.free()
@@ -195,6 +234,86 @@ def braces(fig, P, H):
         bm.free()
         out.append((name, mesh, col))
     return out
+
+
+def plain_material(name, col):
+    """A plain colour as a picture, so it shows in textured views."""
+    dot = bpy.data.images.new(name + "_colour", 4, 4, alpha=False)
+    dot.pixels.foreach_set(np.tile(np.array(tuple(col) + (1.0,), dtype=np.float32), 16))
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    node = mat.node_tree.nodes.new("ShaderNodeTexImage")
+    node.image = dot
+    mat.node_tree.nodes.active = node
+    bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+    mat.node_tree.links.new(node.outputs["Color"], bsdf.inputs["Base Color"])
+    mat.diffuse_color = tuple(col) + (1.0,)
+    return mat
+
+
+def _rigid(A, B):
+    """The turn and move that carries points A onto B (for a hard part that rides one bone into the pose)."""
+    ca, cb = A.mean(axis=0), B.mean(axis=0)
+    U, _S, Vt = np.linalg.svd((A - ca).T.dot(B - cb))
+    d = np.sign(np.linalg.det(Vt.T.dot(U.T)))
+    R = Vt.T.dot(np.diag([1.0, 1.0, d])).dot(U.T)
+    return lambda q: (q - ca).dot(R.T) + cb
+
+
+def _hull(points, name):
+    bm = bmesh.new()
+    for q in points:
+        bm.verts.new(tuple(q))
+    bmesh.ops.convex_hull(bm, input=bm.verts)
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    for face in bm.faces:
+        face.smooth = True
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    return mesh
+
+
+def extras(fig, wear, outfit, P, Pp, H, arm=None):
+    """Hard parts no body surface can give: the boots' feet (a hull round each foot: the body has toes) and the
+    cap's peak. Each rides one bone."""
+    base = fig.base
+    made = []
+    if "boots" in wear:
+        low = (_w(base, ("calf", "foot", "ball")) > 0.5) & (P[:, 2] < H["foot_l"][2] + 0.03)
+        for side in ("l", "r"):
+            sel = low & (P[:, 0] * H["foot_" + side][0] > 0)
+            Q = P[sel].copy()
+            mid = Q[:, :2].mean(axis=0)
+            away = Q[:, :2] - mid
+            Q[:, :2] += away / np.maximum(np.linalg.norm(away, axis=1, keepdims=True), 1e-6) * 0.017
+            Q[:, 2] = np.maximum(Q[:, 2], Q[:, 2].min() + 0.004)
+            made.append(("boot_foot_" + side, "foot_" + side, _rigid(P[sel], Pp[sel])(Q), outfit["boots"]["colour"]))
+    if "cap" in wear:
+        hd = _w(base, ("head",)) > 0.8
+        line = INFO["cap_line"]
+        ring = P[hd & (np.abs(P[:, 2] - line) < 0.012)]
+        xc, yf = ring[:, 0].mean(), ring[:, 1].min() + 0.012
+        pts = []
+        for a in np.linspace(0, math.pi, 15):
+            for dz in (0.0, -0.007):
+                pts.append((xc + 0.078 * math.cos(a), yf - 0.062 * math.sin(a), line + 0.014 + dz - 0.014 * math.sin(a)))
+        made.append(("cap_peak", "head", _rigid(P[hd], Pp[hd])(np.array(pts)), outfit["cap"]["colour"]))
+    objs = []
+    for name, bone, pts, col in made:
+        mesh = _hull(pts, name)
+        obj = bpy.data.objects.new(name, mesh)
+        bpy.context.scene.collection.objects.link(obj)
+        obj.vertex_groups.new(name=bone).add(list(range(len(mesh.vertices))), 1.0, "REPLACE")
+        if arm is not None:
+            obj.parent = arm
+            obj.modifiers.new("rig", "ARMATURE").object = arm
+        mesh.uv_layers.new(name="UVMap")
+        mesh.materials.append(plain_material(name, [c * 0.9 for c in col]))
+        objs.append(obj)
+        print("hard part %-12s %4d faces" % (name, len(mesh.polygons)))
+    return objs
 
 
 def make(fig, wear, posed=True, arm=None, skin_path=None):
@@ -258,20 +377,38 @@ def make(fig, wear, posed=True, arm=None, skin_path=None):
             obj["plain"] = col
             parts.append((name, "braces", obj))
             print("garment %-10s %5d faces" % (name, len(mesh.polygons)))
+    INFO["Pp"], INFO["H"] = Pp, H
     return parts, R, P
 
 
 def paint(fig, outfit, name, R, P, path, skin_path=None):
     """A garment's picture: the drawing's cloth, box to box from the front view, onto the body's UVs."""
     base = fig.base
-    art = figed_fit.load_image(outfit["picture"])[:, :, :3]
-    x0, y0, x1, y1 = outfit[name]["box"]
-    sub = art[y0:y1, x0:x1]
-    if outfit[name]["cloth"] == "pale":
-        cloth = sub.min(axis=2) > 0.55
+    plain = outfit[name].get("paint") == "plain"
+    if plain:
+        x0 = y0 = 0
+        sub = np.tile(np.array(outfit[name]["colour"], dtype=float), (4, 4, 1))
+        cloth = np.ones((4, 4), dtype=bool)
     else:
-        cloth = sub.max(axis=2) < 0.52
-    cloth = figed_fit.shrink(cloth, 1)
+        art = figed_fit.load_image(outfit["picture"])[:, :, :3]
+        x0, y0, x1, y1 = outfit[name]["box"]
+        sub = art[y0:y1, x0:x1]
+        if outfit[name]["cloth"] == "pale":
+            cloth = sub.min(axis=2) > 0.55
+        else:
+            cloth = sub.max(axis=2) < 0.52
+        cloth = figed_fit.shrink(cloth, 1)
+    N = np.zeros_like(P)                                  # the body's normals at rest, to paint light with
+    for group, vi, _ti in base.faces:
+        if group == "body" and len(vi) >= 3:
+            n = np.cross(P[vi[1]] - P[vi[0]], P[vi[2]] - P[vi[0]])
+            for v in vi:
+                N[v] += n
+    N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+    if N[np.argmin(P[:, 1])][1] > 0:                      # the foremost point must face forward (-y)
+        N = -N
+    LAMP = np.array([-0.35, -0.6, 0.72])                  # painted light: from above, in front, his right
+    light = np.full((SIZE, SIZE), 0.5)
     # things drawn over the cloth that are modelled as pieces of their own (braces): inside each "paint_out" box
     # only pixels that look like the cloth itself are kept, the rest is filled from the cloth round it
     for bx0_, by0_, bx1_, by1_ in outfit[name].get("paint_out", []):
@@ -334,6 +471,8 @@ def paint(fig, outfit, name, R, P, path, skin_path=None):
             across[gy[ins].astype(int), gx[ins].astype(int)] = pos[:, 0]
             upward[gy[ins].astype(int), gx[ins].astype(int)] = pos[:, 2]
             edge[gy[ins].astype(int), gx[ins].astype(int)] = np.stack([b0[ins], b1[ins], b2[ins]], axis=1).dot(f[tri])
+            light[gy[ins].astype(int), gx[ins].astype(int)] = np.stack(
+                [b0[ins], b1[ins], b2[ins]], axis=1).dot(N[tri]).dot(LAMP)
             if per_point is not None:
                 hole_d[gy[ins].astype(int), gx[ins].astype(int)] = np.stack(
                     [b0[ins], b1[ins], b2[ins]], axis=1).dot(per_point[tri])
@@ -349,6 +488,22 @@ def paint(fig, outfit, name, R, P, path, skin_path=None):
             warp = np.sin(across * 2 * np.pi / pitch) > 0.2
             weft = np.sin(upward * 2 * np.pi / pitch) > 0.2
             tex = tex * (1.0 - 0.06 * warp - 0.06 * weft + 0.04 * (warp & weft))[:, :, None]
+    if plain:
+        o = outfit[name]
+        lit = 0.6 + 0.4 * np.clip(light * 0.5 + 0.5, 0, 1) ** 1.4
+        lit = lit * (1 + 0.05 * np.sin(across * 37 + upward * 23) * np.sin(upward * 41 - across * 17))
+        if o.get("gloss"):                                # oilskin, rubber: a hard highlight
+            lit = lit + o["gloss"] * np.clip(light, 0, 1) ** 7
+        if o.get("knit"):                                 # cables down a jumper, with rows of stitches
+            k = o["knit"]
+            cable = np.sin(across * 2 * np.pi / k + 0.3 * np.sin(upward * 2 * np.pi / (k * 0.8)))
+            lit = lit * (1 - 0.13 * (cable > 0.55) + 0.05 * (cable < -0.6))
+            lit = lit * (1 - 0.04 * (np.sin(upward * 2 * np.pi / 0.004) > 0.3))
+        if o.get("weave"):
+            w = o["weave"]
+            lit = lit * (1 - 0.05 * (np.sin(across * 2 * np.pi / w) > 0.2) - 0.05 * (np.sin(upward * 2 * np.pi / w) > 0.2))
+        lit = lit * np.where(edge < 0.005, 0.8, 1.0)      # a turned edge
+        tex = np.clip(np.array(o["colour"]) * lit[:, :, None], 0, 1)
     if outfit[name].get("paint") == "shade" and skin_path:
         # Thin tight cloth: its light and shade is the BODY's under it (the user: "the texture needs to frame his
         # pecs"). The skin picture's own painted shading, blurred so hair and marks do not show, lightens and
@@ -427,6 +582,27 @@ if __name__ == "__main__":
     if "eyes" in objs and os.path.exists(stem + "_eyes.png"):
         objs["eyes"].data.materials.append(material("eyes", stem + "_eyes.png"))
     parts, R, P = make(fig, wear, posed=True, skin_path=stem + "_skin.png")
+    extras(fig, wear, outfit, P, INFO["Pp"], INFO["H"])
+    # THE BODY UNDER THE CLOTHES IS NOT DRAWN (it came through the smoothed overalls at the thighs): faces of the
+    # body whose points are all well inside a worn garment are taken out. The body's points are matched to the
+    # figure's by place.
+    from mathutils import kdtree
+    tree = kdtree.KDTree(len(P))
+    for i, q in enumerate(INFO["Pp"]):
+        tree.insert(tuple(q), i)
+    tree.balance()
+    covered = np.zeros(len(P), dtype=bool)
+    for piece, name, _obj in parts:
+        if piece in R and name != "drawers":
+            f_, may_, _o, _c = R[piece]
+            covered |= may_ & (f_ > 0.015)
+    body = objs["body"].data
+    under = [covered[tree.find(v.co)[1]] for v in body.vertices]
+    bmb = bmesh.new()
+    bmb.from_mesh(body)
+    bmesh.ops.delete(bmb, geom=[fc for fc in bmb.faces if all(under[v.index] for v in fc.verts)], context="FACES")
+    bmb.to_mesh(body)
+    bmb.free()
     done = {}
     for piece, name, obj in parts:
         if name == "drawers":
@@ -435,7 +611,7 @@ if __name__ == "__main__":
         if name == "braces":
             continue
         if name not in done:
-            done[name] = "%s_%s.png" % (stem, name)
+            done[name] = "%s_%s%s.png" % (stem, outfit.get("prefix", ""), name)
             paint(fig, outfit, name, R, P, done[name], stem + "_skin.png")
         obj.data.materials.append(material(name, done[name]))
     boxes = fb.view_boxes(fig)

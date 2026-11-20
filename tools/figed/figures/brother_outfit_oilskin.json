@@ -1,0 +1,40 @@
+{
+ "about": "For garments.py (the user, 2026-11-20, with a sheet of two outfits, tools/art_src/concept_brother_bible_outfits_work.png: \"letys make these next\"). Every garment here is painted \"plain\": its colour (Claude, by eye from the sheet), lit as if painted, with a cloth pattern (knit / weave / gloss). This one: cream roll-neck cable jumper, yellow oilskin bib with black straps, black rubber boots.",
+ "prefix": "oilskin_",
+ "wear": "jumper,bib,bib_straps,boots",
+ "jumper": {
+  "paint": "plain",
+  "colour": [
+   0.86,
+   0.8,
+   0.66
+  ],
+  "knit": 0.024
+ },
+ "bib": {
+  "paint": "plain",
+  "colour": [
+   0.8,
+   0.58,
+   0.13
+  ],
+  "gloss": 0.25
+ },
+ "bib_straps": {
+  "paint": "plain",
+  "colour": [
+   0.1,
+   0.1,
+   0.11
+  ]
+ },
+ "boots": {
+  "paint": "plain",
+  "colour": [
+   0.09,
+   0.09,
+   0.1
+  ],
+  "gloss": 0.3
+ }
+}
