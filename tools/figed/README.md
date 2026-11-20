@@ -141,6 +141,16 @@ The user: "lets do around focusing on his pecs, shoulders and hands, he should h
     still works: it is a point of the skin, flat or not.
   - `elbows@side` is held to -12 or more: at -31 the forearm stuck out in front of the belly in the side view.
   Outline after: front 0.92, side 0.91, back 0.93; marks within 0.1 to 1.5% of his height.
+- Round six, the user (an arrow pointing back from the nape in a side render): "His biceps are too skinny. Alos lets
+  start on his head and neck. His neck and head is jutting too forward so lets just fix that first".
+  - Why the fit had not seen it: the body sheet's side view ignores the head (hair), and the shaved sheet's side view
+    was lined up BY the head, so a head carried forward of the body scored the same. Now `bare_side` lines up by the
+    feet and scores its legs (weight 1) with its head, neck and shoulders (weight 2), and `head-trans-forward` and
+    `neck-trans-forward` move. `neck-trans-forward` had been set to 1 by eye in the first head pass (Claude's
+    mistake); the fit took it to 0. Side overlap 0.91 -> 0.92.
+  - The upper arm seen from the side is hidden inside the body's outline, so its depth is measured instead: the
+    bible's is about 10% of his height front to back at the biceps (both side views), the model's was 8.6%;
+    `upperarm.depth` 1.25 makes it about 10.7% (a little over, as the user asked for more).
 - Still not right: the arms are thick but tube-like (no biceps or triceps bulge, no forearm swell by the elbow as the
   bible paints them); the back is smooth (no shoulder blades, spine furrow or lats as the bible paints them), the pecs
   are boxy with a hard lower edge, the shoulder cap peaks lower than drawn, the thumb's tip is pointed.

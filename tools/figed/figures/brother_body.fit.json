@@ -341,16 +341,22 @@
    "bands": [
     [
      0,
+     0.36,
+     1
+    ],
+    [
+     0.36,
      0.78,
      0
     ],
     [
      0.78,
      1,
-     1
+     2
     ]
    ],
-   "weight": 0.5
+   "weight": 1,
+   "anchor": "feet"
   }
  ],
  "defaults": {
@@ -859,6 +865,16 @@
     -1,
     1.5,
     0.5
+   ],
+   "head-trans-forward": [
+    -3,
+    3,
+    0.5
+   ],
+   "neck-trans-forward": [
+    -3,
+    3,
+    0.5
    ]
   },
   "zoom": {
@@ -882,5 +898,6 @@
  "marks_about": "Marks read off the bible body sheet at 1998 px wide (Claude, by eye on a 100 px grid). _l and _r are the FIGURE own left and right.",
  "marks_weight": 150,
  "set_by_eye": "Not moved by this job: macro muscle, pecs and shoulder_muscle (an outline cannot see them; set by eye against the bible, round four), and the hand shape sliders (brother_hands.fit.json sets them; only hand.size moves here, by the wrist and fingertip marks).",
- "regions_about": "Regions (round five): the two arms from shoulder to wrist in the front and back views, and the front of the chest in the side view (the pecs' profile)."
+ "regions_about": "Regions (round five): the two arms from shoulder to wrist in the front and back views, and the front of the chest in the side view (the pecs' profile).",
+ "head_place": "Round six: the shaved sheet side view lines up by the FEET and scores its legs as well as its head and neck, so where the head sits over the body is compared (lined up by the head, a head carried too far forward could not be seen). head-trans-forward and neck-trans-forward move."
 }
