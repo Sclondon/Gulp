@@ -466,8 +466,7 @@
   "upperarm-muscle": 0.2188,
   "waist": 0.25,
   "waist_to_hip": -0.125,
-  "wrist": 0.1,
-  "hip-trans-forward": 1.2
+  "wrist": 0.1
  },
  "zoom": {
   "armless_back": 0.9679166666666666,

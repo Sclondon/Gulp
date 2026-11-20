@@ -240,3 +240,7 @@ The user: "lets do around focusing on his pecs, shoulders and hands, he should h
   `bulge` 2 -> 3.5, `hip-trans-forward` 1.2, so the front runs nearly straight down from the belly to the crotch as
   the sheet's shorts do. To judge the belly and crotch from the side, raise the arms first (a trial spec with pose
   `arms_down` -70, `-- look ... side --posed`): hung or held out, the arm or hand covers them.
+- The user, of that round: "you changed his pose ... after the crotch fix". `hip-trans-forward` moves the hip JOINTS
+  as well as the skin, so the pelvis stood forward of the feet and the legs slanted. It is out (0); `belly` 0.25 and
+  `bulge` 3.5 stay. **Targets named `*-trans-*` move joints: they change how a figure stands, not only its shape.**
+  Check the stance from the side after using one.
