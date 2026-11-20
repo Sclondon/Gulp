@@ -942,3 +942,20 @@ spell, dance).
   not pinned to the ground (they may slide a little as his legs are shorter), hands may pass through the trunk on a
   stocky body, no state machine or blending, nothing in the game. The swim clip is authored low to the ground: the
   game places him.
+
+## The low model, at the Twilight Princess figures' weight (2026-11-20)
+
+The user: "We should try making the twilight princess styled model as well" (the yardstick figures on this machine are
+2,300 to 4,500 triangles dressed and spend them unevenly: dense at the face and hands, big triangles on flat
+stretches). `garments.py ... --low <triangles> [--wire]` (`low()`): every piece is thinned to its share of the budget
+by edge collapse (Blender's Decimate, which keeps UVs and bone weights), the same pictures on it. On the body the face
+keeps nearly all its points, the hands most, the rest melts first ("melt" weights from the head's and hands' bone
+weights); teeth and tongue go. Shares: `LOW_SHARE` (body 0.40, eyes, boots, helmet), garments share the rest by size;
+small hard parts stay as they are; hair and moustache are the hair tool's and are left alone, counted apart.
+- Oilskin outfit: 27,334 -> 3,996 (body 1,599, jumper 847, overalls 711, straps 281, boots 219 each, eyes 120).
+  Diving dress with helmet: 28,781 -> 4,490. Both pose and play the clips on the skeleton as the full model does.
+- `--wire` draws each piece's triangles over the picture.
+- Rough (all Claude's picks): the collapse is automatic, so edge loops at the elbows, knees and shoulders are not
+  placed for bending as a hand-made low model's would be; a few seams in the paint show where UV islands were
+  thinned (the jumper's back); hems are a little ragged; the pictures are still 1024 (the yardstick's are 256 to
+  512); the straps cost more than they should. Not exported to the game.

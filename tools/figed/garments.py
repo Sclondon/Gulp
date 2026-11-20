@@ -822,6 +822,72 @@ def material(name, path):
     return mat
 
 
+def _tris(o):
+    return sum(len(pl.vertices) - 2 for pl in o.data.polygons)
+
+
+# a low model's triangles, by piece (shares of the budget); garments not named share what is left by their size
+LOW_SHARE = {"body": 0.40, "eyes": 0.03, "boot_l": 0.055, "boot_r": 0.055, "helmet": 0.1}
+LOW_AS_IS = ("neck_ring", "weight_front", "weight_back", "cap_peak", "braces", "brace_sliders")
+
+
+def low(budget, body, tree, fig, wire=False):
+    """THE LOW MODEL (the user, 2026-11-20: "We should try making the twilight princess styled model as well"; the
+    yardstick figures are 2,300 to 4,500 triangles dressed and spend them unevenly): every piece is thinned to its
+    share of `budget` triangles by edge collapse, which keeps UVs and bone weights. On the body the face keeps
+    nearly all its points, the hands most, and the rest melts first (the "melt" weights). Teeth and tongue go (the
+    mouth is shut; a face rig would want them back)."""
+    base = fig.base
+    headw = _w(base, ("head",))
+    handw = _w(base, ("hand", "thumb", "index", "middle", "ring", "pinky"))
+    melt = body.vertex_groups.new(name="melt")
+    for v in body.data.vertices:
+        i = tree.find(v.co)[1]
+        melt.add([v.index], float(np.clip(1.0 - 0.97 * headw[i] - 0.6 * handw[i], 0.03, 1.0)), "REPLACE")
+    key = lambda o: o.name.replace("figure_", "")         # (the body's own pieces are named figure_<piece>)
+    for o in list(bpy.data.objects):
+        if o.type == "MESH" and key(o) in ("teeth", "tongue"):
+            bpy.data.objects.remove(o, do_unlink=True)
+    # (hair and moustache are the hair tool's: left as they come and counted apart from the budget)
+    hairy = [o for o in bpy.data.objects if o.type == "MESH" and key(o).split("_")[0] in ("hair", "moustache")]
+    meshes = [o for o in bpy.data.objects if o.type == "MESH" and o not in hairy]
+    before = sum(_tris(o) for o in meshes)
+    fixed = sum(_tris(o) for o in meshes if key(o) in LOW_AS_IS)
+    named = [o for o in meshes if key(o) in LOW_SHARE]
+    rest = [o for o in meshes if key(o) not in LOW_SHARE and key(o) not in LOW_AS_IS]
+    left = budget - fixed - sum(LOW_SHARE[key(o)] * budget for o in named)
+    size = {o.name: math.sqrt(_tris(o)) for o in rest}
+    want = {o.name: LOW_SHARE[key(o)] * budget for o in named}
+    want.update({o.name: left * size[o.name] / max(1e-6, sum(size.values())) for o in rest})
+    for o in named + rest:
+        n = _tris(o)
+        if n <= want[o.name] or n < 40:
+            continue
+        m = o.modifiers.new("low", "DECIMATE")
+        m.ratio = max(0.02, want[o.name] / float(n))
+        m.use_collapse_triangulate = True
+        if o is body:
+            m.vertex_group = "melt"
+            m.vertex_group_factor = 4.0
+        with bpy.context.temp_override(object=o, active_object=o, selected_objects=[o]):
+            bpy.ops.object.modifier_move_to_index(modifier="low", index=0)
+            bpy.ops.object.modifier_apply(modifier="low")
+        for pl in o.data.polygons:
+            pl.use_smooth = True
+    print("LOW MODEL: %d -> %d triangles (budget %d): %s; hair apart: %d" % (
+        before, sum(_tris(o) for o in meshes), budget, ", ".join("%s %d" % (key(o), _tris(o)) for o in meshes),
+        sum(_tris(o) for o in hairy)))
+    if wire:                                              # each piece's edges drawn over it, to show the triangles
+        ink = plain_material("wire", (0.05, 0.05, 0.06))
+        for o in meshes:
+            w = bpy.data.objects.new(o.name + "_wire", o.data.copy())
+            w.data.materials.clear()
+            w.data.materials.append(ink)
+            bpy.context.scene.collection.objects.link(w)
+            mod = w.modifiers.new("wire", "WIREFRAME")
+            mod.thickness = 0.0022
+
+
 if __name__ == "__main__":
     import figed_blender as fb  # noqa: E402
 
@@ -879,6 +945,8 @@ if __name__ == "__main__":
             done[name] = "%s_%s%s.png" % (stem, outfit.get("prefix", ""), name)
             paint(fig, outfit, name, R, P, done[name], stem + "_skin.png")
         obj.data.materials.append(material(name, done[name]))
+    if "--low" in argv:
+        low(int(argv[argv.index("--low") + 1]), objs["body"], tree, fig, "--wire" in argv and not glb)
     if glb:
         bpy.ops.export_scene.gltf(filepath=os.path.abspath(glb), export_format="GLB", export_yup=True,
                                   export_animations=False, export_skins=True)
