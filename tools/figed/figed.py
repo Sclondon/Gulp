@@ -321,6 +321,32 @@ class Figure:
         self.jaw_corner = dict(spec.get("jaw_corner", {}))
         # the last correction: a sculpt done by hand in Blender (sculpt_session.py), a file of base point -> move
         self.sculpt = spec.get("sculpt")
+        # small corrections to the skull: broad, smooth pushes, like one stroke of a grab brush.
+        # [{"anchor": "crown" | "skull_back", "up": share of the head's height above the chin (skull_back),
+        #   "move": [out, back, up] cm, "radius": cm}]
+        self.pushes = list(spec.get("pushes", []))
+
+    def _push(self, P0):
+        b = self.base
+        P = P0.copy()
+        body = b.indices("body")
+        head = body[b.weights[body, b.bones.index("head")] > 0.3]
+        if not hasattr(b, "_chin"):
+            idx, d = b.target("chin-prominent-incr")
+            b._chin = int(idx[np.argmax(np.linalg.norm(d, axis=1) - 100 * np.abs(b.verts[idx, 0]))])
+        chin = P0[b._chin]
+        top = P0[head][:, 2].max()
+        for push in self.pushes:
+            if push["anchor"] == "crown":
+                at = P0[head[np.argmax(P0[head][:, 2])]].copy()
+                at[0] = 0.0
+            else:                                         # the back of the skull at a height
+                z = chin[2] + push.get("up", 0.7) * (top - chin[2])
+                near = head[np.abs(P0[head][:, 2] - z) < 0.01]
+                at = np.array([0.0, P0[near][:, 1].max(), z])
+            t = np.clip(np.linalg.norm(P0[head] - at, axis=1) / (push.get("radius", 8.0) * 0.01), 0, 1)
+            P[head] += np.array(push["move"], dtype=float) * 0.01 * (1 - t * t * (3 - 2 * t))[:, None]
+        return P
 
     def _sculpt(self, P):
         path = self.sculpt
@@ -692,6 +718,8 @@ class Figure:
             {b: turn(v)[0] for b, v in self.tails.items()}
         if self.jawline:
             P = self._jawline(P)
+        if self.pushes:
+            P = self._push(P)
         if self.jaw_corner:
             P = self._jaw_corner(P)
         if self.ears:

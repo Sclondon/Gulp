@@ -645,3 +645,16 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
   The skull: `head-back-scale-depth` 0.9 was tried on a reading of the user's line and taken out again: the overlay
   shows the model's skull already standing ABOVE and BEHIND the sheet's (crown about 1.5 cm high with the noses
   together), not short of it. What the user meant by the line is not settled: asked.
+- The skull (the user, with the bible over the un-posed profile, `tools/art_src/user_brother_skull_profile.png`):
+  "the skull isnt fitting the shape- too tall, and missing at the back".
+  - **Check a head against its sheet UN-POSED** (`head_overlay.py` without `--posed`): the pose the user set for the
+    body sheets pitches the head, and a posed overlay showed the back of the skull beyond the sheet while the user's
+    window (rest pose) showed it short. The window is what the user judges by.
+  - **`pushes`, a small correction** (`Figure._push`): broad smooth pushes of the skull, like one stroke of a grab
+    brush: `{"anchor": "crown" | "skull_back", "up", "move": [out, back, up] cm, "radius": cm}`.
+  - What was tried, all judged in the overlay (which scales the model's crown-to-chin to the sheet's, so lowering
+    the crown makes everything else read bigger): `forehead-scale-vert` -1.2 with `head-back-scale-depth` 0.9
+    (a lump at the nape); crown down 2 cm (a flat top, and the back then overshoots); crown down 1 and back 1 to
+    1.6 (back overshoots). Applied: crown `move` [0, 0.5, -0.8], radius 13: a part of the way. The crown still
+    stands a little over the sheet's. One stroke of the user's Grab brush with the bible on would do this better
+    than more arithmetic.
