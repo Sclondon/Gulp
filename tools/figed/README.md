@@ -441,3 +441,5 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   difference is the jaw's (and skull's) depth, not the ear, and is not fixed.
 - The user: "A little more forward and a little lower": `ears.back` 1.6 -> 1.0, `ears.down` -0.3 -> 0.4.
 - The user: "his jaw should be little bit wider as well": `jaw_width` 0.5 -> 0.85.
+- The user: "jaw just a bit wider still, and ear just a bit more forward": `jaw_width` 0.85 -> 1.15, `ears.back`
+  1.0 -> 0.5.
