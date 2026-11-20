@@ -43,8 +43,16 @@ elif argv[:1] == ["make"]:                             # headless: -- make <spec
     body = objs["body"]                                # no materials: plain grey, nothing for the window to trip on
     keep = body.data.attributes.new("figed_rest", "FLOAT_VECTOR", "POINT")
     keep.data.foreach_set("vector", np.array([v.co[:] for v in body.data.vertices]).ravel())
+    # saved already IN Sculpt Mode: entering it in the window is an undo step, and the user's first Ctrl+Z then
+    # drops back to Object Mode (where G moves the whole figure)
+    for o in bpy.data.objects:
+        o.select_set(False)
+    body.select_set(True)
+    bpy.context.view_layer.objects.active = body
+    bpy.ops.object.mode_set(mode="SCULPT")
+    bpy.context.scene.tool_settings.sculpt.use_symmetry_x = True
     bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(argv[2]))
-    print("made", argv[2])
+    print("made", argv[2], "mode", bpy.context.mode)
 else:                                                  # in a window, on a file "make" wrote: set up Sculpt Mode
     body = next(o for o in bpy.data.objects if o.type == "MESH" and "figed_rest" in o.data.attributes)
 
@@ -53,7 +61,8 @@ else:                                                  # in a window, on a file 
             o.select_set(False)
         body.select_set(True)
         bpy.context.view_layer.objects.active = body
-        bpy.ops.object.mode_set(mode="SCULPT")
+        if bpy.context.mode != "SCULPT":
+            bpy.ops.object.mode_set(mode="SCULPT")
         bpy.context.scene.tool_settings.sculpt.use_symmetry_x = True      # both sides of the face together
         top = max(v.co.z for v in body.data.vertices)
         for area in bpy.context.screen.areas:
