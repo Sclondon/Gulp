@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import figed  # noqa: E402
 import figed_fit  # noqa: E402
 
+INFO = {}                                             # what rules() learns that paint() needs
 SIZE = 1024
 BIND = 0.013                                          # width of a bound edge, metres
 ARM = ("lowerarm", "hand", "thumb", "index", "middle", "ring", "pinky")
@@ -61,7 +62,12 @@ def rules(fig, P, H, skin_px=None):
     # fit needs to be like big straps and straight across like this more": the neck is a SQUARE, straight across
     # the upper chest between broad straps with straight inner edges; a wide band round every edge)
     line = np.where(y < yn, zs + 0.012, zs + 0.045)      # the neckline height: front, back (5 cm lower showed half the chest)
-    neck = np.maximum(np.abs(x) - 0.072, line - z) / 0.05          # > 0 outside the square opening
+    # ("and not quite so square": the corners rounded 3.5 cm and the line dipping 1 cm in the middle)
+    line = line - 0.01 * np.clip(1 - (x / 0.078) ** 2, 0, 1)
+    ia, ib, rc = 0.078 - np.abs(x), z - line, 0.035      # how far inside the opening, from its side and its bottom
+    corner = np.sqrt(np.maximum(rc - ia, 0) ** 2 + np.maximum(rc - ib, 0) ** 2) - rc
+    neck = np.where((ia < rc) & (ib < rc), corner, -np.minimum(ia, ib)) / 0.05     # > 0 outside the opening
+    INFO["strap_from"] = float(zs + 0.012)               # above this the vest is only its straps
     hole = ((np.abs(x) - (sx + 0.05)) / 0.092) ** 2 + ((z - (zs - 0.01)) / 0.175) ** 2 - 1
     nip = figed_fit.mark_vertices(base)["nipple_l"]       # the armhole must clear the nipple (the user: "It needs to
     print("vest: armhole rule at the nipple %.2f (covered when well over 0)" % hole[nip])   # cover up his nips")
@@ -340,9 +346,13 @@ def paint(fig, outfit, name, R, P, path, skin_path=None):
         # a bound edge round the neck, the armholes and the hem ("have border stitching"): a plain band without
         # ribs, a seam where it meets the cloth, and a row of stitches along it
         BIND = outfit[name].get("bind", 0.013)
-        band = edge < BIND
+        # the straps ARE the band (the user: "the stiching border should make up the straps"): above the neckline
+        # all of the cloth is band, joined to the ribbed body by a seam straight across
+        strap = upward > INFO.get("strap_from", 9.0)
+        band = (edge < BIND) | strap
         tex[band] = np.clip(base_col * outfit[name].get("bind_shade", 0.97) * form[band][:, None], 0, 1)
-        seam = np.abs(edge - BIND) < 0.0012
+        seam = ((np.abs(edge - BIND) < 0.0012) & ~strap) | (
+            (np.abs(upward - INFO.get("strap_from", 9.0)) < 0.0012) & (edge > BIND * 0.3))
         tex[seam] = tex[seam] * 0.72
         dash = np.sin((across + upward) * 2 * np.pi / 0.007) > -0.2
         stitch = (np.abs(edge - BIND * 0.55) < 0.0009) & dash

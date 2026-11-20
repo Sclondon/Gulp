@@ -761,3 +761,7 @@ cuffs and braces hanging at the hips: `tools/art_src/concept_brother_bible_outfi
   front and 4.5 cm above behind (4 cm below was tried first and bared half the chest); the armholes back to
   0.092 x 0.175 so the straps are broad (about 7 cm) with straight inner edges; the edge band 20 mm wide and a
   shade darker (`bind`, `bind_shade` in the outfit file). Nipple rule 1.02.
+- The user: "the stiching border should make up the straps", then "and not quite so square". Above the neckline
+  (`INFO["strap_from"]`, set by `rules()` for `paint()`) all of the shirt is band: plain, a shade darker, stitched
+  along both edges, joined to the ribbed body by a seam straight across. The neck opening's corners are rounded
+  3.5 cm and its line dips 1 cm in the middle (a rounded-box rule in place of the hard square); half-width 0.078.
