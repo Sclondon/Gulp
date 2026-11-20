@@ -72,4 +72,18 @@ else:                                                  # in a window, on a file 
                 area.spaces[0].region_3d.view_distance = 0.8
         return None
 
+    def grab():                                        # the Grab brush: only takes once the window has settled
+        area = next(a for a in bpy.context.screen.areas if a.type == "VIEW_3D")
+        region = next(r for r in area.regions if r.type == "WINDOW")
+        with bpy.context.temp_override(window=bpy.context.window, area=area, region=region):
+            bpy.ops.brush.asset_activate(
+                asset_library_type="ESSENTIALS",
+                relative_asset_identifier="brushes/essentials_brushes-mesh_sculpt.blend/Brush/Grab")
+        brush = bpy.context.scene.tool_settings.sculpt.brush
+        if brush:
+            bpy.context.scene.tool_settings.unified_paint_settings.size = 110      # about an ear across at this zoom
+            brush.strength = 1.0
+        return None
+
     bpy.app.timers.register(setup, first_interval=0.8)
+    bpy.app.timers.register(grab, first_interval=2.5)
