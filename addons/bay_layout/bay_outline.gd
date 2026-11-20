@@ -24,6 +24,9 @@ var _label: Label3D
 
 
 func _ready() -> void:
+	# (its own curve: a copy made with ctrl+D would share the original's points)
+	if curve != null:
+		curve = curve.duplicate()
 	if not curve_changed.is_connected(refresh):
 		curve_changed.connect(refresh)
 	refresh()
@@ -44,6 +47,10 @@ func refresh() -> void:
 	if not is_inside_tree():
 		return
 	if _line == null:
+		# (a copy made with ctrl+D brings its drawing along: dropped, drawn afresh)
+		for child in get_children():
+			if child.owner == null and (child is MeshInstance3D or child is Label3D):
+				child.free()
 		_line = MeshInstance3D.new()
 		_line.name = "Line"
 		add_child(_line)

@@ -341,7 +341,9 @@ func save_layout() -> bool:
 	d.dune_fields = fields
 	var zone_out := {}
 	for zone: String in zones:
+		# (a zone whose ring was deleted is kept as it was: the game asks for each by name)
 		if zones[zone] == null:
+			zone_out[zone] = d.zones[zone]
 			continue
 		var e: Dictionary = zones[zone]
 		if also.has(zone):

@@ -34,6 +34,10 @@ func _ready() -> void:
 ## Draws its stand-in and its name.
 func refresh() -> void:
 	if _look == null:
+		# (a copy made with ctrl+D brings its drawing along: dropped, drawn afresh)
+		for child in get_children():
+			if child.owner == null and (child is MeshInstance3D or child is Label3D):
+				child.free()
 		_look = MeshInstance3D.new()
 		_look.name = "StandIn"
 		add_child(_look)

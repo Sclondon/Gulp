@@ -44,6 +44,10 @@ func refresh() -> void:
 	if not is_inside_tree():
 		return
 	if _ring == null:
+		# (a copy made with ctrl+D brings its drawing along: dropped, drawn afresh)
+		for child in get_children():
+			if child.owner == null and (child is MeshInstance3D or child is Label3D):
+				child.free()
 		_ring = MeshInstance3D.new()
 		_ring.name = "Ring"
 		_ring.mesh = ImmediateMesh.new()

@@ -1267,6 +1267,63 @@ all Claude's (the user gave no more detail): change freely.
   where the boat had it when the fish starts. Nobody has driven it by hand or on a phone; the numbers are tuned only
   from GIFs.
 
+## The bay editor (2026-11-20)
+
+The user: "We need to work on a way for me to edit the level layout quickly without us having to load the whole game
+while I make changes"; they chose it to live inside the Godot editor (the user's call). How to use it, in the user's
+words: README, "Editing the bay".
+
+- **Decision: the bay's layout in one file, edited in the Godot editor** (Claude's pick of how). What:
+  `data/layout.json` holds every place (start, liner, pirate ship, Atlantis's origin, outcrops, docks, arch, Carmel
+  pier, markets, old one, reef-back, dune anchors, eel colonies), the biomes' outlines and numbers, the river (course,
+  widths, mouth), harbours, the shelves under the wrecks, the dune fields, the trench (the drawn mask and the added
+  outlines, or outlines that replace both), the bake's numbers (terraces, peninsula scale, shore easing), Sea's zones,
+  each kind's zones and count, the schools' zones and the start's home for food. `scripts/layout.gd` (`Layout`) reads
+  it; the old names stay (`Sea.START`, `Bay.SLOUGH`, `BiomeRegions.SHAPES`, `Scenery.OUTCROP`... are `static var`s
+  filled from it; `Species.of` lays the layout's zones and count over `ALL`). `tools/bake_bay.gd` is a wrapper of
+  `addons/bay_layout/bay_bake.gd`, which reads the layout, GMRT's grid packed in `tools/bay_src/gmrt.bin` (1.9 MB,
+  centimetre steps, zstd; no download needed) and the floor's hand edits (`tools/bay_src/floor_adjust.bin`, metres
+  raised on the bake's 1 m grid, added after the easing; the shore's distances are worked out again when there are
+  any). Atlantis's buildings stay in `data/ruins_layout.json` (moving Atlantis in the editor shifts that table).
+  The editor: `editor/bay_layout.tscn`, whose root (`bay_editor.gd`) makes the handles from the file when it opens and
+  writes them back on ctrl+S (they have no owner while the scene file is written, so the file holds only the root:
+  the layout file is the one source); places are Node3Ds with stand-ins (move/rotate gizmos), outlines are Path3Ds
+  (Godot's path tools), rings have a radius handle (`circle_gizmo.gd`), numbers are Inspector fields; undo is the
+  editor's own, brush strokes included (`EditorUndoRedoManager`, before/after copies of the edits layer). The floor is
+  drawn from a dump made by a separate quick process (`floor_dump.gd`: the game's `Bay.ground`, shore distance and
+  biomes): the game's classes are not `@tool` and would not run in the editor, and a copy of their sums in the
+  editor would drift. The practice: an EditorPlugin with `_forward_3d_gui_input` brushes and editor undo, as
+  Terrain3D and HTerrain do; level data in a file kept apart from the scene; sculpting on a layer over the source
+  heightmap, as Unreal's landscape edit layers keep it non-destructive. Alternatives: the layout as a `.tres`
+  resource (typed fields in the Inspector, but the bake and the game would read a resource class, and JSON already
+  held Atlantis's table), the layout as the scene file itself (the game would read a scene; two sources), a
+  standalone in-game editor (the user chose the Godot editor), brushes writing straight into `data/monterey.bin`
+  (loses the real data; no clean undo across bakes).
+- Checked: `tests/layout_check.gd` fingerprints (floor and shore on the 2 m grid, biomes and weights, zone_at, zone
+  places drawn with a seed, the places, every kind's zones and count) are the same before and after the move
+  (a27662c6...); the bake from the packed grid is byte for byte `data/monterey.bin`; `tests/overhead.gd --biomes`
+  before and after differ only where things move (kelp, surf, the pirate ship: 40,000 of 5.9 million pixels; two
+  runs of the same code differ in 86,000); `tests/bay_layout_editor.gd` in a headless editor (opens in about 0.1 s with a floor picture
+  made before, 1.3 s for a fresh one in the background; a rebake and redraw about 1.8 s; a raise stroke rebaked and
+  undone gives the floor back byte for byte; ctrl+S leaves one node in the scene file; Play here starts the game).
+- The trench's outline is traced from the drawn mask when the editor opens (438 points, 4 of 91,485 metre cells
+  differ from the mask). Until an outline is changed, saving keeps the mask, so the floor stays byte for byte; the
+  first change writes `trench.shapes`, which then replace the mask and the added outlines in the bake.
+- Play here: `main.gd --at=x,y,z` (straight into the water, no title and no loading screen, so the first seconds
+  compile shaders in play; no depth limit; not saved as a best); the plugin sets `editor/run/main_run_args` for the
+  one run and puts it back.
+- Still in code, not in the layout (they do not follow when what they belong to moves): Biomes' `docks_monterey` and
+  `carmel` areas and the carmel reef, FloorTypes' rocky points and Carmel beach, Fishers' nets and trawl loops,
+  Breakers' surf sites, the title boat's course. The crags' kept-clear spots round the two islets do follow (`Biomes`
+  "avoid" by name).
+- To GameCommon later (not moved now): the plugin's general parts (place/ring/outline handles with save by role,
+  the brush layer with undo, the dump-from-a-process trick, Play here through `main_run_args`) would make a
+  `level-layout` component for any game with a heightfield and a JSON layout; the Bay-specific parts (what the
+  places are, the bake) stay here.
+- Unverified: brushing and path editing by hand in a windowed editor (the test calls the brush directly); the game
+  started by Play here gets `--at` (the test sees it start, not where); phone memory unchanged in fact (the layout
+  is a 16 KB file read once).
+
 ## Pushed 2026-11-19 (night)
 Game build a8f72f7 (source 8856d6e), site PR #217 (cart ?v=a8f72f7): animals on baked textures and four shared motion
 shaders, everything compiled on the loading screen with a progress bar, one program each (the null lamp), no freezes

@@ -48,6 +48,63 @@ godot --path . -- --bot              # it plays itself
 
 Godot is `C:\Program Files (x86)\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe`.
 
+## Editing the bay
+
+The whole layout of the bay is in one file, `data/layout.json`, and you can change it in the Godot editor without
+starting the game.
+
+**Open it.** In the Godot editor, open `editor/bay_layout.tscn` (FileSystem panel, the `editor` folder). It opens in a
+second or two: the sea floor coloured by depth (a darker line every 5 m, the shore in light blue, each biome's
+colour laid over it), the set pieces as plain blocks with their names, and coloured outlines and rings for
+everything else. No animals, no water, no loading screen. A bar with the bay's buttons appears over the 3D view.
+(If the bar is not there: Project > Project Settings > Plugins, and tick "Bay layout".)
+
+**What you can change, and how.** Everything is in the Scene panel on the left; click a name there, or click it in
+the view.
+
+- *Places* (Start, Liner, Pirate ship, Atlantis, Seal rock, South islet, the docks, the kelp arch, Carmel pier, the
+  markets, the dune anchors, the old one): drag them with the move arrows. Turn the liner, the pirate ship and the
+  dune anchors with the rotate tool. What belongs to a set piece is inside it in the Scene panel and moves with it:
+  the liner's two seats, its reef and the reef's outline; the pirate ship's hollow and zone; Atlantis's zone and
+  basin; the docks' zones and harbours. Moving Atlantis moves its whole plan of buildings and stairs too, but the
+  ruins were built to fit their canyon walls: after a move, rebuild them (tools/RUINS.md).
+- *Areas and lines* (the biomes under Biomes: kelp, dunes, grass, crags; the reef inside Liner; the Trench; the
+  River's course; the garden eel colonies; the dune fields' boxes): select one and use the path buttons in the bar
+  at the top of the view: move a point by dragging it, add points with the add-point button, remove them with the
+  delete-point button. To make another area of the same biome, select one and press ctrl+D, then move it.
+  The trench, the beach strip and the river's banks are biomes the game works out by itself (the trench by depth,
+  the beach along every shore), so they follow the floor.
+- *Rings* (the spawn zones under Zones, the harbours, the shelves the wrecks rest on, the river mouth, Atlantis's
+  basin, the reef-back's walk): drag the ring to move it, drag the round handle on its edge to make it bigger or
+  smaller (or type the size in the Inspector on the right). A harbour's or shelf's depth is in the Inspector too.
+- *Animals*: select a zone; in the Inspector, "Kinds" lists the kinds of animal that live in it: add or remove names.
+  How many of each kind there are: select "Animals" and change the numbers. Which zones the schools (krill,
+  sardines, anchovies...) keep to: "Schools". Where the krill and anchovies stay near the start: the Start's
+  "Extra" (room: how far from the start, depth: how deep).
+- *The floor*: in the bar, pick a brush (Raise, Lower or Smooth), set its Size and Strength, and paint on the
+  floor with the left mouse button. Raise the floor above the water to make land; lower land to make water. Your
+  painting is kept separately from the real map of the bay, which is never changed, so it can always be undone.
+  Set the brush back to Off to move things again. "Floor numbers" (inside Trench) has the numbers the floor is
+  made with: the terraces in the trench, how much bigger the Monterey Peninsula is, the easing near the shore.
+- Ctrl+Z undoes anything, painting included.
+
+**Save.** Ctrl+S (or Save in the bar) writes the layout file. The floor's picture is then made again in the
+background (about 1 to 2 seconds; the bar says when it is ready).
+
+**Rebake floor.** Painting the floor, changing the trench or the floor numbers needs the floor baked again.
+Rebake does it and redraws the floor: about 2 seconds. Until then the bar says "brush edits not baked yet" (what
+you painted is shown already, but the game does not have it yet).
+
+**Play here.** Saves, rebakes if it has to, and starts the game with your fish where the 3D view's camera is (if
+the camera is above the water, where it is looking, a few metres over the floor). There is no depth limit in a
+run started this way, and it is not saved as your best. Things are a little jerky for the first few seconds,
+because it skips the loading screen.
+
+What it does not cover yet: the plants and rocks of a few small places stay where they are when you move the thing
+they belong to (the kelp around Monterey's docks, Carmel's reef and beach, the rocky points along the coast), and
+so do the fishing nets and the surf breaks. They are still written in the code (CLAUDE.md, "Decision: the bay's
+layout in one file").
+
 ## Tests
 
 All silent (`--audio-driver Dummy`), each prints PASSED or FAILED.
@@ -60,6 +117,9 @@ All silent (`--audio-driver Dummy`), each prints PASSED or FAILED.
 | `godot --headless --path . --audio-driver Dummy -s res://tests/winding.gd` | Inside-out check of every mesh drawn (the fish, the rocks, the jelly) |
 | `sh tests/shots.sh <new folder>` | Pictures of the game and the run-over screen at phone and desktop sizes, and a jelly close up |
 | `godot --path . --audio-driver Dummy --resolution 390x844 -s res://tests/caustics_view.gd -- --near=docks --hour=12 --out=<folder> [--no-caustics] [--only=<name>]` | Pictures in the game of the caustics on the floor, rocks, the pirate ship, the liner's reef and animals (no depth limit) |
+| `godot --headless --path . --audio-driver Dummy -s res://tests/layout_check.gd [-- --out=<file>]` | Fingerprints the layout as the game sees it (floor, biomes, zones, places, each kind's zones): the same before and after a change that should change nothing |
+| `godot --editor --headless --path . --audio-driver Dummy -- --bay-layout-test` | The bay editor in a headless editor: opens it, saves unchanged, moves and undoes, brushes, rebakes and undoes byte for byte, ctrl+S, Play here; puts every file back. `BAY EDITOR PASS` |
+| `godot --path . --audio-driver Dummy --resolution 1280x900 -s res://tests/bay_layout_view.gd -- --out=<folder>` | Pictures of the bay editor's scene (slanted and from above) |
 | `tests/hitboxes.gd`, `giants_solid.gd`, `camera_clear.gd`, `floor_clip.gd`, `setpiece_hits.gd` | Hit boxes and clipping against what is drawn (headless `-s`; how to run each and what it prints: `tools/QUALITY.md`) |
 
 `godot --path . --audio-driver Dummy --disable-vsync -- --bot --seconds=12` prints what a frame costs (`GULP COST`, `GULP RAN`).
