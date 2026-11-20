@@ -392,9 +392,6 @@
   "cheek_fullness": 0.8,
   "cheekbones": -0.3,
   "chest": -0.125,
-  "chin-prognathism": 0.75,
-  "chin_forward": -0.0625,
-  "chin_height": 0.6,
   "ear-scale-vert": -0.4063,
   "ear-trans-up": 0.4,
   "ear_out": -0.1,
@@ -409,13 +406,11 @@
   "head-fat": 0.3,
   "head-oval": 0.3,
   "head-round": 0.5,
-  "head-square": 0.3,
   "head_depth": -1,
   "head_height": 0.4,
   "hip-scale-depth": -0.25,
   "hip-waist-up": 0.3125,
   "hips": 0.5,
-  "jaw_width": -0.3,
   "knee": 0.7875,
   "lats": -0.1562,
   "leg-valgus": -0.0312,
@@ -465,10 +460,7 @@
   "upperarm-muscle": 0.2188,
   "waist": 0.25,
   "waist_to_hip": -0.125,
-  "wrist": 0.1,
-  "double_chin": 0,
-  "chin-triangle": 0.5,
-  "jaw_drop": -0.8
+  "wrist": 0.1
  },
  "zoom": {
   "armless_back": 0.9679166666666666,
@@ -482,33 +474,5 @@
   "head_front": 1.04,
   "head_side": 1.0116666666666667,
   "side": 0.9958333333333332
- },
- "jawline": {
-  "path": [
-   [
-    0,
-    0
-   ],
-   [
-    0.176,
-    0.027
-   ],
-   [
-    0.338,
-    0.081
-   ],
-   [
-    0.419,
-    0.149
-   ],
-   [
-    0.438,
-    0.257
-   ]
-  ],
-  "depth": 1.6,
-  "lip": 0.4,
-  "width": 0.07,
-  "about": "The jaw lower edge, read off the user red line on the shaved sheet profile (tools/art_src/user_brother_jaw_lines.png): [back, up] from the chin bottom in shares of the head height."
  }
 }

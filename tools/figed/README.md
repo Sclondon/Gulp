@@ -299,3 +299,10 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
     the skin just under the line is pressed in along its normal (`depth`, cm), the skin just over it raised
     (`lip`), nothing at the chin's front. The brother's follows the user's red line: depth 1.6, lip 0.4, width
     0.07. It is a cut in the surface, not anatomy: check it in three-quarter view and with the head turned.
+- The user, of the jaw cut: "nope undo that, your just messing some slider up- got for a mostly modified jaw" (read as:
+  a mostly UNmodified jaw). They were right: the buried jaw was Claude's own sliders, not the generic model. With the
+  jaw and chin targets back at 0 (`jaw_width`, `jaw_drop`, `chin-triangle`, `chin_width`, `chin_height`,
+  `chin_forward`, `chin-prognathism`, `double_chin`, `head-square` all removed) the model's own jaw shows a jaw
+  line again, and the `jawline` cut is off for him (the code stays; unused). They are also out of the head fit's move
+  list, which had set `jaw_width` -0.9 and `chin_height` 0.45 chasing the outline. **Before adding a correction,
+  put the sliders of that part back to 0 and look: the generic part may already be right.**
