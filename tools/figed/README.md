@@ -370,3 +370,9 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
     as about a third larger than the ear looks. `ear-trans-forward` this strong sweeps the ear's shape back a
     little: a candidate for a small correction.
   - `brother_head.fit.json` no longer moves any face, ear or neck slider.
+- The user, of that: "You deformed the back of his skull" (a ridge and dent running down behind the ear in the
+  three-quarter and profile views). Cause, found by taking settings off in turn: `ear-trans-forward` -3. The target
+  drags the skull's skin with the ear, so past about -1 it ploughs a ridge. Now -1.0: the skull is clean and the
+  ear is only part of the way back (0.27 to 0.52 from the back of the head to the nose tip; the sheet's 0.18 to
+  0.37). **Keep `ear-trans-forward` within about -1 to 1.** Moving the ear the rest of the way needs a correction
+  that moves the ear alone, not this slider.
