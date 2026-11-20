@@ -701,3 +701,7 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
 - The user saved again in the same window: the saved file's skin now equals the live window's exactly (the
   `save_pre` pack works: Ctrl+S keeps paint). 15,627 more texels painted and 158 points nudged (up to 2.5 mm);
   the hand layer was made again from this save against the same starting projection, and the sculpt added.
+- Third paint save (the user: "I think the texture and model look pretty good now, might need to add clothes"):
+  246,000 more texels painted (the legs and feet cleaned); the hand layer is now 28% of the picture. No new sculpt.
+  **The user's verdict on the bare figure: pretty good.** Next asked for: clothes. Not started; the drawers are
+  still paint on the skin. Still owed on the head: ears welded, the squint, de-lighting, hair.
