@@ -631,3 +631,9 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
   jaw: **when a part has taken more than three or four sliders and looks worse, put them all back to 0 and look.**
   His eye's character (heavy lid, soft bags, slight downturn) is mostly in the PAINT; the opening only has to be the
   right size and place. Shape changes to the eye from here: one at a time, or by the user's hand in Sculpt Mode.
+- The user sculpted in the paint window (F5/F6) and saved: 2,341 more points (up to 22 mm; nose and lower face),
+  added to the sculpt: `figures/brother.sculpt.json` is now 2,987 points. It was sculpted on the face with the old
+  eye sliders and applied to the face with the eyes reset: looked at together and it holds. The skin picture in
+  that window (possibly hand painted) is kept as `work/brother_paint4_user_skin.png`, NOT merged: the skin has
+  been re-projected since. Merging hand paint with a new projection is not solved (a hand-paint layer over the
+  projection is the likely way).
