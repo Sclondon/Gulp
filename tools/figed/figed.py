@@ -76,6 +76,7 @@ WHAT = {"length": (0, 1, 0), "width": (1, 0, 0), "depth": (0, 0, 1), "girth": (1
 # moving the legs apart).
 FLESH = {"flesh_width": (1, 0, 0), "flesh_depth": (0, 0, 1), "flesh": (1, 0, 1)}
 EAR_FROM = 0.0                                      # share of the ear-wing target's most that counts as ear
+EAR_PIECE = 0.08                                    # ... that is the flap proper, cut off as a piece
 
 MACRO_DEFAULT = {"gender": 1.0, "age": 0.5, "muscle": 0.5, "weight": 0.5, "height": 0.5, "proportions": 0.5,
                  "race": {"caucasian": 1.0}}
@@ -267,6 +268,27 @@ def pose_points(fig, P, H, pose, T=None):
     return out, posed
 
 
+def _hull(pts):
+    """The convex outline of points in a plane, anticlockwise (monotone chain)."""
+    pts = sorted(map(tuple, pts))
+    cross = lambda o, a, b: (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    lower, upper = [], []
+    for q in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], q) <= 0:
+            lower.pop()
+        lower.append(q)
+    for q in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], q) <= 0:
+            upper.pop()
+        upper.append(q)
+    return np.array(lower[:-1] + upper[:-1])
+
+
+def _inside(hull, q):
+    a, b = hull, np.roll(hull, -1, axis=0)
+    return bool(np.all((b[:, 0] - a[:, 0]) * (q[1] - a[:, 1]) - (b[:, 1] - a[:, 1]) * (q[0] - a[:, 0]) >= 0))
+
+
 class Figure:
     """One figure: the base plus a table of values. `solve()` gives its points and skeleton."""
 
@@ -320,9 +342,43 @@ class Figure:
                     idx, d = b.target(side + "-ear-wing-" + way)
                     size[idx] = np.maximum(size[idx], np.linalg.norm(d, axis=1))
                 ear = np.nonzero(size > size.max() * EAR_FROM)[0]     # the flap, not the skin it grows from
+                # ... and what the flap encloses (the floor of the bowl): skin near the ear that, with the flap taken
+                # away, is no longer joined to the rest of the head
+                flap = set(ear.tolist())
+                mid = b.verts[ear].mean(axis=0)
+                body = b.indices("body")
+                zone = [int(i) for i in body[np.linalg.norm(b.verts[body] - mid, axis=1) < 0.9] if int(i) not in flap]
+                zone_set, comp, comps = set(zone), {}, []
+                for start in zone:
+                    if start in comp:
+                        continue
+                    comp[start] = len(comps)
+                    members, stack, open_ = [start], [start], False
+                    while stack:
+                        i = stack.pop()
+                        for n in near.get(i, ()):
+                            n = int(n)
+                            if n in flap:
+                                continue
+                            if n not in zone_set:
+                                open_ = True              # it reaches out of the zone: the head itself
+                            elif n not in comp:
+                                comp[n] = len(comps)
+                                members.append(n)
+                                stack.append(n)
+                    comps.append((members, open_))
+                held = [i for members, open_ in comps if not open_ for i in members]
+                # ... and the floor of the bowl, a tongue of the head's skin the flap curls round in a C: the skin
+                # inside the outline of where the flap joins the head, seen from the side
+                joins = np.array([i for i in flap if any(int(n) not in flap for n in near.get(i, ()))])
+                side_on = b.verts[:, 1:3]                 # MakeHuman's y is up, z is front: a view from the side
+                hull = _hull(side_on[joins])
+                held += [i for i in zone if _inside(hull, side_on[i])]
+                ear = np.array(sorted(flap | set(held)))
                 inside = set(ear.tolist())
                 root = np.array([i for i in ear if any(int(n) not in inside for n in near.get(int(i), ()))])
-                b._ears[side] = (ear, root)
+                # the piece that is cut off: the flap proper (what the target swings clearly), not the skin at its foot
+                b._ears[side] = (ear, root, np.nonzero(size > size.max() * EAR_PIECE)[0])
         return b._ears
 
     def _normals(self, P):
@@ -342,72 +398,49 @@ class Figure:
         return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
 
     def _move_ears(self, P0):
-        """The ears cut out, resized and moved as rigid pieces. The skin round each slides with it ALONG the head's
-        surface as it was (every moved point is set back onto that surface), fading out a few centimetres away,
-        sooner in front of the ear than behind: the skull and face keep their shape."""
+        """The ears cut off, the head smoothed over where they stood, and the ears set back in as pieces of their own
+        at another place, size and angle (the user, 2026-11-19: "Cut the ears off, smooth over the hole, then
+        reattach in at the right spot size and angle").
+
+        Nothing of the head's skin moves except the ear's own points, which are laid flat onto the curve of the
+        skull there (a sphere fitted to the skin round the ear) and evened out: the head is left whole, with no
+        ear and no hole. The ear itself is kept as `self.ear_pieces` (side -> (its points, where each now is)):
+        the mesh builder adds it as a second piece standing in the head, its cut edge sunk under the skin."""
         P = P0.copy()
         e = self.ears
-        n0 = self._normals(P0)
+        near = self._adjacent()
         body = self.base.indices("body")
-        for side, (ear, root) in self._ear_masks().items():
+        self.ear_pieces = {}
+        for side, (ear, root, flap) in self._ear_masks().items():
             out = 1.0 if side == "l" else -1.0
-            shift = np.array([out * e.get("out", 0.0), e.get("back", 0.0), -e.get("down", 0.0)]) * 0.01
-            slide = np.array([0.0, shift[1], shift[2]])
-            c = P0[root].mean(axis=0)
-            skin = np.setdiff1d(body[np.linalg.norm(P0[body] - c, axis=1) < 0.12], ear)   # the head's side, no ear
-
-            # the head's surface as it was, without the ear and with the ear's footprint capped: what slid skin and
-            # the ear's join are set back onto, exactly (the nearest point of its triangles, not of its points)
-            from mathutils.bvhtree import BVHTree
+            depth = out * P0[flap][:, 0]                    # how far out each point of the flap is
+            foot = flap[depth < np.percentile(depth, 30)]  # the part of the flap that meets the head
+            c = P0[foot].mean(axis=0)
             in_ear = np.zeros(len(P0), dtype=bool)
             in_ear[ear] = True
-            is_root = np.zeros(len(P0), dtype=bool)
-            is_root[root] = True
-            keep = in_ear[self.base._tris].sum(axis=1) == 0
-            near_c = np.linalg.norm(P0[self.base._tris[:, 0]] - c, axis=1) < 0.14
-            verts = [tuple(v) for v in P0] + [tuple(c)]
-            polys = [tuple(int(i) for i in t) for t in self.base._tris[keep & near_c]]
-            for t in self.base._tris[in_ear[self.base._tris].any(axis=1)]:      # the cap over the footprint
-                rim = [int(i) for i in t if is_root[i] or not in_ear[i]]
-                if len(rim) >= 2:
-                    polys.append((rim[0], rim[1], len(P0)))
-            tree = BVHTree.FromPolygons(verts, polys)
-            V = np.array(verts)
-            N = np.vstack([n0, n0[root].mean(axis=0) / np.linalg.norm(n0[root].mean(axis=0))])
-            T = np.array(polys)
+            skin = body[(np.linalg.norm(P0[body] - c, axis=1) < 0.09) & ~in_ear[body]]
 
-            def onto(q):
-                """Onto the head's surface as a CURVED surface through its points (Phong tessellation: the nearest
-                point of a triangle, lifted towards the tangent planes at its corners). Onto the flat triangles the
-                slid skin took their facets: dents in the shading on a mesh this coarse."""
-                res = np.empty_like(q)
-                for k, x in enumerate(q):
-                    loc, _nrm, face, _d = tree.find_nearest(tuple(x))
-                    loc = np.array(loc)
-                    a, b2, c2 = V[T[face]]
-                    v0, v1, v2 = b2 - a, c2 - a, loc - a
-                    d00, d01, d11, d20, d21 = v0.dot(v0), v0.dot(v1), v1.dot(v1), v2.dot(v0), v2.dot(v1)
-                    den = d00 * d11 - d01 * d01
-                    bv = (d11 * d20 - d01 * d21) / den if den else 0.0
-                    bw = (d00 * d21 - d01 * d20) / den if den else 0.0
-                    bary = np.clip([1 - bv - bw, bv, bw], 0, 1)
-                    bary /= bary.sum()
-                    lifted = sum(wt * (loc - (loc - V[i]).dot(N[i]) * N[i]) for wt, i in zip(bary, T[face]))
-                    res[k] = loc + (lifted - loc) * 0.75
-                return res
-
-            dist = np.sqrt(((P0[skin][:, None, :] - P0[root][None, :, :]) ** 2).sum(axis=2)).min(axis=1)
-            away = P0[skin] - c
-            ahead = (away * slide).sum(axis=1) / np.maximum(np.linalg.norm(away, axis=1) * np.linalg.norm(slide), 1e-9)
-            if e.get("reach", 0.0) > 0:                    # optional: skin sliding with the ear (0 = the ear alone)
-                reach = (e.get("reach_front", 0.0) + (e["reach"] - e.get("reach_front", 0.0)) * (ahead + 1) / 2) * 0.01
-                t = np.clip(dist / np.maximum(reach, 1e-6), 0, 1)
-                f = 1 - t * t * (3 - 2 * t)
-                P[skin] = onto(P0[skin] + slide * f[:, None])
-            where = onto(P0[root] + slide)                 # the join carried to its new place on the skull
-            carry = (where - P0[root]).mean(axis=0)
+            # the ear (its flap) as a piece of its own
+            shift = np.array([0.0, e.get("back", 0.0), -e.get("down", 0.0)]) * 0.01
+            want = c + shift                              # its join carried along the skull to the new place:
+            close = skin[np.argsort(((P0[skin][:, 1:] - want[1:]) ** 2).sum(axis=1))[:12]]
+            surface = (out * P0[close][:, 0]).max() * out  # the outer skin there (not the mouth or ear canal inside)
+            carry = shift + np.array([surface - c[0], 0.0, 0.0])
+            ear_all, ear = ear, flap
             mid = P0[ear].mean(axis=0)
-            P[ear] = mid + (P0[ear] - mid) * e.get("scale", 1.0) + carry + np.array([shift[0], 0.0, 0.0])
+            a, f = np.radians(-e.get("tilt", 0.0)), np.radians(-out * e.get("flare", 0.0))
+            turn = np.array([[np.cos(f), -np.sin(f), 0], [np.sin(f), np.cos(f), 0], [0, 0, 1]]).dot(
+                np.array([[1, 0, 0], [0, np.cos(a), -np.sin(a)], [0, np.sin(a), np.cos(a)]]))
+            # "tilt": the top of the ear leant back, degrees; "flare": its back edge swung out from the head;
+            # "out": cm further from the head (negative sinks the cut edge under the skin)
+            piece = mid + (P0[ear] - mid).dot(turn.T) * e.get("scale", 1.0) + carry
+            piece[:, 0] += out * e.get("out", 0.0) * 0.01
+            self.ear_pieces[side] = (ear, piece)
+
+            # the head without it: the ear's points (and the bowl's floor) drawn tight like a skin across where it
+            # stood, held by the skin round them
+            for _ in range(int(e.get("settle", 150))):
+                P[ear_all] = np.array([P[near[int(i)]].mean(axis=0) for i in ear_all])
         return P
 
     def _jawline(self, P):

@@ -70,6 +70,17 @@ for v in sheet["views"]:
     s = fb._scene((w, RES))
     s.render.film_transparent = True
     fb._aim(cam, centre, direction, seen)
+    # the light of the sheet: every view is painted with the same soft lamp, above and a little to the left of
+    # whoever is looking (the crown is the brightest part in all five, the back view is as light as the front; the
+    # brow, the nose and the chin throw their shade downward). So the lamp goes with the camera, not with the head.
+    lamp = sheet.get("light", [-0.25, 0.85, 0.45])       # where it comes FROM: right, up, towards the viewer
+    sh = s.display.shading
+    sh.light = "STUDIO"
+    sh.use_world_space_lighting = False
+    sh.show_shadows = True
+    sh.shadow_intensity = sheet.get("shade", 0.3)
+    sh.show_cavity = True
+    s.display.light_direction = tuple(lamp)
     cam.data.sensor_fit = "VERTICAL"
     cam.data.ortho_scale = seen
     path = os.path.join(os.path.dirname(out), "_overlay_%s.png" % v["view"])

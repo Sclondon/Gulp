@@ -406,3 +406,30 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   sliders only (`ear-trans-forward` within -1: clean, but about 1.5 cm forward of the sheet's) and the move done by
   hand in Blender's sculpt tools at the small-corrections stage: relocating an ear 3 cm across a mesh this coarse
   by arithmetic has now failed four ways.
+- **The ears are cut off and reattached** (the user, after two more tries at moving skin: "Cut the ears off, smooth
+  over the hole, then reattach in at the right spot size and angle"). This replaces every earlier `ears` version.
+  `"ears": {"cut": true, "scale", "back", "down", "out" (cm), "tilt", "flare" (degrees)}`:
+  - `Figure._move_ears`: the head's skin does not move. The ear's own points (and the floor of its bowl) are drawn
+    tight like a skin across where the ear stood, held by the skin round them (150 passes of plain averaging,
+    `settle`): the head is left whole, no ear and no hole. The ear's flap is kept aside as `fig.ear_pieces` (side ->
+    points, where each now stands): scaled about its middle, turned (`tilt` leans the top back, `flare` swings the
+    back edge out), carried `back` / `down`, and seated on the outer skin at the new place by the foot of the flap
+    (the inner 30% of it); `out` negative sinks its cut edge under the skin.
+  - `figed_blender.cut_ears`: adds each piece to the body mesh as a copy of every face that is wholly flap, with
+    its UVs, weighted to the head. In a posed build the pieces are posed with the head (`ear_pieces_posed`).
+  - What is ear: the flap = what `ear-wing` moves by more than `EAR_PIECE` (8%) of its most; what is smoothed over =
+    all of what `ear-wing` moves, plus skin cut off from the head without it, plus the skin inside the outline of
+    the flap's join seen from the side (the bowl's floor: the flap curls round it in a C).
+  - The brother's: scale 1.18, back 3.0, down -0.3, out -0.4, tilt 8, flare 8.
+  - Failed on the way, not to repeat: cutting the joining faces and capping the hole by hand (the hole is a C, not a
+    loop; several loops on one side); a sphere fitted to the skull as the cap (bulged); seating the piece by the
+    middle of the join (the join's points include the ear canal, far inside: the ear floated 2 cm off the head);
+    forgetting to pose the pieces with the head.
+  - **The outline fits do not see the ear pieces** (the Sampler draws the base's faces: the head with no ears).
+    Head and body fit jobs score slightly differently for it; ears are set by `ear_levels.py` and by eye.
+- **The overlay's light matches the sheet** (the user: "adjust he lighting in the reference scene until the ahdows
+  match up with the bible art as well"). The sheet paints every view with the same soft lamp above and a little to
+  the left of the viewer (the crown is brightest in all five, the back view as light as the front), so the lamp goes
+  with the camera: `head_overlay.py` turns on Workbench shadows with `light_direction` (-0.25, 0.85, 0.45) and
+  `shade` 0.3 (a sheet may give its own `light` / `shade`). A lamp fixed to the head was tried first: the back view
+  went black, which the sheet's is not.

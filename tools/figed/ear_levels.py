@@ -27,8 +27,9 @@ body = base.indices("body")
 head = body[base.weights[body, base.bones.index("head")] > 0.6]
 chin = P[figed_fit.mark_vertices(base)["chin"]]
 head = head[P[head][:, 2] > chin[2]]
-idx, root = fig._ear_masks()["l"]                       # the ear itself, not the skin round it
-ear = P[idx]
+fig.to_blender()
+ear = fig.ear_pieces["l"][1] if getattr(fig, "ear_pieces", None) else P[fig._ear_masks()["l"][2]]
+ear = (ear - pivot).dot(turn.T) + pivot if getattr(fig, "ear_pieces", None) else ear
 crown = P[head][:, 2].max()
 back, front = P[head][:, 1].max(), P[head][:, 1].min()
 lv = lambda z: (crown - z) / (crown - chin[2])

@@ -35,7 +35,14 @@ def build(fig, name="figure", parts=PARTS, rig=True, posed=False):
     P, H, T = fig.to_blender()
     if posed and getattr(fig, "pose", None):       # as the drawing stands (pictures only: no skeleton then)
         import figed_fit
-        P, _ = figed_fit.pose_points(fig, P, H, figed_fit.full_pose(fig.pose, base.bones, H, T))
+        turns = figed_fit.full_pose(fig.pose, base.bones, H, T)
+        pieces = {}
+        for side, (ear, piece) in getattr(fig, "ear_pieces", {}).items():     # the cut ears stand as the head stands
+            P2 = P.copy()
+            P2[ear] = piece
+            pieces[side] = (ear, figed_fit.pose_points(fig, P2, H, turns)[0][ear])
+        P, _ = figed_fit.pose_points(fig, P, H, turns)
+        fig.ear_pieces_posed = pieces
         rig = False
     kinds = {"body": "body", "helper-l-eye": "eyes", "helper-r-eye": "eyes", "helper-upper-teeth": "teeth",
              "helper-lower-teeth": "teeth", "helper-tongue": "tongue"}
@@ -100,8 +107,51 @@ def build(fig, name="figure", parts=PARTS, rig=True, posed=False):
             obj.parent = arm
             m = obj.modifiers.new("rig", "ARMATURE")
             m.object = arm
+        if kind == "body" and getattr(fig, "ears", None) and fig.ears.get("cut"):
+            cut_ears(fig, obj, remap, P)
         objs[kind] = obj
     return objs, arm
+
+
+def cut_ears(fig, obj, remap, P):
+    """The ears as pieces of their own (Figure._move_ears has already smoothed the head over where they stood and
+    worked out where each now stands): a copy of every face that is wholly ear, at the ear's new place."""
+    import bmesh
+    mesh = obj.data
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    uv = bm.loops.layers.uv.active
+    made = []
+    for side, (ear, piece) in (getattr(fig, "ear_pieces_posed", None) or getattr(fig, "ear_pieces", {})).items():
+        at = {remap[int(i)]: piece[k] for k, i in enumerate(ear) if int(i) in remap}
+        copy = {}
+        count = 0
+        for f in [f for f in bm.faces if all(v.index in at for v in f.verts)]:
+            vs = []
+            for v in f.verts:
+                if v.index not in copy:
+                    copy[v.index] = bm.verts.new(tuple(at[v.index]))
+                vs.append(copy[v.index])
+            try:
+                g = bm.faces.new(vs)
+            except ValueError:
+                continue
+            g.smooth = True
+            if uv:
+                for lf, lg in zip(f.loops, g.loops):
+                    lg[uv].uv = lf[uv].uv
+            count += 1
+        made += list(copy.values())
+        print("ear %s: a piece of %d points, %d faces" % (side, len(copy), count))
+    bm.verts.index_update()
+    new = [v.index for v in made]
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+    group = obj.vertex_groups.get("head")
+    if group:
+        group.add(new, 1.0, "REPLACE")
 
 
 def paint_plain(objs):
