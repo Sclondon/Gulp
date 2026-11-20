@@ -274,5 +274,6 @@ func show_state(stick: Vector2, held: bool, speed: float, needles: Array[float],
 	_lever.rotation.z = lerpf(_lever.rotation.z, _lever_turn(speed), ease)
 	for k in _needles.size():
 		_needles[k].rotation.z = lerpf(_needles[k].rotation.z, lerpf(SWING, -SWING, clampf(needles[k], 0.0, 1.0)), ease)
-	# (the tubes burn brighter while it bursts)
-	_glass.set_shader_parameter(&"lit", (0.75 if held else 0.45) + 0.06 * sin(Time.get_ticks_msec() * 0.013))
+	# (the tubes light up while it bursts, and only glow faintly otherwise: the user, 2026-11-20, "The boost should
+	# light up the test tubes thingys not the electodes on the left")
+	_glass.set_shader_parameter(&"lit", (0.95 + 0.05 * sin(Time.get_ticks_msec() * 0.05)) if held else 0.12 + 0.03 * sin(Time.get_ticks_msec() * 0.013))

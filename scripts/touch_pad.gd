@@ -239,8 +239,6 @@ func _draw() -> void:
 	var long := "%.2f m" % length
 	var across := font.get_string_size(long, HORIZONTAL_ALIGNMENT_LEFT, -1.0, high).x
 	draw_string(font, model.point("Length") + Vector2(-across * 0.5, high * 0.36), long, HORIZONTAL_ALIGNMENT_LEFT, -1.0, high, Color(0.12, 0.07, 0.04, 0.95))
-	if boost and stamina > 0.0 and not paused:
-		_spark(model.point("SparkA"), model.point("SparkB"))
 	# Paused: an arrow in the middle of the screen to go on.
 	if paused:
 		var middle := Vector2(size.x * 0.5, size.y * 0.36)
