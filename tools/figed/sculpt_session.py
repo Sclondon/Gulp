@@ -117,6 +117,7 @@ else:                                                  # in a window, on a file 
         if bpy.context.mode != "SCULPT":
             bpy.ops.object.mode_set(mode="SCULPT")
         bpy.context.scene.tool_settings.sculpt.use_symmetry_x = True      # both sides of the face together
+        bpy.context.preferences.inputs.use_emulate_numpad = True          # the user has no numpad: top-row 1 and 3
         top = max(v.co.z for v in body.data.vertices)
         for area in bpy.context.screen.areas:
             if area.type == "VIEW_3D":
