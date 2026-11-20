@@ -959,3 +959,106 @@ small hard parts stay as they are; hair and moustache are the hair tool's and ar
   placed for bending as a hand-made low model's would be; a few seams in the paint show where UV islands were
   thinned (the jumper's back); hems are a little ragged; the pictures are still 1024 (the yardstick's are 256 to
   512); the straps cost more than they should. Not exported to the game.
+
+## Hair as locks: a new hair shader and rule-made carriers (2026-11-20, the hair agent)
+
+The user, of the smooth dome with a curl pattern drawn on it: "His mustache and hair doesn't even look remotely like the
+art- start a separate agent that is dedicated to just that, and upgrading our hair shader to more easily create
+stylised hair styles". Their standing rule is unchanged: hair is DRAWN BY A HAIR SHADER, never sculpted by hand
+("Dont try to model the beard it should be made with a hair shader", 2026-11-18).
+
+**Decision (Claude's pick; the user has not seen it yet): lock carriers laid along a flow, a cap under them, and one
+new shader that draws every kind of hair on them.**
+- What: `hair.py` makes only plain pieces, all by rule from a table of numbers (a "style"): a dark **cap** (the
+  scalp's own faces pushed out), about 110 identical **carrier strips** each rooted on the scalp and laid along a flow
+  over the head (away from a whorl at the crown, down with gravity, swept and parted in front, each waving its own S
+  and curling at its tip), floating at the style's thickness over the skin; the moustache as three broad strips a side
+  over a thin dark shape; the stubble and sideburns as one thin skin-tight surface. `shaders/hair_stylised.gdshader`
+  then DRAWS the hair: it cuts each strip to a lock's outline, draws it as two or three waving ribbons with their own
+  pointed ends, dark creases, a lit ridge, strand streaks and a painted light, and darkens undersides and roots. The
+  same shader draws the cap (ribbons, its edge broken into points), the moustache and the stubble (short hairs cut
+  out of the surface). It can also wave, lift and sway the strips in its vertex stage.
+- Why: a pattern on one smooth dome (the first try) can never give a lumpy outline, locks that overlap, or a fringe
+  with gaps; the art is all three. The older lock-card attempt (`tools/build_hair.py`, `shaders/hair_cards.gdshader`)
+  read as shingles because its cards were flat, all lay one way and carried one lock each drawn by a texture.
+  These are arched, lit round, wander and curl along a flow field, and the shader draws several ribbons across each.
+- The practice it follows: game hair is a "hair cap" plus cards laid along guide curves that follow the scalp
+  (Houdini's hair card generator, Blender's cards-from-curves set-ups, Unity's and Unreal's hair card workflows),
+  cut out with alpha testing rather than blending (no sorting, cheap on phones), with the light painted or driven by
+  the flow rather than by true strand shading; stylised games draw chunky clumps with painted light. Here the cards'
+  picture is worked out by the shader from numbers instead of painted, so a style is a table, not an art job.
+- Alternatives: the pattern on a dome (what it replaces); shell layers (fur: good for short even hair, many
+  overdrawn layers, no locks); hand-modelled clumps with a painted texture (what most stylised games do, and what the
+  user ruled out); a painted lock texture on the cards (one picture per style; the shader's lock is drawn from UV only,
+  so it CAN be baked to such a picture later if a web build wants it cheaper).
+- The carriers do carry shape: the outline of the mop is where the strips are. They are generic (every strip the same
+  plain arched ribbon) and placed only by the style's numbers; nothing is shaped by hand.
+- `shaders/ink/hair_ink.gdshader` was NOT changed (it is shared with the boy and the captain); its `curl*` settings
+  of earlier the same day are now unused by this figure.
+
+Files: `tools/figed/hair.py` (carriers; `STYLES`, `TACHE_STYLE`, `STUBBLE`), `shaders/hair_stylised.gdshader`,
+`tests/figed_hair_looks.gd` (the one table of shader settings per piece, and `wear(model)` which puts the materials
+on any loaded figure), `tests/figed_hair_view.gd` (five views; `--sheet=` lays the concept sheet's five heads above
+at the same scale; `--extra` adds from below, from above and the head tipped and turned; `--plain` shows the bare
+carriers; `--set=hair_locks.ribbons=3` tries a number).
+
+    blender -b --factory-startup --python tools/figed/hair.py -- tools/figed/figures/brother.json <shape.png> --glb <head.glb> [--style <numbers.json>]
+    godot --path . --audio-driver Dummy --resolution 840x960 --position 2600,60 -s tests/figed_hair_view.gd -- --glb=<head.glb> --out=<compare.png> --sheet=tools/art_src/concept_brother_bible_head.jpg --extra
+
+Pieces and what the shader reads from them: `hair_cap`, `hair_locks`, `moustache`, `moustache_locks`, `stubble`
+(only when asked for in `wear`). UV = (along the lock 0 root .. 1 tip, across 0..1); UV2 = (metres along, a number
+of the lock's own); vertex colour rgb = the sideways direction across the strip, a = how far out the lock lies.
+`make()` wires the vertex colour into each piece's Blender material so the glTF exporter keeps it.
+
+### How to make a new hairstyle
+
+Two tables. Copy `STYLES["mop"]` in `hair.py` under a new name (or try numbers from a file with `--style`), and copy
+the looks in `tests/figed_hair_looks.gd`.
+- Where the hair is and how big (hair.py): `LINE_*` the hairline; `volume` how far it stands off the skin, by height
+  and angle round the head; `floor_*` where it stops (fringe, sideburn level, nape); `length`, `front_length`;
+  `spacing` (how many locks) and `width`.
+- How it lies (hair.py): `crown` and `swirl` (the whorl), `gravity` (0: radiating from the crown, high: hanging
+  straight), `sweep` (the top combed to one side), `part` (where the fringe parts and how strongly it falls away),
+  `wander` (tidy or tousled), `curl` and `wavelength` (straight 0, wavy 20, curly 40+; short wavelength: tight
+  curls), `together` (neighbours waving in step), `hook` (the tips curling round), `lift`, `flick`, `stand`, `layers`.
+  Examples: straight combed hair: curl 5, wander 4, hook 10, gravity 1.5, lift 0.004; a quiff: sweep 0, more volume
+  at the front top, front floor high; a short crop: volume 0.012 everywhere, length 0.03, curl 10.
+- How it is drawn (shader settings): colours `base`, `deep`, `light`; the lock's outline `taper`, `taper_round`,
+  `hook`, `hook_way`, `fork`, `waver`; `ribbons` (how many strands of hair a strip is drawn as: 1 chunky, 4 fine),
+  `ribbon_wave`, `ribbon_waves`, `ribbon_tips`, `ribbon_taper`; the paint `edge_dark`, `edge_width`, `under_edge`,
+  `ridge`, `shine`, `shine_at`, `shine_length`, `shine_every`, `strands`, `strand_depth`; shade `root_dark`,
+  `depth_shade`, `under_shade`, `back_dark`; a plain surface's `edge_points`; `stubble*`; motion `wave`, `lift`,
+  `flick`, `sway` (wind or a bounce; 0 still).
+- A moustache or beard: `TACHE_STYLE` (`past`, `droop`, `over_lip`, and `strips`: where each broad strip starts and
+  ends, how low it lies, how wide, how far off the skin). `STUBBLE`: the beard line by angle round the face.
+
+### What matches the sheet and what does not (Claude's own judgement, 2026-11-20)
+
+Matches: a big tousled mop wider than the face, made of separate wavy locks with dark creases and lit ridges, a lumpy
+outline with curled ends, hair over the tops of the ears, short at the nape; a thick ginger moustache covering the lip
+and drooping past the corners of the mouth; ginger stubble and sideburns as pieces of their own. It holds from below,
+from above and with the head turned on its bone.
+Does not: the sheet's locks are longer, smoother and fewer, sweeping together (a side-swept wave over the forehead),
+with soft painted highlights; ours are shorter and choppier, more like clay curls than brushed paint. The fringe is
+pointed locks hanging down a tall forehead, not the sheet's soft curls across it (the model's forehead is also
+taller than the drawing's). The stubble is dots at a distance. Edges are hard (cut-out, no smoothing).
+
+### Lessons and loose ends
+
+- Cost: no textures and no loops; about a dozen hashes a pixel, lit per vertex. One program for all hair pieces.
+  Everything painted depends only on UV and the lock's number, so it can be baked to a small picture of a few locks.
+- Weight: about 8,900 triangles of locks (110 strips of 10 x 4 quads), 800 cap, 1,400 moustache, 500 stubble: heavy
+  beside a 2,300 to 4,500 triangle Twilight Princess figure. `{"across": 2, "segments": 7}` as a `--style` gives
+  3,100 for the locks and still reads, a little more angular.
+- Strips must be wound so their outside is the front face (the shader darkens back faces as the inside of a lock):
+  the first build had them inside-out, hidden by the custom normals until `back_dark` showed everything dark.
+- Everything is worked out on the figure at rest and carried into the pose by the head's own turn and move
+  (the landmarks cannot be found on the posed points).
+- A lock that would cross the floor of the hair is made again only as long as the way there, so it ends in its own
+  curl; chopping it gave straight blades.
+- NOT done: `tests/figed_pose_view.gd` and anything else that still puts `hair_ink` on meshes named "hair..." will
+  draw these carriers wrongly: use `preload("res://tests/figed_hair_looks.gd").wear(model)` there. `garments.py --hair`
+  asks only for hair and moustache: add "stubble" to its list for the sideburns and stubble. The stubble rides the head
+  bone only (it will not follow the jaw). Brows are still paint on the skin. Under a cap or helmet the hair is still
+  left off whole. The low model's thinning (`garments.low`) has not been tried on the carriers (thinning would break
+  their UVs: leave them as they are or build them with fewer pieces).
