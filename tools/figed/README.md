@@ -860,3 +860,26 @@ chest and back weights, belt, knife, lead boots, the helmet apart: Claude's pick
 - Lesson: a ring's width must not be multiplied by the sine of its angle as well as by its outline (a pointed toe).
 - Rough: the top of the toe takes the side view's colours (no view looks down on it); the drawing's own light is in
   the paint; pull tabs are plain little boxes; the trouser hems flare where they should gather.
+
+## The diving dress, and cloth painted from a turnaround sheet (2026-11-20)
+
+- `garments.py` `paint_views()`: a garment whose outfit entry has `"views"` is painted from a turnaround sheet's
+  front, back and side figures, each point from the view it faces (blended where it turns), box to box (the
+  garment's box on the model's trunk and legs onto its box in that view); a `"sleeve"` is laid along the drawn arm
+  from shoulder to wrist. Only the cloth is taken (`_cloth_only`: pixels of the colour at `"at"`; straps, buckles,
+  skin and paper are filled in from the cloth round them; `"skip"` boxes for a hand hanging over the cloth; `"floor"`
+  for a pale cloth beside black straps). Boxes and points are picked by eye in the sheet's pixels.
+- The diving dress (`figures/brother_outfit_diving.json`, `--wear dsuit,dcuffs,dbelt,dstraps,corselet,boots`): canvas
+  suit painted from `concept_brother_diving_turn.jpg`; rubber cuffs, belt, crossed straps and corselet are cut
+  garments in plain colours; the neck ring and the chest and back weights are hard parts; the lead boots are
+  `boots.py`'s kind `diving`, read off the same sheet's figures (its sole borrowed from the rubber boot).
+- The oilskin outfit's jumper and overalls are painted the same way from `concept_brother_fishing_turn.jpg`.
+- Lessons: `neck_01` is 10 cm ABOVE the shoulder joints, at the jaw (the neck leaves the shoulders about 7 cm above
+  them); a rigid fit for a chest piece must leave the upper arms out (they swing down in the pose and dragged the
+  fit 10 cm); the `"at"` point must be on the cloth (one on a black strap painted the whole chest black); a hand
+  hanging in front of the thigh in a side view is close enough to canvas in colour to be taken as cloth.
+- Owed on the diving dress: the HELMET (not built), the corselet as proper copper with its brass rim, bolts and
+  plate (it is a smooth orange bib now), buckles on belt and straps, pouches, the knife, knee patches as pieces,
+  the air hose; the gathered ankles. Owed on the oilskin outfit: the straps crossing behind with their clips (they
+  run straight now), the chest seam and buttons, the jumper's roll neck and cuffs, the cap. The work outfit
+  (shirt, dark overalls) has no turnaround sheet yet. Nothing is exported to the game.

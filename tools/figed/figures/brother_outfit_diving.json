@@ -1,0 +1,128 @@
+{
+ "about": "The older brother's diving dress (the user, 2026-11-20: \"We should also start on the diving suit as thats the most important mechanically\"), for garments.py: --wear dsuit,dcuffs,dbelt,dstraps,corselet,boots. The canvas is painted from the turnaround sheet's front, side and back figures (boxes and points in its pixels: Claude, by eye); the rest are plain colours for now.",
+ "picture": "tools/art_src/concept_brother_diving_turn.jpg",
+ "prefix": "diving_",
+ "dsuit": {
+  "tol": 0.024,
+  "views": {
+   "front": {
+    "box": [
+     369,
+     323,
+     791,
+     1245
+    ],
+    "at": [
+     454,
+     880
+    ]
+   },
+   "back": {
+    "box": [
+     2064,
+     323,
+     2484,
+     1245
+    ],
+    "at": [
+     2147,
+     880
+    ]
+   },
+   "side": {
+    "box": [
+     1541,
+     323,
+     1830,
+     1245
+    ],
+    "at": [
+     1692,
+     950
+    ],
+    "skip": [
+     [
+      1630,
+      688,
+      1776,
+      922
+     ]
+    ]
+   }
+  },
+  "sleeve": {
+   "front": {
+    "from": [
+     771,
+     413
+    ],
+    "to": [
+     908,
+     660
+    ],
+    "half": 69,
+    "at": [
+     840,
+     536
+    ]
+   },
+   "back": {
+    "from": [
+     2477,
+     413
+    ],
+    "to": [
+     2614,
+     660
+    ],
+    "half": 69,
+    "at": [
+     2545,
+     536
+    ]
+   }
+  }
+ },
+ "dcuffs": {
+  "paint": "plain",
+  "colour": [
+   0.12,
+   0.12,
+   0.13
+  ],
+  "gloss": 0.3
+ },
+ "dbelt": {
+  "paint": "plain",
+  "colour": [
+   0.36,
+   0.22,
+   0.13
+  ]
+ },
+ "dstraps": {
+  "paint": "plain",
+  "colour": [
+   0.23,
+   0.19,
+   0.16
+  ]
+ },
+ "corselet": {
+  "paint": "plain",
+  "colour": [
+   0.55,
+   0.33,
+   0.22
+  ],
+  "gloss": 0.5
+ },
+ "boots": {
+  "kind": "diving",
+  "colour": [
+   0.5,
+   0.5,
+   0.48
+  ]
+ }
+}

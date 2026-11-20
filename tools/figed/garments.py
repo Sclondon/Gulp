@@ -167,6 +167,36 @@ def rules(fig, P, H, skin_px=None):
     INFO["cap_line"] = crown - 0.1
     out["cap"] = (z - INFO["cap_line"], head > 0.5, 0.014 + 0.016 * np.clip((crown - z) / 0.06, 0, 1),
                   (0.22, 0.24, 0.22))
+    # THE DIVING DRESS (the user, 2026-11-20: "We should also start on the diving suit as thats the most important
+    # mechanically"; tools/art_src/concept_brother_diving_turn.jpg): a baggy canvas suit from the neck to the wrists
+    # and ankles, rubber cuffs, a leather belt, crossed straps (they carry the chest and back weights), and the
+    # corselet over the shoulders and upper chest. The neck ring and the weights are hard parts (extras()).
+    S_, W_ = H["upperarm_l"], H["hand_l"]
+    d_ = W_ - S_
+    mirror = np.stack([np.abs(x), y, z], axis=1)
+    along = (mirror - S_).dot(d_) / d_.dot(d_)            # along the arm: 0 shoulder .. 1 wrist (either arm)
+    armish = arm + up
+    INFO["arm_along"], INFO["armish"] = along, armish
+    wrist_end = np.where(armish > 0.5, (0.97 - along) * 0.3, 1.0)
+    not_hand = (0.5 - handw) * 0.1
+    ankle = H["foot_l"][2] + 0.03
+    SMOOTH.update(dsuit=6, corselet=9, dbelt=3, dstraps=2, dcuffs=2)
+    bag = 0.02 + 0.016 * np.clip((knee + 0.12 - z) / 0.3, 0, 1) * (legs > 0.5) + 0.03 * np.clip(1 - (z - ankle) / 0.1, 0, 1) ** 2
+    out["dsuit"] = (np.minimum(np.minimum(np.minimum(z - ankle, zn + 0.05 - z + 2.0 * (armish > 0.3)), wrist_end), not_hand),
+                    head < 0.5, bag, (0.66, 0.56, 0.40))
+    out["dcuffs"] = (np.minimum(np.minimum(along - 0.80, 0.985 - along) * 0.3, not_hand), armish > 0.5,
+                     np.full(len(P), 0.027), (0.12, 0.12, 0.13))
+    out["dbelt"] = (np.minimum(waist + 0.03 - z, z - (waist - 0.035)), (arm < 0.3) & (up < 0.3) & (head < 0.3),
+                    np.full(len(P), 0.036), (0.36, 0.22, 0.13))
+    k_ = (0.10 + 0.085) / max(1e-6, zs - waist)                     # the straps cross: shoulder to the far hip
+    xa = 0.10 - (zs - z) * k_
+    cross = np.minimum(np.abs(x - xa), np.abs(x + xa)) / math.sqrt(1 + k_ * k_)
+    trunk = (arm < 0.3) & (up < 0.6) & (head < 0.3) & (_w(base, ("thigh", "calf")) < 0.3)
+    out["dstraps"] = (np.minimum(np.minimum(0.019 - cross, z - (waist + 0.02)), zs + 0.03 - z), trunk,
+                      0.04 + 0.02 * np.clip((z - (zs - 0.13)) / 0.04, 0, 1), (0.23, 0.19, 0.16))   # (over the corselet)
+    plate_low = np.where(y < yn, zs - 0.085 + 0.05 * np.clip(np.abs(x) / max(sx, 1e-6), 0, 1) ** 2, zs - 0.07)
+    out["corselet"] = (np.minimum(np.minimum(z - plate_low, zs + 0.075 - z), (sx + 0.02 - np.abs(x)) * 0.6),
+                       (arm < 0.3) & (head < 0.4), np.full(len(P), 0.046), (0.62, 0.36, 0.22))
     if skin_px is not None:                              # the drawers: where the skin picture is painted as cloth
         cloth = skin_px & lower
         if cloth.sum() > 50:
@@ -339,6 +369,27 @@ def extras(fig, wear, outfit, P, Pp, H, arm=None):
             for o in boot_objs:
                 o.parent = arm
                 o.modifiers.new("rig", "ARMATURE").object = arm
+    if "corselet" in wear:
+        zs, zn = H["upperarm_l"][2], H["neck_01"][2]
+        chest = ((_w(base, ARM) < 0.3) & (_w(base, ("head",)) < 0.3) & (np.abs(P[:, 2] - (zs - 0.06)) < 0.1)
+                 & (_w(base, ("upperarm", "clavicle")) < 0.2))   # (with the arms in it the fit lifted everything 10 cm)
+        ride = _rigid(P[chest], Pp[chest])
+        # (neck_01 is 10 cm above the shoulder joints, at the jaw: the ring sits where the neck leaves the shoulders)
+        zr = zs + 0.07
+        neck = P[(np.abs(P[:, 2] - zr) < 0.012) & (_w(base, ARM) < 0.3) & (np.abs(P[:, 0]) < 0.1)]
+        nc = (neck.min(axis=0) + neck.max(axis=0)) / 2
+        rx, ry = (neck[:, 0].max() - neck[:, 0].min()) / 2 + 0.028, (neck[:, 1].max() - neck[:, 1].min()) / 2 + 0.028
+        ring = []
+        for a in np.linspace(0, 2 * math.pi, 20, endpoint=False):
+            for dz, r in ((0.0, 1.0), (0.016, 1.06), (0.032, 1.0)):
+                ring.append((nc[0] + rx * r * math.cos(a), nc[1] + ry * r * math.sin(a), zr - 0.012 + dz))
+        made.append(("neck_ring", "spine_03", ride(np.array(ring)), (0.72, 0.55, 0.22)))
+        for nm, front in (("weight_front", True), ("weight_back", False)):
+            row = P[chest & (np.abs(P[:, 0]) < 0.07) & (np.abs(P[:, 2] - (zs - 0.15)) < 0.04)]
+            yy = row[:, 1].min() - 0.036 if front else row[:, 1].max() + 0.036
+            box = [(sa * 0.062, yy + sb * 0.02, zs - 0.15 + sc * 0.048) for sa in (-1, 1) for sb in (-1, 1) for sc in (-1, 1)]
+            box += [(sa * 0.055, yy + (-0.028 if front else 0.028), zs - 0.15 + sc * 0.04) for sa in (-1, 1) for sc in (-1, 1)]
+            made.append((nm, "spine_03", ride(np.array(box)), (0.52, 0.53, 0.54)))
     if "cap" in wear:
         hd = _w(base, ("head",)) > 0.8
         line = INFO["cap_line"]
@@ -434,8 +485,150 @@ def make(fig, wear, posed=True, arm=None, skin_path=None):
     return parts, R, P
 
 
+def _cloth_only(art, box, at, tol, skip=(), floor=0.5):
+    """A box of a drawing with only one cloth left in it: pixels of the colour found at `at` are kept, everything
+    else (skin, straps, buckles, paper) is filled in from the cloth round it."""
+    x0, y0, x1, y1 = box
+    sub = art[y0:y1, x0:x1].copy()
+    ref = np.median(art[at[1] - 4:at[1] + 5, at[0] - 4:at[0] + 5].reshape(-1, 3), axis=0)
+    hue = sub / np.maximum(sub.sum(axis=2, keepdims=True), 1e-6)
+    lum = sub.mean(axis=2) / max(float(ref.mean()), 1e-6)
+    known = (np.abs(hue - ref / ref.sum()).max(axis=2) < tol) & (lum > floor) & (lum < 1.5)
+    for sx0, sy0, sx1, sy1 in skip:                       # ("skip": boxes of the sheet never taken as cloth: a hand)
+        known[max(0, sy0 - y0):max(0, sy1 - y0), max(0, sx0 - x0):max(0, sx1 - x0)] = False
+    known = figed_fit.shrink(known, 3 if floor > 0.5 else 2)   # (a pale cloth beside black straps: their soft edges go)
+    if not known.any():
+        sub[:] = ref
+        return sub
+    for _ in range(max(sub.shape[:2])):
+        if known.all():
+            break
+        tot, cnt = np.zeros_like(sub), np.zeros(known.shape)
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            s_ = (slice(max(0, -dy), sub.shape[0] - max(0, dy)), slice(max(0, -dx), sub.shape[1] - max(0, dx)))
+            d_ = (slice(max(0, dy), sub.shape[0] - max(0, -dy)), slice(max(0, dx), sub.shape[1] - max(0, -dx)))
+            tot[d_] += sub[s_] * known[s_][:, :, None]
+            cnt[d_] += known[s_]
+        fresh = (~known) & (cnt > 0)
+        sub[fresh] = tot[fresh] / cnt[fresh][:, None]
+        known |= fresh
+    return sub
+
+
+def paint_views(fig, outfit, name, R, P, path):
+    """A garment's picture from a turnaround sheet's front, back and side views: each point of the cloth takes the
+    view it faces (blended where it turns from one to the next), box to box: the garment's own box on the model
+    (trunk and legs) onto its box in that view. A sleeve is laid along the drawn arm: from the shoulder to the
+    wrist, and across. The outfit file gives, for the garment: "views": {"front"|"back"|"side": {"box": [x0, y0,
+    x1, y1], "at": [x, y] (a pixel of plain cloth)}}, "sleeve": {"front"|"back": {"from": [x, y], "to": [x, y],
+    "half": px, "at": [x, y]}}, "tol" (how near the cloth's colour counts as cloth)."""
+    base = fig.base
+    spec = outfit[name]
+    art = figed_fit.load_image(spec.get("picture", outfit.get("picture")))[:, :, :3]
+    tol = spec.get("tol", 0.03)
+    views = {k: _cloth_only(art, v["box"], v["at"], tol, v.get("skip", ()), spec.get("floor", 0.5)) for k, v in spec["views"].items()}
+    sleeves = {}
+    for k, v in spec.get("sleeve", {}).items():
+        a, b, hw = np.array(v["from"], float), np.array(v["to"], float), float(v["half"])
+        pad = int(hw * 1.5)
+        box = [int(min(a[0], b[0])) - pad, int(min(a[1], b[1])) - pad, int(max(a[0], b[0])) + pad, int(max(a[1], b[1])) + pad]
+        sleeves[k] = (_cloth_only(art, box, v["at"], tol, (), spec.get("floor", 0.5)), a - np.array(box[:2]), b - np.array(box[:2]), hw)
+    N = np.zeros_like(P)
+    for group, vi, _ti in base.faces:
+        if group == "body" and len(vi) >= 3:
+            n = np.cross(P[vi[1]] - P[vi[0]], P[vi[2]] - P[vi[0]])
+            for v in vi:
+                N[v] += n
+    N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+    if N[np.argmin(P[:, 1])][1] > 0:
+        N = -N
+    f, may, _off, _col = R[name]
+    armish, along = INFO["armish"], INFO["arm_along"]
+    keep = may & (f > 0) & (armish < 0.3)
+    lo, hi = P[keep].min(axis=0), P[keep].max(axis=0)
+    Hj = INFO["H"]
+    S_, W_ = Hj["upperarm_l"], Hj["hand_l"]
+    d_ = W_ - S_
+    perp = np.array([-d_[2], 0.0, d_[0]])
+    perp /= np.linalg.norm(perp)
+    Pm = np.stack([np.abs(P[:, 0]), P[:, 1], P[:, 2]], axis=1)
+    across_arm = (Pm - S_).dot(perp)
+    rad = max(0.04, float(np.percentile(np.abs(across_arm[may & (armish > 0.6)]), 95))) if (may & (armish > 0.6)).any() else 0.06
+    mean = np.mean([v.reshape(-1, 3).mean(axis=0) for v in views.values()], axis=0)
+    tex = np.zeros((SIZE, SIZE, 3))
+    tex[:] = mean
+    uvs = np.array(base.uvs)
+
+    def take(img, fx, fy):
+        ix = np.clip((fx * (img.shape[1] - 1)).astype(int), 0, img.shape[1] - 1)
+        iy = np.clip((fy * (img.shape[0] - 1)).astype(int), 0, img.shape[0] - 1)
+        return img[iy, ix]
+
+    for group, vi, ti in base.faces:
+        if group != "body" or min(ti) < 0 or not all(may[v] for v in vi) or max(f[v] for v in vi) <= -0.03:
+            continue
+        for a in range(1, len(vi) - 1):
+            tri = [vi[0], vi[a], vi[a + 1]]
+            uv = uvs[[ti[0], ti[a], ti[a + 1]]] * SIZE
+            u0, u1 = int(max(0, math.floor(uv[:, 0].min()))), int(min(SIZE - 1, math.ceil(uv[:, 0].max())))
+            v0, v1 = int(max(0, math.floor(uv[:, 1].min()))), int(min(SIZE - 1, math.ceil(uv[:, 1].max())))
+            if u1 < u0 or v1 < v0:
+                continue
+            gx, gy = np.meshgrid(np.arange(u0, u1 + 1) + 0.5, np.arange(v0, v1 + 1) + 0.5)
+            e0, e1 = uv[1] - uv[0], uv[2] - uv[0]
+            den = e0[0] * e1[1] - e0[1] * e1[0]
+            if abs(den) < 1e-9:
+                continue
+            b1 = ((gx - uv[0, 0]) * e1[1] - (gy - uv[0, 1]) * e1[0]) / den
+            b2 = ((gy - uv[0, 1]) * e0[0] - (gx - uv[0, 0]) * e0[1]) / den
+            b0 = 1 - b1 - b2
+            ins = (b0 >= -0.05) & (b1 >= -0.05) & (b2 >= -0.05)
+            if not ins.any():
+                continue
+            B = np.stack([b0[ins], b1[ins], b2[ins]], axis=1)
+            pos, nrm = B.dot(P[tri]), B.dot(N[tri])
+            col = np.zeros((len(pos), 3))
+            if armish[tri].mean() > 0.5 and sleeves:
+                t = np.clip(B.dot(along[tri]), -0.05, 1.05)
+                sc = np.clip(B.dot(across_arm[tri]) / rad, -1, 1)
+                tot = np.zeros(len(pos))
+                for k, (img, a_, b_, hw) in sleeves.items():
+                    w = np.maximum(-nrm[:, 1] if k == "front" else nrm[:, 1], 0.0) ** 2 + 1e-4
+                    run = b_ - a_
+                    side = np.array([run[1], -run[0]]) / np.linalg.norm(run)
+                    px = a_[None] + run[None] * t[:, None] + side[None] * (sc * hw)[:, None]
+                    col += take(img, px[:, 0] / (img.shape[1] - 1), px[:, 1] / (img.shape[0] - 1)) * w[:, None]
+                    tot += w
+                col /= tot[:, None]
+            else:
+                fz = (hi[2] - pos[:, 2]) / (hi[2] - lo[2])
+                tot = np.zeros(len(pos))
+                for k, img in views.items():
+                    if k == "front":
+                        w, fx = np.maximum(-nrm[:, 1], 0.0), (pos[:, 0] - lo[0]) / (hi[0] - lo[0])
+                    elif k == "back":
+                        w, fx = np.maximum(nrm[:, 1], 0.0), (hi[0] - pos[:, 0]) / (hi[0] - lo[0])
+                    else:
+                        w, fx = np.abs(nrm[:, 0]), (hi[1] - pos[:, 1]) / (hi[1] - lo[1])
+                    w = w ** 3 + 1e-4
+                    col += take(img, fx, fz) * w[:, None]
+                    tot += w
+                col /= tot[:, None]
+            tex[gy[ins].astype(int), gx[ins].astype(int)] = col
+    im = bpy.data.images.new(name, SIZE, SIZE, alpha=False)
+    rgba = np.ones((SIZE, SIZE, 4), dtype=np.float32)
+    rgba[:, :, :3] = np.clip(tex, 0, 1)
+    im.pixels.foreach_set(rgba.ravel())
+    im.filepath_raw = os.path.abspath(path)
+    im.file_format = "PNG"
+    im.save()
+    print("painted", path, "(from the sheet's views)")
+
+
 def paint(fig, outfit, name, R, P, path, skin_path=None):
     """A garment's picture: the drawing's cloth, box to box from the front view, onto the body's UVs."""
+    if outfit[name].get("views"):
+        return paint_views(fig, outfit, name, R, P, path)
     base = fig.base
     plain = outfit[name].get("paint") == "plain"
     if plain:

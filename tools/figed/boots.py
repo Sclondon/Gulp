@@ -33,6 +33,10 @@ KINDS = {
                "sole": (2290, 40, 2610, 770), "rim": 135, "height": 0.33, "tabs": "back"},
     "leather": {"side": (1200, 830, 1800, 1536), "front": (90, 830, 345, 1536), "back": (1820, 830, 2130, 1536),
                 "sole": (2290, 830, 2610, 1536), "rim": 908, "height": 0.28, "tabs": "sides"},
+    # the diver's lead boots, read off the diving dress's own sheet (its side, front and back figures); that sheet
+    # has no view from below, so the sole is the rubber boot's
+    "diving": {"sheet": "concept_brother_diving_turn.jpg", "side": (1556, 1240, 1830, 1500), "front": (340, 1240, 545, 1500),
+               "back": (2070, 1240, 2262, 1500), "sole": "rubber", "rim": 1262, "height": 0.25, "tabs": "none"},
 }
 AROUND = 20                                               # points round each ring
 LEVELS = [0.0, 0.03, 0.065, 0.11, 0.16, 0.21, 0.27, 0.34, 0.42, 0.52, 0.64, 0.76, 0.88, 1.0]   # rings, 0 ground .. 1 rim
@@ -48,10 +52,13 @@ def _smooth(a, n=5):
 
 def _view(kind, name):
     """One view of the sheet: (pixels, boot mask, bbox rows r0 r1, bbox cols c0 c1, the rim's row) in its crop."""
-    if "px" not in _sheet:
-        _sheet["px"] = figed_fit.load_image(SHEET)
+    if isinstance(KINDS[kind][name], str):                # this view borrowed from another kind
+        return _view(KINDS[kind][name], name)
+    sheet = os.path.join(os.path.dirname(SHEET), KINDS[kind].get("sheet", os.path.basename(SHEET)))
+    if sheet not in _sheet:
+        _sheet[sheet] = figed_fit.load_image(sheet)
     x0, y0, x1, y1 = KINDS[kind][name]
-    px = _sheet["px"][y0:y1, x0:x1]
+    px = _sheet[sheet][y0:y1, x0:x1]
     edge = np.concatenate([px[0], px[-1], px[:, 0], px[:, -1]])
     bg = np.median(edge, axis=0)
     mask = np.abs(px - bg).max(axis=2) > 0.13
@@ -154,7 +161,7 @@ def shape(kind, long=0.0, wide=0.0):
     faces.append([base + k for k in range(n)][::-1])
     tabs = []                                             # pull tabs: thin boxes standing above the rim
     rim_pts = np.array(pts[top:top + n])
-    spots = [rim_pts[n // 2]] if KINDS[kind]["tabs"] == "back" else [rim_pts[n // 4], rim_pts[3 * n // 4]]
+    spots = {"back": [rim_pts[n // 2]], "sides": [rim_pts[n // 4], rim_pts[3 * n // 4]]}.get(KINDS[kind]["tabs"], [])
     for q in spots:
         d = q - c
         d[2] = 0
