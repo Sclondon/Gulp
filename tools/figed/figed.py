@@ -229,6 +229,43 @@ def macro_parts(macro):
     return m["race"], gender, age, muscle, weight, height, prop
 
 
+def pose_points(fig, P, H, pose, T=None):
+    """Turn bones (degrees about Blender's x, y, z at each bone's head; children follow)."""
+    base = fig.base
+    mats = {}
+    for b in base.bones:
+        parent = base.rig[b]["parent"]
+        M = mats[parent] if parent else np.eye(4)
+        if b in pose:
+            if np.shape(pose[b]) == (3, 3):               # a turn given whole
+                R = np.asarray(pose[b])
+            else:
+                rx, ry, rz = np.radians(pose[b])
+                cx, sx, cy, sy, cz, sz = np.cos(rx), np.sin(rx), np.cos(ry), np.sin(ry), np.cos(rz), np.sin(rz)
+                R = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
+                R = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]]).dot(R)
+                R = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]]).dot(R)
+            L = np.eye(4)
+            L[:3, :3] = R
+            L[:3, 3] = H[b] - R.dot(H[b])
+            M = M.dot(L)
+        mats[b] = M
+    out = np.zeros_like(P)
+    for i, b in enumerate(base.bones):
+        w = base.weights[:, i]
+        idx = np.nonzero(w)[0]
+        if len(idx):
+            M = mats[b]
+            out[idx] += w[idx, None] * (P[idx].dot(M[:3, :3].T) + M[:3, 3])
+    posed = {}                                        # where each joint is once posed; a bone tip as "tail:<bone>"
+    for b in base.bones:
+        M = mats[b]
+        posed[b] = M[:3, :3].dot(H[b]) + M[:3, 3]
+        if T is not None:
+            posed["tail:" + b] = M[:3, :3].dot(T[b]) + M[:3, 3]
+    return out, posed
+
+
 class Figure:
     """One figure: the base plus a table of values. `solve()` gives its points and skeleton."""
 
@@ -244,6 +281,9 @@ class Figure:
         # small corrections after the sliders: patches of skin relaxed smooth,
         # [{"at": "nipples", "radius": cm, "passes": n}]
         self.smooth = list(spec.get("smooth", []))
+        # how he stands, built into the model itself (not a pose for pictures): {"pelvis_tuck": degrees} turns the
+        # pelvis under (less hollow back) while the legs and the trunk above stay upright
+        self.posture = dict(spec.get("posture", {}))
 
     def _smooth(self, pts):
         b = self.base
@@ -418,8 +458,17 @@ class Figure:
             p = np.atleast_2d(p)
             return np.stack([p[:, 0], -p[:, 2], p[:, 1] - floor], axis=1) * k
 
-        return turn(self.points), {b: turn(v)[0] for b, v in self.heads.items()}, \
+        P, H, T = turn(self.points), {b: turn(v)[0] for b, v in self.heads.items()}, \
             {b: turn(v)[0] for b, v in self.tails.items()}
+        tuck = self.posture.get("pelvis_tuck", 0.0)
+        if tuck:
+            turns = {"pelvis": (-tuck, 0, 0), "spine_01": (tuck, 0, 0), "thigh_l": (tuck, 0, 0), "thigh_r": (tuck, 0, 0)}
+            P, posed = pose_points(self, P, H, turns, T)
+            H = {b: posed[b] for b in H}
+            T = {b: posed["tail:" + b] for b in T}
+            lift = np.array([0.0, 0.0, P[self.base.indices("body")][:, 2].min()])
+            P, H, T = P - lift, {b: v - lift for b, v in H.items()}, {b: v - lift for b, v in T.items()}
+        return P, H, T
 
     def measures(self):
         """A few lengths of the solved figure in head-heights and metres (for fitting to a drawing)."""

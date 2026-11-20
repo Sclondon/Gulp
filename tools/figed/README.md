@@ -162,6 +162,16 @@ The user: "lets do around focusing on his pecs, shoulders and hands, he should h
     model's was 18.8% at rest with short toes, and is about 16.7% with `toes.length` 1.3 and `foot-scale-depth` -0.5
     (longer toes on a shorter foot). Foot sliders do not move in the body job.
   Outline after: front 0.92, side 0.90, back 0.92.
+- Round eight, the user (lines drawn on the side render): "His calves poke out way too far, reference the art, his
+  butt is a little too small, and he has too much of an anterior pelvic tilt he needs better posture".
+  - Calves: Claude had overdone round seven. `lowerleg-muscle` 1.1 -> 0.6 and `calf.depth` 0.95, so the back of the
+    calf no longer stands behind the butt in the side view (as the bible's does not).
+  - Butt: `buttocks` 1.0, held out of the fit (the shorts hide it in the bible, so the outline had shrunk it).
+  - **Posture is a new spec section**: `"posture": {"pelvis_tuck": degrees}` turns the pelvis under and turns the
+    trunk above and the thighs back by the same angle, so the hollow of the back flattens while he stays upright; it
+    is built into the model (points and skeleton, in `to_blender`), not a pose for pictures. The brother's is 7
+    (by eye). The bone-turning code (`pose_points`) moved from `figed_fit.py` into `figed.py` for it.
+  Outline after: front 0.92, side 0.91, back 0.92.
 - Still not right: the toes are thin beside the bible's broad ones and the feet point straight ahead (the bible's
   turn out; `feet_out` is only a pose); the arms are thick but tube-like (no biceps or triceps bulge, no forearm swell by the elbow as the
   bible paints them); the back is smooth (no shoulder blades, spine furrow or lats as the bible paints them), the pecs

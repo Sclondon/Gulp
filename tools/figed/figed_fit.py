@@ -137,41 +137,7 @@ def mark_vertices(base):
     return out
 
 
-def pose_points(fig, P, H, pose, T=None):
-    """Turn bones (degrees about Blender's x, y, z at each bone's head; children follow)."""
-    base = fig.base
-    mats = {}
-    for b in base.bones:
-        parent = base.rig[b]["parent"]
-        M = mats[parent] if parent else np.eye(4)
-        if b in pose:
-            if np.shape(pose[b]) == (3, 3):               # a turn given whole
-                R = np.asarray(pose[b])
-            else:
-                rx, ry, rz = np.radians(pose[b])
-                cx, sx, cy, sy, cz, sz = np.cos(rx), np.sin(rx), np.cos(ry), np.sin(ry), np.cos(rz), np.sin(rz)
-                R = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
-                R = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]]).dot(R)
-                R = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]]).dot(R)
-            L = np.eye(4)
-            L[:3, :3] = R
-            L[:3, 3] = H[b] - R.dot(H[b])
-            M = M.dot(L)
-        mats[b] = M
-    out = np.zeros_like(P)
-    for i, b in enumerate(base.bones):
-        w = base.weights[:, i]
-        idx = np.nonzero(w)[0]
-        if len(idx):
-            M = mats[b]
-            out[idx] += w[idx, None] * (P[idx].dot(M[:3, :3].T) + M[:3, 3])
-    posed = {}                                        # where each joint is once posed; a bone tip as "tail:<bone>"
-    for b in base.bones:
-        M = mats[b]
-        posed[b] = M[:3, :3].dot(H[b]) + M[:3, 3]
-        if T is not None:
-            posed["tail:" + b] = M[:3, :3].dot(T[b]) + M[:3, 3]
-    return out, posed
+pose_points = figed.pose_points
 
 
 def hand_frame(joints, side="l"):
