@@ -44,7 +44,7 @@ const MAX_OPS := 24
 const TYPES := {"turn": 1, "move": 2, "scale": 3, "draw": 4, "bend": 5, "leg": 6}
 const SHAPES := {"sine": 0, "upper": 1, "stride": 2, "lift": 3, "on": 4}
 ## An op's flags (see motion.gdshaderinc).
-const FLAGS := {"mirror": 1, "by_side": 2, "own_point": 4, "own_way": 8, "normal_way": 16, "bend_up": 32, "after": 64, "way_point": 128, "abs": 256}
+const FLAGS := {"mirror": 1, "by_side": 2, "own_point": 4, "own_way": 8, "normal_way": 16, "bend_up": 32, "after": 64, "way_point": 128, "abs": 256, "ends": 512}
 
 static var _specs := {}
 static var _families := {}
@@ -78,9 +78,7 @@ static func every_family() -> Array[String]:
 ## Puts `material` (wearing the animal's own shader, `own`) onto its family's shader with its numbers.
 ## Every live setting it has not been given yet keeps its own shader's default.
 static func wear(material: ShaderMaterial, own: Shader, spec: GDScript) -> void:
-	var defaults := {}
-	for u: Dictionary in own.get_shader_uniform_list():
-		defaults[StringName(u.name)] = RenderingServer.shader_get_parameter_default(own.get_rid(), u.name)
+	var defaults := defaults_of(own)
 	var old := func(name: StringName) -> Variant:
 		var v: Variant = material.get_shader_parameter(name)
 		return v if v != null else defaults.get(name)
@@ -96,10 +94,54 @@ static func wear(material: ShaderMaterial, own: Shader, spec: GDScript) -> void:
 	for k: String in numbers:
 		if k == "ops":
 			continue
+		# (a setting named where the family wants its number in INPUTS: swim_drive, swim_still)
+		if numbers[k] is String or numbers[k] is StringName:
+			material.set_shader_parameter(k, _input(numbers[k]))
+			continue
 		material.set_shader_parameter(k, numbers[k])
 	var packed := pack(numbers.get("ops", []))
 	for k: String in packed:
 		material.set_shader_parameter(k, packed[k])
+
+
+## A shader's uniforms' defaults by name. The engine's own (RenderingServer) where it gives them;
+## read from the code where it does not (a headless run gives none: every one would be null).
+static func defaults_of(shader: Shader) -> Dictionary:
+	if _defaults.has(shader):
+		return _defaults[shader]
+	var out := {}
+	for u: Dictionary in shader.get_shader_uniform_list():
+		out[StringName(u.name)] = RenderingServer.shader_get_parameter_default(shader.get_rid(), u.name)
+	var re := RegEx.create_from_string("(?m)^uniform\\s+(float|int|bool|vec2|vec3|vec4)\\s+(\\w+)[^=;]*=\\s*([^;]+);")
+	for m in re.search_all(shader.code):
+		var name := StringName(m.get_string(2))
+		if out.get(name) != null:
+			continue
+		var text := m.get_string(3).strip_edges()
+		match m.get_string(1):
+			"float":
+				out[name] = text.to_float()
+			"int":
+				out[name] = text.to_int()
+			"bool":
+				out[name] = text == "true"
+			_:
+				# (vec3(1.0) in a shader is that number in every place)
+				var inner := text.get_slice("(", 1).trim_suffix(")")
+				if not inner.contains(","):
+					var x := inner.to_float()
+					out[name] = {"vec2": Vector2(x, x), "vec3": Vector3(x, x, x), "vec4": Vector4(x, x, x, x)}[m.get_string(1)]
+					continue
+				var e := Expression.new()
+				if e.parse(text.replace("vec2", "Vector2").replace("vec3", "Vector3").replace("vec4", "Vector4")) == OK:
+					var v: Variant = e.execute()
+					if not e.has_execute_failed():
+						out[name] = v
+	_defaults[shader] = out
+	return out
+
+
+static var _defaults := {}
 
 
 ## The moves as the family shaders take them. Each op is a Dictionary:

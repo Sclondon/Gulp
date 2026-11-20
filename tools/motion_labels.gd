@@ -137,9 +137,8 @@ func _label_mesh(mesh_path: String, surfaces: Dictionary) -> int:
 			var material: ShaderMaterial = surfaces[s][0]
 			var spec: GDScript = surfaces[s][1]
 			var own: Shader = surfaces[s][2]
-			var defaults := {}
-			for u: Dictionary in own.get_shader_uniform_list():
-				defaults[StringName(u.name)] = RenderingServer.shader_get_parameter_default(own.get_rid(), u.name)
+			# (from the shader's code where the engine gives none, as it does not headless)
+			var defaults := Motion.defaults_of(own)
 			var old := func(name: StringName) -> Variant:
 				var v: Variant = material.get_shader_parameter(name)
 				return v if v != null else defaults.get(name)
