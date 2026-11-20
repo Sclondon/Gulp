@@ -389,6 +389,11 @@ def extras(fig, wear, outfit, P, Pp, H, arm=None):
             for dz, r in ((0.0, 1.0), (0.016, 1.06), (0.032, 1.0)):
                 ring.append((nc[0] + rx * r * math.cos(a), nc[1] + ry * r * math.sin(a), zr - 0.012 + dz))
         made.append(("neck_ring", "spine_03", ride(np.array(ring)), (0.72, 0.55, 0.22)))
+        if "helmet" in wear:                              # the helmet stands on the ring (helmet.py), bolted to the chest
+            import helmet as helmet_mod
+            headp = P[_w(base, ("head",)) > 0.8]
+            helmet_mod.make((nc[0], (headp[:, 1].min() + headp[:, 1].max()) / 2, zr + 0.015), ride, float(headp[:, 2].max()),
+                            os.path.join(os.path.dirname(os.path.abspath(__file__)), "figures", "helmet_diving.png"), arm)
         for nm, front in (("weight_front", True), ("weight_back", False)):
             row = P[chest & (np.abs(P[:, 0]) < 0.07) & (np.abs(P[:, 2] - (zs - 0.15)) < 0.04)]
             yy = row[:, 1].min() - 0.026 if front else row[:, 1].max() + 0.026
@@ -444,7 +449,7 @@ def make(fig, wear, posed=True, arm=None, skin_path=None):
             if piece not in R:
                 print("no such garment here:", piece)
                 continue
-            if piece == "boots":                          # (boots are models of their own: extras())
+            if piece in ("boots", "helmet"):              # (models of their own: extras())
                 continue
             f, may, off, col = R[piece]
             mv = PUSH.get(piece, 0.0)
