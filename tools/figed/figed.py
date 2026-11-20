@@ -372,9 +372,29 @@ class Figure:
                 if len(rim) >= 2:
                     polys.append((rim[0], rim[1], len(P0)))
             tree = BVHTree.FromPolygons(verts, polys)
+            V = np.array(verts)
+            N = np.vstack([n0, n0[root].mean(axis=0) / np.linalg.norm(n0[root].mean(axis=0))])
+            T = np.array(polys)
 
             def onto(q):
-                return np.array([tuple(tree.find_nearest(tuple(x))[0]) for x in q])
+                """Onto the head's surface as a CURVED surface through its points (Phong tessellation: the nearest
+                point of a triangle, lifted towards the tangent planes at its corners). Onto the flat triangles the
+                slid skin took their facets: dents in the shading on a mesh this coarse."""
+                res = np.empty_like(q)
+                for k, x in enumerate(q):
+                    loc, _nrm, face, _d = tree.find_nearest(tuple(x))
+                    loc = np.array(loc)
+                    a, b2, c2 = V[T[face]]
+                    v0, v1, v2 = b2 - a, c2 - a, loc - a
+                    d00, d01, d11, d20, d21 = v0.dot(v0), v0.dot(v1), v1.dot(v1), v2.dot(v0), v2.dot(v1)
+                    den = d00 * d11 - d01 * d01
+                    bv = (d11 * d20 - d01 * d21) / den if den else 0.0
+                    bw = (d00 * d21 - d01 * d20) / den if den else 0.0
+                    bary = np.clip([1 - bv - bw, bv, bw], 0, 1)
+                    bary /= bary.sum()
+                    lifted = sum(wt * (loc - (loc - V[i]).dot(N[i]) * N[i]) for wt, i in zip(bary, T[face]))
+                    res[k] = loc + (lifted - loc) * 0.75
+                return res
 
             dist = np.sqrt(((P0[skin][:, None, :] - P0[root][None, :, :]) ** 2).sum(axis=2)).min(axis=1)
             away = P0[skin] - c

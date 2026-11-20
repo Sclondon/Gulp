@@ -397,3 +397,12 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   out and its footprint capped), so the skin round the ear keeps the skull's shape exactly and only its points'
   spacing changes. `reach` 5 behind, `reach_front` 3.5 (0 = the ear alone). `EAR_FROM` 0: the whole of what
   `ear-wing` moves is the ear; at 0.10 the bowl was left behind.
+- The user, with the temple, the skin round the ear and the skull behind it circled: "Yes its clearly still not
+  moving smoothly". Tried and rejected again: the whole `ear-wing` set moved with no skin (`reach` 0): the set is
+  not the complete ear (bits of the bowl stay) and the faces behind fold; it tears. What changed: slid skin is now
+  set onto the head as a CURVED surface (Phong tessellation in `onto`: the nearest triangle point lifted towards
+  the tangent planes at the triangle's corners, 0.75), not onto flat triangles, whose facets were the dents. A
+  little smoother; NOT confirmed by the user. If it is still not good enough, the honest fallback is the ear by
+  sliders only (`ear-trans-forward` within -1: clean, but about 1.5 cm forward of the sheet's) and the move done by
+  hand in Blender's sculpt tools at the small-corrections stage: relocating an ear 3 cm across a mesh this coarse
+  by arithmetic has now failed four ways.
