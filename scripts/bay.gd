@@ -39,26 +39,24 @@ const DATA := "res://data/monterey.bin"
 ## Elkhorn Slough: a channel winding inland from Moss Landing, half this wide, this deep. Wider, and running
 ## straight east further inland (the user, 2026-11-18: "The river should be wider and go further inland", then
 ## "The river shouldnt turn up just extend further east"; the map was widened east for it).
-const SLOUGH := [Vector2(98.0, -40.0), Vector2(108.0, -42.0), Vector2(118.0, -38.0), Vector2(128.0, -42.0), Vector2(138.0, -37.0), Vector2(148.0, -41.0), Vector2(154.0, -39.0)]
-const SLOUGH_HALF := 9.0
-const SLOUGH_DEEP := 9.0
+static var SLOUGH: Array = Layout.line(Layout.value("river.course"))
+static var SLOUGH_HALF: float = Layout.number("river.half")
+static var SLOUGH_DEEP: float = Layout.number("river.deep")
 ## How deep the slough is at its banks (its middle is SLOUGH_DEEP).
-const SLOUGH_BANK := 2.5
+static var SLOUGH_BANK: float = Layout.number("river.bank")
 ## Harbours dredged level behind their walls: middle, radius, depth.
-const HARBOURS := [
-	[Vector2(66.0, 70.0), 20.0, 6.0],  # Monterey harbour (east of the wharf, off Del Monte: where the shore faces north)
-	[Vector2(-6.0, -123.0), 11.0, 5.0],  # Santa Cruz wharf
-	[Vector2(16.0, -128.0), 7.0, 4.5],  # Santa Cruz small craft harbour
-	[Vector2(22.4, 116.9), 9.0, 8.0],  # Carmel: Stillwater Cove, for the market's pier (moved with the bigger peninsula)
-]
+## (each in data/layout.json, "harbours", since 2026-11-20: Monterey harbour east of the wharf, off Del Monte, where
+## the shore faces north; the Santa Cruz wharf; the Santa Cruz small craft harbour; Carmel, Stillwater Cove, for the
+## market's pier)
+static var HARBOURS: Array = Layout.harbours()
 ## Shelves made level (world metres): middle, flat out to, blended out to, depth at the middle (m),
 ## and how much deeper it gets per metre (x, z); a long one also its heading (as rotation.y) and how
 ## much narrower it is across (the liner's, along its hull).
 ## (the liner lies across the Carmel Canyon's head like a bridge: these are the two seats its ends rest on,
 ## each only filling the floor under it (the 7th item), level at its keel)
-const WRECK_SHELF := [Vector2(-37.0, 100.0), 7.0, 14.0, 26.0, Vector2(0.0, 0.0), Vector2(0.0, 1.0), true]
-const WRECK_SEAT_SOUTH := [Vector2(-37.0, 152.0), 6.0, 12.0, 26.0, Vector2(0.0, 0.0), Vector2(0.0, 1.0), true]
-const PIRATE_HOLLOW := [Vector2(-65.0, -42.0), 20.0, 38.0, 21.0, Vector2(0.0, 0.0)]
+static var WRECK_SHELF: Array = Layout.shelf("liner_north")
+static var WRECK_SEAT_SOUTH: Array = Layout.shelf("liner_south")
+static var PIRATE_HOLLOW: Array = Layout.shelf("pirate_hollow")
 ## Atlantis is built into the Monterey Canyon's walls (tools/RUINS.md): small ledges are cut into them
 ## under each of its buildings and stairs, read from the one table that the model's build and Ruins
 ## read too (so they cannot disagree). No big flat: "The Atlantis ruines area shouldnt just be a big
@@ -321,8 +319,9 @@ static func dune_height(p: Vector2, deep: float) -> float:
 		_dunes.sharp = 0.35
 		# (a lee lower than this is a gentle slope, not a slip face: the 2 m grid draws short slip faces as teeth)
 		_dunes.soft_below = 2.7
-		_dunes.field(Rect2(-112.0, -126.0, 175.0, 86.0), SandDunes.Field.TRANSVERSE, DUNE_HEIGHTS, 0.05, 2.2)
-		_dunes.field(Rect2(-124.0, 112.0, 60.0, 50.0), SandDunes.Field.TRANSVERSE, DUNE_HEIGHTS, 0.05, 2.2)
+		# (the fields' boxes: data/layout.json, "dune_fields", x, z, width, length)
+		for box: Array in Layout.value("dune_fields", []):
+			_dunes.field(Rect2(box[0], box[1], box[2], box[3]), SandDunes.Field.TRANSVERSE, DUNE_HEIGHTS, 0.05, 2.2)
 	return _dunes.height_at(p.x, p.y) * w
 
 

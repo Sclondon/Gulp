@@ -33,7 +33,7 @@ const BOAT := "res://models/shrimp_boat.glb"
 const NET_SHADER := preload("res://shaders/net.gdshader")
 
 ## Where each run starts (Main.restart): nothing of this is put within SPARE metres of it.
-const START := Vector3(Sea.START.x, Sea.SURFACE - 7.0, Sea.START.y)
+static var START: Vector3 = Vector3(Sea.START.x, Sea.SURFACE - 7.0, Sea.START.y)
 const SPARE := 30.0
 
 ## The two kinds of rig: how much bigger than life its gear is drawn, how long its bait counts as

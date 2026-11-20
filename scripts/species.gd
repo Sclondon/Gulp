@@ -211,6 +211,7 @@ const ALL := {
 }
 
 static var _scripts := {}
+static var _entries := {}
 
 
 ## Whether a kind can be made (its creature is installed; the old shark always can).
@@ -221,9 +222,20 @@ static func has(kind: String) -> bool:
 	return named == "" or ResourceLoader.exists(_path(named))
 
 
-## A kind's entry.
+## A kind's entry: ALL's, with where it lives and how many there are from the layout (data/layout.json,
+## "kinds", since 2026-11-20: the editor sets them).
 static func of(kind: String) -> Dictionary:
-	return ALL.get(kind, {})
+	var made: Variant = _entries.get(kind)
+	if made == null:
+		var own: Dictionary = ALL.get(kind, {})
+		var laid := Layout.kind(kind)
+		if not laid.is_empty() and not own.is_empty():
+			own = own.duplicate()
+			own["zones"] = laid.get("zones", own.get("zones", []))
+			own["count"] = int(laid.get("count", own.get("count", 0)))
+		_entries[kind] = own
+		made = own
+	return made
 
 
 ## A new creature of a kind, dressed (not yet in the tree), or null for the old shark. It is drawn

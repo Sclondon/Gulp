@@ -6,7 +6,8 @@
 #   sh tools/web_excludes.sh        (from the project folder; then export as usual)
 # A full model is creatures/<x>/models/<name>.glb beside a <name>_game.glb.
 set -e
-list="tools/*,tests/*,shots/*,conceptart/*,textures/panel/retired_1/*,textures/controls/*,creatures/*/tools/*,models/sea_floor.glb,models/*_old.json"
+# (addons/ and editor/: the bay editor, addons/bay_layout and editor/bay_layout.tscn; the game reads only data/layout.json)
+list="tools/*,tests/*,addons/*,editor/*,shots/*,conceptart/*,textures/panel/retired_1/*,textures/controls/*,creatures/*/tools/*,models/sea_floor.glb,models/*_old.json"
 # The figures being made (the boy, his brother, the captain, the townsfolk, their faces and hair) are
 # not in the game: only the title's own copies (models/title_*) are drawn. About 35 MB of the pack
 # (tools/PERF.md, "The web pack, 2026-11-19"). Take a figure out of this list when the game uses it.

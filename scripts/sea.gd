@@ -37,46 +37,33 @@ const EDGE := Bay.EDGE * Bay.K
 ## bay"; the user's layout of 2026-11-18 kept where the real floor allows). "open" is everything west
 ## of the shelf's edge (and the deep water over the canyon); "beach" is the strip of shallows all
 ## along the shore (`Bay.BEACH`); "trench" is the canyon's water deeper than `deeper`. World metres.
-const ZONES := {
-	"beach": {"at": Vector2(60.0, -125.0), "radius": 0.0},
-	"river": {"at": Vector2(126.0, -40.0), "radius": 30.0},
-	"kelp": {"at": Vector2(42.4, 48.6), "radius": 16.0, "region": "kelp"},
-	"docks": {"at": Vector2(66.0, 68.0), "radius": 16.0, "also": [[Vector2(3.0, -123.0), 12.0]]},
-	"sand": {"at": Vector2(-20.0, -80.0), "radius": 22.0, "region": "dunes"},
-	"pirate": {"at": Vector2(-65.0, -42.0), "radius": 18.0},
-	# (before the trench: Atlantis is in it)
-	"ruins": {"at": Vector2(-64.0, 48.0), "radius": 28.0},
-	"trench": {"at": Vector2(30.0, -36.0), "radius": 45.0, "deeper": 45.0},
-	"grass": {"at": Vector2(-56.0, 2.0), "radius": 12.0, "region": "grass"},
-	"crags": {"at": Vector2(-82.0, -40.0), "radius": 16.0, "region": "crags"},
-	"reef": {"at": Vector2(-37.0, 126.0), "radius": 24.0},
-	"open": {"at": Vector2(-95.0, 10.0), "radius": 24.0},
-}
+## (in data/layout.json since 2026-11-20: Layout, "zones")
+static var ZONES: Dictionary = Layout.zones()
 ## The liner's wreck (scripts/wreck.gd, another agent's): where the middle of its keel rests on the
 ## bottom, and its turn (rotation.y; the hull's length lies along the node's own Z). Across the head of the Carmel
 ## Canyon like a bridge (the user, 2026-11-18: "The liner should sit across the carmel trench top like a
 ## bridge"): its ends rest on the rims 26 m down, 40 m off Carmel (where the user drew it) (Bay.WRECK_SHELF and WRECK_SEAT_SOUTH, two small seats), the
 ## canyon open under its middle down to about 90 m. Found by tools/bay_probe.gd --span.
-const WRECK_AT := Vector3(-37.0, 14.0, 126.0)
-const WRECK_HEADING := 0.0
+static var WRECK_AT: Vector3 = Layout.v3(Layout.value("places.liner.at"))
+static var WRECK_HEADING: float = Layout.number("places.liner.heading")
 ## Atlantis (scripts/ruins.gd): its own origin, in the canyon's deep south-western basin, on its 82 m tread; its
 ## buildings stand on ledges in the stepped walls round the basin ("it should be built into the trench sides";
 ## "the ruins need to be way further out in the deepest part of the trench", the user, 2026-11-18).
 ## The same place as data/ruins_layout.json's origin (the ruins check says if they disagree); not turned.
-const RUINS_AT := Vector3(-62.0, -42.0, 50.0)
-const RUINS_HEADING := 0.0
+static var RUINS_AT: Vector3 = Layout.v3(Layout.value("places.atlantis.at"))
+static var RUINS_HEADING: float = Layout.number("places.atlantis.heading")
 ## The pirate ship (scripts/pirate_wreck.gd, another agent's): the middle of its sandy hollow, and
 ## its turn (its length along the node's own Z). On the open shelf south-west of where it first lay, where the
 ## user circled it on the chart (2026-11-18: "why havent you moved the pirate ship like I showed in the overlay").
-const PIRATE_AT := Vector3(-65.0, 19.0, -42.0)
-const PIRATE_HEADING := 1.57
+static var PIRATE_AT: Vector3 = Layout.v3(Layout.value("places.pirate.at"))
+static var PIRATE_HEADING: float = Layout.number("places.pirate.heading")
 ## The fish markets' landings (the user: "the fish markets should be at monteray, santa cruz, and carmel";
 ## the places are Claude's): the end of Monterey's commercial wharf, the end of the Santa Cruz wharf,
 ## the end of Carmel's pier at Stillwater Cove (world x, z). Selling there is another stage's.
-const MARKETS := {"monterey": Vector2(82.0, 56.0), "santa_cruz": Vector2(-8.0, -107.0), "carmel": Vector2(22.4, 122.6)}
+static var MARKETS: Dictionary = _markets()
 ## Where a run starts (x, z): over the sand off Santa Cruz, east of the pirate ship, with room east of it
 ## for the title boat's circle (45 m round a middle 45 m east: Title.COURSE).
-const START := Vector2(-40.0, -55.0)
+static var START: Vector2 = Layout.point("places.start")
 ## The kelp forest's water (BiomeRegions' kelp, near the eye): the green-teal it leans to and how far, the
 ## ambient light there, and how much stronger the light shafts are (tools/BIOMES.md, "The dense kelp").
 const KELP_WATER := Color(0.03, 0.2, 0.16)
@@ -171,6 +158,14 @@ static func rogue_wave(at: Vector2, heading: Vector2, over := false) -> void:
 	if over:
 		at -= way * Surf.ROGUE_SPEED * Surf.ROGUE_LIFE * 0.5
 	Surf.start_rogue(at, way)
+
+
+static func _markets() -> Dictionary:
+	var out := {}
+	var all: Dictionary = Layout.value("places.markets", {})
+	for name: String in all:
+		out[name] = Layout.v2(all[name])
+	return out
 
 
 ## A zone's patches: each [middle, radius].

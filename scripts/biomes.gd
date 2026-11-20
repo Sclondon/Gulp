@@ -24,7 +24,8 @@ const REEFS := [
 ## The layers of each place. Keys (all optional but `what`):
 ## what: "prop" (the sea floor kit's `pieces`), "kelp", "grass", "seaweed" (`kind`: SeaweedBed.Kind)
 ## region: a BiomeRegions name (the place is that biome, faded in over its edge); or area: [middle,
-## radius] and edge (m); or neither (the whole map). avoid: [[middle, radius]...] kept clear.
+## radius] and edge (m); or neither (the whole map). avoid: [[middle, radius]...] kept clear (a middle may be
+## "outcrop" or "outcrop_south": that islet, wherever the layout puts it).
 ## on: FloorTypes; depth: [from, to] m; slope_max / slope_min; density: [core, edge] per 100 m²;
 ## noise: [freq, seed, above]; spacing: m apart on the jittered grid; clump: [least, most, within m];
 ## size: [from, to] (scale for props, metres for plants); reach / edge_reach (kelp: its length as a
@@ -69,7 +70,7 @@ const TABLES := {
 	# piles with many gaps to dart through, round the pirate ship and its islets (clear of the ship's lane:
 	# Scenery._kept_clear, and of the islets' own columns). Pink coralline crust on the floor and on the
 	# rocks (strawberry anemone sheets, tinted), white plumose anemones, sea stars, urchins.
-	"crags": {"region": "crags", "avoid": [[Vector2(-93.0, -52.0), 8.0], [Vector2(-74.0, -14.0), 7.0]],
+	"crags": {"region": "crags", "avoid": [["outcrop", 8.0], ["outcrop_south", 7.0]],
 		"keep": [[[Vector2(-86.0, -42.0), Vector2(-44.0, -42.0)], 10.0]], "layers": [
 		{"what": "prop", "pieces": ["rock_pinnacle"], "on": [1, 4, 0], "depth": [10.0, 30.0], "slope_max": 0.6, "density": [1.3, 0.3], "spacing": 7.0,
 		 "size": [1.1, 2.0], "lift": -0.5, "lean": 0.4, "grow": true, "tint": Color(0.56, 0.54, 0.52)},
@@ -416,7 +417,9 @@ func _fits(table: Dictionary, layer: Dictionary, p: Vector2) -> bool:
 	if table.has("region") and BiomeRegions.at(p.x, p.y) != table.region:
 		return false
 	for away: Array in table.get("avoid", []):
-		if p.distance_to(away[0]) < float(away[1]):
+		# (a place by name follows it when it moves in the layout: the islets)
+		var middle: Vector2 = away[0] if away[0] is Vector2 else (Scenery.OUTCROP if away[0] == "outcrop" else Scenery.OUTCROP_SOUTH)
+		if p.distance_to(middle) < float(away[1]):
 			return false
 	for keep: Array in table.get("keep", []):
 		if _line_distance(p, keep[0]) < float(keep[1]):

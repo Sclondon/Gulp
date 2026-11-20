@@ -188,13 +188,13 @@ func _ready() -> void:
 		sleep_at = PHONE[4]
 		dress_each = PHONE[5]
 	for i in KRILL_CLOUDS:
-		_school(_swarm_rules(_krill_rules(), KRILL_SWARM), _krill_mesh(), KRILL_LENGTH, "", 0.55, 0.92, i)
+		_school(_swarm_rules(_krill_rules(), KRILL_SWARM), _krill_mesh(), KRILL_LENGTH, Layout.school_zone("krill", i), 0.55, 0.92, i)
 		if i == 0:
 			# (this one, and the first school of anchovies, keep near where a run starts: `keep_home`)
 			schools[-1].home = Vector3.INF
 	for i in SARDINE_SCHOOLS:
 		_school(_swarm_rules(_sardine_rules(), SARDINE_BALL if i == 0 else SARDINE_SWARM), Fish.school_mesh(), SARDINE_LENGTH,
-				"open" if i % 2 == 0 else "kelp", 0.4, 0.85, 100 + i)
+				Layout.school_zone("sardines", i), 0.4, 0.85, 100 + i)
 	if ResourceLoader.exists("res://creatures/anchovy/anchovy.gd"):
 		for i in 3:
 			var rules := _sardine_rules()
@@ -202,7 +202,7 @@ func _ready() -> void:
 			# (slow enough in a fright that the smallest fish can run one down)
 			rules.max_speed = 1.3
 			rules.cruise_speed = 0.9
-			_school(_swarm_rules(rules, ANCHOVY_SWARM), Fish.school_mesh("anchovy"), 0.14, ["sand", "grass", "kelp"][i], 0.4, 0.85, 300 + i)
+			_school(_swarm_rules(rules, ANCHOVY_SWARM), Fish.school_mesh("anchovy"), 0.14, Layout.school_zone("anchovies", i), 0.4, 0.85, 300 + i)
 			if i == 0:
 				schools[-1].home = Vector3.INF
 	if Species.has("piranha"):
@@ -210,12 +210,12 @@ func _ready() -> void:
 		pack.size = 1.0
 		pack.count = 22
 		pack.bounds_size = Vector3(3.0, 2.0, 3.0)
-		_school(pack, Fish.school_mesh("piranha"), 0.3, "river", 0.3, 0.8, 400)
+		_school(pack, Fish.school_mesh("piranha"), 0.3, Layout.school_zone("piranhas", 0), 0.3, 0.8, 400)
 	if ResourceLoader.exists("res://creatures/lanternfish/lanternfish.gd"):
 		for i in 2:
 			var lights := _sardine_rules()
 			lights.size = 2.0
-			_school(_swarm_rules(lights, LANTERN_SWARM), Fish.school_mesh("lanternfish"), 0.16, "trench", 0.1, 0.6, 500 + i)
+			_school(_swarm_rules(lights, LANTERN_SWARM), Fish.school_mesh("lanternfish"), 0.16, Layout.school_zone("lanternfish", i), 0.1, 0.6, 500 + i)
 			schools[-1].nocturnal = true
 	if ResourceLoader.exists("res://creatures/neon_tetra/neon_tetra.gd"):
 		var neons := _sardine_rules()
@@ -225,7 +225,7 @@ func _ready() -> void:
 		neons.max_speed = 1.4
 		neons.cruise_speed = 0.8
 		neons.bounds_size = Vector3(2.5, 1.6, 2.5)
-		_school(neons, Fish.school_mesh("neon_tetra"), 0.1, "river", 0.3, 0.8, 600)
+		_school(neons, Fish.school_mesh("neon_tetra"), 0.1, Layout.school_zone("neons", 0), 0.3, 0.8, 600)
 	if ResourceLoader.exists("res://creatures/zebra_danio/zebra_danio.gd"):
 		var danios := _sardine_rules()
 		# (twice life size: a zebra danio is 4.5 cm)
@@ -234,19 +234,19 @@ func _ready() -> void:
 		danios.max_speed = 1.6
 		danios.cruise_speed = 0.9
 		danios.bounds_size = Vector3(2.5, 1.6, 2.5)
-		_school(danios, Fish.school_mesh("zebra_danio"), 0.09, "river", 0.4, 0.9, 700)
+		_school(danios, Fish.school_mesh("zebra_danio"), 0.09, Layout.school_zone("danios", 0), 0.4, 0.9, 700)
 	if Species.has("mackerel"):
 		for i in 2:
 			var rules := _sardine_rules()
 			rules.size = 0.4 / 0.4
 			rules.max_speed = 3.0
 			rules.cruise_speed = 1.7
-			_school(_swarm_rules(rules, MACKEREL_SWARM), Fish.school_mesh("pacific_mackerel"), 0.4, "open", 0.5, 0.9, 200 + i)
+			_school(_swarm_rules(rules, MACKEREL_SWARM), Fish.school_mesh("pacific_mackerel"), 0.4, Layout.school_zone("mackerel", i), 0.5, 0.9, 200 + i)
 	if ResourceLoader.exists(PLANKTON):
 		for i in PLANKTON_CLOUDS:
 			var cloud: Node3D = (load(PLANKTON) as GDScript).new()
 			add_child(cloud)
-			cloud.global_position = _school_place(["", "kelp", "grass", "open"][i % 4], PLANKTON_RADIUS, 0.4, 0.9)
+			cloud.global_position = _school_place(Layout.school_zone("plankton", i), PLANKTON_RADIUS, 0.4, 0.9)
 			cloud.call(&"fill", Vector3.ZERO, PLANKTON_RADIUS, PLANKTON_SPECKS)
 			plankton.append(cloud)
 	# Every kind Species has, where its creature is installed; those that keep together are put
@@ -289,7 +289,7 @@ func _ready() -> void:
 		jellies.append(jelly)
 		_jelly_away.append(0.0)
 		_jelly_time.append(0.0)
-		_place_jelly(i, Sea.place(_rng, "open" if i % 2 == 0 else "sand", 1.0))
+		_place_jelly(i, Sea.place(_rng, Layout.school_zone("jellies", i), 1.0))
 	for i in NETTLES:
 		var nettle := SeaNettle.new()
 		nettle.scale = Vector3.ONE * NETTLE_SIZE
@@ -300,7 +300,7 @@ func _ready() -> void:
 		nettles.append(nettle)
 		_nettle_away.append(0.0)
 		_nettle_goal.append(Vector3.ZERO)
-		_place_nettle(i, Sea.place(_rng, "open", 3.0))
+		_place_nettle(i, Sea.place(_rng, Layout.school_zone("nettles", i), 3.0))
 
 
 ## A kind's model has already been shown once (Main's warm-up behind the title): it need not wait
@@ -992,8 +992,8 @@ func _place_jelly(i: int, at: Vector3) -> void:
 ## first krill cloud and the first school of anchovies keep within HOME_ROOM of `at`, between
 ## HOME_DEPTH metres under the surface (inside the starting depth limit: the static begins at 12 m).
 ## They are moved there now if they are far off (a new run).
-const HOME_ROOM := Vector2(6.0, 14.0)
-const HOME_DEPTH := Vector2(4.0, 9.0)
+static var HOME_ROOM: Vector2 = Layout.point("home.room")
+static var HOME_DEPTH: Vector2 = Layout.point("home.depth")
 var _home_rng := RandomNumberGenerator.new()
 
 

@@ -33,10 +33,9 @@ const MANGROVES := true
 ## The garden eel colonies, all in the dune sea (BiomeRegions DUNES): each a band across the current
 ## (its two ends, world) and how many eels. (The old ridge off Santa Cruz and the small colony by the
 ## liner, moved into the dunes 2026-11-18.)
-const EEL_COLONIES := [[[Vector2(-50.0, -98.0), Vector2(-42.0, -76.0)], 110], [[Vector2(2.0, -82.0), Vector2(8.0, -62.0)], 100],
-		[[Vector2(-112.0, 128.0), Vector2(-104.0, 150.0)], 50]]
+static var EEL_COLONIES: Array = _eel_colonies()
 ## The dune sea's anchors: where (world), how big, which way.
-const DUNE_ANCHORS := [[Vector2(-28.0, -88.0), 2.2, 0.6], [Vector2(-78.0, -92.0), 1.6, 2.1]]
+static var DUNE_ANCHORS: Array = _dune_anchors()
 ## How long a garden eel counts as for the eating rule (m), and how long one stays gone (s).
 const EEL_LENGTH := 0.6
 const EEL_BACK := 25.0
@@ -79,22 +78,22 @@ const PIRATE_LANE := Vector2(34.0, 12.0)
 const DECK_UP := 0.9
 const PILE_DOWN := 0.7
 ## Where the two docks are (world): the middles of the docks zone's two patches.
-const MONTEREY := Vector2(66.0, 68.0)
-const SANTA_CRUZ := Vector2(3.0, -123.0)
+static var MONTEREY: Vector2 = Layout.point("places.docks_monterey")
+static var SANTA_CRUZ: Vector2 = Layout.point("places.docks_santa_cruz")
 ## The outcrop the pirate ship struck, and its island (world).
-const OUTCROP := Vector2(-93.0, -52.0)
+static var OUTCROP: Vector2 = Layout.point("places.outcrop")
 ## A second rocky islet, south-south-west of the pirate ship (no seals on it).
-const OUTCROP_SOUTH := Vector2(-74.0, -14.0)
+static var OUTCROP_SOUTH: Vector2 = Layout.point("places.outcrop_south")
 ## The south kelp forest's landmark: the arch across its main channel (world x, z; BIOMES.md 5.2).
-const ARCH := Vector2(42.4, 48.6)
+static var ARCH: Vector2 = Layout.point("places.arch")
 ## Where Carmel's pier starts at the shore (world; it runs north, BIOMES.md 5.12).
-const CARMEL_PIER := Vector2(22.4, 111.2)
+static var CARMEL_PIER: Vector2 = Layout.point("places.carmel_pier")
 const OLD_ONE := "res://creatures/old_one/old_one.gd"
 const REEF_BACK := "res://creatures/reef_back/reef_back.gd"
 ## Where the old one lies asleep (world x, z: the canyon's deep floor north-east of Atlantis, 85 m).
-const OLD_ONE_AT := Vector2(10.0, -38.0)
+static var OLD_ONE_AT: Vector2 = Layout.point("places.old_one")
 ## The reef back's loop on the deep floor past the shelf's edge (middle x, z; radius), and its pace (m/s).
-const REEF_BACK_LOOP := Vector3(-90.0, 40.0, 15.0)
+static var REEF_BACK_LOOP: Vector3 = Vector3(Layout.point("places.reef_back.at").x, Layout.point("places.reef_back.at").y, Layout.number("places.reef_back.radius"))
 const REEF_BACK_PACE := 0.45
 ## Beyond this the two giants are their light models (m).
 const GIANT_LOW := 60.0
@@ -103,6 +102,21 @@ const GIANT_LOW := 60.0
 const MONSTERS := false
 ## The old wall of cliff pieces along the drawn map's shelf edge (off: the real floor has its own).
 const CLIFF_WALL := false
+
+## (the places in data/layout.json since 2026-11-20)
+static func _eel_colonies() -> Array:
+	var out := []
+	for c: Dictionary in Layout.value("eel_colonies", []):
+		out.append([[Layout.v2(c.from), Layout.v2(c.to)], int(c.count)])
+	return out
+
+
+static func _dune_anchors() -> Array:
+	var out := []
+	for a: Dictionary in Layout.value("dune_anchors", []):
+		out.append([Layout.v2(a.at), float(a.size), float(a.turn)])
+	return out
+
 
 ## Who lays the grass aside and frightens the eels (the player).
 var player: Player

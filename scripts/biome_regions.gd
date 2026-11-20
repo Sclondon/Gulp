@@ -29,67 +29,30 @@ const REEF := "reef"
 ## drawn outlines never spill down a canyon wall), the shore's strip, then the drawn four.
 const ORDER := [RIVER, REEF, TRENCH, BEACH, CRAGS, KELP, GRASS, DUNES]
 ## How far (m) a biome's look fades in across its edge.
-const EDGE := 8.0
+static var EDGE: float = Layout.number("biomes.edge")
 ## The trench: floor deeper than this (m; the shelf is 26 m, its bumps and the dunes within 1).
-const TRENCH_DEEP := 28.0
+static var TRENCH_DEEP: float = Layout.number("biomes.trench_deep")
 ## Atlantis's basin (world middle, radius): no trench dressing there (the ruins dress their own).
-const RUINS_CLEAR := [Vector2(-64.0, 48.0), 30.0]
+static var RUINS_CLEAR: Array = [Layout.point("biomes.ruins_clear.at"), Layout.number("biomes.ruins_clear.radius")]
 ## The river: within this of Elkhorn Slough's channel's edge (m); and the estuary round its mouth at Moss
 ## Landing (the user, 2026-11-18: "there should be a seaweedy / grassy area around the mouth instead of
 ## regular beach"): within RIVER_MOUTH of ESTUARY, along the shore both ways, out to where the canyon head
 ## falls below ESTUARY_DEEP.
-const RIVER_BANK := 5.0
-const ESTUARY := Vector2(96.0, -40.0)
-const RIVER_MOUTH := 25.0
-const ESTUARY_DEEP := 10.0
+static var RIVER_BANK: float = Layout.number("river.banks")
+static var ESTUARY: Vector2 = Layout.point("river.estuary")
+static var RIVER_MOUTH: float = Layout.number("river.mouth")
+static var ESTUARY_DEEP: float = Layout.number("river.mouth_deep")
 ## The beach: within Bay.BEACH of the shore and shallower than this (m).
-const BEACH_DEEP := 6.0
+static var BEACH_DEEP: float = Layout.number("biomes.beach_deep")
 
-const SHAPES := {
-	KELP: [
-		# along the Monterey side, from the canyon's south rim to Monterey and down past Point Pinos
-		[Vector2(-10.0, 6.0), Vector2(4.0, 12.0), Vector2(19.0, 11.0), Vector2(56.0, -20.0), Vector2(65.0, -18.0), Vector2(65.0, 16.0),
-			Vector2(72.0, 40.0), Vector2(83.0, 42.0), Vector2(76.0, 61.0), Vector2(64.0, 78.0), Vector2(54.0, 80.0), Vector2(44.0, 54.0),
-			Vector2(35.0, 54.0), Vector2(28.0, 58.0), Vector2(11.0, 91.0), Vector2(-10.0, 94.0), Vector2(-16.0, 85.0), Vector2(-28.0, 77.0),
-			Vector2(-30.0, 64.0), Vector2(-26.0, 40.0), Vector2(-18.0, 24.0)],
-		# east of the Soquel branch, north of the canyon (was dune sea: the user's second drawing)
-		[Vector2(19.0, -77.0), Vector2(22.0, -90.0), Vector2(41.0, -91.0), Vector2(51.0, -80.0), Vector2(57.0, -64.0), Vector2(57.0, -42.0),
-			Vector2(40.0, -34.0), Vector2(27.0, -32.0), Vector2(20.0, -48.0)],
-	],
-	DUNES: [
-		# the north shelf, Santa Cruz to the canyon
-		[Vector2(-96.0, -120.0), Vector2(-62.0, -113.0), Vector2(-32.0, -101.0), Vector2(19.0, -104.0), Vector2(38.0, -90.0), Vector2(56.0, -73.0),
-			Vector2(52.0, -58.0), Vector2(40.0, -45.0), Vector2(17.0, -45.0), Vector2(6.0, -58.0), Vector2(-5.0, -50.0), Vector2(-32.0, -51.0),
-			Vector2(-47.0, -56.0), Vector2(-61.0, -64.0), Vector2(-103.0, -83.0), Vector2(-104.0, -96.0), Vector2(-100.0, -117.0)],
-		# the far south-west corner
-		[Vector2(-122.0, 118.0), Vector2(-110.0, 146.0), Vector2(-84.0, 147.0), Vector2(-71.0, 160.0), Vector2(-122.0, 160.0)],
-	],
-	GRASS: [
-		# west of the trench, south of the pirate ship
-		[Vector2(-103.0, -46.0), Vector2(-101.0, 0.0), Vector2(-95.0, 16.0), Vector2(-80.0, 24.0), Vector2(-61.0, 19.0), Vector2(-50.0, 10.0),
-			Vector2(-40.0, -11.0), Vector2(-40.0, -16.0), Vector2(-82.0, -22.0), Vector2(-101.0, -43.0)],
-		# the shelf between the basin and the Carmel Canyon
-		[Vector2(-30.0, 54.0), Vector2(-45.0, 80.0), Vector2(-68.0, 91.0), Vector2(-70.0, 102.0), Vector2(-50.0, 94.0), Vector2(-32.0, 99.0),
-			Vector2(-24.0, 103.0), Vector2(-16.0, 96.0), Vector2(-14.0, 83.0), Vector2(-20.0, 78.0), Vector2(-28.0, 69.0)],
-		# two strips south of the Carmel Canyon, either side of the liner's south end
-		[Vector2(-85.0, 137.0), Vector2(-66.0, 135.0), Vector2(-65.0, 145.0), Vector2(-53.0, 160.0), Vector2(-60.0, 160.0), Vector2(-74.0, 147.0)],
-		[Vector2(-18.0, 130.0), Vector2(-12.0, 130.0), Vector2(-4.0, 142.0), Vector2(-4.0, 160.0), Vector2(-13.0, 160.0), Vector2(-13.0, 152.0),
-			Vector2(-18.0, 141.0)],
-	],
-	CRAGS: [
-		# round the pirate ship and its seal rock
-		[Vector2(-103.0, -76.0), Vector2(-82.0, -72.0), Vector2(-65.0, -68.0), Vector2(-53.0, -58.0), Vector2(-32.0, -50.0), Vector2(-27.0, -45.0),
-			Vector2(-27.0, -32.0), Vector2(-32.0, -21.0), Vector2(-40.0, -17.0), Vector2(-61.0, -18.0), Vector2(-82.0, -22.0), Vector2(-100.0, -38.0),
-			Vector2(-108.0, -51.0), Vector2(-108.0, -61.0)],
-		# a patch inside the western grass (round the second islet)
-		[Vector2(-89.0, -4.0), Vector2(-79.0, -9.0), Vector2(-69.0, -4.0), Vector2(-67.0, 10.0), Vector2(-76.0, 10.0), Vector2(-89.0, 6.0)],
-	],
-	# The liner's reef: round the wreck where its bommies stand (Scenery._place_reef, out to 32 m).
-	REEF: [
-		[Vector2(-37.0, 92.0), Vector2(-15.0, 100.0), Vector2(-8.0, 126.0), Vector2(-15.0, 152.0), Vector2(-37.0, 160.0), Vector2(-59.0, 152.0),
-			Vector2(-66.0, 126.0), Vector2(-59.0, 100.0)],
-	],
-}
+## The drawn outlines (world x, z; data/layout.json, "biomes" "shapes", since 2026-11-20): kelp along the Monterey side,
+## from the canyon's south rim to Monterey and down past Point Pinos, and east of the Soquel branch north of the canyon
+## (was dune sea: the user's second drawing); dunes on the north shelf, Santa Cruz to the canyon, and in the far
+## south-west corner; grass west of the trench south of the pirate ship, on the shelf between the basin and the
+## Carmel Canyon, and in two strips south of the Carmel Canyon either side of the liner's south end; crags round the
+## pirate ship and its seal rock and a patch inside the western grass round the second islet; the liner's reef round
+## the wreck where its bommies stand (Scenery._place_reef, out to 32 m).
+static var SHAPES: Dictionary = Layout.shapes()
 ## The order the drawn outlines win in among themselves (for Bay's dunes, which cannot ask the grid:
 ## the grid needs the floor, and the floor needs the dunes).
 const SHAPE_ORDER := [REEF, CRAGS, KELP, GRASS, DUNES]

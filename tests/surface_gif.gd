@@ -15,7 +15,7 @@ const SECONDS := {"cruise": 5.0, "break": 5.0, "leap": 4.5, "surf_leap": 4.5, "s
 ## Off Steamer Lane, seaward of the break (scripts/breakers.gd), where the swell runs in.
 const SURF_AT := Vector2(-40.0, -108.0)
 ## Open water by the start, clear of the boat that lies hove-to over it (Main: the start plus 4 m in z).
-const CALM_AT := Sea.START + Vector2(0.0, -16.0)
+static var CALM_AT: Vector2 = Sea.START + Vector2(0.0, -16.0)
 
 var _main: Node
 var _move := "leap"
