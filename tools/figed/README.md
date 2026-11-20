@@ -564,3 +564,11 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
   rule); a pale patch round each ear (the smoothed-over head under the ear shares the ear's texels, and the ear's
   paint spills past its outline); eyeballs still blank; the drawing's light still in the paint.
   Made before the user's eye and nose changes settle: project again when the face is agreed.
+- Third projection. The user: "okay just use his front facing one for the head texture at first".
+  `paint_project.py ... --front`: the front view alone for the head (ears still from the side view, Claude's
+  reading); skin that faces away from the front is left the plain skin colour (not painted through to the back),
+  with the same edge-colour streaks where the head turns sideways. `brother_skin.png` is this version.
+- Painting by hand: `sculpt_session.py -- make <spec> <work.blend> <sheet> --paint <skin.png>` builds a file in
+  Texture Paint mode with the skin PACKED in it (so Ctrl+S keeps the paint), opened flat lit with the texture
+  showing and the reference pictures hidden; `-- read-paint <out.png>` writes the painted skin back. Opening in the
+  right mode is checked in a window; that painted strokes survive a save is NOT yet checked.

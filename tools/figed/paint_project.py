@@ -1,6 +1,6 @@
 """A first paint for a figure's head: the views of its head sheet projected onto the model's own UV layout.
 
-    blender -b --factory-startup --python tools/figed/paint_project.py -- <spec.json> <sheet.json> <out.png> [shots.png]
+    blender -b --factory-startup --python tools/figed/paint_project.py -- <spec.json> <sheet.json> <out.png> [shots.png] [--front]
 
 For every texel of the head's skin the script finds the point of the (posed, squared) model it belongs to and which
 way that skin faces, looks that point up in each view of the sheet (placed as head_overlay.py places them: scaled
@@ -131,7 +131,9 @@ for group, vi, ti in base.faces:
         else:                                                 # the head: front or back, a narrow blend at the side
             t = np.clip((0.12 - nrm[:, 1]) / 0.24, 0, 1)
             front = t * t * (3 - 2 * t)
-            use = [(FRONT, front), (BACK, 1 - front)]
+            # --front (the user, 2026-11-20: "just use his front facing one for the head texture at first"): the front
+            # view alone; skin that faces away from it is left the plain skin colour, not painted through
+            use = [(FRONT, front)] if "--front" in argv else [(FRONT, front), (BACK, 1 - front)]
         for (d, right, up, box, (mask, rows, lo, hi), px, anchor, at, _name), share in use:
             sx = at[0] + (pos - anchor).dot(right) * px
             sy = at[1] - (pos - anchor).dot(up) * px
@@ -157,7 +159,7 @@ img.file_format = "PNG"
 img.save()
 print("painted", argv[2], "texels seen", int((wsum > 1e-6).sum()))
 
-if len(argv) > 3:                                             # the painted model from the sheet's angles
+if len(argv) > 3 and not argv[3].startswith("--"):            # the painted model from the sheet's angles
     fb.reset()
     img = bpy.data.images.load(os.path.abspath(argv[2]))
     objs, _arm = fb.build(fig, rig=False, posed=True)
