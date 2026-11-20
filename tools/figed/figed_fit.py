@@ -190,6 +190,20 @@ def full_pose(spec_pose, bones, H=None, T=None):
         a = spec_pose["elbows"]
         pose["lowerarm_l"] = (a, 0, 0)
         pose["lowerarm_r"] = (a, 0, 0)
+    if H is not None and spec_pose.get("arms_straight"):
+        # The generic model rests with its elbows bent FORWARD, which a front view sees as a shorter forearm (the
+        # fit once stretched the forearms by half to make up for it). 1 = the forearm in line with the upper arm.
+        for side in "lr":
+            u = H["lowerarm_" + side] - H["upperarm_" + side]
+            v = H["hand_" + side] - H["lowerarm_" + side]
+            u, v = u / np.linalg.norm(u), v / np.linalg.norm(v)
+            angle = np.degrees(np.arccos(np.clip(u.dot(v), -1, 1))) * spec_pose["arms_straight"]
+            R = about(np.cross(v, u), angle) if angle > 1e-6 else np.eye(3)
+            if "elbows" in spec_pose:
+                R = about(np.array([1.0, 0, 0]), spec_pose["elbows"]).dot(R)
+            if "elbows_out" in spec_pose:               # the forearm angled away from the body, seen from the front
+                R = about(np.array([0, 1.0, 0]), spec_pose["elbows_out"] * (-1 if side == "l" else 1)).dot(R)
+            pose["lowerarm_" + side] = R
     if "legs_apart" in spec_pose:                  # the stance; the feet stay flat
         a = spec_pose["legs_apart"]
         pose["thigh_l"] = (0, -a, 0)

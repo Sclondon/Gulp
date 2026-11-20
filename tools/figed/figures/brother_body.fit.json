@@ -383,11 +383,6 @@
     40,
     10
    ],
-   "elbows": [
-    -40,
-    40,
-    10
-   ],
    "legs_apart": [
     -10,
     8,
@@ -409,14 +404,19 @@
     10
    ],
    "elbows@side": [
-    -12,
-    40,
+    0,
+    30,
     6
    ],
    "arms_down@bare_side": [
     0,
     60,
     10
+   ],
+   "elbows_out": [
+    -10,
+    30,
+    4
    ]
   },
   "shift": {
@@ -485,7 +485,7 @@
     0.06
    ],
    "lowerarm.length": [
-    0.7,
+    0.5,
     1.4,
     0.06
    ],
@@ -850,5 +850,6 @@
  "set_by_eye": "Not moved by this job: macro muscle, pecs and shoulder_muscle (an outline cannot see them; set by eye against the bible, round four), and the hand shape sliders (brother_hands.fit.json sets them; only hand.size moves here, by the wrist and fingertip marks).",
  "regions_about": "Regions (round five): the two arms from shoulder to wrist in the front and back views, and the front of the chest in the side view (the pecs' profile).",
  "head_place": "Round six: the shaved sheet side view lines up by the FEET and scores its legs as well as its head and neck, so where the head sits over the body is compared (lined up by the head, a head carried too far forward could not be seen). head-trans-forward and neck-trans-forward move.",
- "calves_feet": "Round seven: the calves are set by eye (the user asked for them a tad bigger and more toned than the fit gave), so calf sliders do not move here. foot.length is gone: it scaled along a bone that runs down and forward from the ankle, which dropped the heel and scrunched the toes; the foot is sized by MakeHuman foot targets and toes.length instead."
+ "calves_feet": "Round seven: the calves are set by eye (the user asked for them a tad bigger and more toned than the fit gave), so calf sliders do not move here. foot.length is gone: it scaled along a bone that runs down and forward from the ankle, which dropped the heel and scrunched the toes; the foot is sized by MakeHuman foot targets and toes.length instead.",
+ "arms_straight": "Round nine: pose arms_straight 1 (not moved) lays the forearm in line with the upper arm for every view; the common elbows slider is out. Without it the rest pose bent elbow foreshortened the forearm in the front view and the fit made the forearms half as long again."
 }

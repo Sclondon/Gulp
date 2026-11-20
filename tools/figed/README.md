@@ -172,6 +172,16 @@ The user: "lets do around focusing on his pecs, shoulders and hands, he should h
     is built into the model (points and skeleton, in `to_blender`), not a pose for pictures. The brother's is 7
     (by eye). The bone-turning code (`pose_points`) moved from `figed_fit.py` into `figed.py` for it.
   Outline after: front 0.92, side 0.91, back 0.92.
+- Round nine, the user: "Rest his arms down by his side straightend out- I think they might be way too long". They
+  were: forearm 21.3% of his height and hand 14.4%, where the bible has about 14 and 12. **Cause: the generic model
+  rests with its elbows bent forward**, towards the camera of a front view, so its forearm looked short there and the
+  fit stretched it to reach the wrist and fingertip marks (the "odd on paper" forearm noted after the marks round was
+  this, not deep shoulder joints). Now pose `arms_straight` 1 (held) lays each forearm in line with its upper arm for
+  every comparison, `elbows_out` angles it away from the body as the bible draws it (the fit found 4 degrees), and
+  the common `elbows` slider is gone. After: upper arm 15.3%, forearm 15.8%, hand 12.0%; hung straight, the wrist is
+  at 51% of his height and the fingertips at 43% (they were at 47% and 37%). Marks within 0.1 to 1.6%; outline
+  front 0.91, side 0.92, back 0.92. **Check any figure with its arms hung straight before trusting arm lengths**
+  (the probe prints the three lengths and where the joints reach).
 - Still not right: the toes are thin beside the bible's broad ones and the feet point straight ahead (the bible's
   turn out; `feet_out` is only a pose); the arms are thick but tube-like (no biceps or triceps bulge, no forearm swell by the elbow as the
   bible paints them); the back is smooth (no shoulder blades, spine furrow or lats as the bible paints them), the pecs
