@@ -374,12 +374,16 @@ choices below are Claude's.
   "should be standard for most game objects". How it is done is Claude's. What:
   - **One loading screen, then nothing.** `scripts/warmer.gd` (Warmer) shows every animal kind (dressed as the game
     dresses it, its far model too) and every other material of the sea (by shader and MultiMesh format; the eelgrass
-    fields, made later, added by Main) to a 32 px view under the sea, one a frame: under the water's light, again beside a
-    lamp (the jellies' omni lights make another version of a lit program), and what is lit per pixel (water, sand) a third
-    time under the air's light (`Warmer.above`: Main sets the sea's light from it while warming). Then Main shows the
+    fields, made later, added by Main) to a 32 px view under the sea, a batch a frame: under the water's light, and what is
+    lit per pixel (water, sand) again under the air's light (`Warmer.above`: Main sets the sea's light from it while
+    warming). No second time beside a lamp since 2026-11-19 (late): a black omni light over the whole sea
+    (`Warmer.add_null_lamp`, Claude's pick) means each lit program is only ever drawn in the version an omni light
+    reaches, so the jellies' lamps make no second version (12 s less in Chrome, first visit and second; no look change).
+    Real Chrome timings and how to take them: tools/PERF.md, "Real Chrome". Then Main shows the
     screens drawn over play once each under the loading screen (`Main._warm_screens`: panel, HUD, a growth card for every
     fish the player may become, the sale, the shop). The sea's own picture is not drawn while the loading screen is up
-    (it would compile all it shows in one frame). The loading screen's bar is the real share done; when it lifts the title's
+    (it would compile all it shows in one frame). The loading screen's sardines form the logo by the share done, and a thin
+    silver bar with the share in figures under it shows the same real share (the user asked for real progress); when it lifts the title's
     start button is live at once. No warming in play, on menus or for the growth choices any more.
   - **Creatures drawn from baked paint** (GameCommon `godot/baked-look`: `tools/bake_looks.gd`, `scripts/baked_look.gd`;
     its README is the full record). Each component's markings are rendered once from its own shader into a picture on

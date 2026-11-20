@@ -297,6 +297,8 @@ func _ready() -> void:
 	add_child(shop)
 	shop.bought.connect(func() -> void: player.deepest = _deepest())
 	shop.dive.connect(_dive_again)
+	# (a black light over everything, so that each lit program has one version: Warmer.add_null_lamp)
+	Warmer.add_null_lamp(_viewport)
 	# The game opens on the boat, unless something is driving it (a test, a bot, a picture): then
 	# the boat lies hove-to by where the fish starts.
 	var opening := _titled or not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0 or _role != "" or _near != "" or _end_now or _perf != "")
@@ -629,6 +631,7 @@ func _title_step(delta: float) -> void:
 		if is_instance_valid(_loading):
 			# (it is up for at least three seconds, so the logo is seen made)
 			_loading.progress = minf(_card.primed, _clock / 3.0)
+			_loading.share = _card.primed
 			if _card.primed >= 1.0 and _clock > 4.2:
 				_loading.finish()
 				_loading = null

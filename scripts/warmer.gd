@@ -12,10 +12,10 @@ extends Node
 ## way it is drawn: alone, or in a MultiMesh of a format) is shown once to a tiny view far under the
 ## sea, a few a frame (see `now`), in the sea's own world (its light, fog and sky). Things made only later in play
 ## are made here too and shown (the eelgrass fields' squares, splashes and the rest: Main's
-## `_warm_extras`). Each is shown under the water's light, then again beside a lamp (an omni light),
-## as the jellies' lamps make the engine compile another version of a lit program for what they
-## light; and what is lit per pixel (the water, the sand) a third time under the air's light (the
-## sky): a program lit per pixel has a version for each (tools/PERF.md, "Shader programs").
+## `_warm_extras`). Each is shown under the water's light (with the null lamp, `add_null_lamp`, always
+## there, so only the version for what an omni light reaches is ever drawn); and what is lit per pixel
+## (the water, the sand) a second time under the air's light (the sky): a program lit per pixel has a
+## version for each (tools/PERF.md, "Shader programs", "Real Chrome").
 ##
 ## `done()` says when all of it is done; `progress()` how far (0..1, by the time each step is
 ## expected to take). Nothing is done once it is ready: there is no warming in play.
@@ -41,7 +41,10 @@ var _batch := 1
 var _shown_ms := 0
 
 var _view: SubViewport
-var _lamp: OmniLight3D
+## Frames the loading screen is drawn before the first thing is shown (so that it is up, its own few
+## programs compiled, before the long frames begin).
+const FIRST_FRAMES := 3
+var _frames := 0
 var _wait := 0
 var _weight_total := 0.0
 var _weight_done := 0.0
@@ -63,24 +66,25 @@ func begin(extra: Array = []) -> void:
 	for thing: Dictionary in materials_to_warm(viewport) + extra:
 		thing["weight"] = 0.6
 		left.append(thing)
-	# (twice each: alone, then lit by a lamp; what is lit per pixel a third time, in the air's light)
-	var lit: Array = []
+	# (what is lit per pixel a second time, in the air's light; no second time beside a lamp: the
+	# null lamp, `add_null_lamp`, lights everything always, so there is only the lamp's version)
 	var aired: Array = []
 	for item: Dictionary in left:
-		var again := item.duplicate()
-		again["lamp"] = true
-		again["weight"] = 0.15
-		lit.append(again)
 		if item.has("thing") and lit_per_pixel(item.thing[1]):
 			var air := item.duplicate()
 			air["above"] = true
 			air["weight"] = 0.3
 			aired.append(air)
-	left.append_array(lit)
 	left.append_array(aired)
 	total = left.size()
 	for item: Dictionary in left:
 		_weight_total += float(item.weight)
+	print("GULP WARM %d things to show once (%d kinds)" % [total, _count_kinds()])
+
+
+# The tiny view the things are shown to (made only once the loading screen is up: drawn, it compiles
+# the sea's sky and whatever else it sees at once).
+func _make_view() -> void:
 	_view = SubViewport.new()
 	_view.size = Vector2i(32, 32)
 	_view.world_3d = viewport.find_world_3d()
@@ -90,12 +94,26 @@ func begin(extra: Array = []) -> void:
 	eye.position = Vector3(0.0, -800.0, 3.0)
 	eye.far = 12.0
 	_view.add_child(eye)
-	_lamp = OmniLight3D.new()
-	_lamp.position = Vector3(0.0, -799.0, 1.5)
-	_lamp.omni_range = 4.0
-	_lamp.visible = false
-	viewport.add_child(_lamp)
-	print("GULP WARM %d things to show once (%d kinds), each also lit by a lamp" % [total, _count_kinds()])
+
+
+## A light that reaches everything in the sea (and the warm-up's view under it) and adds nothing:
+## black, no shine. The engine compiles a second version of each lit program for what an omni light
+## reaches (a jelly's lamp); with this one always there, every program is only ever drawn in that
+## version, so each is compiled once (in Chrome the second versions were 12 s of the loading screen,
+## on a second visit too: tools/PERF.md, "Real Chrome"). It takes one of the 12 lights an object may
+## have (`limits/opengl/max_lights_per_object`).
+static func add_null_lamp(under: Node) -> OmniLight3D:
+	var lamp := OmniLight3D.new()
+	lamp.name = "NullLamp"
+	lamp.light_color = Color.BLACK
+	lamp.light_specular = 0.0
+	lamp.shadow_enabled = false
+	# (the bay is 244 x 320 m and the warm-up's view is 800 m down)
+	lamp.position = Vector3(0.0, -400.0, 0.0)
+	lamp.omni_range = 1000.0
+	lamp.omni_attenuation = 0.0
+	under.add_child(lamp)
+	return lamp
 
 
 ## Whether everything has been shown.
@@ -112,6 +130,13 @@ func progress() -> float:
 
 ## A frame of the loading screen: shows the next thing.
 func step() -> void:
+	_frames += 1
+	if _frames <= FIRST_FRAMES + 1:
+		print("GULP WARM frame %d at %d ms" % [_frames, Time.get_ticks_msec()])
+	if _frames <= FIRST_FRAMES:
+		return
+	if _view == null and not left.is_empty():
+		_make_view()
 	if _began_ms < 0:
 		_began_ms = Time.get_ticks_msec()
 	_wait -= 1
@@ -124,7 +149,6 @@ func step() -> void:
 		if _view:
 			_view.queue_free()
 			_view = null
-			_lamp.queue_free()
 			_done_ms = Time.get_ticks_msec()
 			ready_s = _done_ms / 1000.0
 			print("GULP WARM everything is ready at %.1f s (%.1f s of warming)" % [_done_ms / 1000.0, (_done_ms - _began_ms) / 1000.0])
@@ -134,13 +158,11 @@ func step() -> void:
 		_batch = 1 if took > BATCH_SLOW else (mini(_batch * 2, BATCH_MOST) if took < BATCH_FAST else _batch)
 	now = Node3D.new()
 	viewport.add_child(now)
-	# (a batch shares the lamp, and the light above or under the water)
+	# (a batch shares the light above or under the water)
 	var first: Dictionary = left[0]
-	_lamp.visible = first.get("lamp", false)
 	above = first.get("above", false)
 	var names: PackedStringArray = []
-	while not left.is_empty() and names.size() < _batch and left[0].get("lamp", false) == first.get("lamp", false) \
-			and left[0].get("above", false) == first.get("above", false):
+	while not left.is_empty() and names.size() < _batch and left[0].get("above", false) == first.get("above", false):
 		var item: Dictionary = left.pop_front()
 		_weight_done += float(item.weight)
 		names.append(String(item.name))
@@ -149,6 +171,9 @@ func step() -> void:
 		else:
 			_show_thing(item.thing)
 	Hitches.note("warm " + ", ".join(names))
+	# (what each step cost, for a browser's console: ms since the start, + ms the last step took)
+	print("GULP WARM %d ms +%d %d/%d x%d%s %s" % [Time.get_ticks_msec() - _began_ms, took if _shown_ms > 0 else 0, total - left.size(), total,
+			names.size(), " air" if above else "", ", ".join(names)])
 	_wait = 2
 	_shown_ms = Time.get_ticks_msec()
 
@@ -156,7 +181,7 @@ func step() -> void:
 func _count_kinds() -> int:
 	var n := 0
 	for item: Dictionary in left:
-		if item.has("kind") and not item.get("lamp", false):
+		if item.has("kind"):
 			n += 1
 	return n
 

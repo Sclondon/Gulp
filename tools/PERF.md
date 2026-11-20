@@ -418,3 +418,69 @@ vertices in 273 baked meshes, 522,580 labelled, 56 bytes more each: about 29 MB 
 every kind is loaded, 2.5 MB more on disk (baked meshes 12.9 -> 15.4 MB) and about 2.8 MB more in the pack (a web export
 from the working checkout: 57.9 MB, against 55.1 MB the same way before). Half floats would halve it but draw wrong in
 GL Compatibility. Texture memory is unchanged (the families read the same baked pictures, about 88 MB).
+
+## Real Chrome (2026-11-19, late)
+
+The build pushed as f3e38ce was reported at "over 9.5 minutes on the loading screen" in Chrome. That was the Chrome
+window of the browser tools being **minimized** (`window.screenX` -32000): Chrome then runs the page's frames once a
+second, and the warm-up is paced by frames. Seen in the foreground (or headless) the same build is ready in 75 s. The
+ANGLE proxy (68 s) was close in total; it is not close frame by frame (natively the loading screen's second frame
+took 20 s that Chrome spreads over the warm-up). A loading screen in a hidden tab does not move at all (no frames).
+
+How to time it: `node tools/serve_web.js <export folder> 8741`, then
+`node tools/chrome_load.js http://127.0.0.1:8741/index.html <profile folder> <out.txt> [headless 1|0]` (playwright-core
+from `scareathon/trailer` driving the installed Chrome, ANGLE D3D11 on the RTX 4080; a new profile folder is a first
+visit, the same folder again a second), then `node tools/warm_costs.js <out.txt>`: the warm-up prints a `GULP WARM <ms>
++<ms> <done>/<all> x<batch> <names>` line a step, and the +ms of a line is what the step before it took.
+
+### Ready (s from the engine's start to "everything is ready"; 1280x720, local server)
+
+| | first visit | second visit |
+| --- | --- | --- |
+| before (f3e38ce, each also lit by a lamp) | 76.0 headless, 74.8 headed (the live URL: 84.1, with the download) | 34.9 headless, 36.4 headed (live: 33.5) |
+| after (null lamp) | 65.2 and 66.8 headless, 59.9 headed | 21.4 headless, 21.8 headed |
+
+Native ANGLE cold tour after (390x844, Godot's cache moved aside): ready at 59.5 s (was 67.9), PASSED, worst frame in
+play 35 ms, one over 33 ms. The title shows about 1 s after "ready" (the screens' warm-up, then the logo's fade).
+Before the warm-up begins: about 8 s (the engine, the 50 MB pack from a local server, the sea built).
+
+### Where Chrome's time went (first visit, before)
+
+67.8 s of warming: the animal kinds 23.5 s, the other materials 23 s, the second pass beside a lamp 12.3 s (326
+things), the steps themselves (two frames each) about 2 s. Nearly all of it is a few dozen programs over 300 ms; the
+pacing (a batch while frames are quick, one after a slow frame) was not the bottleneck: 75 of 123 steps took under 60
+ms. On a second visit the lamp pass still took 12 s (Chrome did not keep those versions), and about 20 materials lit per
+vertex (the submarine's, the nettle, hair, moon jelly, plankton, sea_floor_soft, a dock, a rock, ruins, wreck, net...)
+cost 0.3 to 1.8 s again each time (`--gpu-program-cache-size-kb=131072` changed nothing; the cause is not known).
+
+One thing a step (`BATCH_MOST` 1), first visit, the dearest: the water 8.5 s; the submarine 3.6 (its own
+StandardMaterial3Ds per pixel); cuttlefish 3.6 (the first `jointed`, its leg routine); firefly squid 3.4, Humboldt
+squid 3.1, giant squid 2.4 (kept unbaked: living colour); bat ray 2.0 (`flap`), flying fish 2.0 (`swim_sheer`); the
+sardine (the first `swim`) about 2.5; sea nettle 1.3; anglerfish 1.0; feather star 0.9; mangrove 0.8; octopus 0.8;
+catfish 0.75; hair 0.74; the breakers' crash 0.72; the grass fields 0.7; the moray 0.69; comb jelly 0.68; the rest
+of the scenery shaders 0.2 to 0.6 each; every other kind and plain material about 20 ms (already compiled). The sea's
+sky, fog and post on the warm-up view's first frame: about 4.5 s with the first animal.
+
+### What was cut (no look change)
+
+- The lamp pass: `Warmer.add_null_lamp` puts a black OmniLight3D of 1 km range over the sea (and the warm-up's view), so
+  every lit program is drawn only in the version an omni light reaches and each is compiled once (331 things shown, was
+  657). It costs each object one of its 12 light slots, and a light's few sums per vertex (per pixel on the water and
+  sand); the tour's frame times are within noise of before.
+- The loading screen is drawn for three frames before the first thing is shown, and the warm-up's view is made only
+  then: the screen is up about 1 s after the sea is built, not after the first 7 s of compiling.
+- A bar with the share in figures under the logo, from the same weights as the sardines.
+
+### Left, each a look change (the user's choice)
+
+| what | saves, first visit (second) |
+| --- | --- |
+| the submarine's paint and glass lit per vertex (broader, softer shine on the hull and dome) | about 3 s (1.8) |
+| bake the Humboldt, giant and firefly squids like the other animals (their colour cells stop flickering; the firefly squid's lights become paint) | about 8 s |
+| the nettle, anglerfish and comb jelly baked too (the anglerfish's lure stops pulsing, the comb jelly's rows stop shimmering) | about 3 s |
+| a simpler water (its program is 8.5 s: the swell, surf, breaker sheets and crash all in one; splitting the breakers off or dropping some foam layers) | 3 to 6 s, unmeasured |
+| jelly lamps gone altogether (then the null lamp could go too: one light fewer per object) | nothing more on loading; a little GPU time |
+
+Not a look change but not done: making the `jointed` family's leg routine and the water cheaper for Chrome's compiler
+(same picture, cheaper program): unmeasured, needs `tools/compile_cost.gd` work.
+
