@@ -4,7 +4,8 @@ the nose tips sit on the same point, drawn half see-through over the art (the ba
     blender -b --factory-startup --python tools/figed/head_overlay.py -- <spec.json> <sheet.json> <out.png> [--posed]
 
 The sheet: {"picture", "box_width", "views": [{"view": a figed_blender view name, "box": [x0, y0, x1, y1],
-"nose": [x, y] (the nose's tip in the drawing; none for the back), "crown": y, "chin": y}]}.
+"nose": [x, y] (the nose's tip in the drawing; none for the back), "crown": y, "chin": y, "turn": degrees the
+head is turned (+ = facing the picture's right), for a three-quarter view}]}.
 Rows of the picture: the art, the overlay, the model alone.
 """
 import json
@@ -51,6 +52,9 @@ RES = 900
 tiles = []
 for v in sheet["views"]:
     centre, direction, seen, aspect = boxes[v["view"]][:4]
+    if "turn" in v:                                      # the head turned this many degrees (+ = facing the picture's
+        t = math.radians(v["turn"])                      # right), read off the drawing: sheets are seldom at 45
+        direction = (math.sin(t), math.cos(t), 0.0)
     centre = np.array(centre, dtype=float)
     centre[2] = (crown[2] + chin[2]) / 2                # look at the middle of the head
     seen = (crown[2] - chin[2]) * 1.9

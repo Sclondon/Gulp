@@ -1,12 +1,81 @@
 {
- "about": "The older brother's shaved head sheet for head_overlay.py: each view's box, the tip of the nose, and the rows of the crown and of the chin's bottom, at 1024 px wide (Claude, by eye). The back view lines up by the crown over its centre.",
+ "about": "The older brother's shaved head sheet for head_overlay.py: each view's box, the tip of the nose, and the rows of the crown and of the chin's bottom, at 1024 px wide (Claude, by eye). The back view lines up by the crown over its centre. The three-quarter views are not at 45 degrees: about 35 to the right and 45 to the left, read from how far across the outline the nose tip sits (Claude; the user: \"seems like you havent quite matched the quarter turn angle\").",
  "picture": "tools/art_src/concept_brother_bible_head_bare.png",
  "box_width": 1024,
  "views": [
-  {"view": "face", "box": [10, 138, 245, 440], "nose": [125.5, 285], "crown": 153, "chin": 383},
-  {"view": "face_quarter_r", "box": [235, 138, 420, 440], "nose": [389, 284], "crown": 153, "chin": 380},
-  {"view": "face_side_r", "box": [420, 138, 635, 450], "nose": [623.5, 284], "crown": 153, "chin": 377},
-  {"view": "face_quarter", "box": [630, 138, 815, 440], "nose": [646, 286], "crown": 153, "chin": 380},
-  {"view": "face_back", "box": [815, 138, 1010, 430], "centre": 911, "crown": 153, "chin": 383}
+  {
+   "view": "face",
+   "box": [
+    10,
+    138,
+    245,
+    440
+   ],
+   "nose": [
+    125.5,
+    285
+   ],
+   "crown": 153,
+   "chin": 383
+  },
+  {
+   "view": "face_quarter_r",
+   "box": [
+    235,
+    138,
+    420,
+    440
+   ],
+   "nose": [
+    396.6,
+    283.4
+   ],
+   "crown": 153,
+   "chin": 380,
+   "turn": 35
+  },
+  {
+   "view": "face_side_r",
+   "box": [
+    420,
+    138,
+    635,
+    450
+   ],
+   "nose": [
+    623.5,
+    284
+   ],
+   "crown": 153,
+   "chin": 377
+  },
+  {
+   "view": "face_quarter",
+   "box": [
+    630,
+    138,
+    815,
+    440
+   ],
+   "nose": [
+    642.6,
+    283.4
+   ],
+   "crown": 153,
+   "chin": 380,
+   "turn": -45
+  },
+  {
+   "view": "face_back",
+   "box": [
+    815,
+    138,
+    1010,
+    430
+   ],
+   "centre": 911,
+   "crown": 153,
+   "chin": 383
+  }
  ]
 }
