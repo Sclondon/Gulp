@@ -123,6 +123,59 @@ def cut(fig, P, posed, f, may, offset, name):
     return mesh
 
 
+def braces(fig, P, H):
+    """The braces, let down and hanging in a loop at each hip (the user: "The straps on his pants should be modeled
+    separately not part of the art"): a flat strap from the waistband's front, down round the outside of the hip
+    and up to the waistband's back, with a slider on the front run. Meshes of their own, carried by the pelvis."""
+    base = fig.base
+    navel = P[figed_fit.mark_vertices(base)["navel"]]
+    waist = navel[2] - 0.025
+    lower = (_w(base, ARM) < 0.3) & (_w(base, LEG) > 0.5)
+    Q = P[lower]
+    strap, metal = bmesh.new(), bmesh.new()
+    for side in (1.0, -1.0):
+        at = Q[(np.abs(Q[:, 0] - side * 0.105) < 0.02) & (np.abs(Q[:, 2] - (waist - 0.02)) < 0.02)]
+        hip = Q[np.abs(Q[:, 2] - (waist - 0.16)) < 0.02]
+        yf, yb = at[:, 1].min() - 0.016, at[:, 1].max() + 0.016
+        reach = np.abs(hip[:, 0]).max() + 0.03 - 0.105
+        rings = []
+        N = 22
+        for i in range(N + 1):
+            t = i / float(N)
+            sw = math.sin(math.pi * t)
+            ease = t * t * (3 - 2 * t)
+            c = np.array([side * (0.105 + reach * sw ** 0.7), yf + (yb - yf) * ease, waist - 0.02 - 0.25 * sw ** 0.85])
+            rings.append(c)
+        rings = np.array(rings)
+        for bm, i0, i1, wide, thick in ((strap, 0, N, 0.028, 0.004), (metal, 4, 5, 0.04, 0.008)):
+            prev = None
+            for i in range(i0, i1 + 1):
+                c = rings[i]
+                tan = rings[min(N, i + 1)] - rings[max(0, i - 1)]
+                tan /= np.linalg.norm(tan)
+                outw = np.array([c[0], c[1] - (yf + yb) / 2, 0.0])
+                outw -= tan * outw.dot(tan)
+                outw /= np.linalg.norm(outw)
+                across = np.cross(tan, outw)
+                quad = [bm.verts.new(tuple(c + across * a * wide / 2 + outw * b * thick / 2))
+                        for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+                if prev:
+                    for k in range(4):
+                        bm.faces.new((prev[k], prev[(k + 1) % 4], quad[(k + 1) % 4], quad[k]))
+                else:
+                    bm.faces.new(quad)
+                prev = quad
+            bm.faces.new(prev[::-1])
+    out = []
+    for name, bm, col in (("braces", strap, (0.16, 0.15, 0.13)), ("brace_sliders", metal, (0.45, 0.44, 0.40))):
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        mesh = bpy.data.meshes.new(name)
+        bm.to_mesh(mesh)
+        bm.free()
+        out.append((name, mesh, col))
+    return out
+
+
 def make(fig, wear, posed=True, arm=None, skin_path=None):
     base = fig.base
     P, H, T = fig.to_blender()
@@ -160,6 +213,30 @@ def make(fig, wear, posed=True, arm=None, skin_path=None):
             obj["plain"] = col
             parts.append((piece, name, obj))
             print("garment %-10s %5d faces" % (piece, len(mesh.polygons)))
+    if "trousers" in wear:
+        for name, mesh, col in braces(fig, P, H):
+            obj = bpy.data.objects.new(name, mesh)
+            bpy.context.scene.collection.objects.link(obj)
+            group = obj.vertex_groups.new(name="pelvis")
+            group.add(list(range(len(mesh.vertices))), 1.0, "REPLACE")
+            if arm is not None:
+                obj.parent = arm
+                obj.modifiers.new("rig", "ARMATURE").object = arm
+            dot = bpy.data.images.new(name + "_colour", 4, 4, alpha=False)     # a plain colour as a picture, so it
+            dot.pixels.foreach_set(np.tile(np.array(col + (1.0,), dtype=np.float32), 16))   # shows in textured views
+            mat = bpy.data.materials.new(name)
+            mat.use_nodes = True
+            node = mat.node_tree.nodes.new("ShaderNodeTexImage")
+            node.image = dot
+            mat.node_tree.nodes.active = node
+            bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+            mat.node_tree.links.new(node.outputs["Color"], bsdf.inputs["Base Color"])
+            mat.diffuse_color = col + (1.0,)
+            mesh.materials.append(mat)
+            mesh.uv_layers.new(name="UVMap")
+            obj["plain"] = col
+            parts.append((name, "braces", obj))
+            print("garment %-10s %5d faces" % (name, len(mesh.polygons)))
     return parts, R, P
 
 
@@ -174,6 +251,15 @@ def paint(fig, outfit, name, R, P, path, skin_path=None):
     else:
         cloth = sub.max(axis=2) < 0.52
     cloth = figed_fit.shrink(cloth, 1)
+    # things drawn over the cloth that are modelled as pieces of their own (braces): inside each "paint_out" box
+    # only pixels that look like the cloth itself are kept, the rest is filled from the cloth round it
+    for bx0_, by0_, bx1_, by1_ in outfit[name].get("paint_out", []):
+        part = (slice(max(0, by0_ - y0), by1_ - y0), slice(max(0, bx0_ - x0), bx1_ - x0))
+        px = sub[part]
+        lum = px.mean(axis=2)
+        usual = np.median(sub.mean(axis=2)[cloth])        # the cloth's usual brightness: straps are darker, buckles
+        own = (lum > usual * 0.82) & (lum < usual * 1.35) & ((px[:, :, 0] - px[:, :, 2]) > 0.03)   # lighter and grey
+        cloth[part] &= figed_fit.shrink(own, 1)
     # the cloth's colours carried over everything else in the box (skin, paper), so every lookup finds cloth
     img, known = sub.copy(), cloth.copy()
     for _ in range(max(sub.shape[:2])):
@@ -295,6 +381,8 @@ if __name__ == "__main__":
     for piece, name, obj in parts:
         if name == "drawers":
             obj.data.materials.append(material("skin", stem + "_skin.png"))
+            continue
+        if name == "braces":
             continue
         if name not in done:
             done[name] = "%s_%s.png" % (stem, name)

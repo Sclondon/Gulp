@@ -742,3 +742,10 @@ cuffs and braces hanging at the hips: `tools/art_src/concept_brother_bible_outfi
   cloth is within `BIND` (13 mm) of the garment's edge (the rule f, interpolated per texel, is the distance in): a
   plain band without ribs, a dark seam where it meets the cloth, and a row of stitches at mid-band. It shows at
   the neck and armholes; the hem is under the trousers' waistband.
+- The user: "The straps on his pants should be modeled separately not part of the art". `braces()` in `garments.py`
+  builds, with the trousers, a strap each side: from the waistband's front, out and down round the hip (25 cm) and
+  up to the waistband's back, 28 x 4 mm in section, with a slider on the front run; meshes of their own (`braces`,
+  `brace_sliders`), plain colours, carried by the pelvis bone only (they do not swing or follow the thighs yet).
+  The painted ones are taken out of the trousers' picture: the outfit file's `paint_out` boxes, inside which only
+  pixels of the cloth's usual brightness and warmth are kept and the rest filled from the cloth round them.
+  Traces of the painted straps still show near the waistband (the buckles' shadows).
