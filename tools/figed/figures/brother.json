@@ -501,5 +501,6 @@
   "below_ear": 8.9,
   "forward": -0.2,
   "inward": 2.5
- }
+ },
+ "sculpt": "tools/figed/figures/brother.sculpt.json"
 }

@@ -485,3 +485,16 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   crashed Blender at the user's first `F` (build headless, open the file); and in 4.3 brushes are assets,
   `wm.tool_set_by_id("builtin_brush.Grab")` does nothing (use `brush.asset_activate`; untested in a window: the
   user can press `G`).
+- **`sculpt`, the hand correction, works end to end.** A spec's `"sculpt": "<file>"` names a `.sculpt.json` and
+  `Figure.to_blender` adds its moves last. The user's first sculpt of the brother's jaw is
+  `figures/brother.sculpt.json` (832 points, up to 24 mm, read from `work/brother_sculpt4.blend`). The moves are
+  differences from the figure AS IT STOOD when the sculpt file was made: change the head's sliders much afterwards
+  and the sculpt no longer fits (re-sculpt, or sculpt again on top: a new `make` starts from the figure with the
+  old sculpt in it, and `read` then gives only the new strokes, which must be ADDED to the old file, not put in
+  its place. Not built yet).
+  More traps of the session, all hit: entering Sculpt Mode in the window is an undo step (the user's first Ctrl+Z
+  left the mode, and G then moved the whole object): `make` saves the file already in Sculpt Mode; the Grab brush
+  only takes if activated a few seconds after the window opens (a second timer); both checked in a test window
+  that reports and quits. Reference pictures: the shaved sheet as two image empties (`bible_front`,
+  `bible_profile`) placed by the nose and sized by crown-to-chin, shown only in straight-on orthographic views, put
+  into the user's live window through the Blender MCP (worth moving into `sculpt_session.py make`).

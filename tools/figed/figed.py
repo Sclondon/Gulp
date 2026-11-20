@@ -319,6 +319,18 @@ class Figure:
         # "forward": cm}: the skin within "radius" of a point "below_ear" under where the ear grows from the head
         # (and "forward" of it) is raised by up to "lift", fading smoothly to nothing at the radius
         self.jaw_corner = dict(spec.get("jaw_corner", {}))
+        # the last correction: a sculpt done by hand in Blender (sculpt_session.py), a file of base point -> move
+        self.sculpt = spec.get("sculpt")
+
+    def _sculpt(self, P):
+        path = self.sculpt
+        if not os.path.exists(path):
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", self.sculpt)
+        with open(path) as f:
+            data = json.load(f)
+        P = P.copy()
+        P[np.array(data["points"], dtype=int)] += np.array(data["moves"], dtype=float)
+        return P
 
     def _jaw_corner(self, P0):
         P = P0.copy()
@@ -682,6 +694,8 @@ class Figure:
             P = self._jaw_corner(P)
         if self.ears:
             P = self._move_ears(P)
+        if self.sculpt:
+            P = self._sculpt(P)
         tuck = self.posture.get("pelvis_tuck", 0.0)
         if tuck:
             turns = {"pelvis": (-tuck, 0, 0), "spine_01": (tuck, 0, 0), "thigh_l": (tuck, 0, 0), "thigh_r": (tuck, 0, 0)}
