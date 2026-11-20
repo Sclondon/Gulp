@@ -64,14 +64,26 @@ for v in sheet["views"]:
     right /= np.linalg.norm(right)
     up = np.cross(right, d)
     box = [int(round(c * k)) for c in v["box"]]
-    mask = figed_fit.cut_out(art, box, 0.07)
+    mask = figed_fit.shrink(figed_fit.cut_out(art, box, 0.07), 4)     # in from the drawn outline: no dark lines
     px = (v["chin"] - v["crown"]) * k / high                 # sheet pixels a metre
     if "nose" in v:
         anchor, at = nose, (v["nose"][0] * k, v["nose"][1] * k)
     else:
         anchor, at = crown, (v["centre"] * k, v["crown"] * k)
-    views.append((d, right, up, box, mask, px, anchor, at))
-skin = np.median(art[views[0][4].nonzero()[0] + views[0][3][1], views[0][4].nonzero()[1] + views[0][3][0]], axis=0)
+    # each row's figure: where it starts and ends, so skin just outside a view's outline (the side of the head, seen
+    # edge on from front and back) takes the colour of the outline's edge and is not left bare
+    rows = mask.any(axis=1)
+    lo = np.where(rows, mask.argmax(axis=1), 0)
+    hi = np.where(rows, mask.shape[1] - 1 - mask[:, ::-1].argmax(axis=1), -1)
+    views.append((d, right, up, box, (mask, rows, lo, hi), px, anchor, at, v["view"]))
+skin = np.median(art[views[0][4][0].nonzero()[0] + views[0][3][1], views[0][4][0].nonzero()[1] + views[0][3][0]], axis=0)
+# The user, 2026-11-20: "just project the fotnad back views, and the ears shouold come from the side view". The
+# three-quarter views are not used: where two views disagree the paint doubled (mouth, ears).
+by_name = {v[8]: v for v in views}
+FRONT, BACK, SIDE = by_name["face"], by_name["face_back"], by_name["face_side_r"]
+ear_of = np.zeros(len(P), dtype=int)                          # 1 = an ear on his left (+x), 2 = on his right
+for side, (ear, _root, flap) in fig._ear_masks().items():
+    ear_of[ear] = 1 if side == "l" else 2
 print("skin colour", skin.round(3), "views", len(views))
 
 # texels of the head's faces: where each is on the model, and which way it faces
@@ -111,15 +123,23 @@ for group, vi, ti in base.faces:
         nrm = w3.dot(N[tri])
         nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9)
         fade = np.clip((pos[:, 2] - low) / 0.05, 0, 1)        # the paint fades out down the neck
-        for d, right, up, box, mask, px, anchor, at in views:
-            facing = np.clip(-(nrm.dot(d)), 0, 1) ** 3
+        which = ear_of[tri]
+        if which.min() > 0:                                   # an ear: from the side view (his left ear mirrored)
+            if which[0] == 1:
+                pos = pos * np.array([-1.0, 1, 1])
+            use = [(SIDE, np.ones(len(pos)))]
+        else:                                                 # the head: front or back, a narrow blend at the side
+            t = np.clip((0.12 - nrm[:, 1]) / 0.24, 0, 1)
+            front = t * t * (3 - 2 * t)
+            use = [(FRONT, front), (BACK, 1 - front)]
+        for (d, right, up, box, (mask, rows, lo, hi), px, anchor, at, _name), share in use:
             sx = at[0] + (pos - anchor).dot(right) * px
             sy = at[1] - (pos - anchor).dot(up) * px
             ix, iy = np.round(sx).astype(int), np.round(sy).astype(int)
-            ok = (ix >= box[0]) & (ix < box[2]) & (iy >= box[1]) & (iy < box[3])
-            on = np.zeros(len(ix), dtype=bool)
-            on[ok] = mask[iy[ok] - box[1], ix[ok] - box[0]]
-            wgt = facing * on * fade
+            ry = np.clip(iy - box[1], 0, mask.shape[0] - 1)
+            on = rows[ry] & (iy >= box[1]) & (iy < box[3])
+            ix = np.clip(ix - box[0], lo[ry], np.maximum(hi[ry], lo[ry])) + box[0]     # pulled in to the figure
+            wgt = share * on * fade
             col = art[np.clip(iy, 0, art.shape[0] - 1), np.clip(ix, 0, art.shape[1] - 1)]
             tex[ys, xs] += col * wgt[:, None]
             wsum[ys, xs] += wgt

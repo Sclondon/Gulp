@@ -554,3 +554,13 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
   `nose-nostrils-angle-up` 0.2. `nose-trans-up` at 1.0 with `nose-base-up` -0.9 hung the nose over the mouth.
   Nose tip level 0.63 now (the sheet 0.57 by Claude's earlier reading: the user's eye says lower is right, and the
   user's eye rules). The paint (`brother_skin.png`) was projected before this and should be projected again.
+- Second projection. The user: "just project the fotnad back views, and the ears shouold come from the side view".
+  `paint_project.py` now uses only `face` and `face_back` for the head (which one by whether the skin faces forward
+  or back, a narrow blend where it faces sideways) and `face_side_r` for the ears (his left ear by mirror); the
+  three-quarter views are not used. Each view's cut-out is shrunk 4 px (no outline lines), and skin outside a view's
+  outline on a row takes that row's edge colour (so the side of the head, edge on to both views, is not bare).
+  Result: front and back are clean and read as him; no doubled mouth, no outline lines. Wrong: the side of the head
+  and the shoulders are STREAKED (one edge pixel dragged across: the side has no view of its own by the user's
+  rule); a pale patch round each ear (the smoothed-over head under the ear shares the ear's texels, and the ear's
+  paint spills past its outline); eyeballs still blank; the drawing's light still in the paint.
+  Made before the user's eye and nose changes settle: project again when the face is agreed.
