@@ -306,3 +306,11 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   line again, and the `jawline` cut is off for him (the code stays; unused). They are also out of the head fit's move
   list, which had set `jaw_width` -0.9 and `chin_height` 0.45 chasing the outline. **Before adding a correction,
   put the sliders of that part back to 0 and look: the generic part may already be right.**
+- The user: "yes start with the leaner face" (`head-fat` 0, `cheek_fullness` 0.3, `head-round` 0), and "recreate all
+  5 face poses from the bible for the comparison shots to me please". **Head comparison shots are the sheet's five
+  views in its order**: `-- look <spec> <out> face face_quarter_r face_side_r face_quarter face_back --posed` (the
+  posed head sits upright, as the user set it; unposed, the generic neck cranes forward), stacked under the sheet's
+  row (`crop=1024:320:0:130`).
+- Nose round one (by eye): `nose_size` 1.0, `nose_tip_up` 0.5, `nose_tip_width` 1.2, `nose_base_width` 1.0,
+  `nostril_width` 0.9, `nose-greek` 0, `nose-curve-convex` -0.2. Widths past about 1.2 with `nose_flare` tear the
+  nostril rims (a snout). Still smaller and more upturned than the sheet's large, low-hanging ball of a nose.

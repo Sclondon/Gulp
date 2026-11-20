@@ -193,6 +193,9 @@ def view_boxes(fig):
         "side": (mid, (-1, 0, 0), top * 1.06, 0.45), "quarter": (mid, (-q, q, 0), top * 1.06, 0.95),
         "face": (head, (0, 1, 0), hh, 0.85), "face_side": (head, (-1, 0, 0), hh, 0.85),
         "face_quarter": (head, (-q, q, 0), hh, 0.85),
+        # the five views of a head sheet, in its order: face, face_quarter_r, face_side_r, face_quarter, face_back
+        "face_quarter_r": (head, (q, q, 0), hh, 0.85), "face_side_r": (head, (1, 0, 0), hh, 0.85),
+        "face_back": (head, (0, -1, 0), hh, 0.85),
         "legs": (low, (0, 1, 0), top * 0.66, 0.8), "legs_back": (low, (0, -1, 0), top * 0.66, 0.8),
         "legs_side": (low, (-1, 0, 0), top * 0.66, 0.55),
         "hand": (hand, (0, 1, 0), 0.34, 1.0), "foot": (foot, (-q, q, -0.4), 0.4, 1.0),
