@@ -82,6 +82,21 @@ uniform float tuft_width = 0.012;
 uniform float tuft_length = 0.022;
 // under_shade (sixth round, 0 off): how much darker the hair is where it faces the ground (warm grey under a beard).
 uniform float under_shade = 0.0;
+// curl (added 2026-11-20 for the older brother's mop of curls; 0 keeps every other hair as it was): curls drawn on a
+// smooth shell. The shell's own space is cut into cells curl_size across (metres), one curl each: waves of lighter
+// and darker lie across each curl its own way, the gaps between curls are inked (curl_gaps), and the shell is cut
+// away in those gaps where its edge is (curl_rim: up to this share of UV.x back from 1) and where it turns away
+// from the eye (curl_edge), so the fringe and the outline are bumpy with curls, not one clean line.
+uniform float curl = 0.0;
+uniform float curl_size = 0.04;
+uniform float curl_gaps = 0.6;
+uniform float curl_rim = 0.0;
+uniform float curl_edge = 0.0;
+varying vec3 rest_at;
+
+void vertex() {
+	rest_at = VERTEX;
+}
 
 varying float strand_phase;
 varying float strand;
@@ -90,6 +105,49 @@ varying vec3 lie;
 
 void fragment() {
 	along = UV.x;
+	float curl_blob = 1.0;
+	float curl_wave = 0.5;
+	if (curl > 0.0) {
+		vec3 cp = rest_at / curl_size;
+		cp += 0.28 * sin(cp.yzx * 2.3 + vec3(0.0, 1.7, 3.1));   // (the cells' straight sides bent: curls, not tiles)
+		vec3 cb = floor(cp);
+		float d1 = 9.0;
+		float d2 = 9.0;
+		vec3 nearest = vec3(0.0);
+		float id = 0.0;
+		for (int i = -1; i <= 1; i++) {
+			for (int j = -1; j <= 1; j++) {
+				for (int k = -1; k <= 1; k++) {
+					vec3 c = cb + vec3(float(i), float(j), float(k));
+					float h = ink_hash(c.xy + c.z * 17.3);
+					vec3 centre = c + vec3(h, ink_hash(c.yz + c.x * 7.1), ink_hash(c.zx + c.y * 3.7));
+					float d = distance(cp, centre);
+					if (d < d1) {
+						d2 = d1;
+						d1 = d;
+						nearest = centre;
+						id = h;
+					} else if (d < d2) {
+						d2 = d;
+					}
+				}
+			}
+		}
+		curl_blob = smoothstep(0.0, 0.4, d2 - d1);
+		vec3 rel = cp - nearest;
+		float turn = id * 6.283;
+		vec3 dir = normalize(vec3(cos(turn), sin(turn), cos(turn * 1.7)));
+		vec3 side = normalize(cross(dir, vec3(0.3, 0.5, 0.8)));
+		curl_wave = 0.5 + 0.5 * sin(dot(rel, side) * 11.0 + 2.4 * sin(dot(rel, dir) * 4.0 + turn));
+		// (the gaps open toward the edge: hairline cracks well in, whole curls apart at the very edge)
+		float to_edge = clamp((along - (1.0 - curl_rim)) / max(curl_rim, 0.001), 0.0, 1.0);
+		if (curl_rim > 0.0 && curl_blob < to_edge * to_edge * 0.8) {
+			discard;
+		}
+		if (curl_edge > 0.0 && dot(NORMAL, VIEW) < curl_edge * (1.0 - curl_blob)) {
+			discard;
+		}
+	}
 	strand_phase = metres > 0.5 ? UV2.y / strand_gap : UV.y * strands_round;
 	strand = ink_hash(vec2(floor(strand_phase), 1.0));
 	float rag = ragged_width > 0.0 && metres > 0.5 ? UV2.y / ragged_width + 0.35 * sin(UV2.x * 40.0) : strand_phase;
@@ -161,6 +219,10 @@ void fragment() {
 		}
 		colour = mix(colour, mix(ink, colour, shade_t), tufts);
 	}
+	}
+	if (curl > 0.0) {
+		colour *= 1.0 + curl * (curl_wave - 0.5) * 1.1;
+		colour = mix(colour, ink, curl_gaps * (1.0 - curl_blob));
 	}
 	colour *= mix(1.0, COLOR.r, layer_shade) * mix(1.0 - root_dark, 1.0, smoothstep(0.0, 0.75, along));
 	if (under_shade > 0.0) {

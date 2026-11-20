@@ -820,16 +820,22 @@ The user: "Also lets start working on his bair and mustache". `hair.py` (its doc
 `blender -b --factory-startup --python tools/figed/hair.py -- <spec.json> <out.png> [--wear hair,moustache]` builds
 them as pieces of their own on the bald head and renders the five head views; `garments.py ... --hair` adds them to an
 outfit picture (under the cap only the moustache, until the hair is cut to sit under it).
-- Hair: the scalp inside a hairline rule, pushed out 1 to 5 cm, divided, raised into curl clumps, its edge hanging
-  over the hairline in locks (most on the forehead), closed underneath. Painted from the same clumps (wavy locks, dark
-  creases, amber lights on top) on UVs of its own. About 6,000 triangles (to be thinned for the game).
-- Moustache: the skin from the nose to the upper lip and out past the mouth's corners, pushed out 4 to 12 mm, ginger
-  strands combed out from the middle.
-- All Claude's picks: modelled clumps with painted locks (as the Twilight Princess figures' hair is), not cards; the
-  user's earlier "Dont try to model the beard it should be made with a hair shader" was about the captain's beard, so
-  this method is to be confirmed by them. Rough: the fringe's edge is still angular and the hair's lower edge at the
-  sides and nape is a hard line; no loose curls break the outline; no sideburns, stubble or brows as pieces; flat
-  pictures only (not yet in the game's hair shader); nothing is exported.
+- THAT FIRST PASS WAS WRONG AND IS REPLACED. It modelled curl clumps and painted locks on them; the user: "Why did
+  you do if you know I said not to for the hair?" (their rule of 2026-11-18, "Dont try to model the beard it should be
+  made with a hair shader", covers all hair). The painted `brother_hair.png` / `brother_moustache.png` are retired.
+- Now: `hair.py` only makes plain smooth surfaces with the hair shader's coordinates (`--glb <file>` exports the head
+  with them), and `tests/figed_hair_view.gd` draws them in Godot wearing `shaders/ink/hair_ink.gdshader`, five views:
+  `godot --path . --audio-driver Dummy --resolution 420x480 --position 2600,60 -s tests/figed_hair_view.gd --
+  --glb=<file> --out=<strip.png> [--set=hair.curl_size=0.03]`. The looks (colours, curl size) are in that script.
+- The shader gained `curl`, `curl_size`, `curl_gaps`, `curl_rim`, `curl_edge` (off at 0, other hair unchanged):
+  curls drawn over a smooth shell from cells in the shell's own space, waves of light and dark across each, ink
+  between them, and the shell cut away between curls at its edge and outline. The hair has an uncut darker
+  under-layer (vertex colour, `layer_shade`) so those cuts show hair, not scalp.
+- Lessons: the hairline rule's value is a height, not a distance from the edge (across the flat top of the head it
+  stays small): measure the fringe from the real edge. UV.x of exactly 0 is inked as a root by the shader.
+- Rough (Claude's picks throughout): the curls are a 3D pattern worked out per pixel (27 cells), fine for one head,
+  to be baked to a picture before a web build; the mop's shape is a smooth dome, smaller and rounder than the
+  sheet's; the moustache is thin; no sideburns, stubble or brows as pieces; nothing is in the game.
 - The same day the bib overalls were reshaped (`_taut`: cloth hung straight between the body's high spots, column by
   column; a higher bib with sides curving up from the ribs; its top edge close on the chest; straps lying on what he
   wears). Still owed there: pocket, clips, buckles, boots with soles, the jumper's cables and cuffs, the flat cap.
