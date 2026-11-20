@@ -10,7 +10,7 @@ extends Node
 ## (tools/PERF.md, "Shader programs"). So every animal kind (dressed as the game dresses it, its far
 ## model too, from its baked look) and every other material of the sea (each by its shader and the
 ## way it is drawn: alone, or in a MultiMesh of a format) is shown once to a tiny view far under the
-## sea, one a frame, in the sea's own world (its light, fog and sky). Things made only later in play
+## sea, a few a frame (see `now`), in the sea's own world (its light, fog and sky). Things made only later in play
 ## are made here too and shown (the eelgrass fields' squares, splashes and the rest: Main's
 ## `_warm_extras`). Each is shown under the water's light, then again beside a lamp (an omni light),
 ## as the jellies' lamps make the engine compile another version of a lit program for what they
@@ -28,8 +28,17 @@ var left: Array = []
 var total := 0
 ## Whether what is shown now is to be lit as above the water (Main sets the sea's light from it).
 var above := false
-## The thing being shown now (freed after two frames).
+## What is being shown now (freed after two frames): a few things at a time while frames come back
+## quickly (a program already compiled costs nothing, and the animals share a handful of motion family
+## shaders), one at a time when the last were slow (a compile).
 var now: Node3D
+## How many are shown together: doubled (to BATCH_MOST) while the two frames took under BATCH_FAST ms,
+## back to one when they took over BATCH_SLOW ms.
+const BATCH_MOST := 16
+const BATCH_FAST := 60
+const BATCH_SLOW := 300
+var _batch := 1
+var _shown_ms := 0
 
 var _view: SubViewport
 var _lamp: OmniLight3D
@@ -120,15 +129,28 @@ func step() -> void:
 			ready_s = _done_ms / 1000.0
 			print("GULP WARM everything is ready at %.1f s (%.1f s of warming)" % [_done_ms / 1000.0, (_done_ms - _began_ms) / 1000.0])
 		return
-	var item: Dictionary = left.pop_front()
-	_weight_done += float(item.weight)
-	_lamp.visible = item.get("lamp", false)
-	above = item.get("above", false)
-	Hitches.note("warm " + String(item.name))
-	if item.has("kind"):
-		_show_kind(item.kind)
-	else:
-		_show_thing(item.thing)
+	var took := Time.get_ticks_msec() - _shown_ms
+	if _shown_ms > 0:
+		_batch = 1 if took > BATCH_SLOW else (mini(_batch * 2, BATCH_MOST) if took < BATCH_FAST else _batch)
+	now = Node3D.new()
+	viewport.add_child(now)
+	# (a batch shares the lamp, and the light above or under the water)
+	var first: Dictionary = left[0]
+	_lamp.visible = first.get("lamp", false)
+	above = first.get("above", false)
+	var names: PackedStringArray = []
+	while not left.is_empty() and names.size() < _batch and left[0].get("lamp", false) == first.get("lamp", false) \
+			and left[0].get("above", false) == first.get("above", false):
+		var item: Dictionary = left.pop_front()
+		_weight_done += float(item.weight)
+		names.append(String(item.name))
+		if item.has("kind"):
+			_show_kind(item.kind)
+		else:
+			_show_thing(item.thing)
+	Hitches.note("warm " + ", ".join(names))
+	_wait = 2
+	_shown_ms = Time.get_ticks_msec()
 
 
 func _count_kinds() -> int:
@@ -147,11 +169,11 @@ func _show_kind(kind: String) -> void:
 		look.set(&"game", true)
 	if &"cartoon_eyes" in look:
 		look.set(&"cartoon_eyes", 1.0)
-	now = Node3D.new()
-	now.add_child(look)
-	now.scale = Vector3.ONE / maxf(Species.long_of(kind, look), 0.05)
-	viewport.add_child(now)
-	now.global_position = Vector3(0.0, -800.0, 0.0)
+	var one := Node3D.new()
+	one.add_child(look)
+	one.scale = Vector3.ONE / maxf(Species.long_of(kind, look), 0.05)
+	now.add_child(one)
+	one.global_position = Vector3(0.0, -800.0, 0.0)
 	# (and its far model, which a component loads only when first asked for it)
 	if &"low" in look:
 		look.set(&"low", true)
@@ -161,8 +183,7 @@ func _show_kind(kind: String) -> void:
 			near.set(&"game", true)
 		if &"cartoon_eyes" in near:
 			near.set(&"cartoon_eyes", 1.0)
-		now.add_child(near)
-	_wait = 2
+		one.add_child(near)
 	if life:
 		life.mark_dressed(kind)
 
@@ -172,7 +193,7 @@ func _show_thing(thing: Array) -> void:
 	var mesh: Mesh = thing[0]
 	var material: Material = thing[1]
 	var like: MultiMesh = thing[2]
-	now = Node3D.new()
+	var one := Node3D.new()
 	var drawn: GeometryInstance3D
 	if like:
 		var many := MultiMesh.new()
@@ -188,17 +209,16 @@ func _show_thing(thing: Array) -> void:
 		holder.multimesh = many
 		drawn = holder
 	else:
-		var one := MeshInstance3D.new()
-		one.mesh = mesh
-		drawn = one
+		var single := MeshInstance3D.new()
+		single.mesh = mesh
+		drawn = single
 	drawn.material_override = material
 	drawn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	now.add_child(drawn)
+	one.add_child(drawn)
 	var box := mesh.get_aabb()
-	now.scale = Vector3.ONE / maxf(box.size.length(), 0.05)
-	viewport.add_child(now)
-	now.global_position = Vector3(0.0, -800.0, 0.0) - box.get_center() * now.scale.x
-	_wait = 2
+	one.scale = Vector3.ONE / maxf(box.size.length(), 0.05)
+	now.add_child(one)
+	one.global_position = Vector3(0.0, -800.0, 0.0) - box.get_center() * one.scale.x
 
 
 ## Every material drawn in the sea but the animals' (shown by kind), once each by its shader and
