@@ -116,6 +116,33 @@ skin = np.median(art[views[0][4][0].nonzero()[0] + views[0][3][1], views[0][4][0
 # three-quarter views are not used: where two views disagree the paint doubled (mouth, ears).
 by_name = {v[8]: v for v in views}
 FRONT, BACK, SIDE = by_name["face"], by_name["face_back"], by_name["face_side_r"]
+# FEATURES (the user, 2026-11-20: "could you separate out his eye nose eye mouth etc part of the texture, and then
+# position them better ontou our sculpt?"): each feature of the drawing's front view (the sheet's "features":
+# eyes, nostril wings, nose base, mouth corners and middle) is carried onto the same feature of the MODEL, the skin
+# between them following smoothly. So the painted eye sits in the eye's opening wherever the sculpt has put it.
+def _peak(target, side=0):
+    idx, dd = base.target(target)
+    size = np.linalg.norm(dd, axis=1)
+    x = base.verts[idx, 0]
+    size = size - 100 * np.abs(x) if side == 0 else np.where(x * side > 0, size, -1)
+    return P[int(idx[np.argmax(size)])]
+
+
+feats = []
+if "features" in sheet:
+    where = {"eye_l": P[base.indices("helper-l-eye")].mean(axis=0), "eye_r": P[base.indices("helper-r-eye")].mean(axis=0),
+             "nostril_l": _peak("nose-flaring-incr", 1), "nostril_r": _peak("nose-flaring-incr", -1),
+             "nose_base": _peak("nose-base-up"), "mouth": _peak("mouth-trans-up"),
+             "mouth_l": _peak("mouth-scale-horiz-incr", 1), "mouth_r": _peak("mouth-scale-horiz-incr", -1)}
+    _d, fr_right, fr_up, _box, _m, fr_px, fr_anchor, fr_at, _n = FRONT
+    for name, (ax, ay) in sheet["features"].items():
+        q = where[name]
+        mx = fr_at[0] + (q - fr_anchor).dot(fr_right) * fr_px
+        my = fr_at[1] - (q - fr_anchor).dot(fr_up) * fr_px
+        feats.append((mx, my, ax * k - mx, ay * k - my))
+        print("feature %-10s paint moved %5.1f across, %5.1f down (sheet pixels)" % (name, mx - ax * k, my - ay * k))
+REACH = sheet.get("feature_reach", 13.0) * k                  # how far round a feature its paint goes with it
+
 ear_of = np.zeros(len(P), dtype=int)                          # 1 = an ear on his left (+x), 2 = on his right
 for side, (ear, _root, flap) in fig._ear_masks().items():
     ear_of[flap] = 1 if side == "l" else 2
@@ -278,6 +305,17 @@ for group, vi, ti in base.faces:
             sx = at[0] + (pos - anchor).dot(right) * px
             sy = at[1] - (pos - anchor).dot(up) * px
             ix, iy = np.round(sx).astype(int), np.round(sy).astype(int)
+            if _name == "face" and feats:
+                wsumf = np.zeros(len(sx))
+                dx_, dy_ = np.zeros(len(sx)), np.zeros(len(sx))
+                for mx, my, fdx, fdy in feats:
+                    wf = np.exp(-((sx - mx) ** 2 + (sy - my) ** 2) / REACH ** 2)
+                    wsumf += wf
+                    dx_ += wf * fdx
+                    dy_ += wf * fdy
+                norm = np.maximum(wsumf, 1.0)
+                ix = np.round(sx + dx_ / norm).astype(int)
+                iy = np.round(sy + dy_ / norm).astype(int)
             ry = np.clip(iy - box[1], 0, mask.shape[0] - 1)
             rx = np.clip(ix - box[0], 0, mask.shape[1] - 1)
             on = soft[ry, rx] * ((iy >= box[1]) & (iy < box[3]) & (ix >= box[0]) & (ix < box[2]))
@@ -304,6 +342,33 @@ img.file_format = "PNG"
 img.save()
 print("painted", argv[2], "texels seen", int((wsum > 1e-6).sum()))
 
+# THE EYES: the eyeballs are their own mesh with their own UVs. Painted by rule, not from the sheet (at 1024 px an iris
+# is six pixels): each texel by its angle from straight ahead about the eyeball's middle. Hazel: amber-brown at
+# the pupil shading to green, a dark ring round the iris (the user, 2026-11-18: "amber brown green").
+# (MakeHuman's eyeballs have a speck of UV space in the body's texture: figed_blender.build gives them UVs of
+# their own, the ball seen from straight ahead filling the square, so this picture is simply drawn round its middle.)
+ESIZE = 256
+gy_, gx_ = np.mgrid[0:ESIZE, 0:ESIZE]
+rr = np.hypot((gx_ + 0.5) / ESIZE - 0.5, (gy_ + 0.5) / ESIZE - 0.5) * 2      # 0 straight ahead .. 1 the ball's edge
+ang = np.degrees(np.arcsin(np.clip(rr, 0, 1)))
+eye = np.empty((ESIZE, ESIZE, 3))
+eye[:] = (0.93, 0.90, 0.86)
+eye[ang > 45] = (0.90, 0.80, 0.76)                             # the white warms towards the corners
+t = np.clip((ang - 10) / 20.0, 0, 1)[:, :, None]               # iris: amber-brown in, olive green out
+iris = np.array([0.46, 0.27, 0.09]) * (1 - t) + np.array([0.36, 0.34, 0.15]) * t
+eye[ang < 31] = iris[ang < 31]
+eye[(ang >= 29) & (ang < 33)] = (0.16, 0.12, 0.07)             # the dark ring
+eye[ang < 11] = (0.03, 0.02, 0.02)                             # pupil
+eye_path = os.path.abspath(argv[2])[:-4].replace("_skin", "") + "_eyes.png"
+eimg = bpy.data.images.new("eyes", ESIZE, ESIZE, alpha=False)
+ergba = np.ones((ESIZE, ESIZE, 4), dtype=np.float32)
+ergba[:, :, :3] = eye
+eimg.pixels.foreach_set(ergba.ravel())
+eimg.filepath_raw = eye_path
+eimg.file_format = "PNG"
+eimg.save()
+print("eyes painted", eye_path)
+
 if len(argv) > 3 and not argv[3].startswith("--"):            # the painted model from the sheet's angles
     fb.reset()
     img = bpy.data.images.load(os.path.abspath(argv[2]))
@@ -316,6 +381,15 @@ if len(argv) > 3 and not argv[3].startswith("--"):            # the painted mode
     bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
     mat.node_tree.links.new(node.outputs["Color"], bsdf.inputs["Base Color"])
     objs["body"].data.materials.append(mat)
+    if "eyes" in objs:
+        emat = bpy.data.materials.new("eyes")
+        emat.use_nodes = True
+        en = emat.node_tree.nodes.new("ShaderNodeTexImage")
+        en.image = bpy.data.images.load(eye_path)
+        emat.node_tree.nodes.active = en
+        eb = next(n for n in emat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+        emat.node_tree.links.new(en.outputs["Color"], eb.inputs["Base Color"])
+        objs["eyes"].data.materials.append(emat)
     boxes = fb.view_boxes(fig)
     cam = fb._camera()
     Pp = figed.pose_points(fig, *fig.to_blender()[:2], turns, fig.to_blender()[2])[0]

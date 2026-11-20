@@ -113,5 +113,24 @@
   506,
   310
  ],
- "ear_about": "\"ear\": the ear as drawn in the side profile view, [x0, y0, x1, y1] at 1024 px (Claude, by eye): paint_project.py maps the model's ear onto it box to box."
+ "ear_about": "\"ear\": the ear as drawn in the side profile view, [x0, y0, x1, y1] at 1024 px (Claude, by eye): paint_project.py maps the model's ear onto it box to box.",
+ "features": {
+  "eye_r": [
+   93.6,
+   255.6
+  ],
+  "eye_l": [
+   159.3,
+   255.6
+  ],
+  "nostril_r": [
+   103,
+   291.3
+  ],
+  "nostril_l": [
+   151.8,
+   291.3
+  ]
+ },
+ "features_about": "\"features\": where each feature is in the FRONT view (1024 px; Claude, off an 8x grid): iris centres, the outer edge of each nostril wing, the middle of the nose's base, the mouth's corners and middle. _l / _r are his own left and right. paint_project.py carries each onto the model's. Only the eyes and nostril wings are used: the model points taken for the nose's base and the mouth (where MakeHuman's nose-base-up, mouth-trans-up and mouth-scale-horiz targets peak) are not on those features, and carrying paint to them twisted the mouth."
 }

@@ -669,3 +669,21 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
   Not certain: an earlier run of the same script on the EYEBROW area was stopped by the user as it started; the
   mouth value shows part of that command had run, so the last session's brow strokes may have been put back too.
   The window's skin is kept as `work/brother_paint8_user_skin.png`.
+- Features moved onto the sculpt (the user: "could you separate out his eye nose eye mouth etc part of the texture,
+  and then position them better ontou our sculpt?"). The sheet may give `"features"` in its FRONT view (iris centres,
+  nostril wings; `_l`/`_r` his own sides); `paint_project.py` finds the same feature on the model and shifts the
+  paint's lookup so each drawn feature lands on the model's, the shift fading with distance (`feature_reach`, 13
+  sheet px) so the skin between follows smoothly. Used: `eye_l`, `eye_r`, `nostril_l`, `nostril_r` (shifts of 1 to
+  4 px). NOT usable as tried: `nose_base`, `mouth`, `mouth_l`, `mouth_r`. The model points taken for them (where
+  the `nose-base-up`, `mouth-trans-up`, `mouth-scale-horiz` targets move the skin most) are not on those features
+  (15 px off) and carrying paint to them bent the mouth into a moustache shape. Mouth corners need proper points
+  (the lip line's end vertices) before they can be used.
+- **Eyes** (the user: "finish the head"). MakeHuman's eyeballs have a speck of UV space inside the body's texture,
+  so `figed_blender.build` now gives the `eyes` mesh UVs of its own (each ball seen from straight ahead fills the
+  square) and `paint_project.py` writes `figures/<name>_eyes.png` (256): white, a hazel iris (amber-brown at the
+  pupil to olive green, a dark ring), drawn by rule round the middle; not from the sheet, where an iris is six
+  pixels. Paint windows and the shots load it. Two tries failed first: painting through the old UVs (a few texels)
+  and assuming the two eyes share UVs (they do not).
+- Head still owed: the ears welded to the head (pieces pushed in, with a cone behind); the sheet's smiling squint
+  (the lids are the generic open eye); the drawing's light taken out of the paint; the hair, moustache and stubble;
+  the paint is soft because the shaved sheet is 1024 px wide.

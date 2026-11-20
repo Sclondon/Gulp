@@ -90,6 +90,18 @@ def build(fig, name="figure", parts=PARTS, rig=True, posed=False):
             for t in ti:
                 flat.extend(base.uvs[t] if t >= 0 else (0.0, 0.0))
         uv.data.foreach_set("uv", flat)
+        if kind == "eyes":                            # UVs of their own: each ball seen from straight ahead fills the
+            co = np.array([P[v] for v in used])       # square, so an eye picture is an iris drawn round its middle
+            flat2 = np.zeros((len(mesh.loops), 2))
+            for sign in (1, -1):
+                part = co[:, 0] * sign > 0
+                mid = co[part].mean(axis=0)
+                rad = np.linalg.norm(co[part] - mid, axis=1).max()
+                for lp in mesh.loops:
+                    if part[lp.vertex_index]:
+                        q = co[lp.vertex_index] - mid
+                        flat2[lp.index] = (0.5 + q[0] / (2 * rad), 0.5 + q[2] / (2 * rad))
+            uv.data.foreach_set("uv", flat2.ravel())
         for poly in mesh.polygons:
             poly.use_smooth = True
         obj = bpy.data.objects.new(name + "_" + kind, mesh)

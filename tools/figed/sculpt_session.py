@@ -121,6 +121,18 @@ elif argv[:1] == ["make"]:                             # headless: -- make <spec
         bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
         mat.node_tree.links.new(node.outputs["Color"], bsdf.inputs["Base Color"])
         body.data.materials.append(mat)
+        eyes_png = os.path.abspath(paint)[:-4].replace("_skin", "") + "_eyes.png"
+        if os.path.exists(eyes_png) and "eyes" in objs:           # the painted eyeballs
+            eimg = bpy.data.images.load(eyes_png)
+            eimg.pack()
+            emat = bpy.data.materials.new("eyes")
+            emat.use_nodes = True
+            en = emat.node_tree.nodes.new("ShaderNodeTexImage")
+            en.image = eimg
+            emat.node_tree.nodes.active = en
+            eb = next(n for n in emat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+            emat.node_tree.links.new(en.outputs["Color"], eb.inputs["Base Color"])
+            objs["eyes"].data.materials.append(emat)
         for o in bpy.data.objects:
             if o.type == "EMPTY":
                 o.hide_viewport = True                 # the reference pictures would tint what is being painted
