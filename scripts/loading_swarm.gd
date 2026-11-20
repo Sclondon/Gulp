@@ -32,6 +32,8 @@ const ROLL := 0.6
 
 ## How much is loaded (0..1): that share of the fish have gone to their places.
 var progress := 0.0
+## The real share loaded (0..1) shown by the bar and the figure under the mark; `progress` when unset.
+var share := -1.0
 
 var _view: SubViewport
 var _eye: Camera3D
@@ -213,3 +215,22 @@ func _draw() -> void:
 		var across := _span.x * _big * 1.18
 		var high := across * _words.get_height() / _words.get_width()
 		draw_texture_rect(_words, Rect2(Vector2(_wide.x * 0.5 - across * 0.5, _wide.y * 0.42 + _span.y * _big * 0.5 + high * 0.02), Vector2(across, high)), false, Color(1.0, 1.0, 1.0, lit))
+	# (the bar: a thin trough below the mark and its words, filled in the sardines' silver to the real
+	# share loaded, the share in figures over its right end)
+	var real := clampf(progress if share < 0.0 else share, 0.0, 1.0)
+	var words_high := _span.x * _big * 1.18 * (float(_words.get_height()) / _words.get_width() if _words else 0.2)
+	var long := minf(_wide.x * 0.64, _span.x * _big * 1.1)
+	var thick := clampf(_wide.y * 0.006, 3.0, 6.0)
+	var y := minf(_wide.y * 0.42 + _span.y * _big * 0.5 + words_high * 1.05 + thick * 6.0, _wide.y - thick * 10.0)
+	var left := Vector2(_wide.x * 0.5 - long * 0.5, y)
+	var silver := Color(0.8, 0.88, 0.95)
+	draw_rect(Rect2(left - Vector2(0.0, thick * 0.5), Vector2(long, thick)), Color(silver, 0.14))
+	draw_circle(left, thick * 0.5, Color(silver, 0.14))
+	draw_circle(left + Vector2(long, 0.0), thick * 0.5, Color(silver, 0.14))
+	if real > 0.0:
+		draw_rect(Rect2(left - Vector2(0.0, thick * 0.5), Vector2(long * real, thick)), Color(silver, 0.9))
+		draw_circle(left, thick * 0.5, Color(silver, 0.9))
+		draw_circle(left + Vector2(long * real, 0.0), thick * 0.5, Color(silver, 0.9))
+	var font := ThemeDB.fallback_font
+	var big := int(clampf(_wide.y * 0.024, 13.0, 24.0))
+	draw_string(font, left + Vector2(0.0, -thick * 1.6), "%d%%" % floori(real * 100.0), HORIZONTAL_ALIGNMENT_RIGHT, long, big, Color(silver, 0.75))
