@@ -477,3 +477,11 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
 - The user: "the ears are actually a little too far forward" and "theres a gap at their seam with the head, the are
   floating". `ears.back` 0.5 -> 1.0; `ears.out` -0.4 -> -0.65 and `flare` 8 -> 7 (the cut edge sunk further under
   the skin). At `out` -1.0 the ears were half buried. Check the seam in the back view after any ear change.
+- Sculpting by hand (the user: "You're saying its easy to shape the jaw by hand? Direct me in blender").
+  `sculpt_session.py`: `-- make <spec> <work.blend>` (headless) builds the figure at rest with its points remembered
+  (`figed_rest`), opening that file with the script switches to Sculpt Mode (side view, mirror on, Grab brush), and
+  `-- read <out.sculpt.json>` writes how far each base point was moved. NOT YET DONE: `Figure` applying a
+  `"sculpt"` file. Two traps hit: building the figure INSIDE an open window (`read_factory_settings` there)
+  crashed Blender at the user's first `F` (build headless, open the file); and in 4.3 brushes are assets,
+  `wm.tool_set_by_id("builtin_brush.Grab")` does nothing (use `brush.asset_activate`; untested in a window: the
+  user can press `G`).
