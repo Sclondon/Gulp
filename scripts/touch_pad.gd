@@ -18,19 +18,26 @@ extends Control
 ## - The engine housing (bottom right): a plunger, held for a burst of speed, and curving round
 ##   its left a slot with a lever that sets how fast the fish swims, from dead slow (the slot's
 ##   lower end) to full ahead (its top). The lever stays where it is put. Over it the SPEED dial.
-## - The instrument housing (between them): a sonar scope (what hunts the fish in red, what it
-##   can eat in green, ahead of it up the screen, with N, E, S and W round its rim), and small
-##   dials for DEPTH and for how much BURST is left.
-## - The switch box: two knife switches kept for special abilities that do not exist yet.
+## - The instrument housing (between them): a sonar scope (after a ping, what hunts the fish in red
+##   and what it can eat in gold, ahead of it up the screen, with N, E, S and W round its rim), and
+##   small dials for DEPTH and for how much BURST is left.
+## - The switch box: two knife switches for special abilities. The left one is the SONAR (the user,
+##   2026-11-20: "The sonar should be activated with one of the special ability buttons"): thrown,
+##   it pings; its handle drops down its slot and creeps back up as it charges again, and its pilot
+##   lamp shows green when it is ready (E or a pad's Y does the same). The right one is still kept
+##   for an ability that does not exist yet.
 ## - The valve box: the pause button, and two vacuum tubes that burn brighter while it bursts.
 ##
-## A touch anywhere in the lower left takes the helm; a touch on the lever's slot takes the lever;
+## A touch on the sonar switch pings; a touch anywhere else in the lower left takes the helm; a
+## touch on the lever's slot takes the lever;
 ## a touch on the pause button pauses (and any touch then goes on); a touch anywhere else in the
 ## lower right holds the burst. A mouse works as a finger (the project turns mouse presses into
 ## touches).
 
 ## The pause button was pressed, or (paused) the screen was touched to go on.
 signal pause_pressed
+## The sonar switch was thrown (Main pings if it has charged).
+signal sonar_pressed
 
 const BRASS := Color(0.80, 0.62, 0.26)
 const BRASS_LIGHT := Color(1.0, 0.88, 0.55)
@@ -61,7 +68,11 @@ var level := 0
 var progress := 0.0
 var length := 0.0
 var heading := 0.0
-var blips: Array[Vector3] = []
+var blips: Array[Vector4] = []
+## Seconds since the sonar last pinged (Sonar.age), and how far it has charged again (0 just
+## pinged, 1 ready).
+var ping_age := INF
+var sonar_charge := 1.0
 ## The landmarks the sonar points to: each [its name in Sonar.LANDMARKS, where it is from the fish
 ## (x to its right, y ahead, metres)].
 var landmarks: Array = []
@@ -112,6 +123,7 @@ func _process(delta: float) -> void:
 		_fit()
 		model.show_state(stick, boost and stamina > 0.0, throttle,
 				[speed + sin(Time.get_ticks_msec() * 0.03) * 0.004, depth, stamina, (level + clampf(progress, 0.0, 1.0)) / STAGES], delta)
+		model.show_sonar(1.0 - clampf(sonar_charge, 0.0, 1.0), delta)
 		queue_redraw()
 
 
@@ -141,6 +153,12 @@ func pause_home() -> Vector2:
 	return model.point("Pause")
 
 
+## Where the sonar switch is (its handle at rest, ready).
+func sonar_home() -> Vector2:
+	_fit()
+	return model.point("SwitchA")
+
+
 ## Where the lever's handle is for a speed (0..1): a point along its slot.
 func lever_at(at_speed: float) -> Vector2:
 	_fit()
@@ -158,6 +176,9 @@ func _input(event: InputEvent) -> void:
 				pause_pressed.emit()
 				return
 			if touch.position.y < size.y * 0.4:
+				return
+			if touch.position.distance_to(sonar_home()) < 40.0 * unit():
+				sonar_pressed.emit()
 				return
 			if touch.position.x < size.x * 0.5 and _stick_touch == -1:
 				_stick_touch = touch.index
@@ -224,6 +245,19 @@ func _draw() -> void:
 	sonar.blips = blips
 	sonar.landmarks = landmarks
 	sonar.heading = heading
+	sonar.age = ping_age
+	# The sonar switch's pilot lamp, over the switch: green and breathing when it is ready, a dim red
+	# while it charges (its handle creeping back up its slot shows how far).
+	if not paused:
+		var pilot := model.point("SwitchPilot")
+		var wide := 7.0 * unit() * 1.6
+		if sonar_charge >= 1.0:
+			var breathe := 0.75 + 0.25 * sin(Time.get_ticks_msec() * 0.004)
+			for k in 4:
+				draw_circle(pilot, wide * (1.0 + k * 0.8), Color(0.35, 1.0, 0.45, breathe * (0.85 if k == 0 else 0.18 / k)))
+			draw_circle(pilot - Vector2(wide, wide) * 0.3, wide * 0.3, Color(0.9, 1.0, 0.9, 0.8))
+		else:
+			draw_circle(pilot, wide, Color(0.55, 0.1, 0.05, 0.85))
 	sonar.visible = not paused
 	# The alarm lamp: lit red in flashes while a hunter is close.
 	if alarm > 0.02 and not paused and model.has("Alarm"):

@@ -25,7 +25,7 @@ unlit (shaders/panel.gdshader) with a little shine on the brass.
   Engine  (bottom right): the plunger, the lever's slot curving round it, the speed dial over it
   Gauges  (between): the sonar scope, small dials for depth and for burst left (the burst dial
           is Claude's pick of place)
-  Switches (a small box): two knife switches for special abilities that do not exist yet
+  Switches (a small box): two knife switches for special abilities: the left one the sonar
   Aux     (a small box): the pause button, and two vacuum tubes (TubeGlass: their clear glass)
 
 Every pipe and wire ends in something: a flange bolted to a face, a collar into a housing's side
@@ -38,6 +38,7 @@ parts by these names:
   Engine  > Plunger (pushed in along +Y), Lever (turned about Y round the plunger) > Grip,
             NeedleSpeed
   Gauges  > NeedleDepth, NeedleBurst, Scope, ScopeEdge
+  Switches > SwitchA (the sonar switch's handle: slides down its slot along -Z), SwitchB, SwitchPilot
 Needles point straight up as built and turn about Y, 2.2 radians either way.
 Material names stay on the model (the game gives each its shine by name).
 The numbers in CAPITALS are printed at the end as the PANEL line, and panel_model.gd holds the
@@ -736,17 +737,35 @@ needle("Burst", burst[0], burst[1], SMALL_DIAL_R, gauges)
 
 # --- The switch box: two knife switches for special abilities (which do not exist yet), always in
 # sight (the user: "what happend to the special ability switches?").
+# The left one is the sonar (the user, 2026-11-20: "The sonar should be activated with one of the special
+# ability buttons"): its handle (SwitchA) slides down its slot when thrown and back up as it charges; a
+# pilot lamp over it (SwitchPilot: the game lights it) and the sonar's sign (rings round a dot) on its
+# handle. The right one (SwitchB) is still for an ability that does not exist yet.
+SWITCHES_X = (-0.36, 0.36)
+SWITCH_Z = 0.72
 plate(SMALL_WIDE, SMALL_TALL)
-for k, x in enumerate((-0.36, 0.36)):
+for k, x in enumerate(SWITCHES_X):
     box(STEEL, (0.5, 0.06, 0.68), (x, -0.02, 0.56))
     flat(DARK, [(x - 0.05, 0.34), (x + 0.05, 0.34), (x + 0.05, 0.74), (x - 0.05, 0.74)], -0.052)
-    cyl(STEEL, 0.04, 0.2, (x, -0.12, 0.72), "Y", 6)
-    box(RED, (0.28, 0.2, 0.22), (x, -0.26, 0.72))
     for sx in (-1.0, 1.0):
         for sz in (0.3, 0.82):
             bolt(x + sx * 0.19, sz, 0.03, -0.05)
-run(RUBBER, [(-0.36, -0.02, 0.92), (0.0, -0.1, 1.04), (0.36, -0.02, 0.92)], 0.03, ("Y", "Y"), 4)
+# the pilot lamp's brass cup and lens, over the sonar switch, under the wire
+PILOT = (SWITCHES_X[0], 0.97)
+cyl(BRASS, 0.075, 0.05, (PILOT[0], -0.04, PILOT[1]), "Y", 10)
+ball(LAMP, 0.055, (PILOT[0], -0.07, PILOT[1]), (1.0, 0.6, 1.0), 8)
+run(RUBBER, [(-0.24, -0.02, 0.94), (0.0, -0.1, 1.04), (0.36, -0.02, 0.92)], 0.03, ("Y", "Y"), 4)
 switches = join("Switches")
+marker("SwitchPilot", (PILOT[0], -0.1, PILOT[1]), switches)
+for k, x in enumerate(SWITCHES_X):
+    cyl(STEEL, 0.04, 0.2, (x, -0.12, SWITCH_Z), "Y", 6)
+    box(RED, (0.28, 0.2, 0.22), (x, -0.26, SWITCH_Z))
+    if k == 0:
+        # the sonar's sign on the handle's face: a dot and two arcs over it
+        cyl(INK, 0.022, 0.01, (x, -0.362, SWITCH_Z - 0.05), "Y", 8)
+        for r in (0.055, 0.095):
+            band(INK, (x, SWITCH_Z - 0.05), r, 0.011, math.radians(40.0), math.radians(140.0), -0.362, 0.0, 6)
+    join("SwitchA" if k == 0 else "SwitchB", (x, 0.0, SWITCH_Z), switches)
 
 # --- The valve box: a pause button (the user: "There should also be a pause button built into the
 # ui panel so we can hide the x button on mobile"), and two vacuum tubes glowing beside it ("There

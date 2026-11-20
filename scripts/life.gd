@@ -189,6 +189,9 @@ func _ready() -> void:
 		dress_each = PHONE[5]
 	for i in KRILL_CLOUDS:
 		_school(_swarm_rules(_krill_rules(), KRILL_SWARM), _krill_mesh(), KRILL_LENGTH, "", 0.55, 0.92, i)
+		if i == 0:
+			# (this one, and the first school of anchovies, keep near where a run starts: `keep_home`)
+			schools[-1].home = Vector3.INF
 	for i in SARDINE_SCHOOLS:
 		_school(_swarm_rules(_sardine_rules(), SARDINE_BALL if i == 0 else SARDINE_SWARM), Fish.school_mesh(), SARDINE_LENGTH,
 				"open" if i % 2 == 0 else "kelp", 0.4, 0.85, 100 + i)
@@ -200,6 +203,8 @@ func _ready() -> void:
 			rules.max_speed = 1.3
 			rules.cruise_speed = 0.9
 			_school(_swarm_rules(rules, ANCHOVY_SWARM), Fish.school_mesh("anchovy"), 0.14, ["sand", "grass", "kelp"][i], 0.4, 0.85, 300 + i)
+			if i == 0:
+				schools[-1].home = Vector3.INF
 	if Species.has("piranha"):
 		var pack := _sardine_rules()
 		pack.size = 1.0
@@ -417,7 +422,10 @@ func _step_schools(delta: float) -> void:
 			var goal: Vector3 = school.goal
 			if flock.global_position.distance_to(goal) < 2.0:
 				var zone: String = "open" if school.nocturnal and night() > 0.5 else school.zone
-				goal = _school_place(zone, float(school.radius), float(school.low), float(school.high))
+				if school.get("home", Vector3.INF) != Vector3.INF:
+					goal = _home_spot(school.home, float(school.radius))
+				else:
+					goal = _school_place(zone, float(school.radius), float(school.low), float(school.high))
 				school.goal = goal
 			flock.global_position = flock.global_position.move_toward(goal, 0.35 * delta)
 		if swarm:
@@ -977,6 +985,42 @@ func _place_jelly(i: int, at: Vector3) -> void:
 	jelly.lay_arms()
 	_jelly_away[i] = 0.0
 	_jelly_time[i] = 0.0
+
+
+## Food within easy reach of where a run starts (the user, 2026-11-20: "its extremely unclear what you
+## can eat and how to find it"; as a sardine there was no food a sardine could reach within 30 m): the
+## first krill cloud and the first school of anchovies keep within HOME_ROOM of `at`, between
+## HOME_DEPTH metres under the surface (inside the starting depth limit: the static begins at 12 m).
+## They are moved there now if they are far off (a new run).
+const HOME_ROOM := Vector2(6.0, 14.0)
+const HOME_DEPTH := Vector2(4.0, 9.0)
+var _home_rng := RandomNumberGenerator.new()
+
+
+func keep_home(at: Vector3) -> void:
+	for school in schools:
+		if not school.has("home"):
+			continue
+		school.home = at
+		var flock: Flock = school.flock
+		if flock.global_position.distance_to(at) > HOME_ROOM.y + 6.0:
+			var spot := _home_spot(at, float(school.radius))
+			var shift := spot - flock.global_position
+			flock.global_position = spot
+			for i in flock.positions().size():
+				flock.move_boid(i, flock.boid_position(i) + shift)
+			school.goal = spot
+			school.mid = spot
+
+
+# A place near a run's start for a school that keeps there.
+func _home_spot(at: Vector3, room: float) -> Vector3:
+	# (its own dice: the rest of the sea's draws stay as they were)
+	var a := _home_rng.randf() * TAU
+	var spot := at + Vector3(cos(a), 0.0, sin(a)) * _home_rng.randf_range(HOME_ROOM.x, HOME_ROOM.y)
+	spot.y = Sea.SURFACE - _home_rng.randf_range(HOME_DEPTH.x, HOME_DEPTH.y)
+	spot.y = maxf(spot.y, Sea.ground(spot.x, spot.z) + room * 0.6 + 0.5)
+	return Sea.clear_of_rocks(Sea.keep_in(spot, room * 0.5), room * 0.5)
 
 
 ## A place for a school in a zone, between two depths (0 the floor, 1 the surface).

@@ -220,6 +220,7 @@ func become(of_kind: String, bare := false) -> void:
 ## Gives it its model (see `become`).
 func dress(of_kind := "") -> void:
 	dressed = true
+	_forget_mark()
 	Hitches.note("dress " + (of_kind if of_kind != "" else kind))
 	set_kind(of_kind if of_kind != "" else kind)
 	# (each koi, guppy or other patterned fish its own pattern)
@@ -244,6 +245,7 @@ func undress() -> void:
 		return
 	dressed = false
 	_has = 0
+	_forget_mark()
 	if _look:
 		_body.remove_child(_look)
 		_look.queue_free()
@@ -335,6 +337,56 @@ func guarded() -> bool:
 	if _has & (1 << L_DIG):
 		return _alarm > 0.9
 	return false
+
+
+## Lays a mark on it: a thin rim of light round its outline, `rim` its colour and its alpha how
+## strong (0 none). FoodMarks marks what the player can eat gold and what can eat it red. Only the
+## motion family shaders draw it (shaders/motion/motion_paint.gdshaderinc: a setting of theirs, so no
+## program of its own); a kind kept on its own shader shows none.
+func mark(rim: Color) -> void:
+	if not dressed or _look == null:
+		return
+	# (its materials are looked for until found: a model just dressed gets its family shader a frame
+	# late (BakedLook swaps it deferred); a kind with none is given up on after a few looks, a second apart)
+	var looking := not _mark_found and Time.get_ticks_msec() >= _mark_next
+	if rim == _marked and not looking:
+		return
+	_marked = rim
+	if looking:
+		_mark_tries += 1
+		_mark_next = Time.get_ticks_msec() + 1000
+		# (its own materials only, never a mesh's shared one: that would mark every one of its kind)
+		for mi: MeshInstance3D in _look.find_children("*", "MeshInstance3D", true, false):
+			var all: Array = [mi.material_override]
+			for s in mi.get_surface_override_material_count():
+				all.append(mi.get_surface_override_material(s))
+			for m: Variant in all:
+				if m is ShaderMaterial and (m as ShaderMaterial).has_meta(&"motion_own") and not _mark_on.has(m):
+					_mark_on.append(m)
+		_mark_found = not _mark_on.is_empty() or _mark_tries >= 4
+	for m in _mark_on:
+		m.set_shader_parameter(&"mark_rim", rim)
+
+
+## The mark it wears now (see `mark`).
+func marked() -> Color:
+	return _marked
+
+
+var _marked := Color(0.0, 0.0, 0.0, 0.0)
+var _mark_on: Array[ShaderMaterial] = []
+var _mark_found := false
+var _mark_tries := 0
+var _mark_next := 0
+
+
+# Its model is new or gone: its materials are found again when it is next marked.
+func _forget_mark() -> void:
+	_marked = Color(0.0, 0.0, 0.0, 0.0)
+	_mark_on.clear()
+	_mark_found = false
+	_mark_tries = 0
+	_mark_next = 0
 
 
 ## Its stinging spines are up (a lionfish): touching it hurts.

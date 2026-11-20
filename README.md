@@ -15,6 +15,11 @@ Godot 4.7, GL Compatibility, phone first (upright or on its side), also playable
   round, up and down for its nose. It always swims the way it points.
 - **The round button** (bottom right; or Space, Shift, a gamepad's A) is a burst of speed while held. The ring round
   it is how much burst is left; it fills again when you let go.
+- **The sonar switch** (the left knife switch under the scope; or E, a gamepad's Y) pings: a ring sweeps out over
+  the scope and what you can eat shows as gold diamonds, what can eat you as red triangles, each on a stalk up or down
+  to its height (dim and hollow: food deeper than you can go yet), fading after a few seconds. The switch creeps back
+  up as it charges again (10 s); its lamp shows green when it is ready.
+- In the sea, what you can eat now has a thin gold rim and a few gold sparkles; what can eat you a faint red rim.
 - **The round arrow**, when the run is over (or Enter, Space, a gamepad's A), starts another.
 
 What you can eat: anything no longer than four fifths of your own length (and not too small to bother with: under

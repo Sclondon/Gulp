@@ -127,6 +127,14 @@ var _perf_shots := ""
 # round the bay that looks for them (--tour; tests/tour.gd).
 var _hitches := false
 var _tour := ""
+# What the player can eat, and what can eat it, marked in the sea (scripts/food_marks.gd).
+var marks: FoodMarks
+# --ping=<s>: the sonar pings by itself then; --film=<folder>: frames saved for a GIF.
+var _ping_at := -1.0
+var _film := ""
+var _film_from := 0.0
+var _film_for := 3.0
+var _film_n := 0
 
 
 func _ready() -> void:
@@ -183,6 +191,19 @@ func _ready() -> void:
 			_perf_shots = arg.get_slice("=", 1)
 		elif arg.begins_with("--perf-as="):
 			_perf_as = arg.get_slice("=", 1)
+		elif arg == "--unlimited":
+			# (no depth limit: for pictures of the deep places)
+			limited = false
+		elif arg.begins_with("--ping="):
+			_ping_at = float(arg.get_slice("=", 1))
+		elif arg.begins_with("--film="):
+			# (frames of the window saved to a folder from --film-from= s for --film-for= s, every other
+			# frame: for a GIF of the sonar's ping)
+			_film = arg.get_slice("=", 1)
+		elif arg.begins_with("--film-from="):
+			_film_from = float(arg.get_slice("=", 1))
+		elif arg.begins_with("--film-for="):
+			_film_for = float(arg.get_slice("=", 1))
 		elif arg == "--hitches":
 			_hitches = true
 		elif arg == "--tour" or arg.begins_with("--tour="):
@@ -236,6 +257,10 @@ func _ready() -> void:
 	life.player = player
 	life.hunting = not calm
 	_viewport.add_child(life)
+	marks = FoodMarks.new()
+	marks.life = life
+	marks.player = player
+	_viewport.add_child(marks)
 	# (the reef-back walking the deep floor is solid as the giants are: its trunk, 4 to 13 m up, nose
 	# to tail-root; CLAUDE.md "Decision: solid giants")
 	var walker: Variant = scenery.get(&"_reef_back")
@@ -245,6 +270,7 @@ func _ready() -> void:
 	camera.near = 0.05
 	camera.far = 150.0
 	_viewport.add_child(camera)
+	marks.eye = camera
 	camera.current = true
 	sea.eye = camera
 	sea.sand.focus = camera
@@ -268,6 +294,7 @@ func _ready() -> void:
 	pad = TouchPad.new()
 	add_child(pad)
 	pad.pause_pressed.connect(_toggle_pause)
+	pad.sonar_pressed.connect(_ping)
 	player.ate.connect(_on_ate)
 	player.grew.connect(_on_grew)
 	player.died.connect(_on_died)
@@ -344,6 +371,7 @@ func restart() -> void:
 		arena.spawn()
 	hud.offer([])
 	life.make_way(at)
+	life.keep_home(at)
 	over = false
 	_over_for = 0.0
 	hud.over = false
@@ -442,7 +470,13 @@ func _process(delta: float) -> void:
 	if Input.is_action_just_pressed(&"ui_cancel") or (Input.is_physical_key_pressed(KEY_P) and not _p_was):
 		_toggle_pause()
 	_p_was = Input.is_physical_key_pressed(KEY_P)
+	# (the sonar: E or a pad's Y, as the panel's switch)
+	var e_now := Input.is_physical_key_pressed(KEY_E) or Input.is_joy_button_pressed(0, JOY_BUTTON_Y)
+	if e_now and not _e_was and not _checking:
+		_ping()
+	_e_was = e_now
 	if not player.choosing and not paused:
+		_ping_age += delta
 		player.step(delta)
 		# (a rogue wave pushes what swims near the top: Surf.surge)
 		if player.alive and not player.in_air and not player.caught:
@@ -506,6 +540,14 @@ func _process(delta: float) -> void:
 	var down := Sea.SURFACE - player.global_position.y
 	pad.depth = clampf(down / (purse.depth() if limited else 100.0), 0.0, 1.0)
 	_post.set_shader_parameter(&"signal_loss", clampf((down - purse.depth() + 3.0) / 5.0, 0.0, 1.0) if limited and player.alive else 0.0)
+	pad.ping_age = _ping_age
+	pad.sonar_charge = clampf(_ping_age / SONAR_RECHARGE, 0.0, 1.0)
+	marks.deepest = _reach_depth()
+	marks.on = not (over or player.choosing or selling)
+	if _ping_at >= 0.0 and _clock >= _ping_at:
+		# (a test or a picture pings by itself: --ping=<s>)
+		_ping_at = -1.0
+		_ping()
 	if _frames % 6 == 0:
 		_sound_out()
 	if over:
@@ -707,6 +749,18 @@ func _toggle_pause() -> void:
 
 ## A picture or the end of a timed run, when its time has come.
 func _finish_frame() -> void:
+	if _film != "" and _clock >= _film_from:
+		if _clock > _film_from + _film_for:
+			print("GULP FILM %d frames in %s" % [_film_n, _film])
+			_film = ""
+			get_tree().quit()
+			return
+		if Engine.get_process_frames() % 2 == 0:
+			await RenderingServer.frame_post_draw
+			if _film != "":
+				get_viewport().get_texture().get_image().save_png("%s/f%04d.png" % [_film, _film_n])
+				_film_n += 1
+		return
 	if _shot_at >= 0.0 and _clock >= _shot_at:
 		_shot_at = -1.0
 		await RenderingServer.frame_post_draw
@@ -753,28 +807,88 @@ func _play_role() -> void:
 		get_tree().quit()
 
 
-## What the sonar on the panel sees: whatever is after the fish, and what it could eat, within
-## the scope's range, each as where it is from the fish (to its right, ahead of it).
+## The sonar is a special ability (the user, 2026-11-20: "The sonar should be activated with one of
+## the special ability buttons"): the panel's left knife switch, E, or a pad's Y. A ping hears what
+## is about once (each thing where it was then: an echo) and the scope shows it as its ring passes,
+## then fades (Sonar.PING_*). It charges again in SONAR_RECHARGE seconds of play.
+const SONAR_RECHARGE := 10.0
+## How deep under the starting depth limit the static begins (m): food deeper than the limit less
+## this is out of reach (dim on the scope, unmarked in the sea).
+const STATIC_BEFORE := 3.0
+var _echoes: Array = []
+var _ping_age := INF
+var _e_was := false
+
+
+## Pings, if the sonar has charged.
+func _ping() -> void:
+	if not player.alive or _ping_age < SONAR_RECHARGE or paused or over or _on_deck or selling:
+		return
+	_ping_age = 0.0
+	_echoes = _listen()
+	_sound_out()
+
+
+## How deep the fish can go now before the static (m under the surface).
+func _reach_depth() -> float:
+	return _deepest() - STATIC_BEFORE
+
+
+## What a ping hears within the scope's range: each [where it is (world), Sonar.FOOD / HUNTER /
+## FOOD_DEEP]. One blip a school or cloud (its nearest member), every animal and jelly that is food
+## or hunts the fish.
+func _listen() -> Array:
+	var food: Array = []
+	var hunters: Array = []
+	var at := player.global_position
+	var deep := _reach_depth()
+	var heard := func(spot: Vector3) -> bool:
+		return Vector2(spot.x - at.x, spot.z - at.z).length() < Sonar.RANGE
+	var food_at := func(spot: Vector3) -> void:
+		food.append([spot, Sonar.FOOD if Sea.SURFACE - spot.y < deep else Sonar.FOOD_DEEP, spot.distance_to(at)])
+	# (the jellies and nettles that sting it; every animal that hunts it, chasing or not)
+	for threat: Array in life.threats():
+		var spot: Vector3 = threat[0]
+		if heard.call(spot) and not life.awake.any(func(each: Creature) -> bool: return each.global_position == spot):
+			hunters.append([spot, Sonar.HUNTER, spot.distance_to(at)])
+	for each in life.awake:
+		if each.away > 0.0 or each.giant or not heard.call(each.global_position):
+			continue
+		if Life.is_food(player.length, each.length):
+			food_at.call(each.global_position)
+		elif FoodMarks.hunts_player(each, player.length):
+			hunters.append([each.global_position, Sonar.HUNTER, each.global_position.distance_to(at)])
+	for school: Dictionary in life.schools:
+		if not Life.is_food(player.length, float(school.length)):
+			continue
+		var flock: Flock = school.flock
+		var spot: Vector3 = flock.global_position
+		if flock.visible:
+			var i := flock.nearest(at)
+			if i >= 0:
+				spot = flock.boid_position(i)
+		if heard.call(spot):
+			food_at.call(spot)
+	for jelly: MoonJelly in life.jellies:
+		if Life.is_food(player.length, jelly.size * 2.0) and heard.call(jelly.global_position):
+			food_at.call(jelly.global_position)
+	var nearest_first := func(a: Array, b: Array) -> bool: return a[2] < b[2]
+	food.sort_custom(nearest_first)
+	hunters.sort_custom(nearest_first)
+	return hunters.slice(0, 12) + food.slice(0, 24)
+
+
+## What the sonar on the panel shows: the last ping's echoes, each as where it is from the fish now
+## (to its right, ahead of it, above it), and the landmarks.
 func _sound_out() -> void:
-	var seen: Array[Vector3] = []
-	if player.alive:
+	var seen: Array[Vector4] = []
+	if player.alive and _ping_age < Sonar.PING_SPREAD + Sonar.PING_HOLD + Sonar.PING_FADE:
 		var ahead := Vector3(player.heading.x, 0.0, player.heading.z)
 		ahead = ahead.normalized() if ahead.length() > 0.01 else Vector3.FORWARD
 		var right := ahead.cross(Vector3.UP)
-		for threat: Array in life.threats():
-			var off: Vector3 = threat[0] - player.global_position
-			if off.length() < TouchPad.SONAR_RANGE:
-				seen.append(Vector3(off.dot(right), off.dot(ahead), 1.0 + Sonar.high(off.y)))
-		for each in life.awake:
-			if seen.size() > 40:
-				break
-			if each.visible and each.away <= 0.0 and not each.giant:
-				var off := each.global_position - player.global_position
-				if off.length() < TouchPad.SONAR_RANGE:
-					if Life.is_food(player.length, each.length):
-						seen.append(Vector3(off.dot(right), off.dot(ahead), Sonar.high(off.y)))
-					elif each.hunts and Life.can_eat(each.length, player.length) and player.length >= each.length * Life.TOO_SMALL:
-						seen.append(Vector3(off.dot(right), off.dot(ahead), 1.0 + Sonar.high(off.y)))
+		for echo: Array in _echoes:
+			var off: Vector3 = echo[0] - player.global_position
+			seen.append(Vector4(off.dot(right), off.dot(ahead), off.y, echo[1]))
 	pad.blips = seen
 	# (the alarm: how near the nearest thing after the fish is, from 12 lengths of the fish, and
 	# no less than 5 m, down to upon it)

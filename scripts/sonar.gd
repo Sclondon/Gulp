@@ -8,7 +8,10 @@ extends TextureRect
 ## bulged like the tube's glass, with scan lines, a glow round what is lit, a dark rim, a flicker
 ## and a glint. TouchPad lays it over the scope of the panel's model and feeds it.
 ##
-## Ahead of the fish is up. What hunts it is red, what it can eat green. A landmark is a small
+## Ahead of the fish is up. The glass is dark (the user's pick of concept A, 2026-11-20,
+## tools/art_src/concept_food_a_gold2.jpg); after a ping (the sonar switch on the panel, or E) what
+## it can eat shows as gold diamonds and what hunts it as red triangles, each on a stalk up or down
+## to its height, and fades. A landmark is a small
 ## sign for a part of the sea (LANDMARKS: the river mouth, the sea grass, the sand, the kelp, the
 ## reef, the open sea, the trench; and the boat, whose net the fish is sold into), where it lies from the fish; one further off than the scope
 ## sees is held at the rim, on its bearing, so the scope always points the way to each.
@@ -36,13 +39,33 @@ const LANDMARKS := {
 	"trench": {"strokes": [[Vector2(-0.9, 0.7), Vector2(-0.3, 0.7), Vector2(0.0, -0.9), Vector2(0.3, 0.7), Vector2(0.9, 0.7)]], "colour": Color(0.8, 0.65, 1.0)},
 }
 
-## What it shows: where each thing is from the fish (x to its right, y ahead, metres) and what it
-## is (z: 0 food, 1 a hunter, with how far above or below the fish it is added by `high`: the user,
-## 2026-11-18, "the sonar map needs to show objects relation to you in 3d"); the landmarks, the same way, with their names; and the way the fish
-## is heading (radians round from north, the sea's -Z, turning towards east).
-var blips: Array[Vector3] = []
+## What it shows: where each thing the last ping found is from the fish (x to its right, y ahead, z
+## how far above it (below, less than 0), all metres) and what it is (w: FOOD, HUNTER, or FOOD_DEEP:
+## food deeper than the fish can go now, drawn dim and hollow) (the user, 2026-11-18, "the sonar map
+## needs to show objects relation to you in 3d"); the landmarks, the same way, with their names; and
+## the way the fish is heading (radians round from north, the sea's -Z, turning towards east).
+var blips: Array[Vector4] = []
 var landmarks: Array = []
 var heading := 0.0
+## Seconds since the last ping (the sonar is a special ability: the user, 2026-11-20, "The sonar
+## should be activated with one of the special ability buttons"). A ping's ring sweeps out from the
+## middle to the rim in PING_SPREAD seconds; each thing shows as the ring reaches it, holds for
+## PING_HOLD and fades out over PING_FADE. Between pings only the sweep, the landmarks and the compass
+## show. INF: never pinged.
+var age := INF
+
+const FOOD := 0.0
+const HUNTER := 1.0
+const FOOD_DEEP := 2.0
+const PING_SPREAD := 1.2
+const PING_HOLD := 3.0
+const PING_FADE := 4.5
+## How tall the height stalk can stand (as a share of the scope's radius) and how far above or below
+## the fish that is (m): a gentle curve, so that a metre or two still shows.
+const STALK := 0.3
+const TALL := 24.0
+## The blips' size (pixels of the tube's 256-pixel picture: about 7 pixels across on a phone's scope).
+const BLIP := 12.0
 
 
 # The flat picture is drawn in five layers, bottom to top, each redrawn only when what it shows
@@ -57,16 +80,9 @@ var _blips: Layer
 var _compass: Layer
 var _marks_of: Array = []
 var _compass_at := INF
-var _blips_of: Array[Vector3] = []
+var _blips_of: Array[Vector4] = []
 var _frame := 0
 var _tube: SubViewport
-
-
-## How far above (or below) the fish a thing is, folded into a blip's z: a quarter at TALL metres
-## up, minus a quarter that far down.
-const TALL := 8.0
-static func high(up: float) -> float:
-	return clampf(up / TALL, -1.0, 1.0) * 0.25
 
 
 func _init() -> void:
@@ -109,9 +125,9 @@ func _process(_delta: float) -> void:
 			return
 		_tube.render_target_update_mode = SubViewport.UPDATE_ONCE
 	_sweep.queue_redraw()
-	# (the blips every other frame: they move only when Main sounds out again, a few times a
-	# second, and their brightening as the sweep passes moves on by under 1% a frame)
-	if _frame % 2 == 0 or not is_same(blips, _blips_of):
+	# (the blips every other frame while a ping shows: they move only when Main sounds out again, a
+	# few times a second, and they fade slowly)
+	if not is_same(blips, _blips_of) or (_frame % 2 == 0 and age < PING_SPREAD + PING_HOLD + PING_FADE + 0.5):
 		_blips_of = blips
 		_blips.queue_redraw()
 	if not is_same(landmarks, _marks_of):
@@ -142,12 +158,15 @@ func _sweep_angle() -> float:
 
 
 const GREEN := Color(0.4, 1.0, 0.45)
+const LANDMARK := Color(0.6, 0.95, 0.8)
 
 
-# The rings and the cross.
+# The dark glass, the rings and the cross.
 func _draw_rings(on: Control) -> void:
 	var middle := on.size * 0.5
 	var r := on.size.x * 0.5
+	# (dark glass, as in the concept: the gold and red stand out on it)
+	on.draw_circle(middle, r, Color(0.0, 0.02, 0.015, 0.92))
 	on.draw_arc(middle, r * 0.4, 0.0, TAU, 40, Color(GREEN, 0.28), 2.0, true)
 	on.draw_arc(middle, r * 0.8, 0.0, TAU, 56, Color(GREEN, 0.4), 2.0, true)
 	on.draw_line(middle - Vector2(r * 0.8, 0.0), middle + Vector2(r * 0.8, 0.0), Color(GREEN, 0.12), 1.5)
@@ -161,7 +180,15 @@ func _draw_sweep(on: Control) -> void:
 	var sweep := _sweep_angle()
 	for k in 18:
 		var way := Vector2.from_angle(sweep - k * 0.05)
-		on.draw_line(middle, middle + way * r * 0.8, Color(GREEN, 0.55 * (1.0 - k / 18.0)), 4.0, true)
+		on.draw_line(middle, middle + way * r * 0.8, Color(GREEN, 0.4 * (1.0 - k / 18.0)), 4.0, true)
+	# (a ping: its ring sweeping out to the rim, a fainter wake inside it)
+	if age < PING_SPREAD + 0.4:
+		var out := clampf(age / PING_SPREAD, 0.0, 1.0) * r * 0.8
+		var left := 1.0 - clampf((age - PING_SPREAD) / 0.4, 0.0, 1.0)
+		on.draw_arc(middle, out, 0.0, TAU, 56, Color(0.75, 1.0, 0.8, 0.95 * left), 5.0, true)
+		for k in 4:
+			if out - (k + 1) * 7.0 > 0.0:
+				on.draw_arc(middle, out - (k + 1) * 7.0, 0.0, TAU, 48, Color(GREEN, 0.3 * left * (1.0 - k / 4.0)), 4.0, true)
 	on.draw_colored_polygon(PackedVector2Array([middle + Vector2(0.0, -9.0), middle + Vector2(6.0, 7.0), middle + Vector2(-6.0, 7.0)]), Color(0.7, 1.0, 0.7, 0.95))
 
 
@@ -179,7 +206,9 @@ func _draw_marks(on: Control) -> void:
 			off = off.normalized() * 0.62
 		var at := middle + off * r
 		var big := r * (0.085 if far else 0.11)
-		var colour := Color(sign.colour, 0.75 if far else 1.0)
+		# (all in the tube's own pale green, told apart by their signs: gold and red are kept for food and
+		# hunters)
+		var colour := Color(LANDMARK, 0.5 if far else 0.7)
 		for stroke: Array in sign.strokes:
 			var line := PackedVector2Array()
 			for point: Vector2 in stroke:
@@ -191,32 +220,64 @@ func _draw_marks(on: Control) -> void:
 			on.draw_line(middle + way * r * 0.71, middle + way * r * 0.78, colour, 2.5, true)
 
 
-# What is about (hunters red, food green), each brightest as the sweep passes it.
+const GOLD := Color(1.0, 0.8, 0.3)
+const RED := Color(1.0, 0.2, 0.12)
+
+
+# What the last ping found (as in the concept: food gold diamonds, hunters red triangles), each
+# shown as the ping's ring reaches it, then fading.
 func _draw_blips(on: Control) -> void:
+	if age >= PING_SPREAD + PING_HOLD + PING_FADE:
+		return
 	var middle := on.size * 0.5
 	var r := on.size.x * 0.5
-	var sweep := _sweep_angle()
-	for blip in blips:
-		var off := Vector2(blip.x, -blip.y) / RANGE
-		if off.length() > 0.95:
-			continue
-		var lag := fposmod(sweep - off.angle(), TAU) / TAU
-		var bright := 0.45 + 0.55 * (1.0 - lag)
-		var hunter := blip.z > 0.5
-		var colour := Color(1.0, 0.25, 0.15) if hunter else Color(0.5, 1.0, 0.5)
-		# (as on an old three-dimensional scope: a stalk stands from its place on the fish's own
-		# level up or down to the thing itself, which is an arrowhead pointing the way it lies)
-		var up := (blip.z - (1.0 if hunter else 0.0)) * 4.0
-		var foot := middle + off * r * 0.8
-		var at := foot + Vector2(0.0, -up * r * 0.11)
-		var big := 7.0 if hunter else 5.0
-		if absf(up) < 0.2:
-			on.draw_circle(at, big, Color(colour, bright))
-		else:
-			on.draw_line(foot, at, Color(colour, bright * 0.6), 2.0, true)
-			on.draw_circle(foot, 2.0, Color(colour, bright * 0.6))
-			var tip := -signf(up) * big * 1.3
-			on.draw_colored_polygon(PackedVector2Array([at + Vector2(0.0, tip), at + Vector2(big, -tip * 0.6), at + Vector2(-big, -tip * 0.6)]), Color(colour, bright))
+	# (hunters drawn last, over the food)
+	for pass_of in 2:
+		for blip in blips:
+			var hunter := blip.w == HUNTER
+			if hunter != (pass_of == 1):
+				continue
+			var off := Vector2(blip.x, -blip.y) / RANGE
+			if off.length() > 0.95:
+				continue
+			# (it shows once the ring has reached it, and fades from PING_HOLD seconds after that)
+			var heard := age - off.length() / 0.8 * PING_SPREAD
+			if heard < 0.0:
+				continue
+			var bright := 1.0 - clampf((heard - PING_HOLD) / PING_FADE, 0.0, 1.0)
+			# (and flares as the ring passes)
+			bright *= 1.0 + 0.6 * clampf(1.0 - heard / 0.3, 0.0, 1.0)
+			if bright <= 0.01:
+				continue
+			var colour := RED if hunter else GOLD
+			if blip.w == FOOD_DEEP:
+				bright *= 0.4
+			# (as on an old three-dimensional scope: a stalk stands from its place on the fish's own
+			# level up or down to the thing itself)
+			var foot := middle + off * r * 0.8
+			var rise := signf(blip.z) * sqrt(clampf(absf(blip.z) / TALL, 0.0, 1.0)) * r * STALK
+			var at := foot + Vector2(0.0, -rise)
+			var big := BLIP * (1.1 if hunter else 1.0)
+			if absf(blip.z) > 0.8:
+				on.draw_line(foot, at, Color(colour, minf(bright, 1.0) * 0.75), 3.0, true)
+				# (its foot: a short dash on the fish's level)
+				on.draw_line(foot - Vector2(5.0, 0.0), foot + Vector2(5.0, 0.0), Color(colour, minf(bright, 1.0) * 0.75), 3.0, true)
+			var shape: PackedVector2Array
+			if hunter:
+				# (a triangle pointing up the scope)
+				shape = PackedVector2Array([at + Vector2(0.0, -big * 1.1), at + Vector2(big, big * 0.75), at + Vector2(-big, big * 0.75)])
+			else:
+				shape = PackedVector2Array([at + Vector2(0.0, -big), at + Vector2(big * 0.75, 0.0), at + Vector2(0.0, big), at + Vector2(-big * 0.75, 0.0)])
+			var lit := Color(colour * minf(bright, 1.6), minf(bright, 1.0))
+			if blip.w == FOOD_DEEP:
+				# (food out of reach: a hollow outline, dim, so it does not lead the fish down into the static)
+				var ring := shape.duplicate()
+				ring.append(shape[0])
+				on.draw_polyline(ring, lit, 2.5, true)
+			else:
+				on.draw_colored_polygon(shape, lit)
+				# (a bright middle, as a lit gem or a warning lamp)
+				on.draw_circle(at + Vector2(0.0, big * 0.1 if hunter else 0.0), big * 0.28, Color(1.0, 0.97, 0.85, minf(bright, 1.0) * 0.8))
 
 
 # The compass: N, E, S and W round the rim, turning as the fish does; north brighter.

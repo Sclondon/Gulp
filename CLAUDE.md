@@ -307,8 +307,9 @@ Not started:
 - "the loading screen needs to be a swarm of sardines making up the wayside interactive logo sequence while it loads".
 - "the sonar needs to point out things you can eat, or something on the ui does i think, or maybe they need to have a
   subtle outline and sparkle"; "the sonar map needs to show objects relation to you in 3d". Then (2026-11-20): "its
-  extremely unclear what you can eat and how to find it". Concepts made 2026-11-20 (set-pieces Gemini conversation),
-  waiting for the user to pick; nothing built: `tools/art_src/concept_food_a_gold.jpg` (+ `_a_gold2.jpg`, the quality
+  extremely unclear what you can eat and how to find it". BUILT 2026-11-20: the user picked A ("The sonar should be
+  activated with one of the special ability buttons, otherwise just A"): "Decision: food marks and the sonar ping"
+  below. The concepts (set-pieces Gemini conversation): `tools/art_src/concept_food_a_gold.jpg` (+ `_a_gold2.jpg`, the quality
   pass) gold rim and sparkle on food, faint red rim on hunters, gold diamonds / red triangles on a dark scope;
   `concept_food_b_size.jpg` no glow, brass gunsight brackets with a size-compare plaque on the nearest food and the
   hunter, edge-of-screen arrow tabs, silhouettes sized against you on the scope; `concept_food_c_echo.jpg` the sea
@@ -471,6 +472,28 @@ choices below are Claude's.
   now about 600 (budget ~600). Measure with `tools/mem_load.js`; tools/PERF.md, "Memory on phones", has the numbers,
   why VRAM compression was not the cause (no picture here is VRAM-compressed) and the choices left for the user.
   Never give a picture over 2048 a side to the web build.
+- **Decision: food marks and the sonar ping** (2026-11-20). The user's calls: concept A
+  (`tools/art_src/concept_food_a_gold2.jpg`: a thin gold rim and a few gold sparkles on food, a faint red rim on
+  hunters, gold diamonds and red triangles on stalks on a dark scope), and "The sonar should be activated with one of
+  the special ability buttons, otherwise just A". Claude's picks (change freely): the left knife switch is the sonar
+  (its handle `SwitchA` slides down its slot when thrown and creeps back up as it charges; a pilot lamp over it,
+  `SwitchPilot`, green when ready; E or a pad's Y); a ping's ring crosses the scope in 1.2 s, each thing shows as the
+  ring reaches it, holds 3 s and fades over 4.5 s (`Sonar.PING_*`); it charges again in 10 s of play
+  (`Main.SONAR_RECHARGE`); a ping is an echo (each thing where it was when pinged, turned with the fish after);
+  between pings the scope keeps its sweep, the landmarks and the compass, but shows no animals; one blip per school or
+  cloud at its nearest member; food deeper than the static (the depth limit less 3 m, `Main.STATIC_BEFORE`) is a dim
+  hollow diamond and has no marks in the sea; the stalk stands up to 0.3 of the scope's radius for 24 m, on a square
+  root curve (`Sonar.TALL`); food is marked within 14 m (`FoodMarks.FOOD_NEAR`, sparkles within 11), hunters within 24
+  m, both fading over the last 4 m; the first krill cloud and the first anchovy school keep 6 to 14 m from where a run
+  starts, 4 to 9 m deep (`Life.keep_home`). How: the rim is a setting of the motion family shaders
+  (`mark_rim` in `shaders/motion/motion_paint.gdshaderinc`, set per animal by `Creature.mark` on its own material
+  only when it changes): no new program, as the motion families decision asks. The practice: one master material
+  with a per-instance parameter for highlights (as engines' outline/"interactable" highlights do), rather than a second
+  outline pass (a second program per family and twice the draws) or a screen-space outline (needs a stencil or
+  per-object ID buffer that Compatibility lacks). The sparkles are one MultiMesh of cards (`shaders/sparkle.gdshader`,
+  one program, warmed with the sea's materials: one draw). Not marked: kinds kept on their own shaders (the squids,
+  anglerfish, moray, octopus, catfish and the other unbaked ones: sparkles only if they are food, no red rim), schools
+  and jellies (sparkles only; the schools' flock shader is GameCommon's), the arena's rivals.
 - The web pack leaves out the figures not in the game (tools/web_excludes.sh; 76 MB -> 38 MB); take a figure out of
   that list when the game uses it, and run `tests/web_deps.gd` after changing the list.
 - **The sky** (2026-11-18, the user: "Whys the sky just gray"): it was one flat background colour, greyed further by

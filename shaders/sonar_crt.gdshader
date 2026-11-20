@@ -28,7 +28,8 @@ void fragment() {
 	// (the tube's own faint light, brightest in the middle; a dark rim)
 	float inside = 1.0 - smoothstep(0.86, 1.0, r2);
 	float rim = 1.0 - 0.7 * smoothstep(0.35, 1.0, r2);
-	vec3 tube = phosphor * (0.16 + 0.1 * (1.0 - r2)) * scan;
+	// (dark glass: only a faint light of its own)
+	vec3 tube = phosphor * (0.06 + 0.05 * (1.0 - r2)) * scan;
 	colour = (colour + tube) * rim;
 	// (a glint of the light on the glass, upper left, and a thin one opposite)
 	float glint = smoothstep(0.5, 0.0, length(p - vec2(-0.38, -0.42))) * 0.2
