@@ -202,6 +202,11 @@ else:                                                  # in a window, on a file 
             print("undo push:", e)
         return None
 
+    def keys():                                        # F5 texture on/off, F6 sculpt <-> paint
+        exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "session_keys.py")).read(), {})
+        return None
+
+    bpy.app.timers.register(keys, first_interval=1.5)
     bpy.app.timers.register(setup, first_interval=0.8)
     if not painting:
         bpy.app.timers.register(grab, first_interval=2.5)

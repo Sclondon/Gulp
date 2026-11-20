@@ -601,3 +601,20 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
     from outside its outline. No band of plain skin and no long streaks down the side.
   - Left: a smudge on the outer upper arm (front and back disagree there), eyeballs blank, the pale patch behind
     each ear, dark lines under the jaw from the sheet's outline, the drawings' light still in the paint.
+- Sixth projection, from the user's notes on the paint window (2026-11-20): "the eyes dont have the downards tilt"
+  (`eye_outer_corner_up` -2.5, `eye_inner_corner_up` 0.6); "the ear projection is very messed up" (the ear is now
+  painted BOX TO BOX, the model's ear onto the sheet's `"ear"` box in the side view, and the flattened head under a
+  cut-off ear has its UVs sent to a corner of plain skin, so it no longer shows ear paint); "the under side seems
+  to have gotten messed up" (white: samples had been pulled in along a row and landed on the paper between arm and
+  body; now each body view's colours are carried `PULL` pixels out from the figure's true edge, `spread`); "double
+  nipples and shoulder smearing- and he should have no tattoos- those should be positionable separate textures"
+  (the side view is used only squarely side on, 0.75..0.95; skin facing neither front nor back fades to skin tone;
+  TATTOO INK IS PAINTED OUT of the body views: dark, red minus blue under `INK` 0.17, grown 7 px, filled from the
+  skin round it, the drawers' pale cloth and its shading left alone); "his lip line is misaligned" and "his
+  modeled mouth isnt wide enough" (`mouth-trans-up` 0.9 -> 1.6, `mouth-scale-horiz` 0.7 -> 1.5).
+  Owed from this: the tattoos as separate movable pictures (cut from the sheet before the ink is painted out); the
+  drawers as a garment ("his wastband isnt a clean line anymore": front, back and side views disagree where they
+  meet, and the ink pass smudges the cloth's shading a little); eyeballs.
+- `session_keys.py`: F5 texture on/off, F6 Sculpt <-> Texture Paint, in every figed window (the user: "is there a
+  way for me to toggle on and off the texture? and to get to sculpt mode?"). A paint file has `figed_rest`, so
+  sculpting in it is read by `-- read` as usual.

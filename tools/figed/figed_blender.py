@@ -142,6 +142,14 @@ def cut_ears(fig, obj, remap, P):
                 for lf, lg in zip(f.loops, g.loops):
                     lg[uv].uv = lf[uv].uv
             count += 1
+        # the head where the ear stood keeps the ear's faces, flattened: they must not show the ear's paint, so
+        # their UVs go to the corner of plain skin that paint_project.py leaves
+        if uv:
+            under = {remap[int(i)] for i in fig._ear_masks()[side][0] if int(i) in remap}
+            for f in bm.faces:
+                if all(v.index in under for v in f.verts) and not any(v in copy.values() for v in f.verts):
+                    for lp in f.loops:
+                        lp[uv].uv = (0.002, 0.002)
         # the cut edge of the piece carried on INTO the head as a skirt, so no open rim shows behind the ear and
         # the ear reads as joined to the head
         own = set(copy.values())

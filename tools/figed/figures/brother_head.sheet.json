@@ -106,5 +106,12 @@
    "chin": 383
   }
  ],
- "jaw_about": "\"jaw\": the corner of the jaw in each view, as the user marked it with blue crosses on the sheet (tools/art_src/user_brother_jaw_corners.png), in 1024 px coordinates."
+ "jaw_about": "\"jaw\": the corner of the jaw in each view, as the user marked it with blue crosses on the sheet (tools/art_src/user_brother_jaw_corners.png), in 1024 px coordinates.",
+ "ear": [
+  463,
+  243,
+  506,
+  310
+ ],
+ "ear_about": "\"ear\": the ear as drawn in the side profile view, [x0, y0, x1, y1] at 1024 px (Claude, by eye): paint_project.py maps the model's ear onto it box to box."
 }

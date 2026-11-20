@@ -24,6 +24,7 @@ import figed_fit  # noqa: E402
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 SIZE = 2048
+INK = 0.17                                                    # red minus blue under this, and dark: tattoo ink
 PULL = 10.0                                                   # body views: pixels a sample may be pulled in from outside
 SIDE_FROM, SIDE_TO = 0.12, 0.6                                # how squarely skin must face a view: none .. full paint
 base = figed.Base()
@@ -50,6 +51,25 @@ mid = head[np.abs(P[head][:, 0] - np.median(P[head][:, 0])) < 0.012]
 nose = P[mid[np.argmin(P[mid][:, 1])]]
 crown = P[head[np.argmax(P[head][:, 2])]]
 high = crown[2] - chin[2]
+
+def spread(img, known, steps):
+    """Colours carried outward from where they are known, a pixel a step: (image, where it now has colour)."""
+    img, known = img.copy(), known.copy()
+    for _ in range(steps):
+        if known.all():
+            break
+        total = np.zeros_like(img)
+        count = np.zeros(known.shape)
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            src = (slice(max(0, -dy), img.shape[0] - max(0, dy)), slice(max(0, -dx), img.shape[1] - max(0, dx)))
+            dst = (slice(max(0, dy), img.shape[0] - max(0, -dy)), slice(max(0, dx), img.shape[1] - max(0, -dx)))
+            total[dst] += img[src] * known[src][:, :, None]
+            count[dst] += known[src]
+        new = (~known) & (count > 0)
+        img[new] = total[new] / count[new][:, None]
+        known |= new
+    return img, known
+
 
 def feather(mask, n=6):
     """A cut-out as 0..1, falling off over n pixels inside its edge: paint fades out towards the outline."""
@@ -97,7 +117,14 @@ by_name = {v[8]: v for v in views}
 FRONT, BACK, SIDE = by_name["face"], by_name["face_back"], by_name["face_side_r"]
 ear_of = np.zeros(len(P), dtype=int)                          # 1 = an ear on his left (+x), 2 = on his right
 for side, (ear, _root, flap) in fig._ear_masks().items():
-    ear_of[ear] = 1 if side == "l" else 2
+    ear_of[flap] = 1 if side == "l" else 2
+# The ear is painted BOX TO BOX: the model's ear, seen from the side, onto the ear as drawn in the side view (the
+# sheet's "ear": [x0, y0, x1, y1]). Placed by the head's position the two ears never coincide, and the paint missed.
+ear_box = None
+if "ear" in sheet:
+    flap_r = fig._ear_masks()["r"][2]
+    eu, ev = P[flap_r].dot(SIDE[1]), P[flap_r].dot(SIDE[2])
+    ear_box = (eu.min(), eu.max(), ev.min(), ev.max(), [c * k for c in sheet["ear"]])
 print("skin colour", skin.round(3), "views", len(views))
 
 # --body <fit job>: the body below the chin from the job's "front" and "back" views of the body sheet, the model
@@ -129,11 +156,25 @@ if "--body" in argv:
             n = int((bx[3] - bx[1]) // want)
         origin = (bx[0] // n, bx[1] // n)
         m = figed_fit.shrink(v.mask, 2)
-        softb = m
-        rows = m.any(axis=1)
-        lo = np.where(rows, m.argmax(axis=1), 0)
-        hi = np.where(rows, m.shape[1] - 1 - m[:, ::-1].argmax(axis=1), -1)
-        body_views.append((v, pic, n, origin, softb, lo, hi))
+        y0, x0 = origin[1] * n, origin[0] * n
+        big = np.repeat(np.repeat(m, n, axis=0), n, axis=1)[:pic.shape[0] - y0, :pic.shape[1] - x0]
+        sub = pic[y0:y0 + big.shape[0], x0:x0 + big.shape[1]]
+        # NO TATTOOS in the skin (the user, 2026-11-20: "he should have no tattoos- those should be positionable
+        # separate textures"): the ink (dark and grey-blue, where skin and hair are red-brown) is painted out of the
+        # drawing with the skin round it
+        ink = big & ((sub[:, :, 0] - sub[:, :, 2]) < INK) & (sub.max(axis=2) < 0.70)
+        cloth = figed_fit.grow(big & (sub.min(axis=2) > 0.7) & ((sub[:, :, 0] - sub[:, :, 2]) < 0.2), 14)       # the drawers (pale cloth) and their shading:
+        ink = figed_fit.grow(ink & ~cloth, 7) & big & ~cloth            # grey too, but not ink; left as drawn
+        clean, _k = spread(sub, ~ink, 80)
+        pic = pic.copy()
+        pic[y0:y0 + big.shape[0], x0:x0 + big.shape[1]] = clean
+        # the drawing at the mask's own size, its colours carried PULL pixels out past the figure's edge: what skin
+        # just outside the outline takes (and never the white paper between an arm and the body)
+        gy, gx = np.mgrid[0:m.shape[0], 0:m.shape[1]]
+        small = pic[np.clip(gy * n + y0 + n // 2, 0, pic.shape[0] - 1), np.clip(gx * n + x0 + n // 2, 0, pic.shape[1] - 1)]
+        fill, known = spread(small, m, int(PULL))
+        print("view", v.spec["name"], "ink pixels painted out", int(ink.sum()))
+        body_views.append((v, pic, n, origin, m, fill, known))
     body_views.sort(key=lambda b: ORDER[b[0].spec["name"]])
     print("body views", [b[0].spec["name"] for b in body_views])
     arm_bones = [i for i, b in enumerate(base.bones) if b.split("_")[0] in (
@@ -184,20 +225,24 @@ for group, vi, ti in base.faces:
             # has the arm hanging over the flank). Arms keep front and back only.
             sw = np.zeros(len(fr))
             if len(body_views) > 2 and armw[tri].mean() < 0.5:
-                q = np.clip((np.abs(nb[:, 0]) - 0.45) / 0.4, 0, 1)
+                q = np.clip((np.abs(nb[:, 0]) - 0.75) / 0.2, 0, 1)   # squarely side on only (a second nipple came
+                # from the side view's chest when this began at 0.45)
                 sw = q * q * (3 - 2 * q)
-            for (v, pic, n, origin, rows, lo, hi), share in zip(body_views, (fr * (1 - sw), (1 - fr) * (1 - sw), sw)):
+            # skin that faces neither view squarely (the outer arm, the top of the shoulder, soles, undersides)
+            # fades to the plain skin tone: front and back disagree there and smeared
+            g = np.clip((np.abs(nb[:, 1]) - 0.15) / 0.4, 0, 1)
+            g = np.maximum(g * g * (3 - 2 * g), sw)
+            for (v, pic, n, origin, m, fill, known), share in zip(body_views, (fr * (1 - sw), (1 - fr) * (1 - sw), sw)):
                 px_, py_ = v.project(posb.T)
                 iy0, ix0 = np.round(py_).astype(int), np.round(px_).astype(int)
-                iy = np.clip(iy0, 0, rows.shape[0] - 1)
-                has = hi[iy] >= lo[iy]
-                ix = np.clip(ix0, lo[iy], np.maximum(hi[iy], lo[iy]))     # pulled in to the figure on its row ...
-                pulled = np.abs(ix - ix0)
-                on = has * (iy0 == iy) * np.clip(1.5 - pulled / PULL, 0, 1)   # ... a little way only (no long streaks)
+                iy = np.clip(iy0, 0, m.shape[0] - 1)
+                ix = np.clip(ix0, 0, m.shape[1] - 1)
+                inb = (iy0 == iy) & (ix0 == ix)
                 fx = np.clip((ix + origin[0]) * n + n // 2, 0, pic.shape[1] - 1)
                 fy = np.clip((iy + origin[1]) * n + n // 2, 0, pic.shape[0] - 1)
-                wgt = share * on * below
-                texb[ys, xs] += pic[fy, fx] * wgt[:, None]
+                col = np.where(m[iy, ix][:, None], pic[fy, fx], fill[iy, ix])
+                wgt = share * (known[iy, ix] & inb) * below * g
+                texb[ys, xs] += col * wgt[:, None]
                 wb[ys, xs] += wgt
         if P[tri][:, 2].max() < low:
             continue
@@ -206,7 +251,15 @@ for group, vi, ti in base.faces:
         nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9)
         fade = np.clip((pos[:, 2] - low) / 0.05, 0, 1)        # the paint fades out down the neck
         which = ear_of[tri]
-        if which.min() > 0:                                   # an ear: from the side view (his left ear mirrored)
+        if which.min() > 0 and ear_box:                       # an ear: box to box from the side view
+            q = pos * np.array([-1.0, 1, 1]) if which[0] == 1 else pos
+            u0, u1, v0, v1, (bx0, by0, bx1, by1) = ear_box
+            ix = np.round(bx0 + (q.dot(SIDE[1]) - u0) / (u1 - u0) * (bx1 - bx0)).astype(int)
+            iy = np.round(by1 - (q.dot(SIDE[2]) - v0) / (v1 - v0) * (by1 - by0)).astype(int)
+            tex[ys, xs] += art[np.clip(iy, 0, art.shape[0] - 1), np.clip(ix, 0, art.shape[1] - 1)]
+            wsum[ys, xs] += 1.0
+            continue
+        if which.min() > 0:                                   # (no ear box given: by the head's position)
             if which[0] == 1:
                 pos = pos * np.array([-1.0, 1, 1])
             use = [(SIDE, np.ones(len(pos)))]
@@ -240,6 +293,7 @@ shown = np.clip(wb, 0, 1)[:, :, None]
 under = under * shown + skin * (1 - shown)
 out = np.where(wsum[:, :, None] > 1e-6, tex / np.maximum(wsum, 1e-6)[:, :, None], skin) * seen + under * (1 - seen)
 out[~cover] = skin
+out[:8, :8] = skin                                            # a corner of plain skin: the head under a cut-off ear
 img = bpy.data.images.new("skin", SIZE, SIZE, alpha=False)
 rgba = np.ones((SIZE, SIZE, 4), dtype=np.float32)
 rgba[:, :, :3] = out                                          # row 0 is v = 0: Blender's own order
