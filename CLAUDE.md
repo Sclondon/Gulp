@@ -413,7 +413,7 @@ choices below are Claude's.
   or models: `godot --path . --audio-driver Dummy --resolution 320x240 -s res://tools/bake_looks.gd -- --components=<folder>`
   (Scenery's anemones: `--plan=res://tools/bake_scenery.json`), then `--import`, then `tests/baked_compare.gd` to look.
 - **Decision: motion families** (2026-11-19, night; the user's call: "each animal should not need its own shader for
-  swimming or motion", and of the ways offered, a few shared motion families with each animal setting its numbers as
+  swimming or motion", and they chose a few shared motion families, each animal setting its numbers as
   uniforms; how it is done is Claude's). What: animals drawn from baked paint wear one of four shaders in
   `shaders/motion/` (GameCommon `godot/motion-families`): **swim** (a wave along the body, side to side or up and down,
   the tail plate, curl and arch: 72 kinds of fish, sharks, whales, seals, otter, reptiles, monsters), **swim_sheer**
