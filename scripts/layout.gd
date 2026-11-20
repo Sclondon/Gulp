@@ -1,3 +1,4 @@
+@tool
 class_name Layout
 ## The bay's layout, in one file: data/layout.json (CLAUDE.md, "Decision: the bay's layout in one
 ## file, edited in the Godot editor"). Every place (the start, the wrecks, the outcrops, Atlantis,

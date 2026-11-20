@@ -119,6 +119,8 @@ var _grazed := 0.0
 # Where a run starts (x and z): by the kelp, or (from the title) under the boat.
 var _start := Sea.START
 var _near := ""
+# Where the fish starts (--at=x,y,z: the bay editor's Play here, addons/bay_layout), straight in the water.
+var _at := Vector3.INF
 # For tests/perf.gd: the places to measure (--perf=), and the animal to swim as (--perf-as=).
 var _perf := ""
 var _perf_as := ""
@@ -180,6 +182,10 @@ func _ready() -> void:
 		elif arg.begins_with("--near="):
 			_near = arg.get_slice("=", 1)
 			calm = true
+		elif arg.begins_with("--at="):
+			var at := arg.get_slice("=", 1).split(",")
+			_at = Vector3(float(at[0]), float(at[1]), float(at[2]))
+			_start = Vector2(_at.x, _at.z)
 		elif arg.begins_with("--out="):
 			_shot_out = arg.get_slice("=", 1)
 		elif arg.begins_with("--perf="):
@@ -217,7 +223,7 @@ func _ready() -> void:
 	if Tier.phone():
 		Sand.quality = 0
 	# (a test's runs are not kept as the player's best)
-	_saves = not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0 or _role != "" or _perf != "" or _tour != "")
+	_saves = not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0 or _role != "" or _perf != "" or _tour != "" or _at != Vector3.INF)
 	var container := SubViewportContainer.new()
 	container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	container.stretch = true
@@ -329,7 +335,7 @@ func _ready() -> void:
 	Warmer.add_null_lamp(_viewport)
 	# The game opens on the boat, unless something is driving it (a test, a bot, a picture): then
 	# the boat lies hove-to by where the fish starts.
-	var opening := _titled or not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0 or _role != "" or _near != "" or _end_now or _perf != "")
+	var opening := _titled or not (botted or _checking or _touching or _shot_at >= 0.0 or _quit_at >= 0.0 or _role != "" or _near != "" or _end_now or _perf != "" or _at != Vector3.INF)
 	if not opening:
 		title = Title.new()
 		title.hove = true
@@ -365,6 +371,10 @@ func _ready() -> void:
 ## Starts a run.
 func restart() -> void:
 	var at := Sea.clear_of_rocks(Vector3(_start.x, maxf(Sea.SURFACE - 7.0, Sea.ground(_start.x, _start.y) + 1.5), _start.y), 0.5)
+	if _at != Vector3.INF:
+		at = Sea.clear_of_rocks(Sea.keep_in(_at, 0.5), 0.5)
+		_at = Vector3.INF
+		print("GULP starting at %s (--at)" % at)
 	player.begin(at, _start_kind)
 	player.deepest = _deepest()
 	_run_for = 0.0
