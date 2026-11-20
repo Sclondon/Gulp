@@ -44,7 +44,61 @@
      1,
      0
     ]
-   ]
+   ],
+   "marks": {
+    "nipple_r": [
+     340,
+     362
+    ],
+    "nipple_l": [
+     490,
+     360
+    ],
+    "navel": [
+     415,
+     490
+    ],
+    "elbow_r": [
+     208,
+     425
+    ],
+    "elbow_l": [
+     628,
+     422
+    ],
+    "wrist_r": [
+     125,
+     545
+    ],
+    "wrist_l": [
+     718,
+     545
+    ],
+    "fingertip_r": [
+     68,
+     652
+    ],
+    "fingertip_l": [
+     768,
+     652
+    ],
+    "knee_r": [
+     340,
+     785
+    ],
+    "knee_l": [
+     485,
+     785
+    ],
+    "ankle_r": [
+     330,
+     1015
+    ],
+    "ankle_l": [
+     500,
+     1015
+    ]
+   }
   },
   {
    "name": "side",
@@ -85,7 +139,25 @@
      0
     ]
    ],
-   "anchor": "feet"
+   "anchor": "feet",
+   "marks": {
+    "nipple_l": [
+     1135,
+     355
+    ],
+    "navel": [
+     1163,
+     490
+    ],
+    "knee_l": [
+     1043,
+     788
+    ],
+    "ankle_l": [
+     1030,
+     1015
+    ]
+   }
   },
   {
    "name": "back",
@@ -125,7 +197,41 @@
      1,
      0
     ]
-   ]
+   ],
+   "marks": {
+    "elbow_l": [
+     1410,
+     435
+    ],
+    "elbow_r": [
+     1825,
+     438
+    ],
+    "wrist_l": [
+     1320,
+     555
+    ],
+    "wrist_r": [
+     1930,
+     555
+    ],
+    "knee_l": [
+     1550,
+     790
+    ],
+    "knee_r": [
+     1695,
+     790
+    ],
+    "ankle_l": [
+     1540,
+     1015
+    ],
+    "ankle_r": [
+     1710,
+     1015
+    ]
+   }
   },
   {
    "name": "bare_front",
@@ -332,14 +438,14 @@
     0.05
    ],
    "upperarm.length": [
-    0.9,
+    0.7,
     1.6,
-    0.1
+    0.06
    ],
    "lowerarm.length": [
-    0.9,
-    1.25,
-    0.1
+    0.7,
+    1.4,
+    0.06
    ],
    "thigh.width": [
     0.85,
@@ -480,6 +586,31 @@
     0.9,
     1.4,
     0.05
+   ],
+   "spine_01.length": [
+    0.6,
+    1.5,
+    0.06
+   ],
+   "spine_02.length": [
+    0.6,
+    1.5,
+    0.06
+   ],
+   "spine_03.length": [
+    0.6,
+    1.5,
+    0.06
+   ],
+   "pelvis.length": [
+    0.6,
+    1.5,
+    0.06
+   ],
+   "hand.length": [
+    0.8,
+    1.6,
+    0.06
    ]
   },
   "targets": {
@@ -687,6 +818,21 @@
     -1.5,
     1.5,
     0.5
+   ],
+   "breast-trans-up": [
+    -3,
+    3,
+    0.5
+   ],
+   "breast-dist": [
+    -3,
+    3,
+    0.5
+   ],
+   "stomach-navel-up": [
+    -3,
+    3,
+    0.5
    ]
   },
   "zoom": {
@@ -706,5 +852,7 @@
     0.01
    ]
   }
- }
+ },
+ "marks_about": "Marks read off the bible body sheet at 1998 px wide (Claude, by eye on a 100 px grid). _l and _r are the FIGURE own left and right.",
+ "marks_weight": 150
 }

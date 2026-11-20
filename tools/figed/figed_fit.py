@@ -115,10 +115,30 @@ class Sampler:
         return (P[self.tri] * self.w[:, :, None]).sum(axis=1)
 
 
-def pose_points(fig, P, H, pose):
+# Where the parts are: marks a drawing can show, and what each is on the model. "joint" = a bone head,
+# "tail" = a bone tip, "vertex" = a point of the skin (found once from MakeHuman navel and nipple targets).
+MARKS = {
+    "knee": ("joint", "calf"), "ankle": ("joint", "foot"), "elbow": ("joint", "lowerarm"),
+    "wrist": ("joint", "hand"), "fingertip": ("tail", "middle_03"), "shoulder": ("joint", "upperarm"),
+    "hip": ("joint", "thigh"), "nipple": ("vertex", "nipple"), "navel": ("vertex", "navel"),
+    "neck": ("joint", "neck_01"), "head": ("joint", "head"),
+}
+
+
+def mark_vertices(base):
+    out = {}
+    idx, d = base.target("stomach-navel-in")
+    out["navel"] = int(idx[np.argmax(np.linalg.norm(d, axis=1))])
+    idx, d = base.target("nipple-point-incr")
+    size = np.linalg.norm(d, axis=1)
+    x = base.verts[idx, 0]
+    out["nipple_l"] = int(idx[np.argmax(np.where(x > 0, size, -1))])
+    out["nipple_r"] = int(idx[np.argmax(np.where(x < 0, size, -1))])
+    return out
+
+
+def pose_points(fig, P, H, pose, T=None):
     """Turn bones (degrees about Blender's x, y, z at each bone's head; children follow)."""
-    if not pose:
-        return P, H
     base = fig.base
     mats = {}
     for b in base.bones:
@@ -142,7 +162,13 @@ def pose_points(fig, P, H, pose):
         if len(idx):
             M = mats[b]
             out[idx] += w[idx, None] * (P[idx].dot(M[:3, :3].T) + M[:3, 3])
-    return out, H
+    posed = {}                                        # where each joint is once posed; a bone tip as "tail:<bone>"
+    for b in base.bones:
+        M = mats[b]
+        posed[b] = M[:3, :3].dot(H[b]) + M[:3, 3]
+        if T is not None:
+            posed["tail:" + b] = M[:3, :3].dot(T[b]) + M[:3, 3]
+    return out, posed
 
 
 def full_pose(spec_pose, bones):
@@ -184,12 +210,16 @@ class View:
         k = img.shape[1] / float(spec.get("box_width", img.shape[1]))   # boxes are given at this picture width
         box = [int(round(c * k)) for c in spec["box"]]
         want = spec.get("tall")                       # work at about this many pixels tall
+        n = 1
         if want and (box[3] - box[1]) > want * 1.5:
             n = int((box[3] - box[1]) // want)
             img = img[::n, ::n]
             box = [c // n for c in box]
         print("picture", spec["picture"], img.shape[1], "x", img.shape[0], "box", box)
         self.mask = cut_out(img, box, spec.get("tolerance", 0.07))
+        # marks: where parts are in the drawing, {name: [x, y]} at box_width pixels ("knee_l" is the FIGURE left)
+        self.marks = {m: (xy[0] * k / n - box[0], xy[1] * k / n - box[1]) for m, xy in spec.get("marks", {}).items()}
+        self.last = None
         ys, xs = np.nonzero(self.mask)
         self.top, self.bottom = ys.min(), ys.max()
         self.left, self.right = xs.min(), xs.max()
@@ -259,12 +289,34 @@ class View:
         u, v = u[keep], v[keep]
         top_rows = (v < lo + (hi - lo) / 12.0) if self.anchor == "feet" else (v > hi - (hi - lo) / 12.0)
         mid = (u[top_rows].min() + u[top_rows].max()) / 2.0 if top_rows.any() else 0.0
+        self.last = (k, mid, lo, dx)
         ix = np.round(self.head_x + (u - mid) * k + dx).astype(int)
         iy = np.round(self.bottom - (v - lo) * k).astype(int)
         ok = (ix >= 0) & (ix < self.w) & (iy >= 0) & (iy < self.h)
         m = np.zeros((self.h, self.w), dtype=bool)
         m[iy[ok], ix[ok]] = True
         return shrink(grow(m, 2), 1)
+
+    def project(self, p):
+        """A point of the model (Blender metres) in this view's pixels, as last drawn."""
+        k, mid, lo, dx = self.last
+        u = {"front": p[0], "back": -p[0], "side": -p[1]}.get(self.look, p[1])
+        return self.head_x + (u - mid) * k + dx, self.bottom - (p[2] - lo) * k
+
+    def mark_error(self, where):
+        """Mean squared distance between the drawing's marks and the model's, in shares of the figure's height."""
+        if not self.marks or self.last is None:
+            return 0.0, {}
+        span = float(self.bottom - self.top)
+        total, each = 0.0, {}
+        for name, (ax, ay) in self.marks.items():
+            if name not in where:
+                continue
+            mx, my = self.project(where[name])
+            d2 = ((mx - ax) ** 2 + (my - ay) ** 2) / span ** 2
+            each[name] = (ax, ay, mx, my, d2 ** 0.5)
+            total += d2
+        return total / max(1, len(each)), each
 
     def score(self, model):
         a, b = self.mask, model
@@ -306,16 +358,34 @@ class Job:
                     self.spec[section][name] = job.get("defaults", {}).get(section, {}).get(
                         name, {"macro": 0.5, "bones": 1.0, "zoom": 1.0}.get(section, 0.0))
         self.evals = 0
+        self.mark_idx = mark_vertices(self.base)
+        self.where = {}                               # view name -> {mark: xyz} as last drawn
+
+    def marks_3d(self, P, posed):
+        out = {}
+        for name, (kind, what) in MARKS.items():
+            for side in ("_l", "_r", ""):
+                key = name + side
+                if kind == "vertex":
+                    if what + side in self.mark_idx:
+                        out[key] = P[self.mark_idx[what + side]]
+                else:
+                    bone = what + side
+                    if bone in self.base.bones:
+                        out[key] = posed[("tail:" + bone) if kind == "tail" else bone]
+        return out
 
     def figure(self):
         return figed.Figure(self.base, self.spec)
 
     def outlines(self):
         fig = self.figure()
-        P, H, _T = fig.to_blender()
+        P, H, T0 = fig.to_blender()
         P0, H0 = P, H
         common = {k: v for k, v in self.spec["pose"].items() if "@" not in k}
-        P, H = pose_points(fig, P0, H0, full_pose(common, self.base.bones))
+        P, posed = pose_points(fig, P0, H0, full_pose(common, self.base.bones), T0)
+        shared = self.marks_3d(P, posed)
+        self.where = {v.spec["name"]: shared for v in self.views}
         pts = self.sampler.points(P)
         height = pts[:, 2].max()
         own = {}                                      # a view drawn in a pose of its own: "arms_down@side"
@@ -323,8 +393,9 @@ class Job:
             n = v.spec["name"]
             extra = {k.split("@")[0]: x for k, x in self.spec["pose"].items() if k.endswith("@" + n)}
             if extra:
-                Pv, _ = pose_points(fig, P0, H0, full_pose(dict(common, **extra), self.base.bones))
+                Pv, posed_v = pose_points(fig, P0, H0, full_pose(dict(common, **extra), self.base.bones), T0)
                 own[n] = self.sampler.points(Pv)
+                self.where[n] = self.marks_3d(Pv, posed_v)
         head_pts = self.head_sampler.points(P) if any(v.cut is not None for v in self.views) else None
         out = []
         for v in self.views:
@@ -341,6 +412,7 @@ class Job:
         total, weight = 0.0, 0.0
         for v, m in zip(self.views, self.outlines()):
             total += (1 - v.score(m)) * v.weight
+            total += v.mark_error(self.where.get(v.spec["name"], {}))[0] * self.job.get("marks_weight", 25.0) * v.weight
             weight += v.weight
         reg = sum(x * x for x in self.spec["targets"].values()) * self.job.get("stiffness", 0.0015)
         reg += sum((x - 1) ** 2 for x in self.spec["bones"].values()) * self.job.get("stiffness", 0.0015) * 4
@@ -402,6 +474,15 @@ class Job:
             rgb[a & b] = (0.55, 0.55, 0.55)
             rgb[a & ~b] = (0.95, 0.2, 0.2)
             rgb[~a & b] = (0.1, 0.75, 0.85)
+            for name, (ax, ay, mx, my, _d) in v.mark_error(self.where.get(v.spec["name"], {}))[1].items():
+                steps = int(max(abs(mx - ax), abs(my - ay))) + 1          # a line from the drawing's mark to the model's
+                for i in range(steps + 1):
+                    x, y = int(ax + (mx - ax) * i / steps), int(ay + (my - ay) * i / steps)
+                    if 0 <= x < v.w and 0 <= y < v.h:
+                        rgb[y, x] = (0, 0, 0)
+                for (cx, cy), col in (((ax, ay), (1.0, 0.85, 0.0)), ((mx, my), (0.0, 0.0, 0.9))):
+                    x0, y0 = int(cx), int(cy)                             # yellow = the drawing, blue = the model
+                    rgb[max(0, y0 - 3):y0 + 4, max(0, x0 - 3):x0 + 4] = col
             t[:v.h, :v.w, :3] = rgb
             tiles.append(t[::-1])
         a = np.concatenate(tiles, axis=1)
@@ -428,6 +509,11 @@ def main():
         j.run(sweeps)
         j.save(job["out"])
     print("scores:", {v.spec["name"]: round(v.score(m), 4) for v, m in zip(j.views, j.outlines())})
+    for v in j.views:
+        each = v.mark_error(j.where.get(v.spec["name"], {}))[1]
+        if each:
+            print("marks %s (%% of height off):" % v.spec["name"],
+                  {n: round(e[4] * 100, 1) for n, e in sorted(each.items())})
     j.picture(out_pic)
 
 

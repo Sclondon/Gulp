@@ -84,3 +84,24 @@ machine has no other Python).
   (27,700 triangles as exported now), and the others (he is the tallest of the three, the user, 2026-11-19).
 - `-- build` exports a .glb with the 53-bone skeleton and weights (tried; not yet opened in Godot).
 - A candidate for GameCommon (it is not tied to Gulp) once it has made one finished figure.
+
+## Marks: where the parts are (2026-11-19)
+
+The user, of the second body round: "Dont only compare to the outline, also compare to the reference art / For where
+body parts are". An outline cannot say where an elbow, a knee, the navel or a nipple sits. So a view may carry `marks`:
+`{name: [x, y]}` read off the drawing (at `box_width` pixels; `_l` / `_r` are the FIGURE's own left and right), and the
+fit adds the squared distance from each to the same part of the model (`marks_weight`, 150 for the brother). What each
+mark is on the model is `MARKS` in `figed_fit.py`: a joint (knee, ankle, elbow, wrist, shoulder, hip), a bone's tip
+(fingertip), or a point of the skin found from MakeHuman's own navel and nipple targets. The fit's picture draws each
+pair (yellow = the drawing, blue = the model, a line between) and its last lines print every mark's distance as a
+percentage of the figure's height.
+
+- The brother's marks were read by Claude by eye on a 100-pixel grid over the body sheet (about half a percent of his
+  height either way). Knee and ankle marks are the JOINT (the lower edge of the kneecap, the ankle bones), not the
+  middle of the kneecap or the narrowest part of the shin: reading them high cost a round.
+- With marks, segment lengths can move without fooling the outline: `spine_0x.length`, `pelvis.length`,
+  `upperarm.length` / `lowerarm.length`, `hand.length` are in the job now.
+- After this round every mark is within about 1% of his height (navel 1.2, elbows 0.7 to 1.1, knees 0.5 to 1.1,
+  nipples 0.5 to 0.9, ankles 0.6 to 0.9), with the outline at 0.94 front and back, 0.89 side.
+- Not marked yet: shoulder points, armpits, the crotch (hidden by the shorts), kneecaps and calf bulges as shapes,
+  anything on the head.
