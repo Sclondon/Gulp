@@ -71,6 +71,9 @@ BONE_SETS = {
     "neck": ["neck_01"], "head": ["head"],
 }
 WHAT = {"length": (0, 1, 0), "width": (1, 0, 0), "depth": (0, 0, 1), "girth": (1, 0, 1), "size": (1, 1, 1)}
+# "flesh_*" scales only the bone's own skin: the joints that hang off it stay where they are (wider hips without
+# moving the legs apart).
+FLESH = {"flesh_width": (1, 0, 0), "flesh_depth": (0, 0, 1), "flesh": (1, 0, 1)}
 
 MACRO_DEFAULT = {"gender": 1.0, "age": 0.5, "muscle": 0.5, "weight": 0.5, "height": 0.5, "proportions": 0.5,
                  "race": {"caucasian": 1.0}}
@@ -235,6 +238,7 @@ class Figure:
         self.targets = dict(spec.get("targets", {}))     # control or alias -> value (-1..1, may go beyond)
         self.bones = dict(spec.get("bones", {}))         # "<set>.<what>" or "<bone>.<what>" -> factor
         self.raw = dict(spec.get("raw", {}))             # a target file by its own name -> weight
+        self.pose = dict(spec.get("pose", {}))           # for pictures and the fit: how the drawing stands
         self.height = spec.get("height")                 # metres, crown to floor; None keeps what comes out
 
     # --- targets -----------------------------------------------------------------------------------------
@@ -317,14 +321,16 @@ class Figure:
 
     def _bone_scales(self):
         scales = {b: np.ones(3) for b in self.base.bones}
+        flesh = {b: np.ones(3) for b in self.base.bones}
         for key, factor in self.bones.items():
             name, what = key.rsplit(".", 1)
-            mask = np.array(WHAT[what], dtype=float)
+            into = flesh if what in FLESH else scales
+            mask = np.array(FLESH[what] if what in FLESH else WHAT[what], dtype=float)
             for bone in BONE_SETS.get(name, [name]):
                 if bone not in scales:
                     raise KeyError("no such bone: %s" % bone)
-                scales[bone] *= np.where(mask > 0, factor, 1.0)
-        return scales
+                into[bone] *= np.where(mask > 0, factor, 1.0)
+        return scales, flesh
 
     def solve(self):
         b = self.base
@@ -334,10 +340,10 @@ class Figure:
             idx, d = b.target(name)
             pts[idx] += d * w
         heads, tails = self._joints(pts)
-        scales = self._bone_scales()
-        if any(np.any(np.abs(s - 1) > 1e-9) for s in scales.values()):
+        scales, flesh = self._bone_scales()
+        if any(np.any(np.abs(s - 1) > 1e-9) for s in list(scales.values()) + list(flesh.values())):
             out = np.zeros_like(pts)
-            new_heads, new_tails, mats = {}, {}, {}
+            new_heads, new_tails, mats, skins = {}, {}, {}, {}
             for bone in b.bones:
                 parent = b.rig[bone]["parent"]
                 h = heads[bone]
@@ -349,14 +355,15 @@ class Figure:
                 R = self._frame(h, tails[bone])
                 S = R.dot(np.diag(scales[bone])).dot(R.T)
                 mats[bone] = (h, S, H)
+                skins[bone] = R.dot(np.diag(scales[bone] * flesh[bone])).dot(R.T)
                 new_heads[bone] = H
                 new_tails[bone] = H + S.dot(tails[bone] - h)
             for i, bone in enumerate(b.bones):
                 w = b.weights[:, i]
                 idx = np.nonzero(w)[0]
                 if len(idx):
-                    h, S, H = mats[bone]
-                    out[idx] += w[idx, None] * (H + (pts[idx] - h).dot(S.T))
+                    h, _S, H = mats[bone]
+                    out[idx] += w[idx, None] * (H + (pts[idx] - h).dot(skins[bone].T))
             none = b.weights.sum(axis=1) == 0
             out[none] = pts[none]
             pts, heads, tails = out, new_heads, new_tails

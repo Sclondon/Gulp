@@ -145,6 +145,38 @@ def pose_points(fig, P, H, pose):
     return out, H
 
 
+def full_pose(spec_pose, bones):
+    """The pose sliders of a spec as turns of bones."""
+    pose = {b: v for b, v in spec_pose.items() if b in bones}
+    if "arms_down" in spec_pose:
+        a = spec_pose["arms_down"]
+        pose["upperarm_l"] = (0, a, 0)
+        pose["upperarm_r"] = (0, -a, 0)
+    if "arms_back" in spec_pose:
+        a = spec_pose["arms_back"]
+        l = pose.get("upperarm_l", (0, 0, 0))
+        r = pose.get("upperarm_r", (0, 0, 0))
+        pose["upperarm_l"] = (l[0], l[1], a)
+        pose["upperarm_r"] = (r[0], r[1], -a)
+    if "elbows" in spec_pose:
+        a = spec_pose["elbows"]
+        pose["lowerarm_l"] = (a, 0, 0)
+        pose["lowerarm_r"] = (a, 0, 0)
+    if "legs_apart" in spec_pose:                  # the stance; the feet stay flat
+        a = spec_pose["legs_apart"]
+        pose["thigh_l"] = (0, -a, 0)
+        pose["thigh_r"] = (0, a, 0)
+        pose["foot_l"] = (0, a, 0)
+        pose["foot_r"] = (0, -a, 0)
+    if "feet_out" in spec_pose:                    # toes turned out
+        a = spec_pose["feet_out"]
+        l = pose.get("foot_l", (0, 0, 0))
+        r = pose.get("foot_r", (0, 0, 0))
+        pose["foot_l"] = (l[0], l[1], a)
+        pose["foot_r"] = (r[0], r[1], -a)
+    return pose
+
+
 class View:
     def __init__(self, spec):
         self.spec = spec
@@ -168,6 +200,11 @@ class View:
         rows = slice(self.top, self.top + max(2, (self.bottom - self.top) // 12))
         cols = np.nonzero(self.mask[rows].any(axis=0))[0]
         self.head_x = (cols.min() + cols.max()) / 2.0
+        self.anchor = spec.get("anchor", "head")      # "feet": line the view up by the feet, not the head
+        if self.anchor == "feet":
+            rows = slice(self.bottom - max(2, (self.bottom - self.top) // 12), self.bottom + 1)
+            cols = np.nonzero(self.mask[rows].any(axis=0))[0]
+            self.head_x = (cols.min() + cols.max()) / 2.0
         # a close-up of the head: the picture's row to compare down to ("cut", in box_width pixels, e.g. just
         # under the chin); its size against the model is not known, so it is a slider too ("zoom")
         self.cut = None
@@ -202,7 +239,7 @@ class View:
         m[self.cut:] = False
         return m
 
-    def draw(self, pts, height, dx=0.0):
+    def draw(self, pts, height, dx=0.0, zoom=1.0):
         """The model's outline in this view's pixels. pts: Blender metres."""
         if self.look == "front":
             u = pts[:, 0]
@@ -217,10 +254,10 @@ class View:
             lo, hi = self.window[0] * height, self.window[1] * height
         else:
             lo, hi = 0.0, height
-        k = (self.bottom - self.top) / (hi - lo)
+        k = (self.bottom - self.top) / (hi - lo) * zoom
         keep = (v >= lo - 0.02) & (v <= hi + 0.02)
         u, v = u[keep], v[keep]
-        top_rows = v > hi - (hi - lo) / 12.0
+        top_rows = (v < lo + (hi - lo) / 12.0) if self.anchor == "feet" else (v > hi - (hi - lo) / 12.0)
         mid = (u[top_rows].min() + u[top_rows].max()) / 2.0 if top_rows.any() else 0.0
         ix = np.round(self.head_x + (u - mid) * k + dx).astype(int)
         iy = np.round(self.bottom - (v - lo) * k).astype(int)
@@ -235,7 +272,19 @@ class View:
             b = b.copy()
             b[:self.top] = False
             b[self.bottom + 1:] = False
-        return (a & b).sum() / float((a | b).sum())
+        bands = self.spec.get("bands")
+        if not bands:
+            return (a & b).sum() / float((a | b).sum())
+        total, weight = 0.0, 0.0                      # bands: [from, to, weight] in shares of the height, floor up
+        span = self.bottom - self.top
+        for lo, hi, w in bands:
+            if w <= 0:
+                continue
+            r0, r1 = int(self.bottom - hi * span), int(self.bottom - lo * span) + 1
+            union = (a[r0:r1] | b[r0:r1]).sum()
+            total += w * ((a[r0:r1] & b[r0:r1]).sum() / float(max(1, union)))
+            weight += w
+        return total / weight
 
 
 class Job:
@@ -264,24 +313,18 @@ class Job:
     def outlines(self):
         fig = self.figure()
         P, H, _T = fig.to_blender()
-        pose = {b: v for b, v in self.spec["pose"].items() if b in self.base.bones}
-        if "arms_down" in self.spec["pose"]:
-            a = self.spec["pose"]["arms_down"]
-            pose["upperarm_l"] = (0, a, 0)
-            pose["upperarm_r"] = (0, -a, 0)
-        if "arms_back" in self.spec["pose"]:
-            a = self.spec["pose"]["arms_back"]
-            l = pose.get("upperarm_l", (0, 0, 0))
-            r = pose.get("upperarm_r", (0, 0, 0))
-            pose["upperarm_l"] = (l[0], l[1], a)
-            pose["upperarm_r"] = (r[0], r[1], -a)
-        if "elbows" in self.spec["pose"]:
-            a = self.spec["pose"]["elbows"]
-            pose["lowerarm_l"] = (a, 0, 0)
-            pose["lowerarm_r"] = (a, 0, 0)
-        P, H = pose_points(fig, P, H, pose)
+        P0, H0 = P, H
+        common = {k: v for k, v in self.spec["pose"].items() if "@" not in k}
+        P, H = pose_points(fig, P0, H0, full_pose(common, self.base.bones))
         pts = self.sampler.points(P)
         height = pts[:, 2].max()
+        own = {}                                      # a view drawn in a pose of its own: "arms_down@side"
+        for v in self.views:
+            n = v.spec["name"]
+            extra = {k.split("@")[0]: x for k, x in self.spec["pose"].items() if k.endswith("@" + n)}
+            if extra:
+                Pv, _ = pose_points(fig, P0, H0, full_pose(dict(common, **extra), self.base.bones))
+                own[n] = self.sampler.points(Pv)
         head_pts = self.head_sampler.points(P) if any(v.cut is not None for v in self.views) else None
         out = []
         for v in self.views:
@@ -290,7 +333,7 @@ class Job:
                 out.append(v.draw_head(head_pts, self.spec["shift"].get(n, 0.0), self.spec["drop"].get(n, 0.0),
                                        self.spec["zoom"].get(n, 1.0)))
             else:
-                out.append(v.draw(pts, height, self.spec["shift"].get(n, 0.0)))
+                out.append(v.draw(own.get(n, pts), height, self.spec["shift"].get(n, 0.0), self.spec["zoom"].get(n, 1.0)))
         return out
 
     def loss(self):

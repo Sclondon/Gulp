@@ -1,39 +1,710 @@
 {
- "about": "The older brother's body, fitted to the bare (shaved) sheet of his character bible: front, side, back.",
+ "about": "The older brother body, fitted to the main body sheet of his character bible (front, side, back). Bands (shares of the height, floor up): legs below the shorts count most, the shorts little (cloth, not flesh), the head and hair not at all; zoom lets the bald model stand under the hair.",
  "start": "tools/figed/figures/brother.json",
  "out": "tools/figed/figures/brother.json",
  "picture": "tools/figed/figures/brother_body_fit.png",
  "sweeps": 12,
  "stiffness": 0.0012,
  "views": [
-  {"name": "front", "picture": "tools/art_src/concept_brother_bible_bare.jpg", "box": [180, 550, 620, 1078], "look": "front", "box_width": 1998, "tall": 520},
-  {"name": "side", "picture": "tools/art_src/concept_brother_bible_bare.jpg", "box": [940, 550, 1120, 1078], "look": "side", "box_width": 1998, "tall": 520},
-  {"name": "back", "picture": "tools/art_src/concept_brother_bible_bare.jpg", "box": [1420, 550, 1870, 1078], "look": "back", "box_width": 1998, "tall": 520}
+  {
+   "name": "front",
+   "picture": "tools/art_src/concept_brother_bible_body.jpg",
+   "box": [
+    30,
+    30,
+    820,
+    1085
+   ],
+   "look": "front",
+   "box_width": 1998,
+   "tall": 640,
+   "bands": [
+    [
+     0,
+     0.36,
+     4
+    ],
+    [
+     0.36,
+     0.55,
+     1
+    ],
+    [
+     0.55,
+     0.8,
+     1.5
+    ],
+    [
+     0.8,
+     0.855,
+     1.5
+    ],
+    [
+     0.855,
+     1,
+     0
+    ]
+   ]
+  },
+  {
+   "name": "side",
+   "picture": "tools/art_src/concept_brother_bible_body.jpg",
+   "box": [
+    930,
+    30,
+    1200,
+    1085
+   ],
+   "look": "side",
+   "box_width": 1998,
+   "tall": 640,
+   "bands": [
+    [
+     0,
+     0.36,
+     4
+    ],
+    [
+     0.36,
+     0.55,
+     1.5
+    ],
+    [
+     0.55,
+     0.8,
+     1.5
+    ],
+    [
+     0.8,
+     0.855,
+     1.5
+    ],
+    [
+     0.855,
+     1,
+     0
+    ]
+   ],
+   "anchor": "feet"
+  },
+  {
+   "name": "back",
+   "picture": "tools/art_src/concept_brother_bible_body.jpg",
+   "box": [
+    1240,
+    30,
+    1998,
+    1085
+   ],
+   "look": "back",
+   "box_width": 1998,
+   "tall": 640,
+   "bands": [
+    [
+     0,
+     0.36,
+     4
+    ],
+    [
+     0.36,
+     0.55,
+     1
+    ],
+    [
+     0.55,
+     0.8,
+     1.5
+    ],
+    [
+     0.8,
+     0.855,
+     1.5
+    ],
+    [
+     0.855,
+     1,
+     0
+    ]
+   ]
+  },
+  {
+   "name": "bare_front",
+   "picture": "tools/art_src/concept_brother_bible_bare.jpg",
+   "box": [
+    180,
+    550,
+    620,
+    1078
+   ],
+   "look": "front",
+   "box_width": 1998,
+   "tall": 520,
+   "bands": [
+    [
+     0,
+     0.78,
+     0
+    ],
+    [
+     0.78,
+     1,
+     1
+    ]
+   ],
+   "weight": 0.5
+  },
+  {
+   "name": "bare_back",
+   "picture": "tools/art_src/concept_brother_bible_bare.jpg",
+   "box": [
+    1420,
+    550,
+    1870,
+    1078
+   ],
+   "look": "back",
+   "box_width": 1998,
+   "tall": 520,
+   "bands": [
+    [
+     0,
+     0.78,
+     0
+    ],
+    [
+     0.78,
+     1,
+     1
+    ]
+   ],
+   "weight": 0.5
+  },
+  {
+   "name": "bare_side",
+   "picture": "tools/art_src/concept_brother_bible_bare.jpg",
+   "box": [
+    940,
+    550,
+    1120,
+    1078
+   ],
+   "look": "side",
+   "box_width": 1998,
+   "tall": 520,
+   "bands": [
+    [
+     0,
+     0.78,
+     0
+    ],
+    [
+     0.78,
+     1,
+     1
+    ]
+   ],
+   "weight": 0.5
+  }
  ],
- "defaults": {"pose": {"arms_down": 15}},
+ "defaults": {
+  "pose": {
+   "arms_down": 15,
+   "arms_down@side": 35,
+   "arms_down@bare_side": 35
+  },
+  "zoom": {
+   "front": 0.97,
+   "side": 0.97,
+   "back": 0.97
+  }
+ },
  "move": {
-  "pose": {"arms_down": [0, 40, 6], "arms_back": [-10, 40, 6], "elbows": [-40, 40, 8]},
-  "shift": {"front": [-8, 8, 2], "side": [-14, 14, 3], "back": [-8, 8, 2]},
-  "macro": {"muscle": [0, 1, 0.2], "weight": [0, 1, 0.2], "proportions": [0, 1, 0.25]},
+  "pose": {
+   "arms_down": [
+    0,
+    40,
+    6
+   ],
+   "arms_back": [
+    -30,
+    40,
+    10
+   ],
+   "elbows": [
+    -40,
+    40,
+    10
+   ],
+   "legs_apart": [
+    -10,
+    8,
+    2
+   ],
+   "feet_out": [
+    -30,
+    30,
+    8
+   ],
+   "arms_down@side": [
+    0,
+    60,
+    10
+   ],
+   "arms_back@side": [
+    -30,
+    50,
+    10
+   ],
+   "elbows@side": [
+    -40,
+    40,
+    10
+   ],
+   "arms_down@bare_side": [
+    0,
+    60,
+    10
+   ]
+  },
+  "shift": {
+   "front": [
+    -8,
+    8,
+    2
+   ],
+   "side": [
+    -14,
+    14,
+    3
+   ],
+   "back": [
+    -8,
+    8,
+    2
+   ],
+   "bare_front": [
+    -8,
+    8,
+    2
+   ],
+   "bare_back": [
+    -8,
+    8,
+    2
+   ],
+   "bare_side": [
+    -14,
+    14,
+    3
+   ]
+  },
+  "macro": {
+   "muscle": [
+    0.5,
+    1,
+    0.1
+   ],
+   "weight": [
+    0.3,
+    0.75,
+    0.1
+   ],
+   "proportions": [
+    0,
+    1,
+    0.25
+   ]
+  },
   "bones": {
-   "thigh.length": [0.5, 1.3, 0.1], "calf.length": [0.5, 1.3, 0.1], "head.size": [0.8, 1.7, 0.1],
-   "upperarm.length": [0.9, 1.6, 0.1], "lowerarm.length": [0.9, 1.25, 0.1], "thigh.width": [0.8, 1.6, 0.08], "hand.size": [0.8, 1.7, 0.1],
-   "foot.size": [0.8, 1.6, 0.1], "neck.girth": [0.8, 2.0, 0.1], "neck.length": [0.5, 1.5, 0.1],
-   "thigh.girth": [0.8, 1.8, 0.1], "calf.girth": [0.8, 1.8, 0.1], "upperarm.girth": [0.8, 1.9, 0.1],
-   "lowerarm.girth": [0.8, 1.9, 0.1], "torso.width": [0.8, 1.6, 0.08], "torso.depth": [0.8, 1.7, 0.08],
-   "spine_03.width": [0.8, 1.5, 0.08], "pelvis.width": [0.8, 1.5, 0.08], "clavicle.length": [0.7, 1.6, 0.1]
+   "thigh.length": [
+    0.5,
+    1.3,
+    0.1
+   ],
+   "calf.length": [
+    0.5,
+    1.3,
+    0.1
+   ],
+   "head.size": [
+    0.9,
+    1.6,
+    0.05
+   ],
+   "upperarm.length": [
+    0.9,
+    1.6,
+    0.1
+   ],
+   "lowerarm.length": [
+    0.9,
+    1.25,
+    0.1
+   ],
+   "thigh.width": [
+    0.85,
+    1.6,
+    0.06
+   ],
+   "hand.size": [
+    0.8,
+    1.7,
+    0.1
+   ],
+   "neck.girth": [
+    0.8,
+    2.2,
+    0.08
+   ],
+   "neck.length": [
+    0.5,
+    1.5,
+    0.08
+   ],
+   "thigh.girth": [
+    0.8,
+    1.8,
+    0.1
+   ],
+   "calf.girth": [
+    0.8,
+    1.8,
+    0.1
+   ],
+   "upperarm.girth": [
+    0.8,
+    1.9,
+    0.1
+   ],
+   "lowerarm.girth": [
+    0.8,
+    1.9,
+    0.1
+   ],
+   "torso.width": [
+    0.8,
+    1.6,
+    0.08
+   ],
+   "torso.depth": [
+    0.8,
+    1.7,
+    0.08
+   ],
+   "spine_03.width": [
+    0.8,
+    1.5,
+    0.08
+   ],
+   "pelvis.width": [
+    0.85,
+    1.5,
+    0.06
+   ],
+   "clavicle.length": [
+    0.7,
+    1.6,
+    0.1
+   ],
+   "thigh.depth": [
+    0.8,
+    1.6,
+    0.08
+   ],
+   "calf.width": [
+    0.8,
+    1.8,
+    0.08
+   ],
+   "calf.depth": [
+    0.8,
+    1.8,
+    0.08
+   ],
+   "pelvis.depth": [
+    0.8,
+    1.5,
+    0.08
+   ],
+   "foot.width": [
+    0.8,
+    1.8,
+    0.1
+   ],
+   "foot.length": [
+    0.8,
+    1.5,
+    0.1
+   ],
+   "pelvis.flesh_width": [
+    0.9,
+    1.6,
+    0.06
+   ],
+   "pelvis.flesh_depth": [
+    0.7,
+    1.5,
+    0.06
+   ],
+   "spine_01.width": [
+    0.85,
+    1.6,
+    0.06
+   ],
+   "spine_01.depth": [
+    0.8,
+    1.6,
+    0.06
+   ],
+   "spine_02.width": [
+    0.85,
+    1.6,
+    0.06
+   ],
+   "spine_02.depth": [
+    0.8,
+    1.6,
+    0.06
+   ],
+   "thigh.flesh_width": [
+    0.85,
+    1.5,
+    0.06
+   ],
+   "neck.flesh_width": [
+    0.8,
+    2,
+    0.08
+   ],
+   "spine_03.flesh_width": [
+    0.9,
+    1.4,
+    0.05
+   ]
   },
   "targets": {
-   "shoulder_width": [-1.5, 2, 0.5], "chest": [-1.5, 2, 0.5], "ribs": [-1.5, 2, 0.5], "waist": [-1.5, 2, 0.5],
-   "hips": [-1.5, 2, 0.5], "torso_length": [-1.5, 1.5, 0.5], "waist_to_hip": [-1.5, 1.5, 0.5],
-   "neck_thickness": [-1, 2, 0.5], "belly": [-0.5, 1.5, 0.3], "belly_tone": [-1.5, 1, 0.5],
-   "buttocks": [-1, 1.5, 0.5], "pecs": [-1, 1.5, 0.5], "lats": [-1, 1.5, 0.5], "shoulder_muscle": [-1, 2, 0.5],
-   "upper_arm_thickness": [-1, 2, 0.5], "thigh_thickness": [-1, 2, 0.5], "calf": [-1, 2, 0.5],
-   "knee": [-1, 2, 0.5], "ankle": [-1, 2, 0.5], "wrist": [-1, 2, 0.5], "finger_thickness": [-1, 2, 0.5],
-   "finger_length": [-1.5, 1.5, 0.5], "v_shape": [-1.5, 1.5, 0.5], "double_chin": [-0.5, 1.5, 0.5],
-   "head_width": [-1, 1.5, 0.5], "head_depth": [-1, 1.5, 0.5], "head_height": [-1, 1.5, 0.5],
-   "leg-valgus": [-1.5, 1.5, 0.5], "upperleg-muscle": [-1, 1.5, 0.5], "lowerleg-muscle": [-1, 1.5, 0.5],
-   "lowerarm-muscle": [-1, 1.5, 0.5], "upperarm-muscle": [-1, 1.5, 0.5], "lowerarm-fat": [-1, 1.5, 0.5], "upperleg-fat": [-1, 2, 0.5], "upperleg-scale-horiz": [-1, 2, 0.5], "torso-scale-depth": [-1.5, 1.5, 0.5], "stomach-tone": [-2, 1, 0.5], "hip-scale-depth": [-1.5, 1.5, 0.5]
+   "shoulder_width": [
+    -1.5,
+    2,
+    0.5
+   ],
+   "chest": [
+    -1.5,
+    2,
+    0.5
+   ],
+   "ribs": [
+    -1.5,
+    2,
+    0.5
+   ],
+   "waist": [
+    -1.5,
+    2,
+    0.5
+   ],
+   "hips": [
+    -1.5,
+    2,
+    0.5
+   ],
+   "torso_length": [
+    -1.5,
+    1.5,
+    0.5
+   ],
+   "waist_to_hip": [
+    -1.5,
+    1.5,
+    0.5
+   ],
+   "neck_thickness": [
+    -1,
+    2,
+    0.5
+   ],
+   "belly": [
+    -0.5,
+    1.5,
+    0.3
+   ],
+   "belly_tone": [
+    -1.5,
+    1,
+    0.5
+   ],
+   "buttocks": [
+    -2,
+    1.5,
+    0.5
+   ],
+   "pecs": [
+    -1,
+    1.5,
+    0.5
+   ],
+   "lats": [
+    -1,
+    1.5,
+    0.5
+   ],
+   "shoulder_muscle": [
+    -1,
+    2,
+    0.5
+   ],
+   "upper_arm_thickness": [
+    -1,
+    2,
+    0.5
+   ],
+   "thigh_thickness": [
+    -1,
+    2,
+    0.5
+   ],
+   "calf": [
+    -1,
+    2,
+    0.5
+   ],
+   "knee": [
+    -1,
+    2,
+    0.5
+   ],
+   "ankle": [
+    -1,
+    2,
+    0.5
+   ],
+   "wrist": [
+    -1,
+    2,
+    0.5
+   ],
+   "finger_thickness": [
+    -1,
+    2,
+    0.5
+   ],
+   "finger_length": [
+    -1.5,
+    1.5,
+    0.5
+   ],
+   "v_shape": [
+    -1.5,
+    1.5,
+    0.5
+   ],
+   "double_chin": [
+    -0.5,
+    1.5,
+    0.5
+   ],
+   "head_width": [
+    -1,
+    1.5,
+    0.5
+   ],
+   "head_depth": [
+    -1,
+    1.5,
+    0.5
+   ],
+   "head_height": [
+    -1,
+    1.5,
+    0.5
+   ],
+   "leg-valgus": [
+    -1.5,
+    1.5,
+    0.5
+   ],
+   "upperleg-muscle": [
+    -1,
+    1.5,
+    0.5
+   ],
+   "lowerleg-muscle": [
+    -1,
+    1.5,
+    0.5
+   ],
+   "lowerarm-muscle": [
+    -1,
+    1.5,
+    0.5
+   ],
+   "upperarm-muscle": [
+    -1,
+    1.5,
+    0.5
+   ],
+   "lowerarm-fat": [
+    -1,
+    1.5,
+    0.5
+   ],
+   "upperleg-fat": [
+    -1,
+    2,
+    0.5
+   ],
+   "torso-scale-depth": [
+    -1.5,
+    1.5,
+    0.5
+   ],
+   "stomach-tone": [
+    -2,
+    1,
+    0.5
+   ],
+   "hip-scale-depth": [
+    -1.5,
+    1.5,
+    0.5
+   ],
+   "lowerleg-fat": [
+    -1,
+    2,
+    0.5
+   ],
+   "pelvis-tone": [
+    -1.5,
+    1.5,
+    0.5
+   ],
+   "foot-scale-horiz": [
+    -1,
+    2.5,
+    0.5
+   ],
+   "hip-waist-up": [
+    -1.5,
+    1.5,
+    0.5
+   ]
+  },
+  "zoom": {
+   "front": [
+    0.93,
+    1,
+    0.01
+   ],
+   "side": [
+    0.93,
+    1,
+    0.01
+   ],
+   "back": [
+    0.93,
+    1,
+    0.01
+   ]
   }
  }
 }

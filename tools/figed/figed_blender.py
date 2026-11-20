@@ -25,11 +25,15 @@ def reset():
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
-def build(fig, name="figure", parts=PARTS, rig=True):
+def build(fig, name="figure", parts=PARTS, rig=True, posed=False):
     """The figure as Blender objects: one mesh per part name's first word ("body", "helper" things as "eyes",
     "teeth", "tongue"), all on one armature. Returns (objects by name, armature or None)."""
     base = fig.base
     P, H, T = fig.to_blender()
+    if posed and getattr(fig, "pose", None):       # as the drawing stands (pictures only: no skeleton then)
+        import figed_fit
+        P, _ = figed_fit.pose_points(fig, P, H, figed_fit.full_pose(fig.pose, base.bones))
+        rig = False
     kinds = {"body": "body", "helper-l-eye": "eyes", "helper-r-eye": "eyes", "helper-upper-teeth": "teeth",
              "helper-lower-teeth": "teeth", "helper-tongue": "tongue"}
     by_kind = {}
@@ -147,11 +151,14 @@ def view_boxes(fig):
     hand = (H["hand_l"] + T["middle_03_l"]) / 2
     foot = (H["foot_l"] + T["ball_l"]) / 2
     q = math.sqrt(0.5)
+    low = np.array([0.0, 0.0, top * 0.31])
     return {
         "front": (mid, (0, 1, 0), top * 1.06, 1.0), "back": (mid, (0, -1, 0), top * 1.06, 1.0),
         "side": (mid, (-1, 0, 0), top * 1.06, 0.45), "quarter": (mid, (-q, q, 0), top * 1.06, 0.95),
         "face": (head, (0, 1, 0), hh, 0.85), "face_side": (head, (-1, 0, 0), hh, 0.85),
         "face_quarter": (head, (-q, q, 0), hh, 0.85),
+        "legs": (low, (0, 1, 0), top * 0.66, 0.8), "legs_back": (low, (0, -1, 0), top * 0.66, 0.8),
+        "legs_side": (low, (-1, 0, 0), top * 0.66, 0.55),
         "hand": (hand, (0, 1, 0), 0.34, 1.0), "foot": (foot, (-q, q, -0.4), 0.4, 1.0),
     }
 
@@ -242,9 +249,10 @@ def main():
     elif cmd == "look":
         reset()
         fig = figure_from(base, argv[1])
-        objs, _arm = build(fig, rig=False)
+        views = [a for a in argv[3:] if not a.startswith("--")]
+        objs, _arm = build(fig, rig=False, posed="--posed" in argv)
         paint_plain(objs)
-        shoot(fig, argv[2], tuple(argv[3:]) or ("front", "side", "back", "quarter"))
+        shoot(fig, argv[2], tuple(views) or ("front", "side", "back", "quarter"))
         print("measures:", {k: round(v, 3) for k, v in fig.measures().items()})
     elif cmd == "sliders":
         out = argv[1]

@@ -56,19 +56,31 @@ So a figure is no longer a build script. It is **one generic human plus a table 
 Run with `blender -b --factory-startup --python tools/figed/<file>.py -- ...` (Blender's Python has numpy; this
 machine has no other Python).
 
-## State (2026-11-19, end of the first session)
+## State (2026-11-19, after the second body round)
 
-- The brother's BODY: fitted by the automatic fit alone to the bible's bare sheet (front 0.92, side 0.88, back 0.92
-  overlap, 90 seconds a run; `figures/brother_body.fit.json`). Not right yet: too soft (an outline cannot see muscle
-  definition: the fit drove `muscle` to 0.1), a gap between the thighs, thin shins, the forearm long against the upper
-  arm (an outline cannot see where the elbow is: landmarks are owed), the arm bent forward in the side view.
-- His HEAD: outline fitted to the shaved head row (front 0.986, profile 0.96; `figures/brother_head.fit.json`; a
-  close-up view has a `cut` row and its size is a slider, `zoom`). An outline says nothing about what is inside it:
-  left alone, the fit gave a sharp-nosed, jowly older man. So nose, cheeks, eyes, brow and mouth were then set BY EYE
-  on the named sliders (Claude's first pass: button nose, full cheeks, downturned eyes with bags, younger). Re-running
-  the head fit would move the nose and chin sliders again: take them out of the job's `move` list first.
-- Owed: landmarks for the fit (elbow, knee, eye, mouth corners), eyes as modelled eyeballs with lids fitted, the small
-  corrections, paint, hair, a low model (27,700 triangles as exported now), and the others (he is the tallest of the
-  three, the user, 2026-11-19: size the captain and the boy under him).
+- The brother's BODY, second round (the user: "do another round on the body, giving extra care to his hips thighs and
+  legs which dont look quite right"; the face was to be left alone). What was wrong, seen beside the bible: flared
+  fat hips, heavy thighs tapering to thin shins, knock knees, small feet, where the drawing has narrow boxy hips over
+  straight sturdy columns, broad knees, thick ankles and wide turned-out feet. Causes and what the fit learned:
+  - it had fitted the boxer shorts as flesh, and all rows counted alike: views now have `bands` (shares of the height,
+    floor up, each with a weight): legs below the shorts 4, the shorts 1, the trunk 1.5, the head and hair of the body
+    sheet 0 (the shaved sheet scores the head and neck instead, as three more views);
+  - widening the pelvis moved the legs apart: `flesh_width` / `flesh_depth` / `flesh` scale a bone's own skin and
+    leave the joints that hang off it where they are (`pelvis.flesh_width`);
+  - two sliders fought (`hip-scale-horiz` out against `thigh.width` in) and left a ledge at the hip: the scale
+    targets for hips and legs are out of the job; bone widths do that work;
+  - the sheet's side view has the arm hanging while its front view has the arms out: a pose slider may be for one
+    view only (`"arms_down@side"`); `legs_apart` and `feet_out` are stance sliders; a view can line up by the feet
+    (`"anchor": "feet"`) instead of the head; `zoom` on a whole-figure view lets the bald model stand under the hair.
+  - `muscle` is held at 0.5 or more and `weight` at 0.75 or less (Claude's limits: an outline alone drove him to fat).
+  Overlap now: front 0.93, back 0.94, side 0.89 on the body sheet; head and neck 0.95 on the shaved sheet.
+  `-- look <spec> <out> legs legs_side legs_back --posed` are the pictures to judge the legs by.
+- Still not right in the body: no muscle definition (quads, calves, pecs: an outline cannot see them), the thigh sits a
+  little behind the drawing's in the side view, the feet are shorter than drawn, the elbow's place is a guess.
+- His HEAD: outline fitted to the shaved head row (`figures/brother_head.fit.json`); nose, cheeks, eyes, brow and
+  mouth set by eye once (Claude). The user, 2026-11-19: "Lets not worry about the face" for now. Before re-running the
+  head fit, take the nose and chin sliders out of its `move` list or it will move them again.
+- Owed: landmarks for the fit (elbow, knee), muscle definition, eyes, the small corrections, paint, hair, a low model
+  (27,700 triangles as exported now), and the others (he is the tallest of the three, the user, 2026-11-19).
 - `-- build` exports a .glb with the 53-bone skeleton and weights (tried; not yet opened in Godot).
 - A candidate for GameCommon (it is not tied to Gulp) once it has made one finished figure.
