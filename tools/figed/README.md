@@ -464,3 +464,13 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   below_ear 8.9, forward -0.2, inward 2.5. First tried at lift 3.5 / radius 5.5: it pinched the back of the neck
   and cut a notch under the ear. At 2.2 the jaw's underside rises towards the ear, but a hard crease is left behind
   the jaw in profile: a radial lift is a blunt tool for this. NOT confirmed by the user.
+- The user: "Mark the reference jaw corner on the overlay as well, then align them". A sheet view may carry `"jaw"`:
+  the jaw's corner as marked on the drawing; `head_overlay.py` draws it as a BLUE cross on the art and overlay rows,
+  and the model's corner (where `jaw_corner` carries it) as a RED cross with its reach as a ring. `jaw_corner` now
+  moves the corner three ways (`lift` up, `back`, `out`, cm), not only up. From the user's marks the model's corner
+  was about 3.7 cm low, 1.7 cm forward and 2.2 cm in of the sheet's; after one look at the crosses: lift 2.9, back
+  0.9, out 2.2, radius 6.5. Red sits on blue in the front and profile views; in the three-quarter views red is
+  about half a centimetre behind blue (the marks in the different views do not agree exactly). This gave the
+  clear jaw edge rising to the ear that sliders and the earlier lift did not.
+  **Method that worked: mark the same landmark on drawing and model, draw both on the overlay, move one onto the
+  other.** Use it for other landmarks (ear, eye corners, mouth corners, nose wings).

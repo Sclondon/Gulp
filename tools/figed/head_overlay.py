@@ -132,7 +132,7 @@ for v in sheet["views"]:
     over = tile * (1 - a * 0.55) + model[:, :, :3] * a * 0.55
     alone = np.ones_like(tile) * 0.86 * (1 - a) + model[:, :, :3] * a
     for q, r in spots:                                   # a red cross and ring: where a correction acts, how far
-        if (q - centre).dot(d) > 0.02:                   # on the far side of the head in this view
+        if (q - centre).dot(d) > 0.07:                   # on the far side of the head in this view
             continue
         qx, qy = pixel(q)
         cx, cy = (qx - mx) * scale + ax, (qy - my) * scale + ay
@@ -143,6 +143,14 @@ for v in sheet["views"]:
             (np.abs(yy2 - cy) < 2.5) & (np.abs(xx2 - cx) < 18))
         for pic in (over, alone):
             pic[ring] = (0.95, 0.1, 0.1)
+    for jx, jy in v.get("jaw", []):                      # blue: the jaw's corner as marked on the drawing
+        bx, by = (jx * k - x0) * UP, (jy * k - y0) * UP
+        yy3, xx3 = np.mgrid[0:th, 0:tw]
+        cross = ((np.abs(xx3 - bx) < 3) & (np.abs(yy3 - by) < 22)) | ((np.abs(yy3 - by) < 3) & (np.abs(xx3 - bx) < 22))
+        tile = tile.copy()
+        for pic in (tile, over):
+            pic[cross] = (0.1, 0.3, 1.0)
+        tiles_fix = tile
     for pic in (over, alone):                            # a small cross where the nose tips were put together
         if "nose" in v:
             cx, cy = int(ax), int(ay)

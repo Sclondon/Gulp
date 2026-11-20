@@ -494,8 +494,10 @@
   "flare": 8
  },
  "jaw_corner": {
-  "lift": 2.2,
-  "radius": 4.5,
+  "lift": 2.9,
+  "back": 0.9,
+  "out": 2.2,
+  "radius": 6.5,
   "below_ear": 8.9,
   "forward": -0.2,
   "inward": 2.5

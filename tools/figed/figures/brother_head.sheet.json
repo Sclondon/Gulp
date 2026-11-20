@@ -16,7 +16,17 @@
     285
    ],
    "crown": 153,
-   "chin": 383
+   "chin": 383,
+   "jaw": [
+    [
+     53.5,
+     329
+    ],
+    [
+     197.6,
+     325.6
+    ]
+   ]
   },
   {
    "view": "face_quarter_r",
@@ -32,7 +42,13 @@
    ],
    "crown": 153,
    "chin": 380,
-   "turn": 35
+   "turn": 35,
+   "jaw": [
+    [
+     286.5,
+     333
+    ]
+   ]
   },
   {
    "view": "face_side_r",
@@ -47,7 +63,13 @@
     284
    ],
    "crown": 153,
-   "chin": 377
+   "chin": 377,
+   "jaw": [
+    [
+     508.4,
+     334
+    ]
+   ]
   },
   {
    "view": "face_quarter",
@@ -63,7 +85,13 @@
    ],
    "crown": 153,
    "chin": 380,
-   "turn": -45
+   "turn": -45,
+   "jaw": [
+    [
+     755,
+     336.8
+    ]
+   ]
   },
   {
    "view": "face_back",
@@ -77,5 +105,6 @@
    "crown": 153,
    "chin": 383
   }
- ]
+ ],
+ "jaw_about": "\"jaw\": the corner of the jaw in each view, as the user marked it with blue crosses on the sheet (tools/art_src/user_brother_jaw_corners.png), in 1024 px coordinates."
 }
