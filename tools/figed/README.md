@@ -443,3 +443,8 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
 - The user: "his jaw should be little bit wider as well": `jaw_width` 0.5 -> 0.85.
 - The user: "jaw just a bit wider still, and ear just a bit more forward": `jaw_width` 0.85 -> 1.15, `ears.back`
   1.0 -> 0.5.
+- The user (red lines: straight down from the ear, a corner, then a diagonal to the chin): "Can we raise the corners
+  of his jaws up so he has a sharper jawline?". `head-square` 0.5 gives a clear jaw corner and a sharp edge under
+  the jaw. `jaw_drop` -1.5 was tried and only lumped the chin. Two costs of `head-square`: it also flattens the top
+  of the skull a little, and its corner sits LOW (about level with the chin), where the user drew it about level
+  with the mouth. Raising the corner itself is not something a slider does: a small correction, still owed.
