@@ -132,7 +132,7 @@ def rules(fig, P, H, skin_px=None):
     zh = H["head"][2]                                                # (neck_01 is the neck's BASE: zn + 7 cm is only the shoulders)
     body_top = np.where(arm + up < 0.3, zh - 0.015 - z, 1.0)         # the roll neck's top; no limit along the arms
     top_half = (head < 0.6) & (z > waist - 0.1) & (legs < 0.3)
-    thick = 0.013 + 0.014 * np.clip((z - (zs + 0.02)) / 0.03, 0, 1) * (arm + up < 0.3)   # the roll stands off further
+    thick = 0.007 + 0.014 * np.clip((z - (zs + 0.02)) / 0.03, 0, 1) * (arm + up < 0.3)   # the roll stands off further
     SMOOTH.update(jumper=4, shirt=3, bib=7, boots=5, cap=2)
     out["jumper"] = (np.minimum(np.minimum(z - (waist - 0.06), body_top), (0.5 - handw) * 0.1),
                      top_half, thick, (0.86, 0.80, 0.66))
@@ -147,7 +147,8 @@ def rules(fig, P, H, skin_px=None):
     rim = bib_top + (waist + 0.10 - bib_top) * side * side * (3 - 2 * side)
     leg_end = H["foot_l"][2] + 0.2
     wears = (arm < 0.3) & (up < 0.4) & (head < 0.3)
-    puff = 0.03 + 0.012 * np.clip((knee + 0.1 - z) / 0.25, 0, 1)    # (and smoothed: overalls do not show the body)
+    # (the user: "Seems like his belly and chest stick out a bit too much": 3 cm off the trunk, now 1.2; the legs keep theirs)
+    puff = 0.012 + 0.018 * np.clip((H["thigh_l"][2] - 0.04 - z) / 0.08, 0, 1) + 0.012 * np.clip((knee + 0.1 - z) / 0.25, 0, 1)    # (and smoothed: overalls do not show the body)
     puff = puff * (0.45 + 0.55 * np.clip((rim - z) / 0.09, 0, 1))     # the top edge lies close on the chest
     puff = puff + 0.035 * np.clip(1 - (z - leg_end) / 0.10, 0, 1) ** 2   # the legs blouse out over the boot tops
     out["bib"] = (np.minimum(rim - z, z - leg_end), wears, puff, (0.80, 0.58, 0.12))
@@ -155,6 +156,10 @@ def rules(fig, P, H, skin_px=None):
     zc = H["thigh_l"][2] - 0.10
     hang = _taut(x, -y, z, wears & (y < yn + 0.02) & (z > zc - 0.08) & (z < zs - 0.03), zc - 0.08, zs - 0.03)
     hang = hang * np.clip((z - (zc - 0.08)) / 0.08, 0, 1)
+    # (only the front skin, and only shallow hollows: points deep between the legs were being hauled 20 cm forward
+    # to the front, and the bib stood 7 cm off his belly. The user: "Seems like his belly and chest stick out a bit
+    # too much")
+    hang = np.where(hang < 0.05, np.minimum(hang, 0.025), 0.0)
     PUSH["bib"] = np.stack([np.zeros(len(P)), -hang, np.zeros(len(P))], axis=1)
     INFO["bib_top"], INFO["bib_wide"] = float(zs - 0.035), 0.118
     under = (thick if "jumper" in INFO.get("wear", ()) else 0.008) + 0.007   # the straps lie on what he wears
@@ -181,22 +186,22 @@ def rules(fig, P, H, skin_px=None):
     not_hand = (0.5 - handw) * 0.1
     ankle = H["foot_l"][2] + 0.03
     SMOOTH.update(dsuit=6, corselet=9, dbelt=3, dstraps=2, dcuffs=2)
-    bag = 0.02 + 0.016 * np.clip((knee + 0.12 - z) / 0.3, 0, 1) * (legs > 0.5) + 0.03 * np.clip(1 - (z - ankle) / 0.1, 0, 1) ** 2
+    bag = 0.008 + 0.012 * (legs > 0.5) + 0.008 * (armish > 0.3) + 0.016 * np.clip((knee + 0.12 - z) / 0.3, 0, 1) * (legs > 0.5) + 0.03 * np.clip(1 - (z - ankle) / 0.1, 0, 1) ** 2
     out["dsuit"] = (np.minimum(np.minimum(np.minimum(z - ankle, zn + 0.05 - z + 2.0 * (armish > 0.3)), wrist_end), not_hand),
                     head < 0.5, bag, (0.66, 0.56, 0.40))
     out["dcuffs"] = (np.minimum(np.minimum(along - 0.80, 0.985 - along) * 0.3, not_hand), armish > 0.5,
                      np.full(len(P), 0.027), (0.12, 0.12, 0.13))
     out["dbelt"] = (np.minimum(waist + 0.03 - z, z - (waist - 0.035)), (arm < 0.3) & (up < 0.3) & (head < 0.3),
-                    np.full(len(P), 0.036), (0.36, 0.22, 0.13))
+                    np.full(len(P), 0.02), (0.36, 0.22, 0.13))
     k_ = (0.10 + 0.085) / max(1e-6, zs - waist)                     # the straps cross: shoulder to the far hip
     xa = 0.10 - (zs - z) * k_
     cross = np.minimum(np.abs(x - xa), np.abs(x + xa)) / math.sqrt(1 + k_ * k_)
     trunk = (arm < 0.3) & (up < 0.6) & (head < 0.3) & (_w(base, ("thigh", "calf")) < 0.3)
     out["dstraps"] = (np.minimum(np.minimum(0.019 - cross, z - (waist + 0.02)), zs + 0.03 - z), trunk,
-                      0.04 + 0.02 * np.clip((z - (zs - 0.13)) / 0.04, 0, 1), (0.23, 0.19, 0.16))   # (over the corselet)
+                      0.024 + 0.016 * np.clip((z - (zs - 0.13)) / 0.04, 0, 1), (0.23, 0.19, 0.16))   # (over the corselet)
     plate_low = np.where(y < yn, zs - 0.085 + 0.05 * np.clip(np.abs(x) / max(sx, 1e-6), 0, 1) ** 2, zs - 0.07)
     out["corselet"] = (np.minimum(np.minimum(z - plate_low, zs + 0.075 - z), (sx + 0.02 - np.abs(x)) * 0.6),
-                       (arm < 0.3) & (head < 0.4), np.full(len(P), 0.046), (0.62, 0.36, 0.22))
+                       (arm < 0.3) & (head < 0.4), np.full(len(P), 0.03), (0.62, 0.36, 0.22))
     if skin_px is not None:                              # the drawers: where the skin picture is painted as cloth
         cloth = skin_px & lower
         if cloth.sum() > 50:
@@ -386,7 +391,7 @@ def extras(fig, wear, outfit, P, Pp, H, arm=None):
         made.append(("neck_ring", "spine_03", ride(np.array(ring)), (0.72, 0.55, 0.22)))
         for nm, front in (("weight_front", True), ("weight_back", False)):
             row = P[chest & (np.abs(P[:, 0]) < 0.07) & (np.abs(P[:, 2] - (zs - 0.15)) < 0.04)]
-            yy = row[:, 1].min() - 0.036 if front else row[:, 1].max() + 0.036
+            yy = row[:, 1].min() - 0.026 if front else row[:, 1].max() + 0.026
             box = [(sa * 0.062, yy + sb * 0.02, zs - 0.15 + sc * 0.048) for sa in (-1, 1) for sb in (-1, 1) for sc in (-1, 1)]
             box += [(sa * 0.055, yy + (-0.028 if front else 0.028), zs - 0.15 + sc * 0.04) for sa in (-1, 1) for sc in (-1, 1)]
             made.append((nm, "spine_03", ride(np.array(box)), (0.52, 0.53, 0.54)))

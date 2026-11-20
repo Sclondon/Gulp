@@ -883,3 +883,13 @@ chest and back weights, belt, knife, lead boots, the helmet apart: Claude's pick
   the air hose; the gathered ankles. Owed on the oilskin outfit: the straps crossing behind with their clips (they
   run straight now), the chest seam and buttons, the jumper's roll neck and cuffs, the cap. The work outfit
   (shirt, dark overalls) has no turnaround sheet yet. Nothing is exported to the game.
+
+## His belly and chest brought in (2026-11-20)
+
+The user: "Seems like his belly and chest stick out a bit too much", then, when Claude took that as the clothes: "No
+his body And i guess by extension his clothes". So in `brother.json` (Claude's amounts, to be confirmed): torso.depth
+1.09 -> 1.03, belly 0.25 -> 0.1, torso-scale-depth 0.6875 -> 0.5, pecs 0.5 -> 0.38. The clothes were also brought
+close on the trunk the same day (suit 2 cm -> 0.8, overalls 3 -> 1.2, jumper 1.3 -> 0.7, corselet, belt and straps
+thinner), and a fault fixed in the overalls' taut front: it took every point in front of the spine as front skin,
+hauled points between the legs 20 cm forward and stood the bib 7 cm off his belly; it now moves only shallow
+hollows (under 5 cm, by at most 2.5).
