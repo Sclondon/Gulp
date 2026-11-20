@@ -279,6 +279,23 @@ def main():
         paint_plain(objs)
         shoot(fig, argv[2], tuple(views) or ("front", "side", "back", "quarter"))
         print("measures:", {k: round(v, 3) for k, v in fig.measures().items()})
+    elif cmd == "turn":                               # -- turn <spec> <frames dir> [count] [--posed]: a turnaround
+        reset()
+        fig = figure_from(base, argv[1])
+        objs, _arm = build(fig, rig=False, posed="--posed" in argv)
+        paint_plain(objs)
+        count = int(argv[3]) if len(argv) > 3 and argv[3].isdigit() else 36
+        centre, _d, seen, _a = view_boxes(fig)["front"][:4]
+        cam = _camera()
+        os.makedirs(argv[2], exist_ok=True)
+        s = _scene((800, 800))
+        for i in range(count):
+            a = 2 * math.pi * i / count
+            _aim(cam, centre, (math.sin(a), math.cos(a), 0), seen)
+            cam.data.sensor_fit = "VERTICAL"
+            cam.data.ortho_scale = seen
+            s.render.filepath = os.path.join(argv[2], "turn_%03d.png" % i)
+            bpy.ops.render.render(write_still=True)
     elif cmd == "sliders":
         out = argv[1]
         os.makedirs(out, exist_ok=True)
