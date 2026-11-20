@@ -440,3 +440,4 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   behind a gap. In the profile overlay the ear is now about half its width forward of the sheet's: the real
   difference is the jaw's (and skull's) depth, not the ear, and is not fixed.
 - The user: "A little more forward and a little lower": `ears.back` 1.6 -> 1.0, `ears.down` -0.3 -> 0.4.
+- The user: "his jaw should be little bit wider as well": `jaw_width` 0.5 -> 0.85.
