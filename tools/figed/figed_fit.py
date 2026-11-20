@@ -91,10 +91,13 @@ def cut_out(img, box, tolerance=0.07):
 class Sampler:
     """Points spread over the body's skin, as fixed mixes of its vertices: quick outlines without a renderer."""
 
-    def __init__(self, base, count=260000, seed=3):
+    def __init__(self, base, count=260000, seed=3, bones=None):
+        near = None
+        if bones:                                     # only the skin that belongs to these bones
+            near = base.weights[:, [base.bones.index(b) for b in bones]].sum(axis=1) > 0.05
         tris = []
         for group, vi, _ti in base.faces:
-            if group == "body":
+            if group == "body" and (near is None or near[vi].any()):
                 for k in range(1, len(vi) - 1):
                     tris.append((vi[0], vi[k], vi[k + 1]))
         t = np.array(tris)
@@ -165,6 +168,39 @@ class View:
         rows = slice(self.top, self.top + max(2, (self.bottom - self.top) // 12))
         cols = np.nonzero(self.mask[rows].any(axis=0))[0]
         self.head_x = (cols.min() + cols.max()) / 2.0
+        # a close-up of the head: the picture's row to compare down to ("cut", in box_width pixels, e.g. just
+        # under the chin); its size against the model is not known, so it is a slider too ("zoom")
+        self.cut = None
+        if "cut" in spec:
+            self.cut = int(round(spec["cut"] * k)) - box[1]
+            self.mask = self.mask.copy()
+            self.mask[self.cut:] = False
+            self.k0 = (self.cut - self.top) / float(spec.get("span", 0.27))
+
+    def draw_head(self, pts, dx=0.0, dy=0.0, zoom=1.0):
+        if self.look == "front":
+            u = pts[:, 0]
+        elif self.look == "back":
+            u = -pts[:, 0]
+        elif self.look == "side":
+            u = -pts[:, 1]
+        else:
+            u = pts[:, 1]
+        v = pts[:, 2]
+        crown = v.max()
+        k = self.k0 * zoom
+        keep = v > crown - (self.cut - self.top + 12) / k
+        u, v = u[keep], v[keep]
+        skull = v > crown - 0.06
+        mid = (u[skull].min() + u[skull].max()) / 2.0
+        ix = np.round(self.head_x + (u - mid) * k + dx).astype(int)
+        iy = np.round(self.top + (crown - v) * k + dy).astype(int)
+        ok = (ix >= 0) & (ix < self.w) & (iy >= 0) & (iy < self.cut)
+        m = np.zeros((self.h, self.w), dtype=bool)
+        m[iy[ok], ix[ok]] = True
+        m = shrink(grow(m, 3), 2)
+        m[self.cut:] = False
+        return m
 
     def draw(self, pts, height, dx=0.0):
         """The model's outline in this view's pixels. pts: Blender metres."""
@@ -207,10 +243,11 @@ class Job:
         self.job = job
         self.base = figed.Base()
         self.sampler = Sampler(self.base)
+        self.head_sampler = Sampler(self.base, 400000, 5, ["head", "neck_01", "spine_03", "clavicle_l", "clavicle_r"])
         self.views = [View(v) for v in job["views"]]
         start = job.get("start")
         self.spec = figed.load_spec(path_of(start)) if start and os.path.exists(path_of(start)) else {}
-        for k in ("macro", "targets", "bones", "pose", "shift"):
+        for k in ("macro", "targets", "bones", "pose", "shift", "zoom", "drop"):
             self.spec.setdefault(k, {})
         self.params = []                              # (section, name, lo, hi, step)
         for section, table in job["move"].items():
@@ -218,7 +255,7 @@ class Job:
                 self.params.append((section, name, lo, hi, step))
                 if name not in self.spec[section]:
                     self.spec[section][name] = job.get("defaults", {}).get(section, {}).get(
-                        name, {"macro": 0.5, "bones": 1.0}.get(section, 0.0))
+                        name, {"macro": 0.5, "bones": 1.0, "zoom": 1.0}.get(section, 0.0))
         self.evals = 0
 
     def figure(self):
@@ -245,7 +282,16 @@ class Job:
         P, H = pose_points(fig, P, H, pose)
         pts = self.sampler.points(P)
         height = pts[:, 2].max()
-        return [v.draw(pts, height, self.spec["shift"].get(v.spec["name"], 0.0)) for v in self.views]
+        head_pts = self.head_sampler.points(P) if any(v.cut is not None for v in self.views) else None
+        out = []
+        for v in self.views:
+            n = v.spec["name"]
+            if v.cut is not None:
+                out.append(v.draw_head(head_pts, self.spec["shift"].get(n, 0.0), self.spec["drop"].get(n, 0.0),
+                                       self.spec["zoom"].get(n, 1.0)))
+            else:
+                out.append(v.draw(pts, height, self.spec["shift"].get(n, 0.0)))
+        return out
 
     def loss(self):
         self.evals += 1
@@ -259,6 +305,13 @@ class Job:
 
     def run(self, sweeps=8):
         steps = {(p[0], p[1]): p[4] for p in self.params}
+        for section, name, lo, hi, _ in self.params:      # the size of a close-up: look over its whole range first
+            if section == "zoom":
+                tries = []
+                for z in np.linspace(lo, hi, 25):
+                    self.spec[section][name] = float(z)
+                    tries.append((self.loss(), float(z)))
+                self.spec[section][name] = min(tries)[1]
         best = self.loss()
         print("start %.4f" % best)
         for sweep in range(sweeps):

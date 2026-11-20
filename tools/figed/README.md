@@ -56,13 +56,19 @@ So a figure is no longer a build script. It is **one generic human plus a table 
 Run with `blender -b --factory-startup --python tools/figed/<file>.py -- ...` (Blender's Python has numpy; this
 machine has no other Python).
 
-## State (2026-11-19)
+## State (2026-11-19, end of the first session)
 
-- The brother's BODY is fitted by the automatic fit alone to the bible's bare sheet (front 0.92, side 0.88, back 0.92
-  overlap, 90 seconds a run). Not right yet: too soft (the outline cannot see muscle definition: the fit drove
-  `muscle` to 0.1), a gap between the thighs, thin shins, the forearm long against the upper arm (an outline cannot
-  see where the elbow is: landmarks are owed), the arm bent forward in the side view.
-- His HEAD and FACE are still the generic man's: the head fit (front and profile outlines of the bare head sheet) is
-  next, then eyes, then the small corrections, paint, hair, a low model, and the others (he is the tallest of the
+- The brother's BODY: fitted by the automatic fit alone to the bible's bare sheet (front 0.92, side 0.88, back 0.92
+  overlap, 90 seconds a run; `figures/brother_body.fit.json`). Not right yet: too soft (an outline cannot see muscle
+  definition: the fit drove `muscle` to 0.1), a gap between the thighs, thin shins, the forearm long against the upper
+  arm (an outline cannot see where the elbow is: landmarks are owed), the arm bent forward in the side view.
+- His HEAD: outline fitted to the shaved head row (front 0.986, profile 0.96; `figures/brother_head.fit.json`; a
+  close-up view has a `cut` row and its size is a slider, `zoom`). An outline says nothing about what is inside it:
+  left alone, the fit gave a sharp-nosed, jowly older man. So nose, cheeks, eyes, brow and mouth were then set BY EYE
+  on the named sliders (Claude's first pass: button nose, full cheeks, downturned eyes with bags, younger). Re-running
+  the head fit would move the nose and chin sliders again: take them out of the job's `move` list first.
+- Owed: landmarks for the fit (elbow, knee, eye, mouth corners), eyes as modelled eyeballs with lids fitted, the small
+  corrections, paint, hair, a low model (27,700 triangles as exported now), and the others (he is the tallest of the
   three, the user, 2026-11-19: size the captain and the boy under him).
+- `-- build` exports a .glb with the 53-bone skeleton and weights (tried; not yet opened in Godot).
 - A candidate for GameCommon (it is not tied to Gulp) once it has made one finished figure.
