@@ -113,6 +113,20 @@
      730,
      555,
      2
+    ],
+    [
+     240,
+     340,
+     335,
+     500,
+     4
+    ],
+    [
+     495,
+     340,
+     590,
+     500,
+     4
     ]
    ]
   },
@@ -271,6 +285,20 @@
      1945,
      565,
      2
+    ],
+    [
+     1442,
+     345,
+     1537,
+     505,
+     4
+    ],
+    [
+     1697,
+     345,
+     1792,
+     505,
+     4
     ]
    ]
   },
@@ -600,7 +628,7 @@
     0.08
    ],
    "spine_03.flesh_width": [
-    0.9,
+    0.7,
     1.4,
     0.05
    ],
@@ -623,6 +651,11 @@
     0.6,
     1.5,
     0.06
+   ],
+   "spine_02.flesh_width": [
+    0.7,
+    1.4,
+    0.05
    ]
   },
   "targets": {
@@ -851,5 +884,6 @@
  "regions_about": "Regions (round five): the two arms from shoulder to wrist in the front and back views, and the front of the chest in the side view (the pecs' profile).",
  "head_place": "Round six: the shaved sheet side view lines up by the FEET and scores its legs as well as its head and neck, so where the head sits over the body is compared (lined up by the head, a head carried too far forward could not be seen). head-trans-forward and neck-trans-forward move.",
  "calves_feet": "Round seven: the calves are set by eye (the user asked for them a tad bigger and more toned than the fit gave), so calf sliders do not move here. foot.length is gone: it scaled along a bone that runs down and forward from the ankle, which dropped the heel and scrunched the toes; the foot is sized by MakeHuman foot targets and toes.length instead.",
- "arms_straight": "Round nine: pose arms_straight 1 (not moved) lays the forearm in line with the upper arm for every view; the common elbows slider is out. Without it the rest pose bent elbow foreshortened the forearm in the front view and the fit made the forearms half as long again."
+ "arms_straight": "Round nine: pose arms_straight 1 (not moved) lays the forearm in line with the upper arm for every view; the common elbows slider is out. Without it the rest pose bent elbow foreshortened the forearm in the front view and the fit made the forearms half as long again.",
+ "armpits": "Round ten: regions over the gap between each arm and the side of the trunk (armpit to waist), front and back, weight 4: with the arms out, the arm hid the side of the rib cage and the fit let it flare."
 }

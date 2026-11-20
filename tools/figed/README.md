@@ -182,6 +182,18 @@ The user: "lets do around focusing on his pecs, shoulders and hands, he should h
   at 51% of his height and the fingertips at 43% (they were at 47% and 37%). Marks within 0.1 to 1.6%; outline
   front 0.91, side 0.92, back 0.92. **Check any figure with its arms hung straight before trusting arm lengths**
   (the probe prints the three lengths and where the joints reach).
+- Round ten. The user asked to pose him ("let me pose him for you"): `-- build` to `work/<name>.blend` (ignored by
+  git), opened with `pose_session.py` (skeleton selected, Pose Mode); `-- read <out.json>` writes a saved pose out.
+  Raising an arm there showed what the arms-out sheet hides: "his rib cage area is too enlarged" (the side of the
+  trunk under the armpit flared, where the bible's drops nearly straight to the waist). The body job now has regions
+  over the gap between each arm and the trunk (armpit to waist, front and back, weight 4) and may move
+  `spine_02.flesh_width` / `spine_03.flesh_width`; the fit narrowed the upper trunk (`spine_03.width` 1.26 -> 1.14,
+  `shoulder_width` -0.47 -> -0.84) and the outline rose to front 0.94, back 0.94, side 0.92. **Look at a figure with
+  its arms raised as well as hung**: each pose hides something.
+  Also the user: "his crotch is too small": `bulge` 2.0 (MakeHuman's smooth mound for under clothes; by eye).
+- The skeleton is MakeHuman's "game engine" rig: Unreal's mannequin layout and names, 53 bones, no twist or face
+  bones. It is NOT the shared boy's skeleton (GameCommon's character controller): his clips need retargeting, or
+  this body moving to his skeleton. Not decided; the user's call before a figure goes into a game.
 - Still not right: the toes are thin beside the bible's broad ones and the feet point straight ahead (the bible's
   turn out; `feet_out` is only a pose); the arms are thick but tube-like (no biceps or triceps bulge, no forearm swell by the elbow as the
   bible paints them); the back is smooth (no shoulder blades, spine furrow or lats as the bible paints them), the pecs
