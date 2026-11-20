@@ -63,11 +63,18 @@ def rules(fig, P, H, skin_px=None):
     # the upper chest between broad straps with straight inner edges; a wide band round every edge)
     line = np.where(y < yn, zs + 0.012, zs + 0.045)      # the neckline height: front, back (5 cm lower showed half the chest)
     # ("and not quite so square": the corners rounded 3.5 cm and the line dipping 1 cm in the middle)
-    line = line - 0.01 * np.clip(1 - (x / 0.078) ** 2, 0, 1)
-    ia, ib, rc = 0.078 - np.abs(x), z - line, 0.035      # how far inside the opening, from its side and its bottom
+    # (then: "now its not square enough": corners 1.5 cm, the dip 3 mm)
+    line = line - 0.003 * np.clip(1 - (x / 0.078) ** 2, 0, 1)
+    ia, ib, rc = 0.078 - np.abs(x), z - line, 0.015      # how far inside the opening, from its side and its bottom
     corner = np.sqrt(np.maximum(rc - ia, 0) ** 2 + np.maximum(rc - ib, 0) ** 2) - rc
     neck = np.where((ia < rc) & (ib < rc), corner, -np.minimum(ia, ib)) / 0.05     # > 0 outside the opening
-    INFO["strap_from"] = float(zs + 0.012)               # above this the vest is only its straps
+    # how far each point is from the armhole's edge, along the line from the armhole's middle (metres): the band
+    # runs ALL THE WAY ROUND the armhole at the strap's width (the user's red line: "It should run all the way
+    # round the arm whole")
+    hx, hz = np.abs(x) - (sx + 0.05), z - (zs - 0.01)
+    rho = np.sqrt(hx ** 2 + hz ** 2)
+    INFO["hole_d"] = rho * (1 - 1 / np.sqrt(np.maximum((hx / 0.092) ** 2 + (hz / 0.175) ** 2, 1e-9)))
+    INFO["band_wide"] = float((sx + 0.05 - 0.092) - 0.078)        # the strap's width at the shoulder
     hole = ((np.abs(x) - (sx + 0.05)) / 0.092) ** 2 + ((z - (zs - 0.01)) / 0.175) ** 2 - 1
     nip = figed_fit.mark_vertices(base)["nipple_l"]       # the armhole must clear the nipple (the user: "It needs to
     print("vest: armhole rule at the nipple %.2f (covered when well over 0)" % hole[nip])   # cover up his nips")
@@ -294,6 +301,8 @@ def paint(fig, outfit, name, R, P, path, skin_path=None):
     across = np.zeros((SIZE, SIZE))                      # each texel's place across the body, for ribbing
     upward = np.zeros((SIZE, SIZE))
     edge = np.full((SIZE, SIZE), 1.0)                    # each texel's distance in from the garment's edge (about m)
+    hole_d = np.full((SIZE, SIZE), 1.0)                  # ... and from the armhole's edge
+    per_point = INFO.get("hole_d") if name == "tank" else None
     uvs = np.array(base.uvs)
     for group, vi, ti in base.faces:
         if group != "body" or min(ti) < 0 or not all(may[v] for v in vi) or max(f[v] for v in vi) <= -0.03:
@@ -323,6 +332,9 @@ def paint(fig, outfit, name, R, P, path, skin_path=None):
             across[gy[ins].astype(int), gx[ins].astype(int)] = pos[:, 0]
             upward[gy[ins].astype(int), gx[ins].astype(int)] = pos[:, 2]
             edge[gy[ins].astype(int), gx[ins].astype(int)] = np.stack([b0[ins], b1[ins], b2[ins]], axis=1).dot(f[tri])
+            if per_point is not None:
+                hole_d[gy[ins].astype(int), gx[ins].astype(int)] = np.stack(
+                    [b0[ins], b1[ins], b2[ins]], axis=1).dot(per_point[tri])
     if outfit[name].get("paint") == "shade" and skin_path:
         # Thin tight cloth: its light and shade is the BODY's under it (the user: "the texture needs to frame his
         # pecs"). The skin picture's own painted shading, blurred so hair and marks do not show, lightens and
@@ -348,11 +360,13 @@ def paint(fig, outfit, name, R, P, path, skin_path=None):
         BIND = outfit[name].get("bind", 0.013)
         # the straps ARE the band (the user: "the stiching border should make up the straps"): above the neckline
         # all of the cloth is band, joined to the ribbed body by a seam straight across
-        strap = upward > INFO.get("strap_from", 9.0)
+        wide = INFO.get("band_wide", 0.0)
+        strap = hole_d < wide                              # the broad band round the armhole (the straps are in it)
         band = (edge < BIND) | strap
         tex[band] = np.clip(base_col * outfit[name].get("bind_shade", 0.97) * form[band][:, None], 0, 1)
-        seam = ((np.abs(edge - BIND) < 0.0012) & ~strap) | (
-            (np.abs(upward - INFO.get("strap_from", 9.0)) < 0.0012) & (edge > BIND * 0.3))
+        seam = ((np.abs(edge - BIND) < 0.0012) & ~strap) | (np.abs(hole_d - wide) < 0.0012)
+        inner = (np.abs(hole_d - (wide - 0.006)) < 0.0009) & (np.sin((across + upward) * 2 * np.pi / 0.007) > -0.2)
+        tex[inner] = tex[inner] * 0.62                     # a row of stitches along the band's inner edge
         tex[seam] = tex[seam] * 0.72
         dash = np.sin((across + upward) * 2 * np.pi / 0.007) > -0.2
         stitch = (np.abs(edge - BIND * 0.55) < 0.0009) & dash

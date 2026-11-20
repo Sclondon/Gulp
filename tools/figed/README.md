@@ -765,3 +765,10 @@ cuffs and braces hanging at the hips: `tools/art_src/concept_brother_bible_outfi
   (`INFO["strap_from"]`, set by `rules()` for `paint()`) all of the shirt is band: plain, a shade darker, stitched
   along both edges, joined to the ribbed body by a seam straight across. The neck opening's corners are rounded
   3.5 cm and its line dips 1 cm in the middle (a rounded-box rule in place of the hard square); half-width 0.078.
+- The user, with red lines drawn on the render (`tools/art_src/user_brother_shirt_band_lines.jpg`: from each
+  strap's inner edge straight down, then curving out under the armhole to the side): "It should run all the way
+  round the arm whole, and now its not square enough". The band is now everything within the strap's width of the
+  ARMHOLE's edge (`INFO["hole_d"]`: each point's distance from the armhole ellipse along the line from its middle;
+  `INFO["band_wide"]`: the strap's width at the shoulder, about 7 cm), so the straps are the top of one broad band
+  that carries on round under the arm, front and back, with a seam and a row of stitches along its inner edge.
+  The neck's corners are back to 1.5 cm and its dip to 3 mm.
