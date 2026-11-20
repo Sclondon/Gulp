@@ -83,6 +83,11 @@ else:                                                  # in a window, on a file 
         if brush:
             bpy.context.scene.tool_settings.unified_paint_settings.size = 110      # about an ear across at this zoom
             brush.strength = 1.0
+        try:                                           # so the user's first Ctrl+Z cannot undo the brush itself
+            with bpy.context.temp_override(window=bpy.context.window, area=area, region=region):
+                bpy.ops.ed.undo_push(message="figed sculpt start")
+        except Exception as e:
+            print("undo push:", e)
         return None
 
     bpy.app.timers.register(setup, first_interval=0.8)
