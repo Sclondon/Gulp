@@ -6,45 +6,47 @@
   "calf.length": 0.825,
   "calf.width": 1.03,
   "clavicle.length": 1.1,
-  "fingers.girth": 1.2,
-  "fingers.length": 0.97,
+  "fingers.girth": 1.28,
+  "fingers.length": 0.91,
   "foot.width": 1.05,
-  "hand.length": 0.85,
-  "hand.size": 0.9375,
-  "hand.width": 1.04,
-  "head.size": 1.0156,
-  "lowerarm.girth": 1.4375,
-  "lowerarm.length": 0.915,
+  "hand.length": 0.7,
+  "hand.size": 1.1625,
+  "hand.width": 0.88,
+  "head.size": 1.0406,
+  "lowerarm.girth": 1.2311,
+  "lowerarm.length": 0.96,
   "neck.depth": 1.02,
-  "neck.flesh_width": 1.03,
-  "neck.girth": 1.315,
-  "neck.length": 0.79,
-  "pelvis.depth": 1.04,
-  "pelvis.flesh_depth": 0.775,
-  "pelvis.flesh_width": 1.1387,
-  "pelvis.length": 0.955,
-  "pelvis.width": 0.8938,
-  "spine_01.depth": 1.135,
-  "spine_01.length": 0.985,
-  "spine_01.width": 1.165,
-  "spine_02.depth": 1.18,
-  "spine_02.length": 0.64,
-  "spine_02.width": 1.18,
+  "neck.flesh_width": 1.15,
+  "neck.girth": 1.295,
+  "neck.length": 0.95,
+  "pelvis.depth": 0.98,
+  "pelvis.flesh_depth": 0.91,
+  "pelvis.flesh_width": 1.1237,
+  "pelvis.length": 0.895,
+  "pelvis.width": 1.04,
+  "spine_01.depth": 1.09,
+  "spine_01.length": 1.255,
+  "spine_01.width": 1.045,
+  "spine_02.depth": 1.06,
+  "spine_02.flesh_width": 1.025,
+  "spine_02.length": 0.97,
+  "spine_02.width": 1.195,
   "spine_03.flesh_width": 1.1375,
-  "spine_03.width": 1.14,
-  "thigh.depth": 1.16,
-  "thigh.flesh_width": 0.865,
-  "thigh.girth": 1.1125,
+  "spine_03.width": 1.18,
+  "thigh.depth": 1.06,
+  "thigh.flesh_width": 0.855,
+  "thigh.girth": 1.0625,
   "thigh.length": 0.7875,
-  "thigh.width": 0.9887,
-  "thumb.girth": 1.52,
-  "thumb.length": 1.09,
+  "thigh.width": 1.0337,
+  "thumb.girth": 1.8,
+  "thumb.length": 0.82,
   "toes.length": 1.3,
   "torso.depth": 1.09,
   "torso.width": 0.96,
-  "upperarm.depth": 1.25,
-  "upperarm.girth": 1.0125,
-  "upperarm.length": 0.9425
+  "upperarm.depth": 1.3125,
+  "upperarm.girth": 0.85,
+  "upperarm.length": 1.0625,
+  "upperarm.width": 1.15
  },
  "drop": {
   "head_front": 3.75,
@@ -53,35 +55,322 @@
  "macro": {
   "muscle": 0.85,
   "proportions": 0.40625,
-  "weight": 0.44999999999999996
+  "weight": 0.6
  },
  "pose": {
-  "arms_back": -2.875,
-  "arms_back@side": -13.75,
-  "arms_down": 9,
-  "arms_down@bare_side": 60,
-  "arms_down@side": 5,
-  "arms_straight": 1,
-  "elbows": 0,
-  "elbows@side": 0,
-  "elbows_out": 8,
-  "feet_out": 10,
-  "legs_apart": -3.125,
-  "thumb_flat": -6,
-  "thumb_out": -10
+  "arms_back": 12,
+  "arms_down": 6,
+  "ball_l": [
+   [
+    0.984671,
+    -0.143364,
+    -0.099347
+   ],
+   [
+    0.140501,
+    0.989452,
+    -0.035269
+   ],
+   [
+    0.103356,
+    0.02077,
+    0.994428
+   ]
+  ],
+  "ball_r": [
+   [
+    0.984671,
+    0.143364,
+    0.099347
+   ],
+   [
+    -0.140501,
+    0.989452,
+    -0.035269
+   ],
+   [
+    -0.103356,
+    0.02077,
+    0.994428
+   ]
+  ],
+  "clavicle_l": [
+   [
+    0.985336,
+    -0.072138,
+    -0.154623
+   ],
+   [
+    0.072646,
+    0.997355,
+    -0.002368
+   ],
+   [
+    0.154385,
+    -0.0089,
+    0.987971
+   ]
+  ],
+  "clavicle_r": [
+   [
+    0.992771,
+    0.045665,
+    0.111001
+   ],
+   [
+    -0.045331,
+    0.998957,
+    -0.005533
+   ],
+   [
+    -0.111138,
+    0.000461,
+    0.993805
+   ]
+  ],
+  "feet_out": 9.0,
+  "foot_l": [
+   [
+    0.989092,
+    -0.095956,
+    -0.111758
+   ],
+   [
+    0.097959,
+    0.995111,
+    0.012553
+   ],
+   [
+    0.110008,
+    -0.023364,
+    0.993656
+   ]
+  ],
+  "foot_r": [
+   [
+    0.994192,
+    0.063585,
+    0.086825
+   ],
+   [
+    -0.059259,
+    0.996912,
+    -0.05152
+   ],
+   [
+    -0.089833,
+    0.046075,
+    0.994891
+   ]
+  ],
+  "hand_l": [
+   [
+    0.785644,
+    0.156988,
+    -0.59843
+   ],
+   [
+    -0.417526,
+    0.848326,
+    -0.325601
+   ],
+   [
+    0.456548,
+    0.505666,
+    0.732028
+   ]
+  ],
+  "hand_r": [
+   [
+    0.785644,
+    -0.156988,
+    0.59843
+   ],
+   [
+    0.417526,
+    0.848326,
+    -0.325601
+   ],
+   [
+    -0.456548,
+    0.505666,
+    0.732028
+   ]
+  ],
+  "head": [
+   [
+    0.999239,
+    0.037551,
+    -0.01051
+   ],
+   [
+    -0.038653,
+    0.989415,
+    -0.139869
+   ],
+   [
+    0.005146,
+    0.140169,
+    0.990114
+   ]
+  ],
+  "lean": 0,
+  "legs_apart": -4.0,
+  "lowerarm_l": [
+   [
+    0.911772,
+    -0.388062,
+    0.134458
+   ],
+   [
+    0.395403,
+    0.917952,
+    -0.031948
+   ],
+   [
+    -0.111028,
+    0.082295,
+    0.990404
+   ]
+  ],
+  "lowerarm_r": [
+   [
+    0.911772,
+    0.388062,
+    -0.134458
+   ],
+   [
+    -0.395403,
+    0.917952,
+    -0.031948
+   ],
+   [
+    0.111028,
+    0.082295,
+    0.990404
+   ]
+  ],
+  "neck_01": [
+   [
+    0.999342,
+    -0.035924,
+    0.004963
+   ],
+   [
+    0.03497,
+    0.990845,
+    0.130394
+   ],
+   [
+    -0.009602,
+    -0.130134,
+    0.99145
+   ]
+  ],
+  "spine_01": [
+   [
+    0.999838,
+    -0.011711,
+    0.013667
+   ],
+   [
+    0.010711,
+    0.99741,
+    0.071118
+   ],
+   [
+    -0.014465,
+    -0.070961,
+    0.997374
+   ]
+  ],
+  "spine_02": [
+   [
+    0.999947,
+    0.008201,
+    -0.006142
+   ],
+   [
+    -0.008803,
+    0.994389,
+    -0.105415
+   ],
+   [
+    0.005243,
+    0.105463,
+    0.994409
+   ]
+  ],
+  "spine_03": [
+   [
+    0.999858,
+    -0.005521,
+    0.015949
+   ],
+   [
+    0.005151,
+    0.999719,
+    0.023122
+   ],
+   [
+    -0.016073,
+    -0.023036,
+    0.999605
+   ]
+  ],
+  "thumb_flat": -36,
+  "thumb_out": -20,
+  "upperarm_l": [
+   [
+    0.970936,
+    0.031015,
+    0.237321
+   ],
+   [
+    -0.027243,
+    0.999445,
+    -0.019157
+   ],
+   [
+    -0.237783,
+    0.012135,
+    0.971242
+   ]
+  ],
+  "upperarm_r": [
+   [
+    0.970936,
+    -0.031015,
+    -0.237321
+   ],
+   [
+    0.027243,
+    0.999445,
+    -0.019157
+   ],
+   [
+    0.237783,
+    0.012135,
+    0.971242
+   ]
+  ]
  },
+ "pose_about": "The comparison pose, set by hand by the user in Blender (2026-11-19) to stand as the bible's body sheets do: a turn per bone, in the model's own axes (pose_session.py -- read).",
  "posture": {
   "pelvis_tuck": 7
  },
  "shift": {
-  "back": -2,
-  "bare_back": -0.75,
-  "bare_front": 0.5,
-  "bare_side": 8.25,
-  "front": 1.375,
-  "hand_back": -6,
-  "hand_palm": 12,
-  "side": 9.75
+  "armless_back": -7.5,
+  "armless_front": 7.5,
+  "armless_side": 14,
+  "back": -7,
+  "bare_back": -1.25,
+  "bare_front": 2.0,
+  "bare_side": 9.75,
+  "front": 6.375,
+  "hand_back": -2,
+  "hand_palm": -4,
+  "side": 6.75
  },
  "smooth": [
   {
@@ -92,14 +381,14 @@
  ],
  "targets": {
   "ankle": 0.5875,
-  "belly": 0.3,
-  "belly_tone": -0.1875,
-  "breast-point": -0.25,
-  "breast-trans-up": 0.375,
-  "breast-volume-vert-up": 0.125,
+  "belly": 0.375,
+  "belly_tone": -0.0625,
+  "breast-point": -0.125,
+  "breast-trans-up": 0.25,
   "brow_angle": -0.3,
   "brow_forward": -1,
   "brow_height": -0.2,
+  "bulge": 2,
   "buttocks": 1,
   "calf": 0.1625,
   "cheek-inner": 0.15,
@@ -117,9 +406,9 @@
   "eye_bags": 0.8,
   "eye_outer_corner_up": -0.9,
   "eye_size": 0.9,
-  "finger_length": -0.0625,
-  "finger_spread": 0.25,
-  "finger_thickness": 0.625,
+  "finger_length": -1.25,
+  "finger_spread": 2,
+  "finger_thickness": -1,
   "foot-scale-depth": -0.5,
   "foot-scale-horiz": 0.4375,
   "forehead-trans-forward": -0.4,
@@ -127,16 +416,16 @@
   "head-fat": -0.2,
   "head_depth": -0.0375,
   "head_height": 0.25,
-  "head_width": 0.4,
+  "head_width": 0.275,
   "hip-scale-depth": -0.25,
-  "hip-waist-up": 0.1875,
-  "hips": 0.125,
+  "hip-waist-up": 0.3125,
+  "hips": 0.5,
   "jaw_width": 0.1,
-  "knee": 0.6625,
-  "lats": 0.0938,
+  "knee": 0.7875,
+  "lats": -0.1562,
   "leg-valgus": -0.0312,
   "lowerarm-fat": 0.2812,
-  "lowerarm-muscle": 0.1562,
+  "lowerarm-muscle": 0.0312,
   "lowerleg-fat": 0.4,
   "lowerleg-muscle": 0.6,
   "mouth-angles-up": 0.45,
@@ -148,8 +437,8 @@
   "neck-back-scale-depth": -0.4,
   "neck-scale-depth": 0.1,
   "neck-scale-horiz": -0.1,
-  "neck-trans-forward": -0.125,
-  "neck_thickness": 0.25,
+  "neck-trans-forward": -0.375,
+  "neck_thickness": 0.375,
   "nipple-point": -0.25,
   "nipple-size": -1.5,
   "nose-base-up": -0.6,
@@ -168,25 +457,27 @@
   "pecs": 0.5,
   "ribs": 0.1875,
   "shoulder_muscle": 1.5,
-  "shoulder_width": -0.8438,
-  "stomach-navel-up": -0.25,
+  "shoulder_width": -0.5938,
+  "stomach-navel-up": -0.125,
   "stomach-tone": -0.0625,
   "thigh_thickness": -0.0938,
   "torso-scale-depth": 0.6875,
-  "torso_length": -0.3125,
-  "upper_arm_thickness": 1.6875,
-  "upperarm-fat": -0.25,
-  "upperarm-muscle": -0.2812,
-  "waist": 0.375,
+  "torso_length": -0.5625,
+  "upper_arm_thickness": 1.0625,
+  "upperarm-fat": -0.5,
+  "upperarm-muscle": 0.2188,
+  "waist": 0.25,
   "waist_to_hip": -0.125,
-  "wrist": 1.1875,
-  "bulge": 2
+  "wrist": 1.1875
  },
  "zoom": {
-  "back": 0.9708333333333333,
-  "front": 0.9766666666666667,
-  "hand_back": 0.9966666666666671,
-  "hand_palm": 0.9983333333333334,
-  "side": 0.9854166666666667
+  "armless_back": 0.9679166666666666,
+  "armless_front": 0.9679166666666666,
+  "armless_side": 0.985,
+  "back": 0.9700000000000001,
+  "front": 0.9758333333333333,
+  "hand_back": 0.9999999999999999,
+  "hand_palm": 1.016666666666667,
+  "side": 0.9958333333333332
  }
 }

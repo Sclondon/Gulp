@@ -18,7 +18,10 @@ if argv[:1] == ["read"]:
         q = b.matrix_basis.to_quaternion()
         loc = b.matrix_basis.to_translation()
         if abs(q.w) < 0.99999 or loc.length > 1e-5:
-            out[b.name] = {"quat": [round(v, 5) for v in q], "loc": [round(v, 5) for v in loc]}
+            rest = b.bone.matrix_local.to_3x3()         # the same turn about the bone's head in the model's own axes:
+            turn = rest @ b.matrix_basis.to_3x3() @ rest.inverted()   # what a spec's "pose" takes for a bone
+            out[b.name] = {"quat": [round(v, 5) for v in q], "loc": [round(v, 5) for v in loc],
+                           "turn": [[round(v, 6) for v in row] for row in turn]}
     with open(argv[1], "w") as f:
         json.dump(out, f, indent=1)
     print("posed bones:", len(out), sorted(out))

@@ -91,13 +91,13 @@ def cut_out(img, box, tolerance=0.07):
 class Sampler:
     """Points spread over the body's skin, as fixed mixes of its vertices: quick outlines without a renderer."""
 
-    def __init__(self, base, count=260000, seed=3, bones=None):
+    def __init__(self, base, count=260000, seed=3, bones=None, skip=None):
         near = None
         if bones:                                     # only the skin that belongs to these bones
             near = base.weights[:, [base.bones.index(b) for b in bones]].sum(axis=1) > 0.05
         tris = []
         for group, vi, _ti in base.faces:
-            if group == "body" and (near is None or near[vi].any()):
+            if group == "body" and (near is None or near[vi].any()) and not (skip is not None and skip[list(vi)].any()):
                 for k in range(1, len(vi) - 1):
                     tris.append((vi[0], vi[k], vi[k + 1]))
         t = np.array(tris)
@@ -113,6 +113,23 @@ class Sampler:
 
     def points(self, P):
         return (P[self.tri] * self.w[:, :, None]).sum(axis=1)
+
+
+def armless_mask(base, cut=0.3):
+    """The points of the arms, for drawing the body without them (a sheet drawn armless shows the trunk's sides):
+    everything from `cut` of the way down the upper arm, so a stump of shoulder stays as such sheets draw it."""
+    fig = figed.Figure(base, {})
+    fig.solve()
+    skip = np.zeros(len(base.verts), dtype=bool)
+    for s in "lr":
+        lower = [i for i, b in enumerate(base.bones) if b.endswith("_" + s) and b.split("_")[0] in (
+            "lowerarm", "hand", "thumb", "index", "middle", "ring", "pinky")]
+        low = base.weights[:, lower].sum(axis=1)
+        up = base.weights[:, base.bones.index("upperarm_" + s)]
+        a, b = fig.heads["upperarm_" + s], fig.heads["lowerarm_" + s]
+        t = (base.verts - a).dot(b - a) / (b - a).dot(b - a)
+        skip |= (low > 0.5) | ((up + low > 0.4) & (t > cut))
+    return skip
 
 
 # Where the parts are: marks a drawing can show, and what each is on the model. "joint" = a bone head,
@@ -166,6 +183,19 @@ def about(axis, degrees):
     return np.eye(3) + np.sin(t) * K + (1 - np.cos(t)) * K.dot(K)
 
 
+def as_turn(v):
+    """A pose value (degrees about x, y, z, or a whole turn) as a matrix."""
+    if np.shape(v) == (3, 3):
+        return np.asarray(v, dtype=float)
+    x, y, z = v
+    return about(np.array([0, 0, 1.0]), z).dot(about(np.array([0, 1.0, 0]), y)).dot(about(np.array([1.0, 0, 0]), x))
+
+
+def turn_more(pose, bone, euler):
+    """A slider's turn laid over whatever the pose already has for the bone (a pose set by hand, say)."""
+    pose[bone] = as_turn(euler).dot(as_turn(pose[bone])) if bone in pose else as_turn(euler)
+
+
 def full_pose(spec_pose, bones, H=None, T=None):
     """The pose sliders of a spec as turns of bones."""
     pose = {b: v for b, v in spec_pose.items() if b in bones}
@@ -178,14 +208,12 @@ def full_pose(spec_pose, bones, H=None, T=None):
                 about(f, sign * spec_pose.get("thumb_flat", 0.0)))
     if "arms_down" in spec_pose:
         a = spec_pose["arms_down"]
-        pose["upperarm_l"] = (0, a, 0)
-        pose["upperarm_r"] = (0, -a, 0)
+        turn_more(pose, "upperarm_l", (0, a, 0))
+        turn_more(pose, "upperarm_r", (0, -a, 0))
     if "arms_back" in spec_pose:
         a = spec_pose["arms_back"]
-        l = pose.get("upperarm_l", (0, 0, 0))
-        r = pose.get("upperarm_r", (0, 0, 0))
-        pose["upperarm_l"] = (l[0], l[1], a)
-        pose["upperarm_r"] = (r[0], r[1], -a)
+        turn_more(pose, "upperarm_l", (0, 0, a))
+        turn_more(pose, "upperarm_r", (0, 0, -a))
     if "elbows" in spec_pose:
         a = spec_pose["elbows"]
         pose["lowerarm_l"] = (a, 0, 0)
@@ -204,18 +232,18 @@ def full_pose(spec_pose, bones, H=None, T=None):
             if "elbows_out" in spec_pose:               # the forearm angled away from the body, seen from the front
                 R = about(np.array([0, 1.0, 0]), spec_pose["elbows_out"] * (-1 if side == "l" else 1)).dot(R)
             pose["lowerarm_" + side] = R
+    if "lean" in spec_pose:                        # the trunk tipped forward (+) or back from the waist
+        turn_more(pose, "spine_01", (-spec_pose["lean"], 0, 0))
     if "legs_apart" in spec_pose:                  # the stance; the feet stay flat
         a = spec_pose["legs_apart"]
-        pose["thigh_l"] = (0, -a, 0)
-        pose["thigh_r"] = (0, a, 0)
-        pose["foot_l"] = (0, a, 0)
-        pose["foot_r"] = (0, -a, 0)
+        turn_more(pose, "thigh_l", (0, -a, 0))
+        turn_more(pose, "thigh_r", (0, a, 0))
+        turn_more(pose, "foot_l", (0, a, 0))
+        turn_more(pose, "foot_r", (0, -a, 0))
     if "feet_out" in spec_pose:                    # toes turned out
         a = spec_pose["feet_out"]
-        l = pose.get("foot_l", (0, 0, 0))
-        r = pose.get("foot_r", (0, 0, 0))
-        pose["foot_l"] = (l[0], l[1], a)
-        pose["foot_r"] = (r[0], r[1], -a)
+        turn_more(pose, "foot_l", (0, 0, a))
+        turn_more(pose, "foot_r", (0, 0, -a))
     return pose
 
 
@@ -414,6 +442,7 @@ class Job:
         self.mark_idx = mark_vertices(self.base)
         self.where = {}                               # view name -> {mark: xyz} as last drawn
         self.hand_samplers = {}
+        self.armless = None                           # a sampler of the body without its arms, when a view asks
 
     def marks_3d(self, P, posed):
         out = {}
@@ -451,6 +480,11 @@ class Job:
                 own[n] = self.sampler.points(Pv)
                 self.where[n] = self.marks_3d(Pv, posed_v)
         head_pts = self.head_sampler.points(P) if any(v.cut is not None for v in self.views) else None
+        bare = None
+        if any(v.spec.get("armless") for v in self.views):
+            if self.armless is None:
+                self.armless = Sampler(self.base, 260000, 11, skip=armless_mask(self.base, self.job.get("armless_cut", 0.3)))
+            bare = self.armless.points(P)
         hands = {}
         for v in self.views:
             s = v.spec.get("hand", "l")
@@ -468,14 +502,15 @@ class Job:
                 out.append(v.draw_head(head_pts, self.spec["shift"].get(n, 0.0), self.spec["drop"].get(n, 0.0),
                                        self.spec["zoom"].get(n, 1.0)))
             else:
-                out.append(v.draw(own.get(n, pts), height, self.spec["shift"].get(n, 0.0), self.spec["zoom"].get(n, 1.0)))
+                body = bare if v.spec.get("armless") else own.get(n, pts)
+                out.append(v.draw(body, height, self.spec["shift"].get(n, 0.0), self.spec["zoom"].get(n, 1.0)))
         return out
 
     def loss(self):
         self.evals += 1
         total, weight = 0.0, 0.0
         for v, m in zip(self.views, self.outlines()):
-            total += (1 - v.score(m)) * v.weight
+            total += (1 - v.score(m)) * v.weight * v.spec.get("outline_weight", 1.0)   # 0: a view kept for its marks
             total += v.mark_error(self.where.get(v.spec["name"], {}))[0] * self.job.get("marks_weight", 25.0) * v.weight
             weight += v.weight
         reg = sum(x * x for x in self.spec["targets"].values()) * self.job.get("stiffness", 0.0015)

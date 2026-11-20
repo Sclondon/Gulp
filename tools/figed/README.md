@@ -191,6 +191,32 @@ The user: "lets do around focusing on his pecs, shoulders and hands, he should h
   `shoulder_width` -0.47 -> -0.84) and the outline rose to front 0.94, back 0.94, side 0.92. **Look at a figure with
   its arms raised as well as hung**: each pose hides something.
   Also the user: "his crotch is too small": `bulge` 2.0 (MakeHuman's smooth mound for under clothes; by eye).
+- Round eleven, the full body run. The user added two sheets to his bible and a pose: "I made a version without the
+  arms so you can see the body sillouhette clearly, and have updated the pose sou can accurately compare them. One
+  thing to note is in the character bible his right looking pose arms are not spread like the straight on one, so I
+  also made a arms sheet to compare to, and only compare his arms in the face on or back pose."
+  - `tools/art_src/concept_brother_bible_armless.jpg` (front, side, back without arms, plus a view from above and one
+    from below, not yet used) and `concept_brother_bible_arms.jpg` (five views of the arm; six of the hand).
+  - **Armless views**: a view with `"armless": true` is compared with the model drawn without its arms
+    (`armless_mask`, cut `armless_cut` of the way down the upper arm, 0.45, so a stump stays as drawn). The trunk and
+    legs are fitted to these three (weight 1.5 each).
+  - **Arms only front and back**: the main body sheet's front and back views stay for the arms (weight 0.6, with their
+    regions and marks); its side view, where the arm hangs, is kept for its marks only (`"outline_weight": 0`).
+  - **The comparison pose is the user's**, set by hand in Blender and read by `pose_session.py -- read` (a `turn`
+    per bone, stored as the spec's `pose`). Pose sliders (`arms_down`, `arms_back`, `legs_apart`, `feet_out`, new
+    `lean`) now lay small corrections OVER it (`turn_more`) instead of replacing a bone's turn; `arms_straight` and
+    the thumb sliders are not used with it.
+  - A region over the gap between the thighs (shorts' hem to the knees, armless front and back, weight 5): without
+    it the thighs grew together.
+  - Hands refitted to the arms sheet's palm and back views (`brother_hands.fit.json`; 0.83 and 0.82). The older
+    `concept_brother_hands.jpg` is retired.
+  - `arm_widths.py` + `figures/brother_arms.measure.json` measure the arm's width and depth at stations from shoulder
+    to wrist on the arms sheet and on the model. **The two sheets disagree**: the arms sheet's arm is about a
+    quarter thicker for its length than the body sheet's front and back views allow (model / drawing 0.71 to 0.86
+    wide, 0.75 to 1.0 deep after the fit). The model follows the body sheet for now; which sheet rules is the
+    user's call (asked 2026-11-19).
+  After: armless front 0.93, side 0.90, back 0.93; main sheet front 0.93, back 0.93; marks within 0.3 to 2.2% (the
+  elbows worst). Arms hung straight: upper arm 17.3% of his height, forearm 16.2%, hand 10.1%, fingertips at 42%.
 - The skeleton is MakeHuman's "game engine" rig: Unreal's mannequin layout and names, 53 bones, no twist or face
   bones. It is NOT the shared boy's skeleton (GameCommon's character controller): his clips need retargeting, or
   this body moving to his skeleton. Not decided; the user's call before a figure goes into a game.

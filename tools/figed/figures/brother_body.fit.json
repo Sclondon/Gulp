@@ -3,9 +3,154 @@
  "start": "tools/figed/figures/brother.json",
  "out": "tools/figed/figures/brother.json",
  "picture": "tools/figed/figures/brother_body_fit.png",
- "sweeps": 12,
+ "sweeps": 8,
  "stiffness": 0.0012,
  "views": [
+  {
+   "name": "armless_front",
+   "picture": "tools/art_src/concept_brother_bible_armless.jpg",
+   "box": [
+    290,
+    60,
+    840,
+    1490
+   ],
+   "box_width": 2752,
+   "look": "front",
+   "tall": 640,
+   "armless": true,
+   "bands": [
+    [
+     0,
+     0.36,
+     3
+    ],
+    [
+     0.36,
+     0.55,
+     1
+    ],
+    [
+     0.55,
+     0.8,
+     3
+    ],
+    [
+     0.8,
+     0.86,
+     1.5
+    ],
+    [
+     0.86,
+     1,
+     0
+    ]
+   ],
+   "weight": 1.5,
+   "regions": [
+    [
+     500,
+     930,
+     630,
+     1130,
+     5
+    ]
+   ]
+  },
+  {
+   "name": "armless_side",
+   "picture": "tools/art_src/concept_brother_bible_armless.jpg",
+   "box": [
+    1300,
+    60,
+    1612,
+    1490
+   ],
+   "box_width": 2752,
+   "look": "side",
+   "tall": 640,
+   "armless": true,
+   "bands": [
+    [
+     0,
+     0.36,
+     3
+    ],
+    [
+     0.36,
+     0.55,
+     1
+    ],
+    [
+     0.55,
+     0.8,
+     3
+    ],
+    [
+     0.8,
+     0.86,
+     1.5
+    ],
+    [
+     0.86,
+     1,
+     0
+    ]
+   ],
+   "weight": 1.5,
+   "anchor": "feet"
+  },
+  {
+   "name": "armless_back",
+   "picture": "tools/art_src/concept_brother_bible_armless.jpg",
+   "box": [
+    1960,
+    60,
+    2510,
+    1490
+   ],
+   "box_width": 2752,
+   "look": "back",
+   "tall": 640,
+   "armless": true,
+   "bands": [
+    [
+     0,
+     0.36,
+     3
+    ],
+    [
+     0.36,
+     0.55,
+     1
+    ],
+    [
+     0.55,
+     0.8,
+     3
+    ],
+    [
+     0.8,
+     0.86,
+     1.5
+    ],
+    [
+     0.86,
+     1,
+     0
+    ]
+   ],
+   "weight": 1.5,
+   "regions": [
+    [
+     2170,
+     930,
+     2300,
+     1130,
+     5
+    ]
+   ]
+  },
   {
    "name": "front",
    "picture": "tools/art_src/concept_brother_bible_body.jpg",
@@ -128,7 +273,8 @@
      500,
      4
     ]
-   ]
+   ],
+   "weight": 0.6
   },
   {
    "name": "side",
@@ -196,7 +342,8 @@
      440,
      3
     ]
-   ]
+   ],
+   "outline_weight": 0
   },
   {
    "name": "back",
@@ -300,7 +447,8 @@
      505,
      4
     ]
-   ]
+   ],
+   "weight": 0.6
   },
   {
    "name": "bare_front",
@@ -388,63 +536,42 @@
   }
  ],
  "defaults": {
-  "pose": {
-   "arms_down": 15,
-   "arms_down@side": 35,
-   "arms_down@bare_side": 35
-  },
+  "pose": {},
   "zoom": {
    "front": 0.97,
    "side": 0.97,
-   "back": 0.97
+   "back": 0.97,
+   "armless_front": 0.97,
+   "armless_side": 0.97,
+   "armless_back": 0.97
   }
  },
  "move": {
   "pose": {
    "arms_down": [
-    0,
-    40,
-    6
+    -15,
+    15,
+    3
    ],
    "arms_back": [
-    -30,
-    40,
-    10
+    -12,
+    12,
+    3
    ],
    "legs_apart": [
     -10,
-    8,
-    2
+    10,
+    1
    ],
    "feet_out": [
-    -30,
-    30,
-    8
-   ],
-   "arms_down@side": [
-    0,
-    60,
-    10
-   ],
-   "arms_back@side": [
-    -30,
-    50,
-    10
-   ],
-   "elbows@side": [
-    0,
-    30,
-    6
-   ],
-   "arms_down@bare_side": [
-    0,
-    60,
-    10
-   ],
-   "elbows_out": [
-    -10,
-    30,
+    -15,
+    15,
     4
+   ],
+   "lean": [
+    -8,
+    8,
+    2
    ]
   },
   "shift": {
@@ -474,6 +601,21 @@
     2
    ],
    "bare_side": [
+    -14,
+    14,
+    3
+   ],
+   "armless_front": [
+    -14,
+    14,
+    3
+   ],
+   "armless_side": [
+    -14,
+    14,
+    3
+   ],
+   "armless_back": [
     -14,
     14,
     3
@@ -618,9 +760,9 @@
     0.06
    ],
    "thigh.flesh_width": [
-    0.85,
+    0.7,
     1.5,
-    0.06
+    0.05
    ],
    "neck.flesh_width": [
     0.8,
@@ -785,7 +927,7 @@
     0.5
    ],
    "upperleg-fat": [
-    -1,
+    -2,
     2,
     0.5
    ],
@@ -875,6 +1017,21 @@
     0.93,
     1,
     0.01
+   ],
+   "armless_front": [
+    0.93,
+    1,
+    0.01
+   ],
+   "armless_side": [
+    0.93,
+    1,
+    0.01
+   ],
+   "armless_back": [
+    0.93,
+    1,
+    0.01
    ]
   }
  },
@@ -885,5 +1042,7 @@
  "head_place": "Round six: the shaved sheet side view lines up by the FEET and scores its legs as well as its head and neck, so where the head sits over the body is compared (lined up by the head, a head carried too far forward could not be seen). head-trans-forward and neck-trans-forward move.",
  "calves_feet": "Round seven: the calves are set by eye (the user asked for them a tad bigger and more toned than the fit gave), so calf sliders do not move here. foot.length is gone: it scaled along a bone that runs down and forward from the ankle, which dropped the heel and scrunched the toes; the foot is sized by MakeHuman foot targets and toes.length instead.",
  "arms_straight": "Round nine: pose arms_straight 1 (not moved) lays the forearm in line with the upper arm for every view; the common elbows slider is out. Without it the rest pose bent elbow foreshortened the forearm in the front view and the fit made the forearms half as long again.",
- "armpits": "Round ten: regions over the gap between each arm and the side of the trunk (armpit to waist), front and back, weight 4: with the arms out, the arm hid the side of the rib cage and the fit let it flare."
+ "armpits": "Round ten: regions over the gap between each arm and the side of the trunk (armpit to waist), front and back, weight 4: with the arms out, the arm hid the side of the rib cage and the fit let it flare.",
+ "armless_about": "Round eleven (the user's armless sheet and arms sheet): the trunk and legs are fitted to the armless sheet, the model drawn armless too. Arms are compared only in the front and back views of the main body sheet (weight 0.6); its side view, where the arm hangs, is kept for its marks only (outline_weight 0). The comparison pose is the one the user set by hand in Blender (the spec's pose: a turn per bone); no pose sliders move.",
+ "armless_cut": 0.45
 }

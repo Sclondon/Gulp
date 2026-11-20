@@ -1,5 +1,5 @@
 {
- "about": "The older brother's hands, fitted to the hand sheet (tools/art_src/concept_brother_hands.jpg: the back and the palm of his left hand, top row). Each view is compared from the wrist's row to the fingertips, so this sets the hand's SHAPE (palm width, finger length and thickness, thumb); its size on the body comes from the body job's wrist and fingertip marks. Boxes and wrist rows at 2000 px wide (Claude, by eye).",
+ "about": "The older brother hands, fitted to the hands on his arms sheet (tools/art_src/concept_brother_bible_arms.jpg, bottom row: the palm, thumb to the right, and the back of the hand). Each view is compared from the wrist row to the fingertips, so this sets the SHAPE of the hand; its size on the body comes from the body job. Boxes and wrist rows at 2000 px wide (Claude, by eye). The older sheet concept_brother_hands.jpg (Claude had picked it before the user made this one) is retired.",
  "start": "tools/figed/figures/brother.json",
  "out": "tools/figed/figures/brother.json",
  "picture": "tools/figed/figures/brother_hands_fit.png",
@@ -7,32 +7,32 @@
  "stiffness": 0.0006,
  "views": [
   {
-   "name": "hand_back",
-   "picture": "tools/art_src/concept_brother_hands.jpg",
+   "name": "hand_palm",
+   "picture": "tools/art_src/concept_brother_bible_arms.jpg",
    "box": [
-    280,
-    45,
-    690,
-    600
+    180,
+    780,
+    395,
+    1060
+   ],
+   "box_width": 2000,
+   "look": "hand_palm",
+   "hand": "r",
+   "wrist": 988
+  },
+  {
+   "name": "hand_back",
+   "picture": "tools/art_src/concept_brother_bible_arms.jpg",
+   "box": [
+    455,
+    780,
+    665,
+    1060
    ],
    "box_width": 2000,
    "look": "hand_back",
    "hand": "l",
-   "wrist": 445
-  },
-  {
-   "name": "hand_palm",
-   "picture": "tools/art_src/concept_brother_hands.jpg",
-   "box": [
-    810,
-    45,
-    1220,
-    570
-   ],
-   "box_width": 2000,
-   "look": "hand_palm",
-   "hand": "l",
-   "wrist": 445
+   "wrist": 988
   }
  ],
  "move": {

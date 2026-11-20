@@ -1,0 +1,11 @@
+{
+ "about": "The older brother's arms sheet (tools/art_src/concept_brother_bible_arms.jpg, top row), for arm_widths.py: the first arm (seen from the front) and the second (from behind) give its width, the fifth (from the side) its depth. Boxes and wrist rows at 2000 px wide (Claude, by eye). The third and fourth arms are turned part way and are not measured.",
+ "picture": "tools/art_src/concept_brother_bible_arms.jpg",
+ "box_width": 2000,
+ "stations": [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+ "views": [
+  {"name": "front", "box": [95, 50, 380, 790], "wrist": 598, "kind": "wide"},
+  {"name": "back", "box": [535, 50, 800, 780], "wrist": 592, "kind": "wide"},
+  {"name": "side", "box": [1665, 50, 1880, 790], "wrist": 600, "kind": "deep"}
+ ]
+}
