@@ -1162,6 +1162,42 @@ the research (with sources), the numbers, what is checked and what is rough. Con
 - The brother's eye colour (the user, 2026-11-18): "And tehy should be amber brown green": hazel, amber-brown shading to
   green (not the blue-grey of his earlier sheets).
 
+## The camera at the surface (2026-11-20)
+
+The user: "Swimming near the surface and jumping out of the water needs work, its very disorienting". Frames from the
+game's camera at 390x844, 30 fps (`tests/surface_gif.gd`, moves `cruise`, `break`, `leap`, `surf_leap`, `surf_cruise`;
+the surf ones off Steamer Lane) showed: the eye turned with the fish's nose, so a fish rising to the top had the eye
+under it looking 50 to 59 degrees up at the water's underside, then swung 30 to 40 degrees in a frame as the fish left
+the water (and back on re-entry); the eye crossed the waterline slowly, a frame or two half in, looking through the
+splash and the underside from a hand's breadth; the above/under look was judged before the eye moved, so a frame of the
+wrong look at each crossing; in a leap the eye rode the waves and rose 0.55 of the fish's height, looking down 30 to 40
+degrees at the water; under the top the eye was kept 0.5 m under the crest over it, so it bobbed with the swell and stood
+higher than the troughs beside it; the splash's drops fell on through the surface past an eye back under the water.
+
+- **Decision (Claude's pick): a damped follow camera that keeps to one side of the water.** What (`Main._follow_eye`,
+  `_camera_place`, `_aim_camera`, the `EYE_*` numbers): the eye's own pitch follows 0.55 of the fish's, at most 0.6 rad,
+  eased at 3/s, and near the top it may look up only 0.12 rad (+0.2 for the aim), so the fish rides high in the picture
+  instead of the picture tipping up to the underside; the direction it looks is eased (6/s), never the point, and kept
+  level (no roll); under water it keeps 0.3 m under the lowest the water has lately been round it (the troughs: falls
+  at once, rises 0.08 m/s), not under the crest, and goes back as far again as it is pushed down; it crosses the waterline
+  at 7 m/s at least and never stands within 0.2 m of it; above/under is judged after it has moved. In a leap it stays
+  low over the water where the fish left it (0.2 m + 0.35 lengths, rising 0.3 of the fish's height), 0.25 rad to one
+  side, and looks at the fish; its pitch is not followed. Splash tubes thin away in a dither within 1.5 m of the eye
+  (`splash.gdshader`, the same program); splash drops are not drawn while the eye is under the water (`Splash._process`).
+  Why: the practice for third-person follow cameras (a damped spring on position and on view direction, a level
+  horizon, the camera not tracking the vertical of a jump: Mario-style platformer cameras, John Nesky's "50 Game Camera
+  Mistakes", GDC 2014) and for water lines (keep the camera out of the waterline band, lowering it as the swimmer nears
+  the top, as forum fixes for the flash at the surface do; engines that let the lens straddle the line draw a meniscus,
+  as Crest and Unity HDRP do). Measured: the most the view turned in one frame went from 32 to 41 degrees to 2 to 6.5 in
+  every move; under the swell off Steamer Lane the eye's height varied 0.11 m (was 0.29).
+  Alternatives: a split lens with a meniscus at the waterline (a new full-screen pass and its shader to warm; much more
+  look change), keeping the eye under the water through a leap (the fish is then seen through the surface, unclear), a
+  cut to a fixed side view for a leap (takes the steering's reference away).
+- Left with the user (not changed): cruising along the top with the stick nudged up still leaps at the speed lever's
+  usual setting (a leap needs only 11 degrees up and 0.75 of cruising pace, `Player.LEAP_PACE`), so a fish at the top
+  pops in and out by accident; a leap could be made to need the burst, or a steeper angle. In the air the stick still
+  only turns it (no flip of meaning). A big fish's (tuna's) take-off splash fills the picture for two or three frames.
+
 ## Pushed 2026-11-19 (night)
 Game build a8f72f7 (source 8856d6e), site PR #217 (cart ?v=a8f72f7): animals on baked textures and four shared motion
 shaders, everything compiled on the loading screen with a progress bar, one program each (the null lamp), no freezes

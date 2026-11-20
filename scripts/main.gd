@@ -354,7 +354,10 @@ func restart() -> void:
 	if _near != "":
 		_go_near()
 	fishers.restart()
+	_eye_pitch = 0.0
+	_eye_low = Sea.SURFACE
 	camera.global_position = _camera_place()
+	_aim = Vector3.INF
 	_aim_camera()
 
 
@@ -480,16 +483,15 @@ func _process(delta: float) -> void:
 			player.choosing = false
 		else:
 			_on_picked(ways[randi() % ways.size()])
-	# Above the surface the air is clear; under it the water is blue and thick.
+	if player.alive:
+		_follow_eye(delta)
+		hud.reached = maxf(hud.reached, player.length)
+	# Above the surface the air is clear; under it the water is blue and thick. (Where the eye is
+	# now, after it has moved: judged before, the look was a frame late each time it crossed.)
 	sea.set_above(camera.global_position.y > Sea.surface_height(camera.global_position.x, camera.global_position.z, camera.global_position.y))
 	_post.set_shader_parameter(&"underwater", 0.0 if sea.above else 1.0)
 	# (the picture's water tint: green-teal in the kelp forest, Sea.post_tint)
 	_post.set_shader_parameter(&"water_tint", sea.post_tint)
-	if player.alive:
-		# (water fx: quicker in a leap, and back under the water after one; tools/WATER_FX.md)
-		camera.global_position = camera.global_position.lerp(_camera_place(), 1.0 - exp(-(8.0 if player.in_air or camera.global_position.y > Sea.SURFACE - 0.4 else 5.0) * delta))
-		_aim_camera()
-		hud.reached = maxf(hud.reached, player.length)
 	# (wider in an upright window, where the picture is narrow; wider still in a burst: water fx)
 	camera.fov = (72.0 if size.y > size.x else 60.0) + effects.fov_kick
 	hud.danger = lerpf(hud.danger, 1.0 if (life.hunters > 0 or (arena and arena.hunters() > 0)) and player.alive else 0.0, 1.0 - exp(-6.0 * delta))
@@ -838,7 +840,11 @@ func _key(one: Key, other: Key) -> float:
 func _camera_place() -> Vector3:
 	var long := player.length
 	# (above as well as behind: from straight behind a fish is only as big as it is thick)
-	var behind := player.global_position - player.heading * (0.25 + long * 1.9) + Vector3.UP * (0.2 + long * 1.1)
+	# (CLAUDE.md, "Decision: the camera at the surface": behind it along its course turned up or down
+	# by the eye's own damped pitch (_eye_pitch), not by the fish's nose: a fish nosing up at the
+	# surface had the eye under it looking 55 degrees up at the water's underside)
+	var back := Vector3(-sin(player.yaw) * cos(_eye_pitch), sin(_eye_pitch), -cos(player.yaw) * cos(_eye_pitch))
+	var behind := player.global_position - back * (0.25 + long * 1.9) + Vector3.UP * (0.2 + long * 1.1)
 	if player.in_air:
 		# (water fx, tools/WATER_FX.md: out of the water with it, behind it along its way (not
 		# along its nose, which swings from up to down), a little above the water and rising
@@ -847,23 +853,34 @@ func _camera_place() -> Vector3:
 		if flat.length() < 0.01:
 			flat = Vector3(player.heading.x, 0.0, player.heading.z) + Vector3.FORWARD * 0.001
 		# (and a little to one side, so that its arc is seen and not only its tail)
-		flat = flat.normalized().rotated(Vector3.UP, 0.45)
+		flat = flat.normalized().rotated(Vector3.UP, EYE_LEAP_SIDE)
 		var after := player.global_position - flat * (0.6 + long * 1.9)
-		# (over the water as it is there: the waves and a rogue wave lift it)
-		var under_fish := Sea.surface_height(player.global_position.x, player.global_position.z)
-		after.y = Sea.surface_height(after.x, after.z) + 0.35 + long * 0.5 + maxf(player.global_position.y - under_fish, 0.0) * 0.55
+		# (low over the water where it left it, rising with it only a little: a jump camera that stays
+		# put while the fish arcs through the picture. It rode the waves and rose 0.55 of the fish's
+		# height, so it looked down on the fish from over it. Still clear of the water under it: a
+		# rogue wave or the surf lifts it. CLAUDE.md, "Decision: the camera at the surface")
+		var rise := maxf(player.global_position.y - _leap_water, 0.0)
+		after.y = maxf(_leap_water + 0.2 + long * 0.35 + rise * 0.3, Sea.surface_height(after.x, after.z) + EYE_BAND + 0.1)
 		return after
 	# (water fx: in the water the eye stays under it, below the waves; it used to rise out of it
 	# whenever the fish swam near the top, and looked down through the surface at nothing)
+	# (and not riding the waves: under the lowest the water has lately been round it (_eye_low, the
+	# troughs), not under the crest over it now. Kept 0.5 m under the water just over it, it bobbed
+	# with the swell and stood higher than the troughs beside it, which it then saw from above)
 	behind = Sea.keep_in(behind, 0.3)
-	behind.y = minf(behind.y, Sea.surface_height(behind.x, behind.z) - 0.5)
+	var ceiling := minf(_eye_low, Sea.surface_height(behind.x, behind.z)) - EYE_UNDER
+	if behind.y > ceiling:
+		# (pushed down, it goes back as far again, so it does not end up under the fish looking up)
+		var flat_back := Vector3(back.x, 0.0, back.z).normalized()
+		behind -= flat_back * (behind.y - ceiling) * 1.2
+		behind.y = ceiling
 	# (QUALITY.md: kept out of rocks and the floor; when that brings it in close, it looks down from
 	# higher over the fish instead, if that sees further)
 	var pivot := player.global_position + Vector3.UP * long * 0.3
 	var eye := _camera_clear(pivot, behind, long * 0.7 + 0.2)
 	if eye.distance_squared_to(behind) > 0.0025:
 		var over := Sea.keep_in(pivot + Vector3.UP * (0.4 + long * 1.8) - player.heading * long * 0.7, 0.3)
-		over.y = minf(over.y, Sea.surface_height(over.x, over.z) - 0.5)
+		over.y = minf(over.y, ceiling)
 		var high := _camera_clear(pivot, over, long * 0.7 + 0.2)
 		if high.distance_to(pivot) > eye.distance_to(pivot) + 0.1:
 			eye = high
@@ -896,13 +913,100 @@ func _camera_clear(from: Vector3, to: Vector3, least: float) -> Vector3:
 	return at
 
 
-func _aim_camera() -> void:
+## The camera at the surface (CLAUDE.md, "Decision: the camera at the surface"; Claude's numbers):
+## how far it looks up or down with the fish (a share of the fish's pitch, at most EYE_TILT rad), and how
+## quickly; how little it may look up while the fish is near the top; how far under the troughs it
+## keeps; how quickly the troughs it keeps under may rise (m/s); how fast it crosses the waterline at
+## least (m/s), and how far from the line it may stand; how far to one side it watches a leap from.
+const EYE_TILT := 0.6
+const EYE_TILT_SHARE := 0.55
+const EYE_TILT_RATE := 3.0
+const EYE_TOP_TILT := 0.12
+const EYE_UNDER := 0.3
+const EYE_LOW_RISE := 0.08
+const EYE_CROSS := 7.0
+const EYE_BAND := 0.2
+const EYE_LEAP_SIDE := 0.25
+## How quickly the point it looks at follows the fish (1/s): it swung 55 degrees in four frames as
+## the fish left the water.
+const EYE_AIM_RATE := 6.0
+var _eye_pitch := 0.0
+var _eye_low := Sea.SURFACE
+var _aim := Vector3.INF  # (the way the eye looks, eased; INF: not yet)
+# The water's height where the fish last left it, and whether it was in the air last frame.
+var _leap_water := Sea.SURFACE
+var _was_air := false
+
+
+## Moves the camera after the fish each frame: its pitch eased, kept under the troughs while the fish
+## swims, across the waterline in one quick move (never lingering in it) when the fish leaves the
+## water or comes back, then aimed (_aim_camera).
+func _follow_eye(delta: float) -> void:
+	var long := player.length
+	var at := player.global_position
+	var top := Sea.surface_height(at.x, at.z)
+	# (near the top it barely looks up: the fish is seen from under it along the surface, not
+	# from beneath against the water's underside)
+	var deep := clampf((top - at.y) / (1.0 + long), 0.0, 1.0)
+	var tilt := clampf(player.pitch * EYE_TILT_SHARE, -EYE_TILT, lerpf(EYE_TOP_TILT, EYE_TILT, deep))
+	if player.in_air:
+		tilt = 0.0
+		if not _was_air:
+			_leap_water = top
+	_was_air = player.in_air
+	_eye_pitch = lerpf(_eye_pitch, tilt, 1.0 - exp(-EYE_TILT_RATE * delta))
+	# (the troughs lately round the eye and the fish: falls at once, rises slowly)
+	var eye := camera.global_position
+	var low := minf(Sea.surface_height(eye.x, eye.z), top)
+	_eye_low = minf(low, _eye_low + EYE_LOW_RISE * delta)
+	var want := _camera_place()
+	var next := eye.lerp(want, 1.0 - exp(-(8.0 if player.in_air or eye.y > Sea.SURFACE - 0.4 else 5.0) * delta))
+	# (the waterline: when the eye must go to the other side, it goes at EYE_CROSS m/s at least,
+	# and it never stands within EYE_BAND of the water: half in, half out, it looked through the
+	# splash and the water's underside from a hand's breadth away)
+	var water := Sea.surface_height(next.x, next.z, next.y)
+	var air_side := player.in_air
+	if air_side != (eye.y > Sea.surface_height(eye.x, eye.z, eye.y)) or absf(next.y - water) < EYE_BAND:
+		var aim_y := water + (EYE_BAND if air_side else -EYE_BAND)
+		if air_side:
+			next.y = maxf(next.y, minf(eye.y + EYE_CROSS * delta, maxf(want.y, aim_y)))
+		else:
+			next.y = minf(next.y, maxf(eye.y - EYE_CROSS * delta, minf(want.y, aim_y)))
+		if absf(next.y - water) < EYE_BAND:
+			next.y = aim_y
+	camera.global_position = next
+	_aim_camera(delta)
+
+
+func _aim_camera(delta := 0.0) -> void:
 	var at := player.global_position + player.heading * player.length * 0.6
 	if player.in_air:
-		# (water fx: a little under it, so that it flies in the top half of the picture, clear of the panel)
-		at = player.global_position + Vector3.DOWN * (0.15 + player.length * 0.35)
-	if at.distance_to(camera.global_position) > 0.05:
-		camera.look_at(at, Vector3.UP)
+		# (at it, a touch under: it arcs through the picture while the eye stays low and level. It
+		# aimed 0.15 m + 0.35 lengths under it from over it, looking down 30 degrees at the water)
+		at = player.global_position + Vector3.DOWN * player.length * 0.15
+	else:
+		# (ahead along its course, not along its nose: its pitch is the eye's to follow, damped)
+		var ahead := Vector3(player.heading.x, 0.0, player.heading.z)
+		at = player.global_position + ahead * player.length * 0.6
+		# (looking up no more than the eye's own pitch allows, a little more: near the top the fish
+		# sits high in the picture rather than the picture tipping up to the water's underside)
+		var off := at - camera.global_position
+		var level := Vector2(off.x, off.z).length()
+		var most := tan(clampf(_eye_pitch + 0.2, -1.2, 1.2)) * level
+		if off.y > most:
+			at.y = camera.global_position.y + most
+	var eye := camera.global_position
+	if at.distance_to(eye) < 0.05:
+		return
+	# (the way it looks is eased, not the point: an eased point left behind under the water as the
+	# eye went up through it had the eye look 35 degrees down for a moment)
+	var way := (at - eye).normalized()
+	if _aim != Vector3.INF and delta > 0.0:
+		way = _aim.slerp(way, 1.0 - exp(-EYE_AIM_RATE * delta)).normalized()
+	_aim = way
+	# (always level: the horizon never tilts)
+	if absf(way.y) < 0.995:
+		camera.look_at(eye + way, Vector3.UP)
 
 
 func _on_ate(at: Vector3) -> void:

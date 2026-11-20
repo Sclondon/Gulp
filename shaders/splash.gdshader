@@ -34,6 +34,13 @@ float noise(vec2 p) {
 }
 
 void fragment() {
+	// (Gulp: thinned away in a dither within a metre and a half of the eye, so the camera going through
+	// the water beside a small fish's splash does not look through a wall of it. CLAUDE.md, "Decision:
+	// the camera at the surface")
+	float grain = fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))));
+	if (grain > smoothstep(0.5, 1.5, length(VERTEX))) {
+		discard;
+	}
 	float round = UV.x * 6.2832;
 	// the crest: big waves with smaller ones on them, cut out of the top of the wall
 	float crest = 1.0 - ragged * (0.5 + 0.35 * sin(round * waves + phase) + 0.15 * sin(round * waves * 2.7 + phase * 1.9));

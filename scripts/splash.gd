@@ -171,6 +171,13 @@ func _process(delta: float) -> void:
 		visible = false
 		set_process(false)
 		return
+	# (its drops are flung through the air: from under the water they are not drawn. They fell on
+	# through the surface and rained past an eye that had followed the fish back in, as boulders.
+	# Gulp's CLAUDE.md, "Decision: the camera at the surface")
+	var eye := get_viewport().get_camera_3d()
+	var dry := eye == null or eye.global_position.y > Sea.surface_height(eye.global_position.x, eye.global_position.z, eye.global_position.y)
+	for p in _bursts:
+		p.visible = dry
 	for i in _tubes.size():
 		var u := (_t - float(TUBES[i][3])) / TUBE_TIME
 		var node := _tubes[i]
