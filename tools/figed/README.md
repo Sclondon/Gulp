@@ -433,3 +433,9 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   with the camera: `head_overlay.py` turns on Workbench shadows with `light_direction` (-0.25, 0.85, 0.45) and
   `shade` 0.3 (a sheet may give its own `light` / `shade`). A lamp fixed to the head was tried first: the back view
   went black, which the sheet's is not.
+- The user (a line down the back of the jaw in the three-quarter view): "The ears are way too far back they should
+  like up with the jaw like in the art". `ears.back` 3.0 -> 1.6: the ear's front edge meets the back of the jaw.
+  **Place an ear by the jaw, not by the back of the skull**: measured from the back of the head the 3.0 matched the
+  sheet's profile, but his jaw ends further forward on his head than the sheet's does, so an ear put there stood
+  behind a gap. In the profile overlay the ear is now about half its width forward of the sheet's: the real
+  difference is the jaw's (and skull's) depth, not the ear, and is not fixed.
