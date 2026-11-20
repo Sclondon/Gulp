@@ -464,7 +464,7 @@
   "waist": 0.25,
   "waist_to_hip": -0.125,
   "wrist": 0.1,
-  "eye_height": 1.8
+  "eye_height": -1
  },
  "tilt": {
   "head_side": -1

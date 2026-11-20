@@ -98,9 +98,10 @@ for v in sheet["views"]:
     box = [int(round(c * k)) for c in v["box"]]
     mask = figed_fit.shrink(figed_fit.cut_out(art, box, 0.07), 4)     # in from the drawn outline: no dark lines
     px = (v["chin"] - v["crown"]) * k / high                 # sheet pixels a metre
-    if "nose" in v:                                          # across by the nose, up and down by the crown: reshaping
-        anchor = np.array([nose[0], nose[1], crown[2]])      # the nose must not slide the whole paint up or down
-        at = (v["nose"][0] * k, v["crown"] * k)
+    if "nose" in v:                                          # by the nose tip, as head_overlay.py and the reference
+        anchor, at = nose, (v["nose"][0] * k, v["nose"][1] * k)   # pictures of a sculpt window are: ONE alignment for
+        # everything the user sees (hung from the crown instead, the paint said "eyes too low" while the window's
+        # bible said "too high": the user, 2026-11-20, "his eye is in the wrong spot")
     else:
         anchor, at = crown, (v["centre"] * k, v["crown"] * k)
     # each row's figure: where it starts and ends, so skin just outside a view's outline (the side of the head, seen

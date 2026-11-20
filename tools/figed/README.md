@@ -637,3 +637,11 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
   that window (possibly hand painted) is kept as `work/brother_paint4_user_skin.png`, NOT merged: the skin has
   been re-projected since. Merging hand paint with a new projection is not solved (a hand-paint layer over the
   projection is the likely way).
+- The user (red lines on the profile in the window, bible on): "his eye is in the wrong spot, and his head is
+  shaped slightly odd". The eye: `eye_height` 1.8 -> -1.0. It had been RAISED to meet the paint while the paint
+  was hung from the crown; the window's bible is hung from the nose tip, and by that the eye was a centimetre high.
+  **Everything the user sees is aligned ONE way: by the nose tip** (`head_overlay.py`, the sculpt window's
+  pictures, and `paint_project.py` again). With that, the model's eyes lie on the sheet's in front and profile.
+  The skull: `head-back-scale-depth` 0.9 was tried on a reading of the user's line and taken out again: the overlay
+  shows the model's skull already standing ABOVE and BEHIND the sheet's (crown about 1.5 cm high with the noses
+  together), not short of it. What the user meant by the line is not settled: asked.
