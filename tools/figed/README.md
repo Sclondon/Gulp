@@ -222,8 +222,8 @@ The user: "lets do around focusing on his pecs, shoulders and hands, he should h
   fingers look a little too short, with too much space between them. The hand wrist forearm connection also looks
   blated". Cause: the hand outline fit had run its sliders to their limits (`thumb.girth` 1.8, `finger_spread` 2,
   `finger_length` -1.25, `hand.length` 0.7, `wrist` 1.19). **Hands are set by hand now and no hand slider moves in
-  any automatic fit**: `thumb.girth` 1.25, `thumb.length` 1, `fingers.girth` 1.25, `fingers.length` 1,
-  `hand.length` 0.95, `hand.width` 1.08, `hand.size` 1, `finger_spread` -0.5, `finger_thickness` 0.5, `wrist` 0.1
+  any automatic fit**: `thumb.girth` 1.12, `thumb.length` 1, `fingers.girth` 1.08, `fingers.length` 1,
+  `hand.length` 0.95, `hand.width` 1.08, `hand.size` 1, `finger_spread` 0.4, `finger_thickness` 0, `wrist` 0.1 (the first try, girth 1.25 and spread -0.5, was "too chubby tube like now, with no space between them", the user)
   (hand 12.6% of his height). `brother_hands.fit.json` is kept for looking (`--look-only`), not for running.
 - The skeleton is MakeHuman's "game engine" rig: Unreal's mannequin layout and names, 53 bones, no twist or face
   bones. It is NOT the shared boy's skeleton (GameCommon's character controller): his clips need retargeting, or
