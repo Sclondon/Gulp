@@ -379,14 +379,14 @@
  ],
  "targets": {
   "ankle": 0.5875,
-  "belly": 0.375,
+  "belly": 0.25,
   "belly_tone": -0.0625,
   "breast-point": -0.125,
   "breast-trans-up": 0.25,
   "brow_angle": -0.3,
   "brow_forward": -1,
   "brow_height": -0.2,
-  "bulge": 2,
+  "bulge": 3.5,
   "buttocks": 1,
   "calf": 0.1625,
   "cheek-inner": 0.15,
@@ -466,7 +466,8 @@
   "upperarm-muscle": 0.2188,
   "waist": 0.25,
   "waist_to_hip": -0.125,
-  "wrist": 0.1
+  "wrist": 0.1,
+  "hip-trans-forward": 1.2
  },
  "zoom": {
   "armless_back": 0.9679166666666666,

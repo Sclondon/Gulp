@@ -232,3 +232,11 @@ The user: "lets do around focusing on his pecs, shoulders and hands, he should h
   turn out; `feet_out` is only a pose); the arms are thick but tube-like (no biceps or triceps bulge, no forearm swell by the elbow as the
   bible paints them); the back is smooth (no shoulder blades, spine furrow or lats as the bible paints them), the pecs
   are boxy with a hard lower edge, the shoulder cap peaks lower than drawn, the thumb's tip is pointed.
+
+## Later small rounds (2026-11-19, after round twelve)
+
+- The user: "now his crotch is too recessed and small, the lower belly curves too much compare to the no arms side
+  profile". By eye against the armless sheet's side view: `belly` 0.375 -> 0.25 (held out of the body job now),
+  `bulge` 2 -> 3.5, `hip-trans-forward` 1.2, so the front runs nearly straight down from the belly to the crotch as
+  the sheet's shorts do. To judge the belly and crotch from the side, raise the arms first (a trial spec with pose
+  `arms_down` -70, `-- look ... side --posed`): hung or held out, the arm or hand covers them.
