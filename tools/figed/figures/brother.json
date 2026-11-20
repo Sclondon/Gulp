@@ -482,5 +482,33 @@
   "head_front": 1.04,
   "head_side": 1.0116666666666667,
   "side": 0.9958333333333332
+ },
+ "jawline": {
+  "path": [
+   [
+    0,
+    0
+   ],
+   [
+    0.176,
+    0.027
+   ],
+   [
+    0.338,
+    0.081
+   ],
+   [
+    0.419,
+    0.149
+   ],
+   [
+    0.438,
+    0.257
+   ]
+  ],
+  "depth": 1.6,
+  "lip": 0.4,
+  "width": 0.07,
+  "about": "The jaw lower edge, read off the user red line on the shaved sheet profile (tools/art_src/user_brother_jaw_lines.png): [back, up] from the chin bottom in shares of the head height."
  }
 }

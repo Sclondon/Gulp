@@ -288,3 +288,14 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   0.6). `mouth-trans-up` is strong: 1.5 put the mouth under the nose. All of these are held out of the head fit.
   Still softer and lower at the corner under the ear than the red line: the sliders do not reach a clear jaw corner
   on a neck this thick; a candidate for the small-corrections stage.
+- The user, of that: "His jaw hinge still sits way too low look at the huge difference between thr model and art"
+  (a line from the ear's lobe to the jaw's corner: short on the sheet, long on the model), and, when Claude began to
+  measure the ear: "the ear is in the right spot dont move it". Two findings:
+  - the edge the user traced on the tinted render is where the TINT stops (the head bone's skin), not a jaw corner;
+    the generic model has no jaw corner back there at all, the cheek runs smoothly into this thick neck, and no
+    slider makes one (`jaw_drop` does not move it). Say what a tint edge is when showing one.
+  - **`jawline`, the second small correction** (`Figure._jawline`): the jaw's lower edge cut into the skin along a
+    path read off a drawing, `[back, up]` from the chin's bottom in shares of the head's height seen from the side;
+    the skin just under the line is pressed in along its normal (`depth`, cm), the skin just over it raised
+    (`lip`), nothing at the chin's front. The brother's follows the user's red line: depth 1.6, lip 0.4, width
+    0.07. It is a cut in the surface, not anatomy: check it in three-quarter view and with the head turned.

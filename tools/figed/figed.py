@@ -284,6 +284,47 @@ class Figure:
         # how he stands, built into the model itself (not a pose for pictures): {"pelvis_tuck": degrees} turns the
         # pelvis under (less hollow back) while the legs and the trunk above stay upright
         self.posture = dict(spec.get("posture", {}))
+        # a small correction: the jaw's lower edge cut into the skin where a drawing has it. {"path": [[back, up],
+        # ...] from the chin's bottom to under the ear, in shares of the head's height (crown to chin) seen from the
+        # side; "depth": cm the skin just under the line is pressed in; "lip": cm the skin just over it is raised;
+        # "width": how far under the line the cut reaches, same shares}
+        self.jawline = dict(spec.get("jawline", {}))
+
+    def _jawline(self, P):
+        b = self.base
+        if not hasattr(b, "_tris"):
+            tris = []
+            for group, vi, _ti in b.faces:
+                if group == "body":
+                    for k in range(1, len(vi) - 1):
+                        tris.append((vi[0], vi[k], vi[k + 1]))
+            b._tris = np.array(tris)
+            idx, d = b.target("chin-prominent-incr")
+            b._chin = int(idx[np.argmax(np.linalg.norm(d, axis=1) - 100 * np.abs(b.verts[idx, 0]))])
+        t = b._tris
+        n = np.zeros_like(P)
+        face = np.cross(P[t[:, 1]] - P[t[:, 0]], P[t[:, 2]] - P[t[:, 0]])
+        for k in range(3):
+            np.add.at(n, t[:, k], face)
+        n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+        if n[b._chin][1] > 0:                             # out of the skin: the chin's own points away from the head
+            n = -n
+        body = b.indices("body")
+        chin = P[b._chin]
+        high = P[body][:, 2].max() - chin[2]
+        path = np.array(self.jawline["path"], dtype=float)
+        back = (P[body][:, 1] - chin[1]) / high
+        up = (P[body][:, 2] - chin[2]) / high
+        line = np.interp(back, path[:, 0], path[:, 1])     # the edge's height at each point's distance back
+        under = line - up                                  # > 0 just under the edge
+        width = self.jawline.get("width", 0.05)
+        along = np.clip((back - 0.03) / 0.10, 0, 1) * (back <= path[-1, 0] + 0.02)   # nothing at the chin's front
+        cut = np.exp(-((under - width * 0.8) / width) ** 2) * along * (under > -width * 0.3)
+        lip = np.exp(-((under + width * 0.5) / (width * 0.6)) ** 2) * along
+        move = (lip * self.jawline.get("lip", 0.0) - cut * self.jawline.get("depth", 0.6)) * 0.01
+        P = P.copy()
+        P[body] += n[body] * move[:, None]
+        return P
 
     def _smooth(self, pts):
         b = self.base
@@ -460,6 +501,8 @@ class Figure:
 
         P, H, T = turn(self.points), {b: turn(v)[0] for b, v in self.heads.items()}, \
             {b: turn(v)[0] for b, v in self.tails.items()}
+        if self.jawline:
+            P = self._jawline(P)
         tuck = self.posture.get("pelvis_tuck", 0.0)
         if tuck:
             turns = {"pelvis": (-tuck, 0, 0), "spine_01": (tuck, 0, 0), "thigh_l": (tuck, 0, 0), "thigh_r": (tuck, 0, 0)}
