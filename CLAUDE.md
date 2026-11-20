@@ -306,7 +306,18 @@ Not started:
   reactions".
 - "the loading screen needs to be a swarm of sardines making up the wayside interactive logo sequence while it loads".
 - "the sonar needs to point out things you can eat, or something on the ui does i think, or maybe they need to have a
-  subtle outline and sparkle"; "the sonar map needs to show objects relation to you in 3d".
+  subtle outline and sparkle"; "the sonar map needs to show objects relation to you in 3d". Then (2026-11-20): "its
+  extremely unclear what you can eat and how to find it". Concepts made 2026-11-20 (set-pieces Gemini conversation),
+  waiting for the user to pick; nothing built: `tools/art_src/concept_food_a_gold.jpg` (+ `_a_gold2.jpg`, the quality
+  pass) gold rim and sparkle on food, faint red rim on hunters, gold diamonds / red triangles on a dark scope;
+  `concept_food_b_size.jpg` no glow, brass gunsight brackets with a size-compare plaque on the nearest food and the
+  hunter, edge-of-screen arrow tabs, silhouettes sized against you on the scope; `concept_food_c_echo.jpg` the sea
+  stays clean, the sonar's pulse is seen in the water and food answers it with a gold ripple, hunters red, the scope a
+  tilted 3D dish with beads on stalks above and below. What makes food unclear now (measured at the start, 2026-11-20):
+  the scope never shows schools (krill, anchovies, tetras: the small fish's real food), only single animals; within
+  30 m of the start the only edible animals are 5-12 cm floor creatures 17 m below, under the starting depth limit
+  (static from 12 m, `Purse.AMP_DEPTH[0]` 15), while the nearest krill cloud is 51 m off; 8 of the 9 jellies sting a
+  sardine and show red near the start; food blips are pale green (0.5, 1, 0.5) about 2 px across on a green scope.
 - "the logo needs to be made up of a bunch of our fish models making the letters, trying to eat each other"
   (concept: `tools/art_src/concept_fish_logo.jpg`; the picture logo on the title now is a stand-in).
 - "the little antenna on the control panel needs to be a bit shorter"; "the boat needs a wake" (foam puffs exist; a
