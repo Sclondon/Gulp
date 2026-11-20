@@ -730,3 +730,10 @@ cuffs and braces hanging at the hips: `tools/art_src/concept_brother_bible_outfi
   are not modelled); the vest's back neckline and the trousers' back are guesses; cloth edges have no thickness;
   the body is whole under the clothes (may poke through in strong poses: hide covered skin when worn); the skin
   under the drawers is still painted as drawers; not wired into `-- build` (export) yet.
+- The user: "the tank top needs to be more a frame shirt type, and the texture needs to frame his pecs". The vest is
+  now an A-shirt: narrower straps, the scoop down to the top of the chest (front depth 0.20, back 0.11), big
+  armholes cut in beside the pecs (radii 0.118 x 0.21), tighter (4 mm). Its picture is no longer taken from the
+  drawing: `"paint": "shade"` in the outfit file paints a plain off-white (`colour`) lightened and darkened by the
+  BODY's own painted shading under it (the skin picture's brightness, blurred 4 px over blurred 45 px, so hair and
+  marks do not show), with fine ribs every 6 mm across. So the shadow under and between the pecs is exactly where
+  his are. First try was clipped to pure white; the range is held to 0.7..1.06 now.

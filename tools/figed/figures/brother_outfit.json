@@ -1,6 +1,28 @@
 {
  "about": "The older brother's vest and trousers (the user, 2026-11-20: \"lets do the shorts and this outfit\"), for garments.py. The drawing is the front view the user sent (345 px wide as it arrived: a larger copy and a back view are wanted). Each garment: its box in the drawing (pixels; Claude, by eye) and how its cloth is told from skin and paper (pale / dark).",
  "picture": "tools/art_src/concept_brother_bible_outfit.png",
- "tank": {"box": [128, 120, 237, 250], "cloth": "pale"},
- "trousers": {"box": [108, 240, 258, 458], "cloth": "dark"}
+ "tank": {
+  "box": [
+   128,
+   120,
+   237,
+   250
+  ],
+  "cloth": "pale",
+  "paint": "shade",
+  "colour": [
+   0.86,
+   0.84,
+   0.77
+  ]
+ },
+ "trousers": {
+  "box": [
+   108,
+   240,
+   258,
+   458
+  ],
+  "cloth": "dark"
+ }
 }

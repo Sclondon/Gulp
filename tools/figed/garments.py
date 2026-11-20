@@ -52,12 +52,14 @@ def rules(fig, P, H, skin_px=None):
     out["cuffs"] = (np.minimum(cuff + 0.05 - z, z - cuff), lower, baggy + 0.007, (0.27, 0.26, 0.20))
     out["waistband"] = (np.minimum(waist - z, z - (waist - 0.035)), lower, baggy + 0.004, (0.25, 0.24, 0.19))
     # the vest: scoop neck (deeper in front), armholes, tucked into the trousers
-    depth = np.where(y < yn, 0.14, 0.08)
-    neck = (x / 0.088) ** 2 + ((z - (zn + 0.03)) / depth) ** 2 - 1
-    hole = ((np.abs(x) - (sx + 0.035)) / 0.085) ** 2 + ((z - zs) / 0.15) ** 2 - 1
+    # (an A-shirt, the user: "more a frame shirt type": narrow straps, a deep scoop to the top of the chest, big
+    # armholes cut in beside the pecs)
+    depth = np.where(y < yn, 0.2, 0.11)
+    neck = (x / 0.082) ** 2 + ((z - (zn + 0.03)) / depth) ** 2 - 1
+    hole = ((np.abs(x) - (sx + 0.045)) / 0.118) ** 2 + ((z - (zs - 0.01)) / 0.21) ** 2 - 1
     torso = (arm < 0.3) & (up < 0.75) & (head < 0.3) & (z > waist - 0.1) & (_w(base, ("thigh", "calf")) < 0.3)
     f = np.minimum(np.minimum(neck, hole) * 0.05, np.minimum(z - (waist - 0.06), zn + 0.06 - z))
-    out["tank"] = (f, torso, np.full(len(P), 0.006), (0.88, 0.86, 0.80))
+    out["tank"] = (f, torso, np.full(len(P), 0.004), (0.88, 0.86, 0.80))
     if skin_px is not None:                              # the drawers: where the skin picture is painted as cloth
         cloth = skin_px & lower
         if cloth.sum() > 50:
@@ -158,7 +160,7 @@ def make(fig, wear, posed=True, arm=None, skin_path=None):
     return parts, R, P
 
 
-def paint(fig, outfit, name, R, P, path):
+def paint(fig, outfit, name, R, P, path, skin_path=None):
     """A garment's picture: the drawing's cloth, box to box from the front view, onto the body's UVs."""
     base = fig.base
     art = figed_fit.load_image(outfit["picture"])[:, :, :3]
@@ -188,6 +190,7 @@ def paint(fig, outfit, name, R, P, path):
     bx0, bx1, bz0, bz1 = P[keep][:, 0].min(), P[keep][:, 0].max(), P[keep][:, 2].min(), P[keep][:, 2].max()
     tex = np.zeros((SIZE, SIZE, 3))
     tex[:] = img[known].mean(axis=0)
+    across = np.zeros((SIZE, SIZE))                      # each texel's place across the body, for ribbing
     uvs = np.array(base.uvs)
     for group, vi, ti in base.faces:
         if group != "body" or min(ti) < 0 or not all(may[v] for v in vi) or max(f[v] for v in vi) <= -0.03:
@@ -214,6 +217,27 @@ def paint(fig, outfit, name, R, P, path):
             ix = np.clip(((pos[:, 0] - bx0) / (bx1 - bx0) * (img.shape[1] - 1)).astype(int), 0, img.shape[1] - 1)
             iy = np.clip(((bz1 - pos[:, 2]) / (bz1 - bz0) * (img.shape[0] - 1)).astype(int), 0, img.shape[0] - 1)
             tex[gy[ins].astype(int), gx[ins].astype(int)] = img[iy, ix]
+            across[gy[ins].astype(int), gx[ins].astype(int)] = pos[:, 0]
+    if outfit[name].get("paint") == "shade" and skin_path:
+        # Thin tight cloth: its light and shade is the BODY's under it (the user: "the texture needs to frame his
+        # pecs"). The skin picture's own painted shading, blurred so hair and marks do not show, lightens and
+        # darkens a plain cloth colour; fine ribs run down it.
+        sk = figed_fit.load_image(skin_path)[::-1, :, :3]
+        n = sk.shape[0] // SIZE
+        lum = sk[::n, ::n].mean(axis=2)[:SIZE, :SIZE]
+
+        def blur(a, r):
+            for _ in range(3):
+                c = np.cumsum(np.pad(a, ((r, r), (0, 0)), mode="edge"), axis=0)
+                a = (c[2 * r:] - c[:-2 * r]) / (2.0 * r)
+                c = np.cumsum(np.pad(a, ((0, 0), (r, r)), mode="edge"), axis=1)
+                a = (c[:, 2 * r:] - c[:, :-2 * r]) / (2.0 * r)
+            return a
+
+        form = np.clip(blur(lum, 4) / np.maximum(blur(lum, 45), 1e-3), 0.7, 1.06) ** 1.5
+        rib = 1.0 - 0.045 * (np.sin(across * 2 * np.pi / 0.006) > 0.3)
+        base_col = np.array(outfit[name].get("colour", [0.90, 0.88, 0.82]))
+        tex = np.clip(base_col * (form * rib)[:, :, None], 0, 1)
     im = bpy.data.images.new(name, SIZE, SIZE, alpha=False)
     rgba = np.ones((SIZE, SIZE, 4), dtype=np.float32)
     rgba[:, :, :3] = tex
@@ -258,7 +282,7 @@ if __name__ == "__main__":
             continue
         if name not in done:
             done[name] = "%s_%s.png" % (stem, name)
-            paint(fig, outfit, name, R, P, done[name])
+            paint(fig, outfit, name, R, P, done[name], stem + "_skin.png")
         obj.data.materials.append(material(name, done[name]))
     boxes = fb.view_boxes(fig)
     cam = fb._camera()
