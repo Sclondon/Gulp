@@ -457,3 +457,10 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   `head_overlay.py` now draws every `jaw_corner` on the overlay and model rows: a red cross at its centre and a red
   ring at its radius, carried with the posed head. **Show where a correction acts on the picture; never describe a
   place to the user in centimetres.**
+- The user marked the jaw corners with blue crosses on the sheet row and the model row
+  (`tools/art_src/user_brother_jaw_corners.png`): the sheet's are just under the ear lobes at mouth level, the
+  model's about 4 cm lower, near chin level, and further in. `jaw_corner` gained `inward` (cm towards the middle)
+  and leaves the neck behind the ear alone; the brother's is now centred on the user's marks: lift 2.2, radius 4.5,
+  below_ear 8.9, forward -0.2, inward 2.5. First tried at lift 3.5 / radius 5.5: it pinched the back of the neck
+  and cut a notch under the ear. At 2.2 the jaw's underside rises towards the ear, but a hard crease is left behind
+  the jaw in profile: a radial lift is a blunt tool for this. NOT confirmed by the user.
