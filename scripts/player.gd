@@ -74,6 +74,12 @@ const GRAVITY := 9.0
 ## rose 1.6 m, under a third of its length.)
 const LEAP_LEAST := 0.25
 const LEAP_PER_LENGTH := 0.9
+## The user (2026-11-20): "Leaping high up needs a boost, otherwise based on the angle of attack". So a leap
+## needs the nose at least LEAP_ANGLE up (the sine: about 20 degrees; cruising along the top with the stick
+## nudged up no longer pops out), and without the burst the least height above is only a hop, LEAP_HOP of
+## the burst's, scaled by how steeply it came up (0 at LEAP_ANGLE, all of it straight up). Claude's numbers.
+const LEAP_ANGLE := 0.34
+const LEAP_HOP := 0.4
 
 ## How deep it may go (m under the surface: the amplifier's reach, set by Main; INF: anywhere).
 ## Below it, it is turned back upwards, and it is never let more than LIMIT_GIVE metres deeper.
@@ -258,12 +264,14 @@ func step(delta: float) -> void:
 		# tube's floor, rather than being put under it. scripts/breakers.gd, Breakers.surface)
 		in_air = true
 		global_position = next
-	elif next.y > top - room and heading.y > 0.2 and _speed > Fish.pace(length) * LEAP_PACE:
-		# Up through the surface, fast enough: out it comes.
+	elif next.y > top - room and heading.y > LEAP_ANGLE and _speed > Fish.pace(length) * LEAP_PACE:
+		# Up through the surface, steeply and fast enough: out it comes.
 		in_air = true
-		velocity *= LEAP_KICK
-		# (at least high enough to be seen clear of the water, in proportion to its length)
-		var least := sqrt(2.0 * GRAVITY * (LEAP_LEAST + length * LEAP_PER_LENGTH)) * (1.0 if boosting else 0.75)
+		# (on the burst it is thrown well clear, in proportion to its length; without it, only a hop as
+		# steep as it came up)
+		var steep := clampf((heading.y - LEAP_ANGLE) / (1.0 - LEAP_ANGLE), 0.0, 1.0)
+		velocity *= LEAP_KICK if boosting else 1.0
+		var least := sqrt(2.0 * GRAVITY * (LEAP_LEAST + length * LEAP_PER_LENGTH)) * (1.0 if boosting else sqrt(LEAP_HOP * steep))
 		velocity.y = maxf(velocity.y, least)
 		global_position = next
 		leapt.emit(Vector3(next.x, top, next.z))
