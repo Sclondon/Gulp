@@ -342,3 +342,9 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   0.57), mouth 0.73 (0.72). `jaw_width` 0.5 (0.25 for the user's hair wider, the rest making up for `head.width`).
   The crown, jaw, eyes and mouth now sit on the sheet's in all five views. The nose is squeezed short by this: its
   shape (a broad low ball on the sheet) is the next round.
+- Nose round two. The user: "looks like his nostrils are too scrunched nad thebottom is too flat compared the arts
+  fuller nose". The scrunch was `nose_length` -1 (it squashes the nostrils with the nose). Now `nose_length` -0.3
+  with `nose-trans-up` 1.7 carrying the height instead, `nose_tip_up` 0.1 (was 0.5: the upturn flattened the
+  underside), `nose-base-up` -0.2, `nose_flare` 0.3, `nose_size` 1.2, `nose-nostrils-angle-up` -0.5 and
+  `nose-compression-uncompress` 0.6 (the other way, +0.5 and -0.6, gave a flat wide tip). Nose tip 0.60 (sheet
+  0.57). `nose-trans-up` this high crowds the bridge into the brow: watch the crease between the eyes.
