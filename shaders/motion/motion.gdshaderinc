@@ -21,7 +21,8 @@
 // mirror image: worked out on the +x side), 2 amount times the side (+1 / -1), 4 the point is the
 // vertex's own, 8 the way is the vertex's own, 16 the way is the normal at rest, 32 a bend's second
 // axis is up (else sideways, across the way and up), 64 run after the family's core (in the swum pose), 128 the point is the vertex's own way (a second
-// point of its own), 256 the drive's size only (its sign dropped). Type 6 (the jointed family, MOTION_LEGS): a leg's stride: the vertex's own point is
+// point of its own), 256 the drive's size only (its sign dropped), 512 a bend ends after its k2 metres
+// (beyond, the rest is carried straight on). Type 6 (the jointed family, MOTION_LEGS): a leg's stride: the vertex's own point is
 // its joint, its own way its knee, weight[w] over 0.5 the lower leg; the foot moves along the op's way by
 // drive * k1 * stride(angle) and up by k2 * min(|drive|, 1) * lift(angle); f.w is the knee's share of
 // the reach (see motion_leg). Shapes: 0 sine, 1 sine's upper half only, 2 a
@@ -170,15 +171,18 @@ float motion_shape(int shape, float angle, float ground) {
 }
 
 // Bends (a, b) round an arc beyond `from` along a, curving by k a metre (the curl_bend of the old shaders).
-void motion_arc(inout float a, inout float b, inout float na, inout float nb, float from, float k) {
+// Beyond `to` the rest goes on straight, along the arc's end (to: 1e9 for no end).
+void motion_arc(inout float a, inout float b, inout float na, inout float nb, float from, float k, float to) {
 	if (a <= from || abs(k) < 0.0001) {
 		return;
 	}
+	float over = max(a - to, 0.0);
+	a -= over;
 	float f = k * (a - from);
 	float c = cos(f);
 	float s = sin(f);
-	float a2 = from + s / k - b * s;
-	b = (1.0 - c) / k + b * c;
+	float a2 = from + s / k - b * s + over * c;
+	b = (1.0 - c) / k + b * c + over * s;
 	a = a2;
 	float n2 = na * c - nb * s;
 	nb = na * s + nb * c;
@@ -220,6 +224,21 @@ void motion_leg(inout vec3 v, inout vec3 n, vec3 joint, vec3 knee, bool lower, v
 	n = motion_turned(motion_turned(n, axis, lift), up, yaw);
 }
 #endif
+
+// One live setting by its number in the table (for the families' cores).
+float motion_input(int i) {
+	float inputs[96] = float[96](1.0, sway, gape, cartoon_eyes, blink, curl, arch, tail_beats, scull, sculls,
+			swim, dorsal, strokes, row, breaths, gills, walk, gape_breath, gill_flare, first_dorsal,
+			ripples, open, withdraw, spread, strike, scoops, wings, snap, buzzes, paddle,
+			flick, feel, flap, grasp, billows, flow, flare, settle, dig, waggle,
+			fans, twitches, fan, twitch, furl, fin_ripples, flaps, breathe, sit, billow,
+			ripple, swing, jaw, tusk, pearl, puff, riding, stand, claws, sail,
+			bobs, bob, grip, fold, crest, afloat, flex, tuck, enroll, curl_up,
+			retract, fin_waves, fin_lift, arm_sway, wade, lean, sink, fin_tall, tusks, humps,
+			rear, coil, sway_speed, limb_beats, strand_beats, fin_beats, kelpie, flaps_open, aux0, aux1,
+			aux2, aux3, phase, 0.0, 0.0, 0.0);
+	return inputs[i];
+}
 
 // Runs the animal's moves on a point at rest (v, n; its normal at rest; its side, +1 or -1 by x at rest;
 // CUSTOM0..3, which only vertex() can read).
@@ -314,7 +333,7 @@ void motion_ops(inout vec3 v, inout vec3 n, vec3 rest_n, float side, vec4 c0, ve
 			float na = dot(n, u);
 			float nb = dot(n, bw);
 			vec3 n_rest = n - u * na - bw * nb;
-			motion_arc(pa, pb, na, nb, op_d[i].w, amount / max(op_e[i].w, 0.0001));
+			motion_arc(pa, pb, na, nb, op_d[i].w, amount / max(op_e[i].w, 0.0001), (flags & 512) != 0 ? op_d[i].w + op_e[i].w : 1.0e9);
 			v = at + u * pa + bw * pb + rest_of;
 			n = u * na + bw * nb + n_rest;
 		}

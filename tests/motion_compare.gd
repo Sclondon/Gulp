@@ -129,7 +129,7 @@ func _pose(look: Node3D, frame: int, has: Dictionary) -> void:
 	for m: ShaderMaterial in _materials(look):
 		if not m.has_meta(&"mc_sway"):
 			m.set_meta(&"mc_sway", m.get_shader_parameter(&"sway"))
-		var sway: Variant = m.get_meta(&"mc_sway")
+		var sway: Variant = m.get_meta(&"mc_sway", null)
 		if _sway >= 0.0:
 			sway = _sway
 		m.set_shader_parameter(&"phase", float(frame) / 8.0 if frame < 8 else 0.25)
