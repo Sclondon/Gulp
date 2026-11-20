@@ -34,10 +34,21 @@ fig = figed.Figure(base, spec)
 P, H, T = fig.to_blender()
 if posed and fig.pose:
     P, _ = figed.pose_points(fig, P, H, figed_fit.full_pose(fig.pose, base.bones, H, T), T)
+# where the small corrections act, to draw on the pictures: each is carried with the head as it is posed
+spots = []
+crown_i = int(np.argmax(P[:, 2] * (base.weights[:, base.bones.index("head")] > 0.99)))
+P_rest, H_rest, T_rest = fig.to_blender()
+for side, (at, radius) in getattr(fig, "jaw_corner_at", {}).items():
+    P2 = P_rest.copy()
+    P2[crown_i] = at
+    if posed and fig.pose:
+        P2, _ = figed.pose_points(fig, P2, H_rest, figed_fit.full_pose(fig.pose, base.bones, H_rest, T_rest), T_rest)
+    spots.append((P2[crown_i], radius))
 turn, pivot = figed_fit.square_head(P, base)            # the head set square: full face, and exactly side on
 if "--tilt" in argv:                                    # and nodded as the profile fit found the drawing to be
     turn = figed_fit.about(np.array([1.0, 0, 0]), float(argv[argv.index("--tilt") + 1])).dot(turn)
 P = (P - pivot).dot(turn.T) + pivot
+spots = [((q - pivot).dot(turn.T) + pivot, r) for q, r in spots]
 body = base.indices("body")
 head = body[base.weights[body, base.bones.index("head")] > 0.6]
 mid = head[np.abs(P[head][:, 0] - np.median(P[head][:, 0])) < 0.012]
@@ -120,6 +131,18 @@ for v in sheet["views"]:
     a = model[:, :, 3:4]
     over = tile * (1 - a * 0.55) + model[:, :, :3] * a * 0.55
     alone = np.ones_like(tile) * 0.86 * (1 - a) + model[:, :, :3] * a
+    for q, r in spots:                                   # a red cross and ring: where a correction acts, how far
+        if (q - centre).dot(d) > 0.02:                   # on the far side of the head in this view
+            continue
+        qx, qy = pixel(q)
+        cx, cy = (qx - mx) * scale + ax, (qy - my) * scale + ay
+        rad = r / seen * RES * scale
+        yy2, xx2 = np.mgrid[0:th, 0:tw]
+        dist = np.hypot(xx2 - cx, yy2 - cy)
+        ring = (np.abs(dist - rad) < 2.5) | ((np.abs(xx2 - cx) < 2.5) & (np.abs(yy2 - cy) < 18)) | (
+            (np.abs(yy2 - cy) < 2.5) & (np.abs(xx2 - cx) < 18))
+        for pic in (over, alone):
+            pic[ring] = (0.95, 0.1, 0.1)
     for pic in (over, alone):                            # a small cross where the nose tips were put together
         if "nose" in v:
             cx, cy = int(ax), int(ay)

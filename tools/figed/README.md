@@ -453,3 +453,7 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   within `radius` of a point under where the ear grows from the head, fading smoothly to nothing at the radius. The
   brother's: lift 2.0, radius 4.5, below_ear 6.5, forward 0.5. The effect is modest; where the point sits against
   his real jaw corner has not been checked with a marker.
+- The user: "Mark where you placed it how am I supposed to lnow what 6.5 cm looks like on a screen".
+  `head_overlay.py` now draws every `jaw_corner` on the overlay and model rows: a red cross at its centre and a red
+  ring at its radius, carried with the posed head. **Show where a correction acts on the picture; never describe a
+  place to the user in centimetres.**

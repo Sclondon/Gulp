@@ -329,6 +329,7 @@ class Figure:
             depth = out * P0[flap][:, 0]
             foot = P0[flap[depth < np.percentile(depth, 30)]].mean(axis=0)     # where the ear grows from the head
             at = foot + np.array([0.0, -j.get("forward", 0.5), -j.get("below_ear", 5.5)]) * 0.01
+            self.jaw_corner_at = dict(getattr(self, "jaw_corner_at", {}), **{side: (at, j.get("radius", 4.0) * 0.01)})
             d = np.linalg.norm(P0[body] - at, axis=1) / (j.get("radius", 4.0) * 0.01)
             t = np.clip(d, 0, 1)
             P[body, 2] += j.get("lift", 0.0) * 0.01 * (1 - t * t * (3 - 2 * t))
