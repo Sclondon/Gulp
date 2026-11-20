@@ -3,6 +3,7 @@
     F5  the texture on / off (off = plain grey with studio light, to judge the forms). Texture Paint mode always
         draws the texture, so from there F5 goes to Sculpt Mode in grey; F5 again shows the texture in Sculpt Mode
     F6  Sculpt Mode <-> Texture Paint (Sculpt Mode starts on the Grab brush, mirrored)
+    F7  the reference pictures (the bible) on / off; they show only in straight-on views (1, Ctrl+3)
 
 Run inside Blender: exec(open(".../session_keys.py").read()). sculpt_session.py runs it for every window.
 """
@@ -35,6 +36,18 @@ class FIGED_OT_texture(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class FIGED_OT_bible(bpy.types.Operator):
+    bl_idname = "figed.bible"
+    bl_label = "figed: reference pictures on / off"
+
+    def execute(self, context):
+        refs = [o for o in bpy.data.objects if o.type == "EMPTY" and o.name.startswith("bible_")]
+        show = any(o.hide_viewport for o in refs)
+        for o in refs:
+            o.hide_viewport = not show
+        return {"FINISHED"}
+
+
 class FIGED_OT_mode(bpy.types.Operator):
     bl_idname = "figed.mode"
     bl_label = "figed: sculpt / paint"
@@ -60,7 +73,7 @@ class FIGED_OT_mode(bpy.types.Operator):
         return {"FINISHED"}
 
 
-for cls in (FIGED_OT_texture, FIGED_OT_mode):
+for cls in (FIGED_OT_texture, FIGED_OT_mode, FIGED_OT_bible):
     try:
         bpy.utils.register_class(cls)
     except ValueError:
@@ -73,4 +86,6 @@ if kc:
         km.keymap_items.new("figed.texture", "F5", "PRESS")
     if "figed.mode" not in have:
         km.keymap_items.new("figed.mode", "F6", "PRESS")
-print("figed keys: F5 texture, F6 sculpt/paint")
+    if "figed.bible" not in have:
+        km.keymap_items.new("figed.bible", "F7", "PRESS")
+print("figed keys: F5 texture, F6 sculpt/paint, F7 reference pictures")
