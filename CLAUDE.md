@@ -493,7 +493,9 @@ choices below are Claude's.
   per-object ID buffer that Compatibility lacks). The sparkles are one MultiMesh of cards (`shaders/sparkle.gdshader`,
   one program, warmed with the sea's materials: one draw). Not marked: kinds kept on their own shaders (the squids,
   anglerfish, moray, octopus, catfish and the other unbaked ones: sparkles only if they are food, no red rim), schools
-  and jellies (sparkles only; the schools' flock shader is GameCommon's), the arena's rivals.
+  and jellies (sparkles only; the schools' flock shader is GameCommon's), the arena's rivals. Checked: the cold tour
+  (ANGLE, 390x844, cache aside) PASSED, ready at 57.3 s, worst frame in play 26 ms; `mark_rim` pulled back to
+  GameCommon's motion-families. Not tried in a browser or on a phone.
 - The web pack leaves out the figures not in the game (tools/web_excludes.sh; 76 MB -> 38 MB); take a figure out of
   that list when the game uses it, and run `tests/web_deps.gd` after changing the list.
 - **The sky** (2026-11-18, the user: "Whys the sky just gray"): it was one flat background colour, greyed further by

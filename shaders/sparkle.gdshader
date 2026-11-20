@@ -10,8 +10,8 @@ varying vec4 tint;
 
 void vertex() {
 	// (a card facing the eye: its place (from the node, which is kept by the player: small numbers, so
-	// that they keep their precision) and size are the instance's custom data, not its transform, which
-	// Compatibility does not fold into MODEL_MATRIX)
+	// that they keep their precision) and size are the instance's custom data, not its transform, so
+	// the card is turned to the eye here whatever Compatibility does with an instance's transform)
 	vec3 world = MODEL_MATRIX[3].xyz + INSTANCE_CUSTOM.xyz + (INV_VIEW_MATRIX[0].xyz * VERTEX.x + INV_VIEW_MATRIX[1].xyz * VERTEX.y) * INSTANCE_CUSTOM.w;
 	POSITION = PROJECTION_MATRIX * (VIEW_MATRIX * vec4(world, 1.0));
 	beat = float(INSTANCE_ID) * 1.7;

@@ -154,7 +154,7 @@ func _sparkle(live: bool) -> void:
 	near.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
 	var eye_at := eye.global_position if eye else at
 	_cards.global_position = at
-	# (how many are drawn is set before their data: set after, Compatibility drew none of them)
+	# (how many are drawn: each thing near has PER_FOOD)
 	_many.visible_instance_count = mini(near.size(), SPARKLES / PER_FOOD) * PER_FOOD
 	var n := 0
 	for thing: Array in near:
