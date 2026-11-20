@@ -25,6 +25,9 @@ static func index_name(script_name: String, folder_name := "") -> String:
 
 static var _infos := {}
 static var _loaded := {}
+## Whether a component with a motion spec wears its family shader (scripts/motion.gd); false keeps the
+## baked copy of its own shader (tests/motion_compare.gd draws both).
+static var families := true
 
 
 ## Whether a component (by its script) has a baked look.
@@ -45,6 +48,7 @@ static func apply(look: Node3D) -> void:
 		return
 	_prime(look.get_script(), info)
 	look.set_meta(&"baked_variant", variant)
+	look.set_meta(&"baked_families", families)
 	if not look.child_entered_tree.is_connected(_on_child.bind(look)):
 		look.child_entered_tree.connect(_on_child.bind(look))
 	_swap_all(look, info, variant)
@@ -58,6 +62,13 @@ static func refresh(look: Node3D) -> void:
 	var variant := _variant(look, info)
 	look.set_meta(&"baked_variant", variant)
 	_swap_all(look, info, variant)
+	# (and the motion's numbers again, from its new settings)
+	var done := {}
+	for mi: MeshInstance3D in look.find_children("*", "MeshInstance3D", true, false):
+		for m: Material in [mi.material_override] + range(mi.get_surface_override_material_count()).map(mi.get_surface_override_material):
+			if m is ShaderMaterial and m.has_meta(&"motion_own") and not done.has(m):
+				done[m] = true
+				_swap_material(m, info, variant, true)
 
 
 ## A mesh's key: how many surfaces, the first surface's vertex and index counts, its box (rounded).
@@ -82,6 +93,8 @@ static func everything(folder := "res://creatures") -> Dictionary:
 			file = file.trim_suffix(".remap")
 			if file.ends_with("look.res"):
 				indexes.append(dir.path_join(file))
+	if families:
+		out.shaders.append_array(Motion.every_family())
 	for path in indexes:
 		var info: Dictionary = (load(path) as Resource).get_meta(&"look", {})
 		for s: String in info.get("shaders", {}).values():
@@ -178,12 +191,21 @@ static func _on_child(node: Node, look: Node3D) -> void:
 		return
 	var info := _info(look.get_script())
 	var variant: Dictionary = look.get_meta(&"baked_variant")
-	_swap_under(node, info, variant)
+	var wear: bool = look.get_meta(&"baked_families", true)
+	_swap_under_as(node, info, variant, wear)
 	# (and again before the frame is drawn: some components give a mesh its model only after
 	# adding it)
 	(func() -> void:
 		if is_instance_valid(node):
-			_swap_under(node, info, variant)).call_deferred()
+			_swap_under_as(node, info, variant, wear)).call_deferred()
+
+
+# (as _swap_under, wearing the motion families or not as the look was first dressed)
+static func _swap_under_as(node: Node, info: Dictionary, variant: Dictionary, wear: bool) -> void:
+	var was := families
+	families = wear
+	_swap_under(node, info, variant)
+	families = was
 
 
 static func _swap_all(look: Node3D, info: Dictionary, variant: Dictionary) -> void:
@@ -227,13 +249,23 @@ static func _swap_mesh(mi: MeshInstance3D, info: Dictionary, variant: Dictionary
 			_swap_material(m, info, variant)
 
 
-static func _swap_material(material: ShaderMaterial, info: Dictionary, variant: Dictionary) -> void:
+static func _swap_material(material: ShaderMaterial, info: Dictionary, variant: Dictionary, again := false) -> void:
 	if material.shader == null:
 		return
 	var shaders: Dictionary = info.get("shaders", {})
 	var path := material.shader.resource_path
 	if shaders.has(path):
-		material.shader = _load(shaders[path])
+		# (its motion from a shared family shader where it has a spec: GameCommon motion-families)
+		var spec: GDScript = Motion.spec_of(path) if families else null
+		if spec != null:
+			material.set_meta(&"motion_own", path)
+			Motion.wear(material, material.shader, spec)
+		else:
+			material.shader = _load(shaders[path])
+	elif material.has_meta(&"motion_own"):
+		if again:
+			var own: String = material.get_meta(&"motion_own")
+			Motion.wear(material, _load(own), Motion.spec_of(own))
 	elif not shaders.values().has(path):
 		return
 	material.set_shader_parameter(&"baked_paint", _load(variant.paint))
