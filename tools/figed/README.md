@@ -658,3 +658,5 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
     1.6 (back overshoots). Applied: crown `move` [0, 0.5, -0.8], radius 13: a part of the way. The crown still
     stands a little over the sheet's. One stroke of the user's Grab brush with the bible on would do this better
     than more arithmetic.
+- The user, of the crown push: "no its worse, just undo that". `pushes` removed from the brother (the code stays,
+  unused). His skull is as it was before that round; the skull's shape is left for the user's hand.

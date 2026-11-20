@@ -501,16 +501,5 @@
   "forward": -0.2,
   "inward": 2.5
  },
- "sculpt": "tools/figed/figures/brother.sculpt.json",
- "pushes": [
-  {
-   "anchor": "crown",
-   "move": [
-    0,
-    0.5,
-    -0.8
-   ],
-   "radius": 13
-  }
- ]
+ "sculpt": "tools/figed/figures/brother.sculpt.json"
 }
