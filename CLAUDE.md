@@ -1144,6 +1144,12 @@ the research (with sources), the numbers, what is checked and what is rough. Con
 - The brother's eye colour (the user, 2026-11-18): "And tehy should be amber brown green": hazel, amber-brown shading to
   green (not the blue-grey of his earlier sheets).
 
+## Pushed 2026-11-19 (night)
+Game build a8f72f7 (source 8856d6e), site PR #217 (cart ?v=a8f72f7): animals on baked textures and four shared motion
+shaders, everything compiled on the loading screen with a progress bar, one program each (the null lamp), no freezes
+in play on the cold tour. Pack 51 MB. Real Chrome on the desktop: about 60-67 s first visit, 22 s after. Not tried on
+a phone. Look choices left with the user: submarine per vertex, baking the squids/nettle/anglerfish/comb jelly, water.
+
 ## Pushed 2026-11-19
 Game build a64b400 (source c0c574c), site PR #216 (cart ?v=a64b400), after 2d56cec / PR #215 (barrels, crash timing,
 crest spray, the seam between waves): shaders warmed by nearness, the phone tier, boats batched, figures left out of
