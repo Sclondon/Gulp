@@ -772,3 +772,9 @@ cuffs and braces hanging at the hips: `tools/art_src/concept_brother_bible_outfi
   `INFO["band_wide"]`: the strap's width at the shoulder, about 7 cm), so the straps are the top of one broad band
   that carries on round under the arm, front and back, with a seam and a row of stitches along its inner edge.
   The neck's corners are back to 1.5 cm and its dip to 3 mm.
+- The user: "the straps are too thick"; "his pants need to be more burlap sacky colored"; "his capri a little bit
+  higher". Shirt: the neck's half-width 0.09 and the armhole's 0.104, so the straps and the band round the
+  armholes are about 4.5 cm (nipple rule 0.64). Trousers: `"tint"` in the outfit file replaces the drawing's
+  colour and keeps its light and dark (a dull tan, 0.60 0.51 0.38; a brighter 0.66 0.54 0.36 read as mustard),
+  `"weave"` adds a sacking crosshatch every 5 mm (it shows moire in small renders). The cuff's lower edge is
+  14.5 cm above the ankle joint (was 7.5), so they end at mid-calf.

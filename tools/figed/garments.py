@@ -44,7 +44,7 @@ def rules(fig, P, H, skin_px=None):
     sx, zs = abs(H["upperarm_l"][0]), H["upperarm_l"][2]
     zn, yn = H["neck_01"][2], H["neck_01"][1]
     waist = navel[2] - 0.025
-    cuff = H["foot_l"][2] + 0.075
+    cuff = H["foot_l"][2] + 0.145         # (the user: "his capri a little bit higher"; was 0.075)
     knee = H["calf_l"][2]
     out = {}
     lower = (arm < 0.3) & (up < 0.3) & (leg > 0.5)
@@ -64,8 +64,8 @@ def rules(fig, P, H, skin_px=None):
     line = np.where(y < yn, zs + 0.012, zs + 0.045)      # the neckline height: front, back (5 cm lower showed half the chest)
     # ("and not quite so square": the corners rounded 3.5 cm and the line dipping 1 cm in the middle)
     # (then: "now its not square enough": corners 1.5 cm, the dip 3 mm)
-    line = line - 0.003 * np.clip(1 - (x / 0.078) ** 2, 0, 1)
-    ia, ib, rc = 0.078 - np.abs(x), z - line, 0.015      # how far inside the opening, from its side and its bottom
+    line = line - 0.003 * np.clip(1 - (x / 0.09) ** 2, 0, 1)
+    ia, ib, rc = 0.09 - np.abs(x), z - line, 0.015      # how far inside the opening, from its side and its bottom
     corner = np.sqrt(np.maximum(rc - ia, 0) ** 2 + np.maximum(rc - ib, 0) ** 2) - rc
     neck = np.where((ia < rc) & (ib < rc), corner, -np.minimum(ia, ib)) / 0.05     # > 0 outside the opening
     # how far each point is from the armhole's edge, along the line from the armhole's middle (metres): the band
@@ -73,9 +73,9 @@ def rules(fig, P, H, skin_px=None):
     # round the arm whole")
     hx, hz = np.abs(x) - (sx + 0.05), z - (zs - 0.01)
     rho = np.sqrt(hx ** 2 + hz ** 2)
-    INFO["hole_d"] = rho * (1 - 1 / np.sqrt(np.maximum((hx / 0.092) ** 2 + (hz / 0.175) ** 2, 1e-9)))
-    INFO["band_wide"] = float((sx + 0.05 - 0.092) - 0.078)        # the strap's width at the shoulder
-    hole = ((np.abs(x) - (sx + 0.05)) / 0.092) ** 2 + ((z - (zs - 0.01)) / 0.175) ** 2 - 1
+    INFO["hole_d"] = rho * (1 - 1 / np.sqrt(np.maximum((hx / 0.104) ** 2 + (hz / 0.175) ** 2, 1e-9)))
+    INFO["band_wide"] = float((sx + 0.05 - 0.104) - 0.09)        # the strap's width at the shoulder
+    hole = ((np.abs(x) - (sx + 0.05)) / 0.104) ** 2 + ((z - (zs - 0.01)) / 0.175) ** 2 - 1
     nip = figed_fit.mark_vertices(base)["nipple_l"]       # the armhole must clear the nipple (the user: "It needs to
     print("vest: armhole rule at the nipple %.2f (covered when well over 0)" % hole[nip])   # cover up his nips")
     torso = (arm < 0.3) & (up < 0.75) & (head < 0.3) & (z > waist - 0.1) & (_w(base, ("thigh", "calf")) < 0.3)
@@ -335,6 +335,18 @@ def paint(fig, outfit, name, R, P, path, skin_path=None):
             if per_point is not None:
                 hole_d[gy[ins].astype(int), gx[ins].astype(int)] = np.stack(
                     [b0[ins], b1[ins], b2[ins]], axis=1).dot(per_point[tri])
+    if outfit[name].get("tint"):
+        # another cloth colour over the drawing's own folds and wear (the user: "his pants need to be more burlap
+        # sacky colored"): the drawing's light and dark kept, its colour replaced; "weave" adds a coarse sacking
+        # crosshatch (threads every `weave` metres, across and up)
+        lum = tex.mean(axis=2)
+        lum = lum / max(float(np.median(lum)), 1e-3)
+        tex = np.clip(np.array(outfit[name]["tint"]) * (0.35 + 0.65 * lum)[:, :, None], 0, 1)
+        pitch = outfit[name].get("weave", 0)
+        if pitch:
+            warp = np.sin(across * 2 * np.pi / pitch) > 0.2
+            weft = np.sin(upward * 2 * np.pi / pitch) > 0.2
+            tex = tex * (1.0 - 0.06 * warp - 0.06 * weft + 0.04 * (warp & weft))[:, :, None]
     if outfit[name].get("paint") == "shade" and skin_path:
         # Thin tight cloth: its light and shade is the BODY's under it (the user: "the texture needs to frame his
         # pecs"). The skin picture's own painted shading, blurred so hair and marks do not show, lightens and
