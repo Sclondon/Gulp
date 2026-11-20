@@ -240,6 +240,36 @@ class Figure:
         self.raw = dict(spec.get("raw", {}))             # a target file by its own name -> weight
         self.pose = dict(spec.get("pose", {}))           # for pictures and the fit: how the drawing stands
         self.height = spec.get("height")                 # metres, crown to floor; None keeps what comes out
+        # small corrections after the sliders: patches of skin relaxed smooth,
+        # [{"at": "nipples", "radius": cm, "passes": n}]
+        self.smooth = list(spec.get("smooth", []))
+
+    def _smooth(self, pts):
+        b = self.base
+        if not hasattr(b, "_near"):                      # which points share an edge, once
+            near = {}
+            for _group, vi, _ti in b.faces:
+                for i in range(len(vi)):
+                    a, c = vi[i], vi[(i + 1) % len(vi)]
+                    near.setdefault(a, set()).add(c)
+                    near.setdefault(c, set()).add(a)
+            b._near = {k: np.array(sorted(v)) for k, v in near.items()}
+        for patch in self.smooth:
+            centres = []
+            if patch["at"] == "nipples":
+                idx, d = b.target("nipple-point-incr")
+                size = np.linalg.norm(d, axis=1)
+                x = b.verts[idx, 0]
+                centres = [int(idx[np.argmax(np.where(x > 0, size, -1))]), int(idx[np.argmax(np.where(x < 0, size, -1))])]
+            radius = patch.get("radius", 2.5) * 0.1      # decimetres here
+            body = b.indices("body")
+            for c in centres:
+                dist = np.linalg.norm(pts[body] - pts[c], axis=1)
+                ring = body[dist < radius]
+                w = np.cos(dist[dist < radius] / radius * np.pi / 2) ** 2       # full at the middle, none at the rim
+                for _ in range(int(patch.get("passes", 20))):
+                    mean = np.array([pts[b._near[i]].mean(axis=0) for i in ring])
+                    pts[ring] += (mean - pts[ring]) * w[:, None]
 
     # --- targets -----------------------------------------------------------------------------------------
     def _macro(self, pts):
@@ -367,6 +397,8 @@ class Figure:
             none = b.weights.sum(axis=1) == 0
             out[none] = pts[none]
             pts, heads, tails = out, new_heads, new_tails
+        if self.smooth:
+            self._smooth(pts)
         self.points, self.heads, self.tails = pts, heads, tails
         return pts
 

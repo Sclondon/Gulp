@@ -135,7 +135,9 @@ The user: "lets do around focusing on his pecs, shoulders and hands, he should h
     `breast-volume-vert-up` and `upperarm-fat` move in the body job again (pecs came down from the by-eye 1.5 to
     about 0.9, lower and rounder); `muscle` and `shoulder_muscle` are still held.
   - nipples are not modelled: `nipple-point` -0.25 and `nipple-size` -1.5 leave the skin there within 2 mm of smooth
-    (measured, not by eye; a faint tick of the base mesh's edges remains). They are paint, later. The nipple MARK
+    (measured, not by eye). A tick of the base mesh's edges still showed (the user: "He still has nipples?"), so a
+    spec may now carry `smooth`: patches of skin relaxed after the sliders, `[{"at": "nipples", "radius": cm,
+    "passes": n}]` (`Figure._smooth`; the first of the small corrections). They are paint, later. The nipple MARK
     still works: it is a point of the skin, flat or not.
   - `elbows@side` is held to -12 or more: at -31 the forearm stuck out in front of the belly in the side view.
   Outline after: front 0.92, side 0.91, back 0.93; marks within 0.1 to 1.5% of his height.
