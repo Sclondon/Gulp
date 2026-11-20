@@ -448,3 +448,8 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   the jaw. `jaw_drop` -1.5 was tried and only lumped the chin. Two costs of `head-square`: it also flattens the top
   of the skull a little, and its corner sits LOW (about level with the chin), where the user drew it about level
   with the mouth. Raising the corner itself is not something a slider does: a small correction, still owed.
+- The user, of `head-square`: "You lowered it instead of raising it". It is out (0). **`jaw_corner`, a small
+  correction** (`Figure._jaw_corner`): `{"lift": cm, "radius": cm, "below_ear": cm, "forward": cm}` raises the skin
+  within `radius` of a point under where the ear grows from the head, fading smoothly to nothing at the radius. The
+  brother's: lift 2.0, radius 4.5, below_ear 6.5, forward 0.5. The effect is modest; where the point sits against
+  his real jaw corner has not been checked with a marker.

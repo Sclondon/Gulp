@@ -315,6 +315,24 @@ class Figure:
         # a small correction: the ears alone, cut out, resized and moved, the skull and face untouched.
         # {"scale": factor, "back": cm, "down": cm, "out": cm}
         self.ears = dict(spec.get("ears", {}))
+        # a small correction: the corners of the jaw lifted (or dropped). {"lift": cm, "radius": cm, "below_ear": cm,
+        # "forward": cm}: the skin within "radius" of a point "below_ear" under where the ear grows from the head
+        # (and "forward" of it) is raised by up to "lift", fading smoothly to nothing at the radius
+        self.jaw_corner = dict(spec.get("jaw_corner", {}))
+
+    def _jaw_corner(self, P0):
+        P = P0.copy()
+        j = self.jaw_corner
+        body = self.base.indices("body")
+        for side, (_ear, _root, flap) in self._ear_masks().items():
+            out = 1.0 if side == "l" else -1.0
+            depth = out * P0[flap][:, 0]
+            foot = P0[flap[depth < np.percentile(depth, 30)]].mean(axis=0)     # where the ear grows from the head
+            at = foot + np.array([0.0, -j.get("forward", 0.5), -j.get("below_ear", 5.5)]) * 0.01
+            d = np.linalg.norm(P0[body] - at, axis=1) / (j.get("radius", 4.0) * 0.01)
+            t = np.clip(d, 0, 1)
+            P[body, 2] += j.get("lift", 0.0) * 0.01 * (1 - t * t * (3 - 2 * t))
+        return P
 
     def _adjacent(self):
         b = self.base
@@ -656,6 +674,8 @@ class Figure:
             {b: turn(v)[0] for b, v in self.tails.items()}
         if self.jawline:
             P = self._jawline(P)
+        if self.jaw_corner:
+            P = self._jaw_corner(P)
         if self.ears:
             P = self._move_ears(P)
         tuck = self.posture.get("pelvis_tuck", 0.0)
