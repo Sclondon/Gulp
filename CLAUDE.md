@@ -412,6 +412,35 @@ choices below are Claude's.
   FILES.txt lists its baked files; a new bake makes new mesh names: list them). Re-bake after changing a creature's shader
   or models: `godot --path . --audio-driver Dummy --resolution 320x240 -s res://tools/bake_looks.gd -- --components=<folder>`
   (Scenery's anemones: `--plan=res://tools/bake_scenery.json`), then `--import`, then `tests/baked_compare.gd` to look.
+- **Decision: motion families** (2026-11-19, night; the user's call: "each animal should not need its own shader for
+  swimming or motion", and of the ways offered, a few shared motion families with each animal setting its numbers as
+  uniforms; how it is done is Claude's). What: animals drawn from baked paint wear one of four shaders in
+  `shaders/motion/` (GameCommon `godot/motion-families`): **swim** (a wave along the body, side to side or up and down,
+  the tail plate, curl and arch: 72 kinds of fish, sharks, whales, seals, otter, reptiles, monsters), **swim_sheer**
+  (the same, see-through: the flying fish's fins), **flap** (rays' wings bent along the span: manta, devil, eagle and
+  bat rays) and **jointed** (only moves: crustaceans' legs on a stride, shells on hinges, turtles, seahorses,
+  cuttlefish, urchins, slugs, starfish, the sea myths). A fifth, **radial** (the same moves drawn two-sided), has no
+  animal now. Every family shares up to 24 "moves" (turn, move, scale, draw, bend, leg) run on each point, each
+  driven by a live setting (`phase`, `sway`, `gape`, `walk`...) the animal's script sets as before. Each animal's
+  numbers and moves are its spec, `creatures/<kind>/baked/<shader>_motion.gd`, and what each point of its model is
+  (part, weights, a hinge point, a way) is written into its baked meshes' CUSTOM0.zw..CUSTOM3 by
+  `tools/motion_labels.gd` (run it in a window, after a re-bake or a spec's `label()` change). `BakedLook` puts the
+  family on (`Motion.wear`, scripts/motion.gd) in place of the baked copy of the animal's own shader; with no spec it
+  keeps the copy. `tests/motion_compare.gd` draws own against family frame by frame. Why: about 110 creature programs
+  were still compiled on the loading screen, one per kind; now 4 (plus 6 kept and 9 unbaked). A first visit is ready at
+  68 s (was 137 to 157), a second at 11 s (was 23; the warm-up also shows a batch a frame when frames are quick), the
+  cold tour still passes (tools/PERF.md, "Motion families"). The practice: data-driven shaders (one program,
+  per-material parameters and per-vertex masks/weights), as engines do with a few master materials and material
+  instances (Unreal) or uber shaders with feature parameters, rather than a program per asset. Alternatives: one shared
+  ubershader with every kind's own code (a huge program, itself a long freeze), baked vertex animation (exact motion, but
+  textures per kind and the numbers no longer tunable), keeping a program per kind (what it replaces).
+  Kept on their own baked copies: the moray, octopus and channel catfish (points follow ropes their scripts write into a
+  texture), Scenery's anemones, the clownfish's host anemone and the crinoid (they sway by `water_clock` and where they
+  stand). What moves differently: tools/PERF.md lists it (urchins' spines, a guppy's tail, a seahorse's grip and the
+  flying fish's wings in between, the betta flaring, trilobites rolled up); each spec's comment says what it changed.
+  Costs: about 29 MB more vertex memory on the GPU (the labels, full floats: half floats draw wrong here) and 2.8 MB
+  more pack. Writing a spec: read the old shader's vertex code, port each part's move as an op, `label()` from the
+  model's own part codes; compare to 0.01 or better.
 - **Decision: a phone tier** (2026-11-19; Claude's pick of what to turn down). `scripts/tier.gd`: `Tier.phone()` is
   true on web_android/web_ios, a mobile build, or a phone or tablet user agent (an iPad's Safari says Mac, with touch);
   `-- --phone` / `-- --desktop` force it. Desktops, in a browser or not, are unchanged. It turns down what costs a phone

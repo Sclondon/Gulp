@@ -360,3 +360,61 @@ the dive (gone without it), so creatures' own plain materials stay per pixel and
 
 - Native GL (not a browser): a steady 130 ms frame on the way to the sand flats with a warm cache, absent under ANGLE.
 - Not tried in a real browser or on a phone.
+
+## Motion families (2026-11-19, night)
+
+The user: "each animal should not need its own shader for swimming or motion"; they chose a few shared motion families,
+each animal setting its numbers as uniforms. CLAUDE.md, "Decision: motion families"; GameCommon
+`godot/motion-families`. After the bake each creature still had a copy of its own shader for its vertex code, so about
+110 creature programs were compiled on the loading screen; now 98 of the 104 baked creature shaders move by one of four.
+
+### Programs
+
+| | before | after |
+| --- | --- | --- |
+| creature programs (baked, plus kept unbaked) | 104 + 9 | 4 families (swim, swim_sheer, flap, jointed) + 6 kept on their baked copy + 9 unbaked |
+| shader-and-format keys the hitch logger saw (whole sea) | 297 | 226 |
+| a family's program under ANGLE (`tools/compile_cost.gd --shaders=`) | (a baked creature 0.45 to 0.9 s) | swim 1.5 s, flap 1.4, jointed 1.3 on a sphere; jointed about 3 s on its first animal (the leg routine) |
+
+The `radial` family (two-sided arms) exists but has no animal: the starfish, its only one, moved to `jointed`.
+Left on their own baked copies: the moray, giant Pacific octopus and channel catfish (their scripts move points along
+ropes they write into a texture each frame) and Scenery's anemones, the clownfish's host anemone and the crinoid (they
+sway by the global `water_clock` and where they stand, not by `phase`).
+
+### Loading (390x844, ANGLE, Godot's shader cache moved aside, `-- --dive --tour`)
+
+| | before | families | families + batched warm-up |
+| --- | --- | --- | --- |
+| first visit: everything ready | 137 to 157 s | 81.7 s (72 s warming) | 67.9 s (59 s warming) |
+| second visit (cache kept) | 23 s | 25.3 s | 11.1 s |
+| in play: frames over 50 ms / over 33 ms | 0 / 0 | 0 / 0 (PASSED) | 0 / 0 (PASSED) |
+| frame time in play, median / 95th / 99th | 6.2 / 10.3 / 11.9 ms | 6.3 / 9.9 / 11.7 | 7.1 / 11.3 / 13.3 |
+
+One run each. With programs cached the warm-up was paced at one thing every two frames (about 1,300 frames), so the
+Warmer now shows a batch while frames come back under 60 ms (doubling to 16) and one at a time after a frame over 300 ms
+(`Warmer.BATCH_*`). What is left of a first visit: the sea's first two frames (about 20 s: the water, sand, sky and
+the rest at once), the first frame of each family (1.5 to 3 s), the kept unbaked shaders (the squids, firefly squid,
+comb jelly, anglerfish, nettle: 1.5 to 2.5 s each), the submarine's plain materials per pixel (about 3 s), the docks'
+and outcrops' plain materials, the breakers.
+
+### Motion: own shader against family (`tests/motion_compare.gd`)
+
+Every kind, 8 frames through a beat plus mouth open, turning and arched, from above and the side; the number is the
+share of the drawn outline where they disagree. 0.000 to 0.003 for nearly every fish, whale, ray and crustacean.
+Larger, each looked at: long-spined urchin 0.31, pencil 0.09, purple 0.08 (each spine swings back and forth along its old
+ellipse, so single thin spines differ; the urchin reads the same); guppy males 0.02 (the tail's turn behind the joint);
+dumbo octopus 0.016 (the web's curve as a straight move); cameroceras 0.014; Spanish dancer 0.013; sea serpent 0.015.
+Differences only at settings the game sets through a middle value: the seahorse's grip at a half (0.06 to 0.09:
+straight from loose to gripped), the flying fish's spread wings (0.08: they bend with the wave where they were stiff),
+the betta flaring (0.04), trilobites rolled up (0.06 to 0.22: their legs and spines bend with the body). Unused by
+the game: the remora riding a host and the sea lion's `fold` lose their stilling of the wave. Every spec file's
+comment lists what it does differently. Eyes: as baked (looking ahead, open). Where an old shader also squashed the eye's shape to blink, the family does too;
+the painted look and blink are not back (each kind's eye drawn per pixel again would add its fragment code back).
+
+### Pack and memory
+
+Each baked vertex carries its labels (CUSTOM0 grows from 2 to 4 floats, CUSTOM1 to CUSTOM3 are 4 floats each): 557,163
+vertices in 273 baked meshes, 522,580 labelled, 56 bytes more each: about 29 MB more vertex memory on the GPU when
+every kind is loaded, 2.5 MB more on disk (baked meshes 12.9 -> 15.4 MB) and about 2.8 MB more in the pack (a web export
+from the working checkout: 57.9 MB, against 55.1 MB the same way before). Half floats would halve it but draw wrong in
+GL Compatibility. Texture memory is unchanged (the families read the same baked pictures, about 88 MB).
