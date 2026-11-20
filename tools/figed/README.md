@@ -813,3 +813,23 @@ brass buckles and a chest pocket, brown boots, a flat cap; forearm tattoos.
   still follows his belly, has no pocket, clips or buckles, and its straps are plain bands; the boot feet are
   slipper-shaped hulls with no heel or sole; the shirt has no collar points, placket, buttons or rolled cuff; the
   cap is a dome with a peak, not a flat cap's forward-leaning crown; hair, moustache and tattoos are not on him.
+
+## Hair and moustache, first pass (2026-11-20)
+
+The user: "Also lets start working on his bair and mustache". `hair.py` (its docstring is the method):
+`blender -b --factory-startup --python tools/figed/hair.py -- <spec.json> <out.png> [--wear hair,moustache]` builds
+them as pieces of their own on the bald head and renders the five head views; `garments.py ... --hair` adds them to an
+outfit picture (under the cap only the moustache, until the hair is cut to sit under it).
+- Hair: the scalp inside a hairline rule, pushed out 1 to 5 cm, divided, raised into curl clumps, its edge hanging
+  over the hairline in locks (most on the forehead), closed underneath. Painted from the same clumps (wavy locks, dark
+  creases, amber lights on top) on UVs of its own. About 6,000 triangles (to be thinned for the game).
+- Moustache: the skin from the nose to the upper lip and out past the mouth's corners, pushed out 4 to 12 mm, ginger
+  strands combed out from the middle.
+- All Claude's picks: modelled clumps with painted locks (as the Twilight Princess figures' hair is), not cards; the
+  user's earlier "Dont try to model the beard it should be made with a hair shader" was about the captain's beard, so
+  this method is to be confirmed by them. Rough: the fringe's edge is still angular and the hair's lower edge at the
+  sides and nape is a hard line; no loose curls break the outline; no sideburns, stubble or brows as pieces; flat
+  pictures only (not yet in the game's hair shader); nothing is exported.
+- The same day the bib overalls were reshaped (`_taut`: cloth hung straight between the body's high spots, column by
+  column; a higher bib with sides curving up from the ribs; its top edge close on the chest; straps lying on what he
+  wears). Still owed there: pocket, clips, buckles, boots with soles, the jumper's cables and cuffs, the flat cap.

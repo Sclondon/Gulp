@@ -24,6 +24,45 @@ import figed_fit  # noqa: E402
 
 SMOOTH = {}                                           # garment -> smoothing passes (set by rules())
 INFO = {}                                             # what rules() learns that paint() needs
+PUSH = {}                                             # garment -> a move per point before the cut (taut cloth)
+
+
+def _taut(x, d, z, sel, z0, z1):
+    """Cloth hung taut down a front: for the points sel, how much further out (d is depth, bigger = further out)
+    each must sit to lie on the straight spans between the body's high spots, column by column."""
+    xs = np.linspace(-0.22, 0.22, 19)
+    zg = np.linspace(z0, z1, 44)
+    D = np.full((len(xs), len(zg)), np.nan)
+    ix = np.clip(np.round((x[sel] + 0.22) / (xs[1] - xs[0])).astype(int), 0, len(xs) - 1)
+    iz = np.clip(np.round((z[sel] - z0) / (zg[1] - zg[0])).astype(int), 0, len(zg) - 1)
+    for a, b, v in zip(ix, iz, d[sel]):
+        if np.isnan(D[a, b]) or v > D[a, b]:
+            D[a, b] = v
+    Hd = np.zeros_like(D)
+    for a in range(len(xs)):
+        ok = ~np.isnan(D[a])
+        if ok.sum() < 3:
+            Hd[a] = np.nan
+            continue
+        zz, dd = zg[ok], D[a][ok]
+        hull = []
+        for q in zip(zz, dd):
+            while len(hull) >= 2 and ((hull[-1][0] - hull[-2][0]) * (q[1] - hull[-2][1])
+                                      - (hull[-1][1] - hull[-2][1]) * (q[0] - hull[-2][0])) >= 0:
+                hull.pop()
+            hull.append(q)
+        hull = np.array(hull)
+        Hd[a] = np.interp(zg, hull[:, 0], hull[:, 1])
+    for b in range(len(zg)):                              # columns with no points take their neighbours'
+        ok = ~np.isnan(Hd[:, b])
+        Hd[:, b] = np.interp(xs, xs[ok], Hd[ok, b]) if ok.any() else 0.0
+    fx = np.clip((x + 0.22) / (xs[1] - xs[0]), 0, len(xs) - 1.001)
+    fz = np.clip((z - z0) / (zg[1] - zg[0]), 0, len(zg) - 1.001)
+    a0, b0 = fx.astype(int), fz.astype(int)
+    ta, tb = fx - a0, fz - b0
+    want = (Hd[a0, b0] * (1 - ta) * (1 - tb) + Hd[a0 + 1, b0] * ta * (1 - tb)
+            + Hd[a0, b0 + 1] * (1 - ta) * tb + Hd[a0 + 1, b0 + 1] * ta * tb)
+    return np.where(sel, np.maximum(want - d, 0.0), 0.0)
 SIZE = 1024
 BIND = 0.013                                          # width of a bound edge, metres
 ARM = ("lowerarm", "hand", "thumb", "index", "middle", "ring", "pinky")
@@ -101,15 +140,25 @@ def rules(fig, P, H, skin_px=None):
     out["shirt"] = (np.minimum(np.minimum(z - (waist - 0.06), collar), (0.3 - lowerw) * 0.1),
                     top_half, np.full(len(P), 0.008), (0.34, 0.35, 0.34))
     front = y < yn
-    bib_top = np.where(front, zs - 0.06, zs - 0.11)                   # the bib in front, a lower panel behind
-    bib_wide = np.where(front, 0.115, 0.085)
-    rim = waist + 0.07 + (bib_top - waist - 0.07) * np.clip((bib_wide - np.abs(x)) / 0.035, 0, 1) ** 0.5
+    bib_top = np.where(front, zs - 0.035, zs - 0.11)                  # the bib in front, a lower panel behind
+    bib_wide = np.where(front, 0.118, 0.085)
+    # the sides run up from high on the ribs into the bib in one curve (the sheet), not a step at the waist
+    side = np.clip((np.abs(x) - bib_wide) / 0.07, 0, 1)
+    rim = bib_top + (waist + 0.10 - bib_top) * side * side * (3 - 2 * side)
     leg_end = H["foot_l"][2] + 0.2
     wears = (arm < 0.3) & (up < 0.4) & (head < 0.3)
     puff = 0.03 + 0.012 * np.clip((knee + 0.1 - z) / 0.25, 0, 1)    # (and smoothed: overalls do not show the body)
+    puff = puff * (0.45 + 0.55 * np.clip((rim - z) / 0.09, 0, 1))     # the top edge lies close on the chest
     out["bib"] = (np.minimum(rim - z, z - leg_end), wears, puff, (0.80, 0.58, 0.12))
+    # stiff cloth hangs straight from the chest over the belly to the thighs: it does not follow him in
+    zc = H["thigh_l"][2] - 0.10
+    hang = _taut(x, -y, z, wears & (y < yn + 0.02) & (z > zc - 0.08) & (z < zs - 0.03), zc - 0.08, zs - 0.03)
+    hang = hang * np.clip((z - (zc - 0.08)) / 0.08, 0, 1)
+    PUSH["bib"] = np.stack([np.zeros(len(P)), -hang, np.zeros(len(P))], axis=1)
+    INFO["bib_top"], INFO["bib_wide"] = float(zs - 0.035), 0.118
+    under = (thick if "jumper" in INFO.get("wear", ()) else 0.008) + 0.007   # the straps lie on what he wears
     out["bib_straps"] = (np.minimum(0.016 - np.abs(np.abs(x) - 0.088), z - (bib_top - 0.1)),
-                         (arm < 0.3) & (up < 0.75) & (head < 0.3), np.full(len(P), 0.02), (0.10, 0.10, 0.11))
+                         (arm < 0.3) & (up < 0.75) & (head < 0.3), under * np.ones(len(P)), (0.10, 0.10, 0.11))
     shaft = _w(base, ("calf", "foot", "ball")) > 0.5
     out["boots"] = (np.minimum(H["foot_l"][2] + 0.27 - z, z - (H["foot_l"][2] - 0.02)), shaft,
                     np.full(len(P), 0.012), (0.09, 0.09, 0.10))
@@ -331,6 +380,7 @@ def make(fig, wear, posed=True, arm=None, skin_path=None):
                     c = px[min(px.shape[0] - 1, int(uvs[t][1] * px.shape[0])), min(px.shape[1] - 1, int(uvs[t][0] * px.shape[1]))]
                     cloth[v] = c.min() > 0.6 and (c[0] - c[2]) < 0.22
         skin_px = cloth
+    INFO["wear"] = tuple(wear)
     R = rules(fig, P, H, skin_px)
     parts = []
     for name in wear:
@@ -339,7 +389,8 @@ def make(fig, wear, posed=True, arm=None, skin_path=None):
                 print("no such garment here:", piece)
                 continue
             f, may, off, col = R[piece]
-            mesh = cut(fig, P, Pp, f, may, off, piece)
+            mv = PUSH.get(piece, 0.0)
+            mesh = cut(fig, P + mv, Pp + mv, f, may, off, piece)
             if posed:
                 for v, d in zip(mesh.vertices, mesh.attributes["posed"].data):
                     v.co = d.vector
@@ -583,6 +634,9 @@ if __name__ == "__main__":
         objs["eyes"].data.materials.append(material("eyes", stem + "_eyes.png"))
     parts, R, P = make(fig, wear, posed=True, skin_path=stem + "_skin.png")
     extras(fig, wear, outfit, P, INFO["Pp"], INFO["H"])
+    if "--hair" in argv:                                  # his hair and moustache too (hair.py); under a cap, only
+        import hair as hair_mod                           # the moustache until the hair is cut to sit under it
+        hair_mod.make(fig, ["moustache"] if "cap" in wear else ["hair", "moustache"], stem)
     # THE BODY UNDER THE CLOTHES IS NOT DRAWN (it came through the smoothed overalls at the thighs): faces of the
     # body whose points are all well inside a worn garment are taken out. The body's points are matched to the
     # figure's by place.
