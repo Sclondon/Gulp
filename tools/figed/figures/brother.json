@@ -433,7 +433,7 @@
   "neck_thickness": 1.025,
   "nipple-point": -0.25,
   "nipple-size": -1.5,
-  "nose-base-up": -0.2,
+  "nose-base-up": -0.5,
   "nose-curve-convex": -0.2,
   "nose-greek": 0,
   "nose-trans-forward": 0.1,
@@ -444,7 +444,7 @@
   "nose_mid_width": 0.5,
   "nose_out": 0.65,
   "nose_size": 1.2,
-  "nose_tip_up": 0.1,
+  "nose_tip_up": -0.1,
   "nose_tip_width": 1.2,
   "nostril_width": 0.9,
   "pecs": 0.5,
@@ -466,7 +466,10 @@
   "jaw_width": 0.5,
   "nose_flare": 0.3,
   "nose-nostrils-angle-up": -0.5,
-  "nose-compression-uncompress": 0.6
+  "nose-compression-uncompress": 0.6,
+  "chin_forward": 0.6,
+  "chin-prognathism": 0.3,
+  "chin_height": -0.2
  },
  "zoom": {
   "armless_back": 0.9679166666666666,

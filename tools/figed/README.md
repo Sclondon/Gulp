@@ -348,3 +348,7 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   underside), `nose-base-up` -0.2, `nose_flare` 0.3, `nose_size` 1.2, `nose-nostrils-angle-up` -0.5 and
   `nose-compression-uncompress` 0.6 (the other way, +0.5 and -0.6, gave a flat wide tip). Nose tip 0.60 (sheet
   0.57). `nose-trans-up` this high crowds the bridge into the brow: watch the crease between the eyes.
+- The user (green marks on the profile overlay): "Chin needs to be up and forward a bit and lower nose not bend up but
+  bulge down". `chin_forward` 0.6, `chin-prognathism` 0.3, `chin_height` -0.2; `nose_tip_up` -0.1 and
+  `nose-base-up` -0.5 (the base hangs lower under a level tip). `nose_tip_up` -0.5 was tried first and hooked the
+  nose into a beak that dropped its tip to 0.65: small steps on that one. Nose tip 0.62 now.
