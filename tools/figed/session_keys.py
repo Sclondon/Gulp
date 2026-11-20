@@ -1,6 +1,7 @@
 """Two keys for a figed sculpt or paint window (the user has no numpad and should not need Blender's menus):
 
-    F5  the texture on / off (off = plain grey with studio light, to judge the forms)
+    F5  the texture on / off (off = plain grey with studio light, to judge the forms). Texture Paint mode always
+        draws the texture, so from there F5 goes to Sculpt Mode in grey; F5 again shows the texture in Sculpt Mode
     F6  Sculpt Mode <-> Texture Paint (Sculpt Mode starts on the Grab brush, mirrored)
 
 Run inside Blender: exec(open(".../session_keys.py").read()). sculpt_session.py runs it for every window.
@@ -23,6 +24,10 @@ class FIGED_OT_texture(bpy.types.Operator):
         area, _region = _view()
         sh = area.spaces[0].shading
         sh.type = "SOLID"
+        if context.mode == "PAINT_TEXTURE":            # Texture Paint always draws the texture: grey means leaving it
+            bpy.ops.figed.mode()
+            sh.color_type, sh.light = "MATERIAL", "STUDIO"
+            return {"FINISHED"}
         if sh.color_type == "TEXTURE":
             sh.color_type, sh.light = "MATERIAL", "STUDIO"
         else:
@@ -38,6 +43,8 @@ class FIGED_OT_mode(bpy.types.Operator):
         if context.mode == "SCULPT":
             if "figed_skin" in bpy.data.images:
                 bpy.ops.object.mode_set(mode="TEXTURE_PAINT")
+                area, _region = _view()
+                area.spaces[0].shading.color_type, area.spaces[0].shading.light = "TEXTURE", "FLAT"
             return {"FINISHED"}
         bpy.ops.object.mode_set(mode="SCULPT")
         context.scene.tool_settings.sculpt.use_symmetry_x = True

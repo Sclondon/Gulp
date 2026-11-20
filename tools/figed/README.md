@@ -618,3 +618,9 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
 - `session_keys.py`: F5 texture on/off, F6 Sculpt <-> Texture Paint, in every figed window (the user: "is there a
   way for me to toggle on and off the texture? and to get to sculpt mode?"). A paint file has `figed_rest`, so
   sculpting in it is read by `-- read` as usual.
+- The user: "you did the eyse backwards, the tilt down inwards" (blue lines: the openings sloped down to the nose).
+  **In this base `eye-corner1` is the OUTER corner and `eye-corner2` the INNER** (the aliases `eye_inner_corner_up`
+  = corner1 and `eye_outer_corner_up` = corner2 in `figed.py` are named the wrong way round: to be swapped).
+  Now `eye_inner_corner_up` -1.3 (outer corner down), `eye_outer_corner_up` 0.4.
+- "f5 doenst turn off texture": Texture Paint mode always draws the texture whatever the shading says, so F5 from
+  paint mode now goes to Sculpt Mode in grey (F5 again: the texture in Sculpt Mode; F6: back to paint).
