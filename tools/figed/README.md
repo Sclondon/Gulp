@@ -755,3 +755,9 @@ cuffs and braces hanging at the hips: `tools/art_src/concept_brother_bible_outfi
   (rule value 0.64); looser, 11 mm off the body on the chest, tapering to 4 mm at the waist (11 mm all the way down
   came through the trousers' waistband); the body-shading on it softened (power 0.9). Claude read "the straps" as
   the shirt's shoulder straps, not the braces.
+- The user, with a photograph of a square-necked vest on a model as the CUT to follow (described here, not kept in
+  the repo: a real person's photo): "the shirt fit needs to be like big straps and straight across like this
+  more". The neck is now a square: `max(|x| - 0.072, line - z)`, the line 1.2 cm above the shoulder joints in
+  front and 4.5 cm above behind (4 cm below was tried first and bared half the chest); the armholes back to
+  0.092 x 0.175 so the straps are broad (about 7 cm) with straight inner edges; the edge band 20 mm wide and a
+  shade darker (`bind`, `bind_shade` in the outfit file). Nipple rule 1.02.

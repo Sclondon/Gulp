@@ -57,9 +57,12 @@ def rules(fig, P, H, skin_px=None):
     # armholes cut in beside the pecs)
     # (then: "Its a little to skin tight, the straps are too wide, and neck too deel": a wider, shallower neck and
     # armholes wider at the shoulder but ending higher, so the straps are narrow and the nipples stay covered)
-    depth = np.where(y < yn, 0.135, 0.09)
-    neck = (x / 0.098) ** 2 + ((z - (zn + 0.03)) / depth) ** 2 - 1
-    hole = ((np.abs(x) - (sx + 0.045)) / 0.112) ** 2 + ((z - (zs + 0.02)) / 0.16) ** 2 - 1
+    # (then, with a photograph of a square-necked vest as the cut to follow, described here and not kept: "the shirt
+    # fit needs to be like big straps and straight across like this more": the neck is a SQUARE, straight across
+    # the upper chest between broad straps with straight inner edges; a wide band round every edge)
+    line = np.where(y < yn, zs + 0.012, zs + 0.045)      # the neckline height: front, back (5 cm lower showed half the chest)
+    neck = np.maximum(np.abs(x) - 0.072, line - z) / 0.05          # > 0 outside the square opening
+    hole = ((np.abs(x) - (sx + 0.05)) / 0.092) ** 2 + ((z - (zs - 0.01)) / 0.175) ** 2 - 1
     nip = figed_fit.mark_vertices(base)["nipple_l"]       # the armhole must clear the nipple (the user: "It needs to
     print("vest: armhole rule at the nipple %.2f (covered when well over 0)" % hole[nip])   # cover up his nips")
     torso = (arm < 0.3) & (up < 0.75) & (head < 0.3) & (z > waist - 0.1) & (_w(base, ("thigh", "calf")) < 0.3)
@@ -336,8 +339,9 @@ def paint(fig, outfit, name, R, P, path, skin_path=None):
         tex = np.clip(base_col * (form * rib)[:, :, None], 0, 1)
         # a bound edge round the neck, the armholes and the hem ("have border stitching"): a plain band without
         # ribs, a seam where it meets the cloth, and a row of stitches along it
+        BIND = outfit[name].get("bind", 0.013)
         band = edge < BIND
-        tex[band] = np.clip(base_col * 0.97 * form[band][:, None], 0, 1)
+        tex[band] = np.clip(base_col * outfit[name].get("bind_shade", 0.97) * form[band][:, None], 0, 1)
         seam = np.abs(edge - BIND) < 0.0012
         tex[seam] = tex[seam] * 0.72
         dash = np.sin((across + upward) * 2 * np.pi / 0.007) > -0.2
