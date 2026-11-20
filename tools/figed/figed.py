@@ -467,7 +467,9 @@ class Figure:
                 np.array([[1, 0, 0], [0, np.cos(a), -np.sin(a)], [0, np.sin(a), np.cos(a)]]))
             # "tilt": the top of the ear leant back, degrees; "flare": its back edge swung out from the head;
             # "out": cm further from the head (negative sinks the cut edge under the skin)
-            piece = mid + (P0[ear] - mid).dot(turn.T) * e.get("scale", 1.0) + carry
+            # "wide": the ear broader front to back (the generic ear is narrow beside a drawn one)
+            shape = (P0[ear] - mid) * np.array([1.0, e.get("wide", 1.0), 1.0])
+            piece = mid + shape.dot(turn.T) * e.get("scale", 1.0) + carry
             piece[:, 0] += out * e.get("out", 0.0) * 0.01
             self.ear_pieces[side] = (ear, piece)
 

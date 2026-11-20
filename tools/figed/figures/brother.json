@@ -489,9 +489,10 @@
   "scale": 1.18,
   "back": 3,
   "down": 0.4,
-  "out": -0.65,
+  "out": -0.35,
   "tilt": 16,
-  "flare": 7
+  "flare": 4,
+  "wide": 1.4
  },
  "jaw_corner": {
   "lift": 2.9,

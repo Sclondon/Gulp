@@ -508,3 +508,12 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   reference pictures at 45% hid the model, 22% is right; a plain middle-drag tilts the view and the pictures (shown
   only straight on) vanish: say so up front; open windows on the main monitor (`--window-geometry`), the user's
   words: "stop using monitor 3".
+- The user, of the ear in the sculpt window (the sheet's ear outlined in blue, much wider): "the ear looks
+  scrunched? and it has an open seam on the backside and his not conncted to the head". `ears.wide` (new: the ear
+  broader front to back before it is turned) 1.4, `out` -0.65 -> -0.35 (sunk less: sinking hid its front),
+  `flare` 7 -> 4; and `cut_ears` now carries the piece's cut edge 1.8 cm INTO the head as a skirt, so no open rim
+  shows behind the ear. Better, not finished: from behind the skirt still reads as a hollow shell. The honest fix
+  is to weld the ear's rim to the head's skin (bridge the two loops), which the smoothed-over patch makes hard to
+  do by rule; a candidate for doing once by hand.
+- Texturing: the user, same message: "We should also start figuring out his texturing". Not started; options put
+  to the user (a far-reaching choice).

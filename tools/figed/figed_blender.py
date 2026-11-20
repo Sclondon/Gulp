@@ -142,8 +142,28 @@ def cut_ears(fig, obj, remap, P):
                 for lf, lg in zip(f.loops, g.loops):
                     lg[uv].uv = lf[uv].uv
             count += 1
-        made += list(copy.values())
-        print("ear %s: a piece of %d points, %d faces" % (side, len(copy), count))
+        # the cut edge of the piece carried on INTO the head as a skirt, so no open rim shows behind the ear and
+        # the ear reads as joined to the head
+        own = set(copy.values())
+        rim = [e for e in bm.edges if e.verts[0] in own and e.verts[1] in own and len(e.link_faces) == 1]
+        inward = -1.0 if side == "l" else 1.0
+        deep = {}
+        for e in rim:
+            for v in e.verts:
+                if v not in deep:
+                    deep[v] = bm.verts.new((v.co.x + inward * 0.018, v.co.y, v.co.z))
+        for e in rim:
+            a, b = e.verts
+            try:
+                g = bm.faces.new((a, b, deep[b], deep[a]))
+            except ValueError:
+                continue
+            g.smooth = True
+            g.normal_update()
+            if g.normal.dot(e.link_faces[0].normal) < 0 and False:
+                g.normal_flip()
+        made += list(copy.values()) + list(deep.values())
+        print("ear %s: a piece of %d points, %d faces, a skirt of %d edges" % (side, len(copy), count, len(rim)))
     bm.verts.index_update()
     new = [v.index for v in made]
     bm.to_mesh(mesh)
