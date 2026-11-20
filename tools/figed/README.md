@@ -517,3 +517,10 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   do by rule; a candidate for doing once by hand.
 - Texturing: the user, same message: "We should also start figuring out his texturing". Not started; options put
   to the user (a far-reaching choice).
+- Eyes and lips (the user, marks on the profile in the sculpt window): "his eyes need to be bigger and sit back a
+  little further, and his lips need to be softly rounded not flat. Also, his eyes need the downturn soft slant and
+  epticanthal tilt". By sliders, by eye: `eye_size` -0.2 -> 1.5, `eye-push1-out` and `eye-push2-out` -0.5 (negative
+  sets the eye back; positive opens it wide and forward), `eye_outer_corner_up` -0.6 -> -1.0,
+  `eye-epicanthus-out` -0.7 (which sign is the fold was a guess: check close up), `mouth-upperlip-volume` 0.9,
+  `mouth-lowerlip-volume` -0.2 -> 0.9, `mouth-scale-depth` -0.4 -> 0.6 (positive rounds the lips forward in
+  profile; negative was the flat mouth).

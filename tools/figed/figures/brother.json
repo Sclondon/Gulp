@@ -399,8 +399,8 @@
   "chin_height": -0.2,
   "double_chin": 0.4,
   "eye_bags": 0.7,
-  "eye_outer_corner_up": -0.6,
-  "eye_size": -0.2,
+  "eye_outer_corner_up": -1,
+  "eye_size": 1.5,
   "finger_spread": 0.4,
   "foot-scale-depth": -0.5,
   "foot-scale-horiz": 0.4375,
@@ -422,12 +422,12 @@
   "lowerleg-muscle": 0.6,
   "mouth-angles-up": 0.7,
   "mouth-dimples-out": 0.3,
-  "mouth-lowerlip-volume": -0.2,
-  "mouth-scale-depth": -0.4,
+  "mouth-lowerlip-volume": 0.9,
+  "mouth-scale-depth": 0.6,
   "mouth-scale-horiz": 0.7,
   "mouth-trans-forward": 0.1,
   "mouth-trans-up": 0.9062,
-  "mouth-upperlip-volume": 0.6,
+  "mouth-upperlip-volume": 0.9,
   "neck-back-scale-depth": 0.0875,
   "neck-scale-depth": -0.15,
   "neck-scale-horiz": -0.65,
@@ -466,7 +466,10 @@
   "upperarm-muscle": 0.2188,
   "waist": 0.25,
   "waist_to_hip": -0.125,
-  "wrist": 0.1
+  "wrist": 0.1,
+  "eye-push1-out": -0.5,
+  "eye-push2-out": -0.5,
+  "eye-epicanthus-out": -0.7
  },
  "tilt": {
   "head_side": -1
