@@ -103,26 +103,6 @@
    ]
   },
   "targets": {
-   "head_width": [
-    -1.5,
-    2,
-    0.4
-   ],
-   "head_depth": [
-    -1.5,
-    2,
-    0.4
-   ],
-   "head_height": [
-    -1.5,
-    2,
-    0.4
-   ],
-   "head-back-scale-depth": [
-    -1.5,
-    1.5,
-    0.4
-   ],
    "cheek-inner": [
     -1,
     1.5,
@@ -214,11 +194,6 @@
     0.4
    ],
    "forehead-nubian": [
-    -1.5,
-    1.5,
-    0.4
-   ],
-   "forehead-scale-vert": [
     -1.5,
     1.5,
     0.4

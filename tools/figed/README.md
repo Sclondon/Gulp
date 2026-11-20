@@ -321,3 +321,15 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   the sheet's. His nose tip is about three quarters of the way down his head (the sheet's: 57%), and the lower face
   is short, since the chin sliders went back to 0. The up-and-down layout of the face (brow, eyes, nose, mouth,
   chin) is the next thing to set, by marks.
+- The squish round. The user, of the overlay: "seems like you havent quite matched the quarter turn angle" (a view
+  of `head_overlay.py` may give its `turn` in degrees: the sheet's are about 35 right and 45 left, not 45 and 45),
+  then "I think mostly what needs to happen is his head is too tall, and needs to be \"squished\" a little, shorter
+  and wider". `face_levels.py` prints where the brow, eyes, nose tip and mouth sit between crown (0) and chin (1)
+  and the head's width and depth to that height; it takes `slider=value` trials. The sheet: eyes 0.45, nose tip
+  0.57, mouth 0.72; wide 0.80, deep 0.86. The model was eyes 0.49, nose 0.65, mouth 0.76; wide 0.75, deep 0.89.
+  Now `forehead-scale-vert` -0.5 and `head_height` 0.1 (the skull above the eyes shorter), `head.size` x1.085 to
+  keep his head's height on the body, and `head.depth` 0.82: eyes 0.46, nose 0.63, mouth 0.74; wide 0.83, deep 0.86.
+  **Do not shorten a head's depth with `head_depth` / `head-back-scale-depth` past about -1**: at -2 they dented the
+  skull behind the ears; the bone control `head.depth` scales the whole head front to back cleanly. And
+  `forehead-scale-vert` at -0.9 squared the top of the skull; -0.5 keeps it round. These are held out of the head fit.
+  Left: the nose tip is still low (0.63 against 0.57), which is the nose's own shape, for its next round.

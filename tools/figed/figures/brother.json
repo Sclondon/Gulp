@@ -10,7 +10,7 @@
   "foot.width": 1.05,
   "hand.length": 0.95,
   "hand.width": 1.08,
-  "head.size": 1.0406,
+  "head.size": 1.1291,
   "lowerarm.girth": 1.2311,
   "lowerarm.length": 0.96,
   "neck.depth": 0.8,
@@ -43,7 +43,8 @@
   "upperarm.depth": 1.3125,
   "upperarm.girth": 0.85,
   "upperarm.length": 1.0625,
-  "upperarm.width": 1.15
+  "upperarm.width": 1.15,
+  "head.depth": 0.82
  },
  "drop": {
   "head_back": 1,
@@ -406,8 +407,7 @@
   "head-fat": 0,
   "head-oval": 0.3,
   "head-round": 0,
-  "head_depth": -1,
-  "head_height": 0.4,
+  "head_height": 0.1,
   "hip-scale-depth": -0.25,
   "hip-waist-up": 0.3125,
   "hips": 0.5,
@@ -460,7 +460,8 @@
   "upperarm-muscle": 0.2188,
   "waist": 0.25,
   "waist_to_hip": -0.125,
-  "wrist": 0.1
+  "wrist": 0.1,
+  "forehead-scale-vert": -0.5
  },
  "zoom": {
   "armless_back": 0.9679166666666666,
