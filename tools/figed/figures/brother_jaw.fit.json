@@ -1,0 +1,132 @@
+{
+ "about": "The older brother jaw: the head job views with the jaw marked (the bottom and front of the chin, the corner of the jaw each side), read off the shaved sheet enlarged four times on a grid (Claude, by eye; 1024 px coordinates). Only jaw and chin sliders move. The user, 2026-11-19: \"Make sure to line up the jaw as well\"; \"Lets do just a jaw round\".",
+ "start": "tools/figed/figures/brother.json",
+ "out": "tools/figed/figures/brother.json",
+ "picture": "tools/figed/figures/brother_jaw_fit.png",
+ "sweeps": 10,
+ "stiffness": 0.0003,
+ "marks_weight": 300,
+ "views": [
+  {
+   "name": "head_front",
+   "picture": "tools/art_src/concept_brother_bible_head_bare.png",
+   "box": [
+    15,
+    140,
+    240,
+    430
+   ],
+   "look": "front",
+   "box_width": 1024,
+   "cut": 387,
+   "chin": 383,
+   "marks": {
+    "chin": [
+     130,
+     381.3
+    ],
+    "jaw_r": [
+     57.5,
+     340
+    ],
+    "jaw_l": [
+     197.5,
+     340
+    ]
+   }
+  },
+  {
+   "name": "head_side",
+   "picture": "tools/art_src/concept_brother_bible_head_bare.png",
+   "box": [
+    420,
+    140,
+    632,
+    450
+   ],
+   "look": "side",
+   "box_width": 1024,
+   "cut": 381,
+   "chin": 377,
+   "marks": {
+    "chin": [
+     585,
+     373.8
+    ]
+   }
+  }
+ ],
+ "move": {
+  "shift": {
+   "head_front": [
+    -20,
+    20,
+    2
+   ],
+   "head_side": [
+    -20,
+    20,
+    2
+   ]
+  },
+  "drop": {
+   "head_front": [
+    -6,
+    6,
+    1
+   ],
+   "head_side": [
+    -6,
+    6,
+    1
+   ]
+  },
+  "targets": {
+   "jaw_width": [
+    -1,
+    3,
+    0.4
+   ],
+   "chin_width": [
+    -1,
+    3,
+    0.4
+   ],
+   "chin_height": [
+    -1.5,
+    1.5,
+    0.3
+   ],
+   "chin_forward": [
+    -1.5,
+    1.5,
+    0.3
+   ],
+   "jaw_drop": [
+    -1.5,
+    1.5,
+    0.3
+   ],
+   "chin-prognathism": [
+    -1,
+    1,
+    0.3
+   ],
+   "double_chin": [
+    -0.5,
+    2,
+    0.3
+   ],
+   "chin-triangle": [
+    0,
+    1,
+    0.3
+   ],
+   "head-square": [
+    0,
+    1.5,
+    0.3
+   ]
+  }
+ }
+}

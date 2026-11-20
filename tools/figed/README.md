@@ -265,3 +265,16 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
 - Not done: the nose (long and thin with a hooked tip, where the sheet's is a broad round bulb), the eyes (the
   sheet's are small and downturned with bags), the mouth (wider, a fuller smile), bigger ears, brows. Features the
   outline cannot see are next, one at a time.
+- Jaw round, begun. The user: "Make sure to line up the jaw as well- maybe color the face so you can distinguish it
+  better"; "Lets do just a jaw round, then a nose round".
+  - `-- look ... --tint` colours the skin that follows the head bone, so the jaw's edge shows against the neck.
+  - Head views take marks now (`chin`, `jaw_l` / `jaw_r`: points of the skin found from MakeHuman's chin and jaw
+    targets; `brother_jaw.fit.json` moves only jaw and chin sliders).
+  - **The chin point was wrong and so was the first head fit**: the `chin-height` target peaks UNDER the jaw, 2 cm
+    behind and above the chin's bottom, so the size pin drew the head about 6% too large and the fitted head was
+    narrow (0.72 wide to high, not the 0.78 reported). The point is now where `chin-prominent` peaks (the chin's
+    bottom front), and the head outline was fitted again: 0.97 front, 0.98 profile, 0.95 back; 0.79 wide to high
+    against the sheet's 0.80. Look at where a mark sits on the model (the fit's picture draws it) before using it.
+  - The `jaw` point (where `chin-bones` peaks) is mid-jaw, not the corner under the ear: fine in the front view,
+    wrong in profile, so the profile has only the chin mark. The user offered to outline the jaw on the sheet
+    ("Do you need me to outline the jaw?"); the jaw fit waits for that.

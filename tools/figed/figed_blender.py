@@ -25,6 +25,9 @@ def reset():
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
+TINT = "--tint" in sys.argv                         # -- look ... --tint: the head's skin coloured apart from the neck
+
+
 def build(fig, name="figure", parts=PARTS, rig=True, posed=False):
     """The figure as Blender objects: one mesh per part name's first word ("body", "helper" things as "eyes",
     "teeth", "tongue"), all on one armature. Returns (objects by name, armature or None)."""
@@ -65,6 +68,15 @@ def build(fig, name="figure", parts=PARTS, rig=True, posed=False):
         mesh = bpy.data.meshes.new(name + "_" + kind)
         mesh.from_pydata([tuple(P[v]) for v in used], [], [[remap[v] for v in vi] for vi, _ in faces])
         mesh.update()
+        if TINT and kind == "body":                   # the face in another colour, so the jaw's edge shows
+            w = base.weights[used][:, base.bones.index("head")]
+            col = mesh.color_attributes.new("tint", "FLOAT_COLOR", "POINT")
+            flat = np.empty((len(used), 4), dtype=np.float32)
+            flat[:] = (0.62, 0.62, 0.62, 1.0)
+            flat[w > 0.5] = (0.85, 0.55, 0.35, 1.0)
+            col.data.foreach_set("color", flat.ravel())
+            mesh.color_attributes.render_color_index = 0
+            mesh.color_attributes.active_color = col
         uv = mesh.uv_layers.new(name="UVMap")
         flat = []
         for _vi, ti in faces:
@@ -106,7 +118,7 @@ def _scene(res):
     s = bpy.context.scene
     s.render.engine = "BLENDER_WORKBENCH"
     s.display.shading.light = "STUDIO"
-    s.display.shading.color_type = "MATERIAL"
+    s.display.shading.color_type = "VERTEX" if TINT else "MATERIAL"
     s.display.shading.show_cavity = True
     s.display.shading.cavity_type = "BOTH"
     s.display.shading.show_shadows = False

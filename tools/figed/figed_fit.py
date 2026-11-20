@@ -139,6 +139,7 @@ MARKS = {
     "wrist": ("joint", "hand"), "fingertip": ("tail", "middle_03"), "shoulder": ("joint", "upperarm"),
     "hip": ("joint", "thigh"), "nipple": ("vertex", "nipple"), "navel": ("vertex", "navel"),
     "neck": ("joint", "neck_01"), "head": ("joint", "head"),
+    "chin": ("vertex", "chin"), "jaw": ("vertex", "jaw"),
 }
 
 
@@ -151,6 +152,17 @@ def mark_vertices(base):
     x = base.verts[idx, 0]
     out["nipple_l"] = int(idx[np.argmax(np.where(x > 0, size, -1))])
     out["nipple_r"] = int(idx[np.argmax(np.where(x < 0, size, -1))])
+    # the jaw: the bottom of the chin, its front, and the corner of the jaw each side (where MakeHuman's own chin
+    # and jaw targets move the skin most)
+    # ("chin-prominent" peaks on the chin's bottom front; "chin-height" peaks UNDER the jaw, 2 cm back and up: pinning a
+    # head's size by that one drew the model 6% too large)
+    idx, d = base.target("chin-prominent-incr")
+    out["chin"] = int(idx[np.argmax(np.linalg.norm(d, axis=1) - 100 * np.abs(base.verts[idx, 0]))])
+    idx, d = base.target("chin-bones-incr")
+    size = np.linalg.norm(d, axis=1)
+    x = base.verts[idx, 0]
+    out["jaw_l"] = int(idx[np.argmax(np.where(x > 0, size, -1))])
+    out["jaw_r"] = int(idx[np.argmax(np.where(x < 0, size, -1))])
     return out
 
 
@@ -323,6 +335,7 @@ class View:
         u, v = u[keep], v[keep]
         skull = v > crown - 0.06
         mid = (u[skull].min() + u[skull].max()) / 2.0
+        self.last = (k, mid, crown, dx, dy)
         ix = np.round(self.head_x + (u - mid) * k + dx).astype(int)
         iy = np.round(self.top + (crown - v) * k + dy).astype(int)
         ok = (ix >= 0) & (ix < self.w) & (iy >= 0) & (iy < self.cut)
@@ -381,8 +394,11 @@ class View:
 
     def project(self, p):
         """A point of the model (Blender metres) in this view's pixels, as last drawn."""
-        k, mid, lo, dx = self.last
         u = {"front": p[0], "back": -p[0], "side": -p[1]}.get(self.look, p[1])
+        if self.cut is not None:                              # a head close-up: measured down from the crown
+            k, mid, crown, dx, dy = self.last
+            return self.head_x + (u - mid) * k + dx, self.top + (crown - p[2]) * k + dy
+        k, mid, lo, dx = self.last
         return self.head_x + (u - mid) * k + dx, self.bottom - (p[2] - lo) * k
 
     def mark_error(self, where):
@@ -447,8 +463,7 @@ class Job:
         self.mark_idx = mark_vertices(self.base)
         self.where = {}                               # view name -> {mark: xyz} as last drawn
         self.hand_samplers = {}
-        idx, d = self.base.target("chin-height-incr")     # the bottom of the chin: where that target moves most
-        self.chin_idx = int(idx[np.argmax(np.linalg.norm(d, axis=1) - 100 * np.abs(self.base.verts[idx, 0]))])
+        self.chin_idx = mark_vertices(self.base)["chin"]  # the bottom of the chin
         self.armless = None                           # a sampler of the body without its arms, when a view asks
 
     def marks_3d(self, P, posed):
