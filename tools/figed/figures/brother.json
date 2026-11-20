@@ -398,9 +398,6 @@
   "chin_forward": 0.4,
   "chin_height": -0.2,
   "double_chin": 0.4,
-  "eye_bags": 0.7,
-  "eye_outer_corner_up": 0.4,
-  "eye_size": 1.2,
   "finger_spread": 0.4,
   "foot-scale-depth": -0.5,
   "foot-scale-horiz": 0.4375,
@@ -467,15 +464,7 @@
   "waist": 0.25,
   "waist_to_hip": -0.125,
   "wrist": 0.1,
-  "eye-push1-out": -0.5,
-  "eye-push2-out": -0.5,
-  "eye-epicanthus-out": -0.7,
-  "eye-height1": -0.4,
-  "eye-height2": -0.7,
-  "eye-height3": -1,
-  "eye-eyefold-angle-up": -0.8,
-  "eye_height": 1.8,
-  "eye_inner_corner_up": -1.3
+  "eye_height": 1.8
  },
  "tilt": {
   "head_side": -1

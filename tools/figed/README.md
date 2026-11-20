@@ -624,3 +624,10 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
   Now `eye_inner_corner_up` -1.3 (outer corner down), `eye_outer_corner_up` 0.4.
 - "f5 doenst turn off texture": Texture Paint mode always draws the texture whatever the shading says, so F5 from
   paint mode now goes to Sculpt Mode in grey (F5 again: the texture in Sculpt Mode; F6: back to paint).
+- The user, of the grey face: "his eyes are getting worse, he looks asain now whats going on". Eleven eye sliders
+  had been stacked over four rounds (size, two push, two corners, epicanthus, three lid heights, fold angle, bags),
+  each a by-eye answer to one note; together they made a narrow slanted eye that is not his. ALL are cleared: the
+  eye is MakeHuman's own again, with only `eye_height` 1.8 (its place, set from the paint). The same lesson as the
+  jaw: **when a part has taken more than three or four sliders and looks worse, put them all back to 0 and look.**
+  His eye's character (heavy lid, soft bags, slight downturn) is mostly in the PAINT; the opening only has to be the
+  right size and place. Shape changes to the eye from here: one at a time, or by the user's hand in Sculpt Mode.
