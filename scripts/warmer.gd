@@ -39,6 +39,7 @@ const BATCH_FAST := 60
 const BATCH_SLOW := 300
 var _batch := 1
 var _shown_ms := 0
+var _steps := 0
 
 var _view: SubViewport
 ## Frames the loading screen is drawn before the first thing is shown (so that it is up, its own few
@@ -80,6 +81,17 @@ func begin(extra: Array = []) -> void:
 	for item: Dictionary in left:
 		_weight_total += float(item.weight)
 	print("GULP WARM %d things to show once (%d kinds)" % [total, _count_kinds()])
+	print_memory("begin")
+
+
+## Godot's own count of what it holds, in MB (tools/PERF.md, "Memory on phones"): its heap now and at
+## most so far (the WASM heap in a browser never gives back what it grew to), and what it gave the GPU.
+static func print_memory(when: String) -> void:
+	const M := 1048576.0
+	print("GULP MEM %s static %.1f max %.1f video %.1f textures %.1f buffers %.1f" % [when,
+			Performance.get_monitor(Performance.MEMORY_STATIC) / M, Performance.get_monitor(Performance.MEMORY_STATIC_MAX) / M,
+			Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / M, Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / M,
+			Performance.get_monitor(Performance.RENDER_BUFFER_MEM_USED) / M])
 
 
 # The tiny view the things are shown to (made only once the loading screen is up: drawn, it compiles
@@ -152,6 +164,7 @@ func step() -> void:
 			_done_ms = Time.get_ticks_msec()
 			ready_s = _done_ms / 1000.0
 			print("GULP WARM everything is ready at %.1f s (%.1f s of warming)" % [_done_ms / 1000.0, (_done_ms - _began_ms) / 1000.0])
+			print_memory("ready")
 		return
 	var took := Time.get_ticks_msec() - _shown_ms
 	if _shown_ms > 0:
@@ -176,6 +189,9 @@ func step() -> void:
 			names.size(), " air" if above else "", ", ".join(names)])
 	_wait = 2
 	_shown_ms = Time.get_ticks_msec()
+	_steps += 1
+	if _steps % 20 == 0:
+		print_memory("step %d" % _steps)
 
 
 func _count_kinds() -> int:
