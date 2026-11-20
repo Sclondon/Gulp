@@ -1,0 +1,130 @@
+{
+ "about": "The older brother's hands, fitted to the hand sheet (tools/art_src/concept_brother_hands.jpg: the back and the palm of his left hand, top row). Each view is compared from the wrist's row to the fingertips, so this sets the hand's SHAPE (palm width, finger length and thickness, thumb); its size on the body comes from the body job's wrist and fingertip marks. Boxes and wrist rows at 2000 px wide (Claude, by eye).",
+ "start": "tools/figed/figures/brother.json",
+ "out": "tools/figed/figures/brother.json",
+ "picture": "tools/figed/figures/brother_hands_fit.png",
+ "sweeps": 10,
+ "stiffness": 0.0006,
+ "views": [
+  {
+   "name": "hand_back",
+   "picture": "tools/art_src/concept_brother_hands.jpg",
+   "box": [
+    280,
+    45,
+    690,
+    600
+   ],
+   "box_width": 2000,
+   "look": "hand_back",
+   "hand": "l",
+   "wrist": 445
+  },
+  {
+   "name": "hand_palm",
+   "picture": "tools/art_src/concept_brother_hands.jpg",
+   "box": [
+    810,
+    45,
+    1220,
+    570
+   ],
+   "box_width": 2000,
+   "look": "hand_palm",
+   "hand": "l",
+   "wrist": 445
+  }
+ ],
+ "move": {
+  "zoom": {
+   "hand_back": [
+    0.9,
+    1.1,
+    0.01
+   ],
+   "hand_palm": [
+    0.9,
+    1.1,
+    0.01
+   ]
+  },
+  "shift": {
+   "hand_back": [
+    -30,
+    30,
+    4
+   ],
+   "hand_palm": [
+    -30,
+    30,
+    4
+   ]
+  },
+  "bones": {
+   "hand.width": [
+    0.8,
+    1.8,
+    0.08
+   ],
+   "hand.length": [
+    0.7,
+    1.5,
+    0.06
+   ],
+   "fingers.length": [
+    0.6,
+    1.4,
+    0.06
+   ],
+   "fingers.girth": [
+    0.8,
+    2,
+    0.08
+   ],
+   "thumb.length": [
+    0.6,
+    1.5,
+    0.06
+   ],
+   "thumb.girth": [
+    0.8,
+    2,
+    0.08
+   ]
+  },
+  "targets": {
+   "finger_spread": [
+    -2,
+    2,
+    0.5
+   ],
+   "finger_thickness": [
+    -1,
+    2,
+    0.5
+   ],
+   "finger_length": [
+    -1.5,
+    1.5,
+    0.5
+   ],
+   "wrist": [
+    -1,
+    2,
+    0.5
+   ]
+  },
+  "pose": {
+   "thumb_out": [
+    -70,
+    70,
+    10
+   ],
+   "thumb_flat": [
+    -90,
+    90,
+    12
+   ]
+  }
+ }
+}

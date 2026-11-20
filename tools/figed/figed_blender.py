@@ -13,7 +13,7 @@ import sys
 
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import figed  # noqa: E402
@@ -32,7 +32,7 @@ def build(fig, name="figure", parts=PARTS, rig=True, posed=False):
     P, H, T = fig.to_blender()
     if posed and getattr(fig, "pose", None):       # as the drawing stands (pictures only: no skeleton then)
         import figed_fit
-        P, _ = figed_fit.pose_points(fig, P, H, figed_fit.full_pose(fig.pose, base.bones))
+        P, _ = figed_fit.pose_points(fig, P, H, figed_fit.full_pose(fig.pose, base.bones, H, T))
         rig = False
     kinds = {"body": "body", "helper-l-eye": "eyes", "helper-r-eye": "eyes", "helper-upper-teeth": "teeth",
              "helper-lower-teeth": "teeth", "helper-tongue": "tongue"}
@@ -132,10 +132,16 @@ def _camera(name="figed_cam"):
     return cam
 
 
-def _aim(cam, centre, direction, scale):
+def _aim(cam, centre, direction, scale, up=None):
     d = Vector(direction).normalized()
     cam.location = Vector(centre) - d * 10.0
-    cam.rotation_euler = d.to_track_quat("-Z", "Y").to_euler()
+    if up is None:
+        cam.rotation_euler = d.to_track_quat("-Z", "Y").to_euler()
+    else:                                             # a view with its own "up" (a hand seen fingers up)
+        z = -d
+        x = Vector(up).cross(z).normalized()
+        y = z.cross(x)
+        cam.rotation_euler = Matrix((x, y, z)).transposed().to_euler()
     cam.data.ortho_scale = scale
     cam.data.clip_start, cam.data.clip_end = 0.1, 40.0
 
@@ -152,7 +158,25 @@ def view_boxes(fig):
     foot = (H["foot_l"] + T["ball_l"]) / 2
     q = math.sqrt(0.5)
     low = np.array([0.0, 0.0, top * 0.31])
+    chest = np.array([0.0, 0.0, top * 0.74])
+    unit = lambda v: v / np.linalg.norm(v)
+    hands = {}
+    for s in ("l", "r"):                              # each hand in its own frame: fingers up, seen square on
+        f = unit(T["middle_03_" + s] - H["hand_" + s])
+        a = H["index_01_" + s] - H["pinky_01_" + s]
+        a = unit(a - f * a.dot(f))
+        n = np.cross(f, a)
+        if n[2] + n[0] * (1 if s == "l" else -1) < 0: # out of the back of the hand (it faces up and out)
+            n = -n
+        c = H["hand_" + s] + (T["middle_03_" + s] - H["hand_" + s]) * 0.42
+        hands["hand_back_" + s] = (c, tuple(-n), 0.3, 0.8, tuple(f))
+        hands["hand_palm_" + s] = (c, tuple(n), 0.3, 0.8, tuple(f))
+        hands["hand_edge_" + s] = (c, tuple(-a), 0.3, 0.8, tuple(f))
     return {
+        **hands,
+        "chest": (chest, (0, 1, 0), top * 0.42, 1.5), "chest_back": (chest, (0, -1, 0), top * 0.42, 1.5),
+        "chest_side": (chest, (-1, 0, 0), top * 0.42, 0.8), "chest_quarter": (chest, (-q, q, 0), top * 0.42, 1.3),
+        "chest_top": (chest, (0, 0, -1), top * 0.36, 1.8, (0, 1, 0)),
         "front": (mid, (0, 1, 0), top * 1.06, 1.0), "back": (mid, (0, -1, 0), top * 1.06, 1.0),
         "side": (mid, (-1, 0, 0), top * 1.06, 0.45), "quarter": (mid, (-q, q, 0), top * 1.06, 0.95),
         "face": (head, (0, 1, 0), hh, 0.85), "face_side": (head, (-1, 0, 0), hh, 0.85),
@@ -171,10 +195,11 @@ def shoot(fig, out, views=("front", "side", "back", "quarter"), height_px=900, t
     os.makedirs(tmp, exist_ok=True)
     strips = []
     for v in views:
-        centre, direction, seen, aspect = boxes[v]
+        centre, direction, seen, aspect = boxes[v][:4]
+        up = boxes[v][4] if len(boxes[v]) > 4 else None
         w = int(height_px * aspect) // 2 * 2
         s = _scene((w, height_px))
-        _aim(cam, centre, direction, seen if aspect <= 1 else seen * aspect)
+        _aim(cam, centre, direction, seen if aspect <= 1 else seen * aspect, up)
         cam.data.sensor_fit = "VERTICAL"
         cam.data.ortho_scale = seen
         s.render.filepath = os.path.join(tmp, v + ".png")

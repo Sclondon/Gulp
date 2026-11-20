@@ -145,11 +145,14 @@ def pose_points(fig, P, H, pose, T=None):
         parent = base.rig[b]["parent"]
         M = mats[parent] if parent else np.eye(4)
         if b in pose:
-            rx, ry, rz = np.radians(pose[b])
-            cx, sx, cy, sy, cz, sz = np.cos(rx), np.sin(rx), np.cos(ry), np.sin(ry), np.cos(rz), np.sin(rz)
-            R = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
-            R = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]]).dot(R)
-            R = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]]).dot(R)
+            if np.shape(pose[b]) == (3, 3):               # a turn given whole
+                R = np.asarray(pose[b])
+            else:
+                rx, ry, rz = np.radians(pose[b])
+                cx, sx, cy, sy, cz, sz = np.cos(rx), np.sin(rx), np.cos(ry), np.sin(ry), np.cos(rz), np.sin(rz)
+                R = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
+                R = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]]).dot(R)
+                R = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]]).dot(R)
             L = np.eye(4)
             L[:3, :3] = R
             L[:3, 3] = H[b] - R.dot(H[b])
@@ -171,9 +174,42 @@ def pose_points(fig, P, H, pose, T=None):
     return out, posed
 
 
-def full_pose(spec_pose, bones):
+def hand_frame(joints, side="l"):
+    """A hand's own directions from its joints: (wrist, across towards the thumb side, along the fingers, out of
+    the back of the hand). `joints` has bone heads by name and tips as "tail:<bone>"."""
+    unit = lambda v: v / np.linalg.norm(v)
+    W = joints["hand_" + side]
+    f = unit(joints["tail:middle_03_" + side] - W)
+    a = joints["index_01_" + side] - joints["pinky_01_" + side]
+    a = unit(a - f * a.dot(f))
+    n = np.cross(f, a)
+    if n[2] + n[0] * (1 if side == "l" else -1) < 0:      # the back of a hanging hand faces up and out
+        n = -n
+    return W, a, f, n
+
+
+HAND_BONES = ["hand", "lowerarm"] + ["%s_0%d" % (f, i) for f in ("thumb", "index", "middle", "ring", "pinky")
+                                     for i in (1, 2, 3)]
+
+
+def about(axis, degrees):
+    """The turn by an angle about an axis, as a matrix (Rodrigues)."""
+    x, y, z = axis / np.linalg.norm(axis)
+    K = np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
+    t = np.radians(degrees)
+    return np.eye(3) + np.sin(t) * K + (1 - np.cos(t)) * K.dot(K)
+
+
+def full_pose(spec_pose, bones, H=None, T=None):
     """The pose sliders of a spec as turns of bones."""
     pose = {b: v for b, v in spec_pose.items() if b in bones}
+    if H is not None and T is not None and ("thumb_out" in spec_pose or "thumb_flat" in spec_pose):
+        joints = dict(H)                               # the thumb, in the hand's own directions: swung away from
+        joints.update({"tail:" + b: t for b, t in T.items()})   # the fingers ("out"), rolled into the palm's plane
+        for side, sign in (("l", 1), ("r", -1)):
+            _W, _a, f, n = hand_frame(joints, side)
+            pose["thumb_01_" + side] = about(n, sign * spec_pose.get("thumb_out", 0.0)).dot(
+                about(f, sign * spec_pose.get("thumb_flat", 0.0)))
     if "arms_down" in spec_pose:
         a = spec_pose["arms_down"]
         pose["upperarm_l"] = (0, a, 0)
@@ -217,6 +253,12 @@ class View:
             box = [c // n for c in box]
         print("picture", spec["picture"], img.shape[1], "x", img.shape[0], "box", box)
         self.mask = cut_out(img, box, spec.get("tolerance", 0.07))
+        # a drawing of a hand ("look": hand_back / hand_palm / hand_edge, "hand": "l"): compared from the wrist's
+        # row ("wrist", in box_width pixels) to the fingertips; the model's hand is drawn to that length
+        self.wrist = None
+        if spec["look"].startswith("hand_"):
+            self.wrist = int(round(spec["wrist"] * k / n)) - box[1]
+            self.mask[self.wrist:] = False
         # marks: where parts are in the drawing, {name: [x, y]} at box_width pixels ("knee_l" is the FIGURE left)
         self.marks = {m: (xy[0] * k / n - box[0], xy[1] * k / n - box[1]) for m, xy in spec.get("marks", {}).items()}
         self.last = None
@@ -233,6 +275,10 @@ class View:
         self.anchor = spec.get("anchor", "head")      # "feet": line the view up by the feet, not the head
         if self.anchor == "feet":
             rows = slice(self.bottom - max(2, (self.bottom - self.top) // 12), self.bottom + 1)
+            cols = np.nonzero(self.mask[rows].any(axis=0))[0]
+            self.head_x = (cols.min() + cols.max()) / 2.0
+        if self.wrist is not None:
+            rows = slice(self.wrist - max(2, (self.wrist - self.top) // 12), self.wrist)
             cols = np.nonzero(self.mask[rows].any(axis=0))[0]
             self.head_x = (cols.min() + cols.max()) / 2.0
         # a close-up of the head: the picture's row to compare down to ("cut", in box_width pixels, e.g. just
@@ -268,6 +314,25 @@ class View:
         m = shrink(grow(m, 3), 2)
         m[self.cut:] = False
         return m
+
+    def draw_hand(self, pts, frame, dx=0.0, zoom=1.0):
+        W, a, f, nrm = frame
+        p = pts - W
+        v = p.dot(f)
+        u = {"hand_back": p.dot(a), "hand_palm": -p.dot(a), "hand_edge": p.dot(nrm)}[self.look]
+        if self.spec.get("hand", "l") == "r":
+            u = -u
+        keep = v >= 0
+        u, v = u[keep], v[keep]
+        k = (self.wrist - self.top) / v.max() * zoom
+        low = v < v.max() * 0.08                              # line up by the middle of the wrist
+        mid = (u[low].min() + u[low].max()) / 2.0
+        ix = np.round(self.head_x + (u - mid) * k + dx).astype(int)
+        iy = np.round(self.wrist - v * k).astype(int)
+        ok = (ix >= 0) & (ix < self.w) & (iy >= 0) & (iy < self.wrist)
+        m = np.zeros((self.h, self.w), dtype=bool)
+        m[iy[ok], ix[ok]] = True
+        return shrink(grow(m, 2), 1)
 
     def draw(self, pts, height, dx=0.0, zoom=1.0):
         """The model's outline in this view's pixels. pts: Blender metres."""
@@ -360,6 +425,7 @@ class Job:
         self.evals = 0
         self.mark_idx = mark_vertices(self.base)
         self.where = {}                               # view name -> {mark: xyz} as last drawn
+        self.hand_samplers = {}
 
     def marks_3d(self, P, posed):
         out = {}
@@ -383,7 +449,7 @@ class Job:
         P, H, T0 = fig.to_blender()
         P0, H0 = P, H
         common = {k: v for k, v in self.spec["pose"].items() if "@" not in k}
-        P, posed = pose_points(fig, P0, H0, full_pose(common, self.base.bones), T0)
+        P, posed = pose_points(fig, P0, H0, full_pose(common, self.base.bones, H0, T0), T0)
         shared = self.marks_3d(P, posed)
         self.where = {v.spec["name"]: shared for v in self.views}
         pts = self.sampler.points(P)
@@ -393,14 +459,24 @@ class Job:
             n = v.spec["name"]
             extra = {k.split("@")[0]: x for k, x in self.spec["pose"].items() if k.endswith("@" + n)}
             if extra:
-                Pv, posed_v = pose_points(fig, P0, H0, full_pose(dict(common, **extra), self.base.bones), T0)
+                Pv, posed_v = pose_points(fig, P0, H0, full_pose(dict(common, **extra), self.base.bones, H0, T0), T0)
                 own[n] = self.sampler.points(Pv)
                 self.where[n] = self.marks_3d(Pv, posed_v)
         head_pts = self.head_sampler.points(P) if any(v.cut is not None for v in self.views) else None
+        hands = {}
+        for v in self.views:
+            s = v.spec.get("hand", "l")
+            if v.wrist is not None and s not in hands:
+                if s not in self.hand_samplers:
+                    self.hand_samplers[s] = Sampler(self.base, 200000, 7, [b + "_" + s for b in HAND_BONES])
+                hands[s] = (self.hand_samplers[s].points(P), hand_frame(posed, s))
         out = []
         for v in self.views:
             n = v.spec["name"]
-            if v.cut is not None:
+            if v.wrist is not None:
+                hp, frame = hands[v.spec.get("hand", "l")]
+                out.append(v.draw_hand(hp, frame, self.spec["shift"].get(n, 0.0), self.spec["zoom"].get(n, 1.0)))
+            elif v.cut is not None:
                 out.append(v.draw_head(head_pts, self.spec["shift"].get(n, 0.0), self.spec["drop"].get(n, 0.0),
                                        self.spec["zoom"].get(n, 1.0)))
             else:

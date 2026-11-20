@@ -105,3 +105,27 @@ percentage of the figure's height.
   nipples 0.5 to 0.9, ankles 0.6 to 0.9), with the outline at 0.94 front and back, 0.89 side.
 - Not marked yet: shoulder points, armpits, the crotch (hidden by the shorts), kneecaps and calf bulges as shapes,
   anything on the head.
+
+## Pecs, shoulders and hands (2026-11-19, round four)
+
+The user: "lets do around focusing on his pecs, shoulders and hands, he should have hand key art to compare to".
+
+- **Hands are fitted to a hand drawing.** The bible has no hands page, so the hand key art is the earlier
+  `tools/art_src/concept_brother_hands.jpg` (top row: the back and the palm of his LEFT hand; Claude's pick of sheet,
+  not confirmed by the user). A view with `"look": "hand_back" | "hand_palm" | "hand_edge"`, `"hand": "l"` and a
+  `"wrist"` row is compared from the wrist to the fingertips in the hand's own directions (`hand_frame`), the model's
+  hand drawn to the drawing's length. So `figures/brother_hands.fit.json` sets the hand's SHAPE (`hand.width`,
+  `hand.length`, `fingers.length`, `fingers.girth`, `thumb.*`, finger spread and thickness, wrist) and the body job
+  sets only its size (`hand.size`, by the wrist and fingertip marks): the shape sliders are out of the body job.
+  Pose sliders `thumb_out` / `thumb_flat` lay the thumb as drawn. Overlap 0.62 -> 0.89 on both views.
+- A back view and a mirrored palm view have the same outline: the first overlay drew the model's hand mirrored and
+  the user caught it ("Swapped left and right"). Check the thumb's side in a grey render (`hand_back_l`,
+  `hand_palm_l`, `hand_edge_l` in `-- look`) before trusting a hand overlay.
+- **Pecs and shoulders are set by eye**, since neither outline nor marks see them: macro `muscle` 0.85, `pecs` 1.5,
+  `shoulder_muscle` 1.5 (Claude, against the bible's round shoulder caps and full chest), then the body job was run
+  again with those three held. Outline after: front 0.91, back 0.91, side 0.90 (front and back lost about 0.03,
+  mostly at the hands, now spread with the thumb out where the body sheet's hang closed, and at the shorts);
+  marks within 0.1 to 1.7% of his height. `-- look` has `chest`, `chest_quarter`, `chest_side`, `chest_back`,
+  `chest_top` for judging them.
+- Still not right: the back is smooth (no shoulder blades, spine furrow or lats as the bible paints them), the pecs
+  are boxy with a hard lower edge, the shoulder cap peaks lower than drawn, the thumb's tip is pointed.

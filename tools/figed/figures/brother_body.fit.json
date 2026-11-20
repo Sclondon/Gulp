@@ -405,11 +405,6 @@
    ]
   },
   "macro": {
-   "muscle": [
-    0.5,
-    1,
-    0.1
-   ],
    "weight": [
     0.3,
     0.75,
@@ -606,11 +601,6 @@
     0.6,
     1.5,
     0.06
-   ],
-   "hand.length": [
-    0.8,
-    1.6,
-    0.06
    ]
   },
   "targets": {
@@ -669,19 +659,9 @@
     1.5,
     0.5
    ],
-   "pecs": [
-    -1,
-    1.5,
-    0.5
-   ],
    "lats": [
     -1,
     1.5,
-    0.5
-   ],
-   "shoulder_muscle": [
-    -1,
-    2,
     0.5
    ],
    "upper_arm_thickness": [
@@ -707,21 +687,6 @@
    "ankle": [
     -1,
     2,
-    0.5
-   ],
-   "wrist": [
-    -1,
-    2,
-    0.5
-   ],
-   "finger_thickness": [
-    -1,
-    2,
-    0.5
-   ],
-   "finger_length": [
-    -1.5,
-    1.5,
     0.5
    ],
    "v_shape": [
@@ -854,5 +819,6 @@
   }
  },
  "marks_about": "Marks read off the bible body sheet at 1998 px wide (Claude, by eye on a 100 px grid). _l and _r are the FIGURE own left and right.",
- "marks_weight": 150
+ "marks_weight": 150,
+ "set_by_eye": "Not moved by this job: macro muscle, pecs and shoulder_muscle (an outline cannot see them; set by eye against the bible, round four), and the hand shape sliders (brother_hands.fit.json sets them; only hand.size moves here, by the wrist and fingertip marks)."
 }
