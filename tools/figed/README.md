@@ -911,3 +911,34 @@ hollows (under 5 cm, by at most 2.5).
 - Hair the same day: the mop thicker (THICK 4.8 cm) and darker, the outline cut curlier, the moustache thicker. The
   hair's under-layer shade (vertex colour) is not carried by the glTF export yet (Blender warns the colour is unused
   by the material).
+
+## Animation: ready-made clips carried onto his skeleton (2026-11-20)
+
+**Decision (the user's call, of three offered: ready-made clips, the shared boy's system, hand-made in Blender):
+"Lets start with ready made motion clips".** The clips are Quaternius's Universal Animation Library, free Standard
+version (CC0; downloaded with the user's go-ahead from quaternius.itch.io, 15 MB; kept OUTSIDE the repo in
+`C:\Projects\reference\quaternius-ual\ual1`). Its skeleton is Unreal's mannequin layout with the same bone names as
+the figures' (all 53 of ours have a partner). 43 clips: idle, walk, jog, sprint, crouch, swim (forward and idle),
+push, pick up, interact, jump (start, loop, land), sit, roll, hits, death, and some we will not use (pistol, sword,
+spell, dance).
+- **How (Claude's pick; the practice: world-space retargeting with a reference-pose correction, baked offline, as
+  engines' retargeters do):** `retarget.py` (its docstring is the method) gives each of our bones the turn its partner
+  makes from rest, measured in the world, after lining our arm and leg bones up with theirs joint to joint (ours rest
+  36 to 59 degrees lower in the arms than their T-pose), and scales the hips' travel by hip height (0.84). Output:
+  our skeleton alone with every clip baked on it, `models/brother/brother_clips.glb` (5 MB; the folder has a
+  `.gdignore` so nothing is imported or shipped until the game uses it: take it away then).
+  Alternatives: Godot's own import retargeting to its humanoid profile (the documented route for sharing one clip
+  library among many different skeletons; it overwrites bone rests and is set up in the editor's import dock, and we
+  have one skeleton family built by our own tool, so baking to it directly is simpler and scriptable); copying bone
+  turns one to one (wrong: the rests differ).
+- `tests/figed_anim_view.gd` plays clips on a dressed export in Godot and writes GIF frames and contact sheets.
+  Run: `blender ... retarget.py -- <spec> <UAL1_Standard.glb, a C:/ path> <out.glb> [--only Walk_Loop,...]`, then
+  `godot ... -s tests/figed_anim_view.gd -- --glb=<dressed.glb> --clips=<out.glb> --out=<folder> [--clip=...]`.
+- Lessons: Blender needs a Windows path (C:/...), not Git Bash's /c/...; a bone's own tail in our rig points nowhere
+  useful: take a bone's line from its joint to its child's joint (lining up by tails folded his legs).
+- State: walk, jog, idle and swim look right on him in the oilskin outfit; the walk at half speed on the diving
+  suit with the helmet is a first stand-in for the heavy diving walk. Not done: a real heavy diving walk (lean,
+  weight, arms out), fishing moves (the library's second pack has them: a separate download to ask for), feet are
+  not pinned to the ground (they may slide a little as his legs are shorter), hands may pass through the trunk on a
+  stocky body, no state machine or blending, nothing in the game. The swim clip is authored low to the ground: the
+  game places him.
