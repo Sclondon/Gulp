@@ -24,6 +24,7 @@ import figed_fit  # noqa: E402
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 SIZE = 2048
+SIDE_FROM, SIDE_TO = 0.12, 0.6                                # how squarely skin must face a view: none .. full paint
 base = figed.Base()
 fig = figed.Figure(base, figed.load_spec(argv[0]))
 with open(argv[1]) as f:
@@ -48,6 +49,16 @@ mid = head[np.abs(P[head][:, 0] - np.median(P[head][:, 0])) < 0.012]
 nose = P[mid[np.argmin(P[mid][:, 1])]]
 crown = P[head[np.argmax(P[head][:, 2])]]
 high = crown[2] - chin[2]
+
+def feather(mask, n=6):
+    """A cut-out as 0..1, falling off over n pixels inside its edge: paint fades out towards the outline."""
+    m = mask.astype(float)
+    cur = mask
+    for i in range(n):
+        cur = figed_fit.shrink(cur, 1)
+        m += cur
+    return m / (n + 1.0)
+
 
 # the sheet's views
 art = figed_fit.load_image(sheet["picture"])[:, :, :3]
@@ -75,7 +86,8 @@ for v in sheet["views"]:
     rows = mask.any(axis=1)
     lo = np.where(rows, mask.argmax(axis=1), 0)
     hi = np.where(rows, mask.shape[1] - 1 - mask[:, ::-1].argmax(axis=1), -1)
-    views.append((d, right, up, box, (mask, rows, lo, hi), px, anchor, at, v["view"]))
+    soft = feather(mask)
+    views.append((d, right, up, box, (mask, soft, lo, hi), px, anchor, at, v["view"]))
 skin = np.median(art[views[0][4][0].nonzero()[0] + views[0][3][1], views[0][4][0].nonzero()[1] + views[0][3][0]], axis=0)
 # The user, 2026-11-20: "just project the fotnad back views, and the ears shouold come from the side view". The
 # three-quarter views are not used: where two views disagree the paint doubled (mouth, ears).
@@ -85,6 +97,43 @@ ear_of = np.zeros(len(P), dtype=int)                          # 1 = an ear on hi
 for side, (ear, _root, flap) in fig._ear_masks().items():
     ear_of[ear] = 1 if side == "l" else 2
 print("skin colour", skin.round(3), "views", len(views))
+
+# --body <fit job>: the body below the chin from the job's "front" and "back" views of the body sheet, the model
+# standing as the job stands it (the fit's own mapping from model to drawing: View.project)
+body_views = []
+if "--body" in argv:
+    with open(argv[argv.index("--body") + 1]) as f:
+        job = json.load(f)
+    J = figed_fit.Job(job)
+    J.outlines()                                              # sets each view's mapping
+    figb = J.figure()
+    P0, H0, T0 = figb.to_blender()
+    common = {kk: vv for kk, vv in J.spec["pose"].items() if "@" not in kk}
+    Pb = figed.pose_points(figb, P0, H0, figed_fit.full_pose(common, base.bones, H0, T0), T0)[0]
+    Nb = figb._normals(Pb)
+    if ((Pb[head] - Pb[head].mean(axis=0)) * Nb[head]).sum() < 0:
+        Nb = -Nb
+    chin_b = Pb[figed_fit.mark_vertices(base)["chin"]][2]
+    for v in J.views:
+        if v.spec["name"] not in ("front", "back"):
+            continue
+        pic = figed_fit.load_image(v.spec["picture"])[:, :, :3]
+        kb = pic.shape[1] / float(v.spec.get("box_width", pic.shape[1]))
+        bx = [int(round(c * kb)) for c in v.spec["box"]]
+        n = 1
+        want = v.spec.get("tall")
+        if want and (bx[3] - bx[1]) > want * 1.5:
+            n = int((bx[3] - bx[1]) // want)
+        origin = (bx[0] // n, bx[1] // n)
+        m = figed_fit.shrink(v.mask, 2)
+        softb = feather(m, 4)
+        rows = m.any(axis=1)
+        lo = np.where(rows, m.argmax(axis=1), 0)
+        hi = np.where(rows, m.shape[1] - 1 - m[:, ::-1].argmax(axis=1), -1)
+        body_views.append((v, pic, n, origin, softb, lo, hi))
+    print("body views", [b[0].spec["name"] for b in body_views])
+texb = np.zeros((SIZE, SIZE, 3))
+wb = np.zeros((SIZE, SIZE))
 
 # texels of the head's faces: where each is on the model, and which way it faces
 tex = np.zeros((SIZE, SIZE, 3))
@@ -116,9 +165,27 @@ for group, vi, ti in base.faces:
             continue
         ys, xs = gy[inside].astype(int), gx[inside].astype(int)
         cover[ys, xs] = True
+        w3 = np.stack([b0[inside], b1[inside], b2[inside]], axis=1)
+        if body_views and Pb[tri][:, 2].min() < chin_b + 0.03:
+            posb = w3.dot(Pb[tri])
+            nb = w3.dot(Nb[tri])
+            nb /= np.maximum(np.linalg.norm(nb, axis=1, keepdims=True), 1e-9)
+            g = np.clip((np.abs(nb[:, 1]) - SIDE_FROM) / (SIDE_TO - SIDE_FROM), 0, 1)
+            g = g * g * (3 - 2 * g)                           # as for the head: fading to skin tone side on
+            below = np.clip((chin_b + 0.03 - posb[:, 2]) / 0.05, 0, 1)
+            for (v, pic, n, origin, rows, lo, hi), share in zip(body_views, (g * (nb[:, 1] < 0), g * (nb[:, 1] > 0))):
+                px_, py_ = v.project(posb.T)
+                iy0, ix0 = np.round(py_).astype(int), np.round(px_).astype(int)
+                iy = np.clip(iy0, 0, rows.shape[0] - 1)
+                ix = np.clip(ix0, 0, rows.shape[1] - 1)
+                on = rows[iy, ix] * ((iy0 == iy) & (ix0 == ix))
+                fx = np.clip((ix + origin[0]) * n + n // 2, 0, pic.shape[1] - 1)
+                fy = np.clip((iy + origin[1]) * n + n // 2, 0, pic.shape[0] - 1)
+                wgt = share * on * below
+                texb[ys, xs] += pic[fy, fx] * wgt[:, None]
+                wb[ys, xs] += wgt
         if P[tri][:, 2].max() < low:
             continue
-        w3 = np.stack([b0[inside], b1[inside], b2[inside]], axis=1)
         pos = w3.dot(P[tri])
         nrm = w3.dot(N[tri])
         nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-9)
@@ -129,26 +196,34 @@ for group, vi, ti in base.faces:
                 pos = pos * np.array([-1.0, 1, 1])
             use = [(SIDE, np.ones(len(pos)))]
         else:                                                 # the head: front or back, a narrow blend at the side
-            t = np.clip((0.12 - nrm[:, 1]) / 0.24, 0, 1)
-            front = t * t * (3 - 2 * t)
+            # The user, 2026-11-20: "the back projection looked good, just smoothly blend them with the skin tone
+            # together". Each view paints the skin that faces it; as the skin turns side on, the paint fades
+            # smoothly into the plain skin tone (no edge colour dragged round the side).
+            g = np.clip((np.abs(nrm[:, 1]) - SIDE_FROM) / (SIDE_TO - SIDE_FROM), 0, 1)
+            g = g * g * (3 - 2 * g)
+            front, back = g * (nrm[:, 1] < 0), g * (nrm[:, 1] > 0)
             # --front (the user, 2026-11-20: "just use his front facing one for the head texture at first"): the front
             # view alone; skin that faces away from it is left the plain skin colour, not painted through
-            use = [(FRONT, front)] if "--front" in argv else [(FRONT, front), (BACK, 1 - front)]
-        for (d, right, up, box, (mask, rows, lo, hi), px, anchor, at, _name), share in use:
+            use = [(FRONT, front)] if "--front" in argv else [(FRONT, front), (BACK, back)]
+        for (d, right, up, box, (mask, soft, lo, hi), px, anchor, at, _name), share in use:
             sx = at[0] + (pos - anchor).dot(right) * px
             sy = at[1] - (pos - anchor).dot(up) * px
             ix, iy = np.round(sx).astype(int), np.round(sy).astype(int)
             ry = np.clip(iy - box[1], 0, mask.shape[0] - 1)
-            on = rows[ry] & (iy >= box[1]) & (iy < box[3])
-            ix = np.clip(ix - box[0], lo[ry], np.maximum(hi[ry], lo[ry])) + box[0]     # pulled in to the figure
+            rx = np.clip(ix - box[0], 0, mask.shape[1] - 1)
+            on = soft[ry, rx] * ((iy >= box[1]) & (iy < box[3]) & (ix >= box[0]) & (ix < box[2]))
+            # (off the drawn figure the paint fades to the skin tone: pulling the edge colour in made streaks)
             wgt = share * on * fade
             col = art[np.clip(iy, 0, art.shape[0] - 1), np.clip(ix, 0, art.shape[1] - 1)]
             tex[ys, xs] += col * wgt[:, None]
             wsum[ys, xs] += wgt
         done += 1
 print("triangles painted", done)
-seen = np.clip(wsum / 0.25, 0, 1)[:, :, None]                 # weakly seen texels lean on the plain skin colour
-out = np.where(wsum[:, :, None] > 1e-6, tex / np.maximum(wsum, 1e-6)[:, :, None], skin) * seen + skin * (1 - seen)
+seen = np.clip(wsum, 0, 1)[:, :, None]                        # the rest of each texel is the plain skin tone
+under = np.where(wb[:, :, None] > 1e-6, texb / np.maximum(wb, 1e-6)[:, :, None], skin)          # the body, or plain skin
+shown = np.clip(wb, 0, 1)[:, :, None]
+under = under * shown + skin * (1 - shown)
+out = np.where(wsum[:, :, None] > 1e-6, tex / np.maximum(wsum, 1e-6)[:, :, None], skin) * seen + under * (1 - seen)
 out[~cover] = skin
 img = bpy.data.images.new("skin", SIZE, SIZE, alpha=False)
 rgba = np.ones((SIZE, SIZE, 4), dtype=np.float32)
@@ -197,3 +272,20 @@ if len(argv) > 3 and not argv[3].startswith("--"):            # the painted mode
         strips.append(np.array(shot.pixels[:]).reshape(900, 720, 4))
     fb.save_pixels(np.concatenate(strips, axis=1), os.path.abspath(argv[3]))
     print("shots", argv[3])
+    if body_views:                                            # and the whole figure
+        strips = []
+        for name in ("front", "quarter", "side", "back"):
+            centre, direction, seen_m, aspect = boxes[name][:4]
+            wpx = int(900 * aspect) // 2 * 2
+            s = fb._scene((wpx, 900))
+            s.display.shading.color_type = "TEXTURE"
+            s.display.shading.light = "FLAT"
+            s.display.shading.show_cavity = False
+            fb._aim(cam, centre, direction, seen_m)
+            cam.data.sensor_fit = "VERTICAL"
+            cam.data.ortho_scale = seen_m
+            s.render.filepath = os.path.join(os.path.dirname(os.path.abspath(argv[3])), "_paint_body_%s.png" % name)
+            bpy.ops.render.render(write_still=True)
+            shot = bpy.data.images.load(s.render.filepath)
+            strips.append(np.array(shot.pixels[:]).reshape(900, wpx, 4))
+        fb.save_pixels(np.concatenate(strips, axis=1), os.path.abspath(argv[3])[:-4] + "_body.png")

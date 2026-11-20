@@ -572,3 +572,15 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
   Texture Paint mode with the skin PACKED in it (so Ctrl+S keeps the paint), opened flat lit with the texture
   showing and the reference pictures hidden; `-- read-paint <out.png>` writes the painted skin back. Opening in the
   right mode is checked in a window; that painted strokes survive a save is NOT yet checked.
+- Fourth projection, head and body. The user: "and do his body as well", then "actually the back projection looked
+  good, just smoothly blend them with the skin tone together". `paint_project.py ... --body <fit job>`: the body
+  below the chin from the body job's `front` and `back` views of the main body sheet, using the fit's own mapping
+  (`View.project`) with the model standing as the job stands it. Head and body alike: each view paints skin that
+  faces it, fading to the plain skin tone as the skin turns side on (`SIDE_FROM` 0.12 .. `SIDE_TO` 0.6 of the
+  normal) and towards each view's outline (`feather`); no edge colour is pulled round the side any more (that made
+  the streaks). `brother_skin.png` is this version: his chest hair, tattoos and drawers land where the sheet has
+  them. Known: the DRAWERS are painted on the skin (see the shorts question); tattoos are in the paint, where the
+  agreed design has them as separate movable overlays; flanks, inner arms and legs and the top of the shoulders are
+  plain skin tone; eyeballs blank; the drawings' light is still in the paint; a pale patch behind each ear.
+- The ear's skirt is now a cone to one point inside the head (the user: "the back of his ears have some strange
+  geomtery": the straight skirt showed as a hollow tube).

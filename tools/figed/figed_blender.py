@@ -147,21 +147,21 @@ def cut_ears(fig, obj, remap, P):
         own = set(copy.values())
         rim = [e for e in bm.edges if e.verts[0] in own and e.verts[1] in own and len(e.link_faces) == 1]
         inward = -1.0 if side == "l" else 1.0
+        # ... closed to ONE point inside the head (a cone, hidden under the skin): a straight skirt showed behind
+        # the ear as a hollow tube ("the back of his ears have some strange geomtery", the user)
         deep = {}
-        for e in rim:
-            for v in e.verts:
-                if v not in deep:
-                    deep[v] = bm.verts.new((v.co.x + inward * 0.018, v.co.y, v.co.z))
-        for e in rim:
-            a, b = e.verts
-            try:
-                g = bm.faces.new((a, b, deep[b], deep[a]))
-            except ValueError:
-                continue
-            g.smooth = True
-            g.normal_update()
-            if g.normal.dot(e.link_faces[0].normal) < 0 and False:
-                g.normal_flip()
+        if rim:
+            pts = {v for e in rim for v in e.verts}
+            mid = sum((v.co for v in pts), type(next(iter(pts)).co)()) / len(pts)
+            apex = bm.verts.new((mid.x + inward * 0.03, mid.y, mid.z))
+            deep[apex] = apex
+            for e in rim:
+                a_, b_ = e.verts
+                try:
+                    g = bm.faces.new((a_, b_, apex))
+                except ValueError:
+                    continue
+                g.smooth = True
         made += list(copy.values()) + list(deep.values())
         print("ear %s: a piece of %d points, %d faces, a skirt of %d edges" % (side, len(copy), count, len(rim)))
     bm.verts.index_update()
