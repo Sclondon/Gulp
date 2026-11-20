@@ -546,3 +546,11 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
 - Next, in order: erode each view's cut-out a few pixels (kills the outline lines); weight views more sharply and
   drop a view's vote where its colour disagrees with the better-facing view (kills doubles); paint the eyes;
   a depth test per view; then de-light.
+- The user (the model's front beside the sheet's): "his eye shape and nostril shape is wrong, and his nose needs to
+  go lower he has too much upper lip". Eyes narrowed to the sheet's smiling squint: `eye-height1` -0.4,
+  `eye-height2` -0.7, `eye-height3` -1.0 (the lid opening, inner to outer), `eye-eyefold-angle-up` -0.8,
+  `eye_size` 1.5 -> 1.2. Nose lower and nostrils rounder: `nose-trans-up` 2.0 -> 1.4 (the profile fit had raised
+  it to 2), `nose-base-up` -0.5, `nostril_width` 1.2, `nose_base_width` 1.2, `nose_flare` 0.45,
+  `nose-nostrils-angle-up` 0.2. `nose-trans-up` at 1.0 with `nose-base-up` -0.9 hung the nose over the mouth.
+  Nose tip level 0.63 now (the sheet 0.57 by Claude's earlier reading: the user's eye says lower is right, and the
+  user's eye rules). The paint (`brother_skin.png`) was projected before this and should be projected again.
