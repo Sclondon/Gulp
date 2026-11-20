@@ -261,6 +261,10 @@ class View:
             self.mask[self.wrist:] = False
         # marks: where parts are in the drawing, {name: [x, y]} at box_width pixels ("knee_l" is the FIGURE left)
         self.marks = {m: (xy[0] * k / n - box[0], xy[1] * k / n - box[1]) for m, xy in spec.get("marks", {}).items()}
+        # regions: boxes of the drawing that count extra, [x0, y0, x1, y1, weight] at box_width pixels (an arm, the
+        # front of the chest in a side view): the overlap inside each is scored by itself
+        self.regions = [(max(0, int(r[0] * k / n) - box[0]), max(0, int(r[1] * k / n) - box[1]),
+                         int(r[2] * k / n) - box[0], int(r[3] * k / n) - box[1], r[4]) for r in spec.get("regions", [])]
         self.last = None
         ys, xs = np.nonzero(self.mask)
         self.top, self.bottom = ys.min(), ys.max()
@@ -390,11 +394,15 @@ class View:
             b[:self.top] = False
             b[self.bottom + 1:] = False
         bands = self.spec.get("bands")
-        if not bands:
+        if not bands and not self.regions:
             return (a & b).sum() / float((a | b).sum())
         total, weight = 0.0, 0.0                      # bands: [from, to, weight] in shares of the height, floor up
         span = self.bottom - self.top
-        for lo, hi, w in bands:
+        for x0, y0, x1, y1, w in self.regions:
+            union = (a[y0:y1, x0:x1] | b[y0:y1, x0:x1]).sum()
+            total += w * ((a[y0:y1, x0:x1] & b[y0:y1, x0:x1]).sum() / float(max(1, union)))
+            weight += w
+        for lo, hi, w in bands or [[0, 1, 1]]:
             if w <= 0:
                 continue
             r0, r1 = int(self.bottom - hi * span), int(self.bottom - lo * span) + 1

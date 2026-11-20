@@ -127,5 +127,18 @@ The user: "lets do around focusing on his pecs, shoulders and hands, he should h
   mostly at the hands, now spread with the thumb out where the body sheet's hang closed, and at the shorts);
   marks within 0.1 to 1.7% of his height. `-- look` has `chest`, `chest_quarter`, `chest_side`, `chest_back`,
   `chest_top` for judging them.
-- Still not right: the back is smooth (no shoulder blades, spine furrow or lats as the bible paints them), the pecs
+- Round five, the user (circling the chest in the side overlay): "Dont model in the nipples, just try to get the shape
+  right of the pecs, they too high up and pointy. Also do a round on his arms now". So:
+  - a view may carry `regions`: boxes of the drawing ([x0, y0, x1, y1, weight] at `box_width` pixels) whose overlap is
+    scored by itself. The brother's: both arms from shoulder to wrist in the front and back views (weight 2), and the
+    front of the chest in the side view (weight 3), which is what shapes the pecs' profile. `pecs`, `breast-point`,
+    `breast-volume-vert-up` and `upperarm-fat` move in the body job again (pecs came down from the by-eye 1.5 to
+    about 0.9, lower and rounder); `muscle` and `shoulder_muscle` are still held.
+  - nipples are not modelled: `nipple-point` -0.25 and `nipple-size` -1.5 leave the skin there within 2 mm of smooth
+    (measured, not by eye; a faint tick of the base mesh's edges remains). They are paint, later. The nipple MARK
+    still works: it is a point of the skin, flat or not.
+  - `elbows@side` is held to -12 or more: at -31 the forearm stuck out in front of the belly in the side view.
+  Outline after: front 0.92, side 0.91, back 0.93; marks within 0.1 to 1.5% of his height.
+- Still not right: the arms are thick but tube-like (no biceps or triceps bulge, no forearm swell by the elbow as the
+  bible paints them); the back is smooth (no shoulder blades, spine furrow or lats as the bible paints them), the pecs
   are boxy with a hard lower edge, the shoulder cap peaks lower than drawn, the thumb's tip is pointed.

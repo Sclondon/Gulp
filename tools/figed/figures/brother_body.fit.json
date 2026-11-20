@@ -98,7 +98,23 @@
      500,
      1015
     ]
-   }
+   },
+   "regions": [
+    [
+     110,
+     290,
+     285,
+     555,
+     2
+    ],
+    [
+     545,
+     290,
+     730,
+     555,
+     2
+    ]
+   ]
   },
   {
    "name": "side",
@@ -157,7 +173,16 @@
      1030,
      1015
     ]
-   }
+   },
+   "regions": [
+    [
+     1085,
+     275,
+     1200,
+     440,
+     3
+    ]
+   ]
   },
   {
    "name": "back",
@@ -231,7 +256,23 @@
      1710,
      1015
     ]
-   }
+   },
+   "regions": [
+    [
+     1305,
+     300,
+     1485,
+     565,
+     2
+    ],
+    [
+     1750,
+     300,
+     1945,
+     565,
+     2
+    ]
+   ]
   },
   {
    "name": "bare_front",
@@ -362,9 +403,9 @@
     10
    ],
    "elbows@side": [
-    -40,
+    -12,
     40,
-    10
+    6
    ],
    "arms_down@bare_side": [
     0,
@@ -798,6 +839,26 @@
     -3,
     3,
     0.5
+   ],
+   "breast-point": [
+    -2,
+    1,
+    0.5
+   ],
+   "breast-volume-vert-up": [
+    -2.5,
+    1,
+    0.5
+   ],
+   "pecs": [
+    0.5,
+    2,
+    0.25
+   ],
+   "upperarm-fat": [
+    -1,
+    1.5,
+    0.5
    ]
   },
   "zoom": {
@@ -820,5 +881,6 @@
  },
  "marks_about": "Marks read off the bible body sheet at 1998 px wide (Claude, by eye on a 100 px grid). _l and _r are the FIGURE own left and right.",
  "marks_weight": 150,
- "set_by_eye": "Not moved by this job: macro muscle, pecs and shoulder_muscle (an outline cannot see them; set by eye against the bible, round four), and the hand shape sliders (brother_hands.fit.json sets them; only hand.size moves here, by the wrist and fingertip marks)."
+ "set_by_eye": "Not moved by this job: macro muscle, pecs and shoulder_muscle (an outline cannot see them; set by eye against the bible, round four), and the hand shape sliders (brother_hands.fit.json sets them; only hand.size moves here, by the wrist and fingertip marks).",
+ "regions_about": "Regions (round five): the two arms from shoulder to wrist in the front and back views, and the front of the chest in the side view (the pecs' profile)."
 }
