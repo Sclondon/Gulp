@@ -55,14 +55,17 @@ def rules(fig, P, H, skin_px=None):
     # the vest: scoop neck (deeper in front), armholes, tucked into the trousers
     # (an A-shirt, the user: "more a frame shirt type": narrow straps, a deep scoop to the top of the chest, big
     # armholes cut in beside the pecs)
-    depth = np.where(y < yn, 0.2, 0.11)
-    neck = (x / 0.082) ** 2 + ((z - (zn + 0.03)) / depth) ** 2 - 1
-    hole = ((np.abs(x) - (sx + 0.045)) / 0.095) ** 2 + ((z - (zs - 0.01)) / 0.175) ** 2 - 1
+    # (then: "Its a little to skin tight, the straps are too wide, and neck too deel": a wider, shallower neck and
+    # armholes wider at the shoulder but ending higher, so the straps are narrow and the nipples stay covered)
+    depth = np.where(y < yn, 0.135, 0.09)
+    neck = (x / 0.098) ** 2 + ((z - (zn + 0.03)) / depth) ** 2 - 1
+    hole = ((np.abs(x) - (sx + 0.045)) / 0.112) ** 2 + ((z - (zs + 0.02)) / 0.16) ** 2 - 1
     nip = figed_fit.mark_vertices(base)["nipple_l"]       # the armhole must clear the nipple (the user: "It needs to
     print("vest: armhole rule at the nipple %.2f (covered when well over 0)" % hole[nip])   # cover up his nips")
     torso = (arm < 0.3) & (up < 0.75) & (head < 0.3) & (z > waist - 0.1) & (_w(base, ("thigh", "calf")) < 0.3)
     f = np.minimum(np.minimum(neck, hole) * 0.05, np.minimum(z - (waist - 0.06), zn + 0.06 - z))
-    out["tank"] = (f, torso, np.full(len(P), 0.004), (0.88, 0.86, 0.80))
+    loose = 0.004 + 0.007 * np.clip((z - (waist + 0.01)) / 0.06, 0, 1)   # loose on the chest, tucked flat at the waist
+    out["tank"] = (f, torso, loose, (0.88, 0.86, 0.80))                 # (11 mm all the way down came through the waistband)
     if skin_px is not None:                              # the drawers: where the skin picture is painted as cloth
         cloth = skin_px & lower
         if cloth.sum() > 50:
@@ -327,7 +330,7 @@ def paint(fig, outfit, name, R, P, path, skin_path=None):
                 a = (c[:, 2 * r:] - c[:, :-2 * r]) / (2.0 * r)
             return a
 
-        form = np.clip(blur(lum, 4) / np.maximum(blur(lum, 45), 1e-3), 0.7, 1.06) ** 1.5
+        form = np.clip(blur(lum, 4) / np.maximum(blur(lum, 45), 1e-3), 0.7, 1.06) ** 0.9
         rib = 1.0 - 0.045 * (np.sin(across * 2 * np.pi / 0.006) > 0.3)
         base_col = np.array(outfit[name].get("colour", [0.90, 0.88, 0.82]))
         tex = np.clip(base_col * (form * rib)[:, :, None], 0, 1)

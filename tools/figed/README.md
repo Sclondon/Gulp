@@ -749,3 +749,9 @@ cuffs and braces hanging at the hips: `tools/art_src/concept_brother_bible_outfi
   The painted ones are taken out of the trousers' picture: the outfit file's `paint_out` boxes, inside which only
   pixels of the cloth's usual brightness and warmth are kept and the rest filled from the cloth round them.
   Traces of the painted straps still show near the waistband (the buckles' shadows).
+- The user: "Its a little to skin tight, the straps are too wide, and neck too deel". The shirt: neck wider and
+  shallower (half-width 0.098, depth 0.135 front, 0.09 back); armholes wider at the shoulder and ending higher
+  (0.112 x 0.16, centred 2 cm above the shoulder joint), so the straps are narrow and the nipple is still covered
+  (rule value 0.64); looser, 11 mm off the body on the chest, tapering to 4 mm at the waist (11 mm all the way down
+  came through the trousers' waistband); the body-shading on it softened (power 0.9). Claude read "the straps" as
+  the shirt's shoulder straps, not the braces.
