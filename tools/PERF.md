@@ -484,3 +484,93 @@ sky, fog and post on the warm-up view's first frame: about 4.5 s with the first 
 Not a look change but not done: making the `jointed` family's leg routine and the water cheaper for Chrome's compiler
 (same picture, cheaper program): unmeasured, needs `tools/compile_cost.gd` work.
 
+
+## Memory on phones (2026-11-20)
+
+The user, on an iPhone (Chrome on iOS, so WebKit) with the live build a8f72f7: "it loaded past the godot logo, then
+crashed to the arcade during the wayside logo load, and now if I click on gulp it crashes the site". The tab was killed
+during the loading screen's warm-up: iOS kills a web page's content process for memory (a WebKit engineer: a soft
+limit of about 1.5 GB for an iPhone's WebContent process, killed above it when the phone is short of memory; reports
+of hard limits of 2 GB). The game runs in an iframe of the arcade page in the same tab and the same process, so the
+whole arcade page goes with it and reloads (the site is unchanged: worth a look there, since the arcade's own page
+and any 3D of Wayside Station still running behind the cart count against the same limit).
+
+### How it is measured
+
+`node tools/serve_web.js <export> <port>`, then `PHONE=1 node tools/mem_load.js http://127.0.0.1:<port>/index.html
+<new profile folder> <out.txt> [s after ready]`. PHONE=1 gives the page an iPhone's Chrome user agent (so the game's
+phone tier is on, as on the user's phone) and hides the S3TC/BPTC/RGTC texture extensions (iOS has none). The page is
+probed (`tools/mem_probe.js`, injected first): the WASM heap's size (Godot's memory; it never shrinks), every WebGL
+texture, buffer and renderbuffer by the bytes the page gave it, the JS heap, and every 5 s the renderer's and GPU
+process's private bytes. `MEM` lines each second, `TOP` (largest textures), `BUFFERS`, `FORMATS`, `END` (peaks). The
+warm-up prints `GULP MEM <when>`: Godot's own monitors (static memory is only counted in debug exports).
+
+**Budget: what the page holds (WASM heap + WebGL + JS) under about 600 MB.** Chosen as: a 1.5 GB soft limit for the
+whole content process, which also holds the compiled WASM (a 39.5 MB module; Safari keeps compiled code in memory),
+the shader programs, WebKit itself and the arcade page around the iframe; and the GPU's share of a page's WebGL is
+likely counted against the page too (Claude's understanding of WebKit, not checked). Not measured on an iPhone (none here): the 600 is a margin, not a known line.
+
+### What it was (live build a8f72f7, the iPhone path)
+
+| | at the warm-up's end |
+| --- | --- |
+| WASM heap | 248 MB (from the start: the sea's build) |
+| WebGL | 426 MB peak (textures 333, buffers 93) |
+| JS heap | 85 to 140 (the 51 MB pack lives in Emscripten's memory file system; the rest swings with garbage) |
+| page held, at one moment | 740 to 794 MB |
+| Chrome's processes (desktop, for scale) | renderer 700 MB, GPU process 1,142 MB |
+
+Found:
+- **No texture in the game is VRAM-compressed** (every picture is imported lossless or lossy: PNG/WebP in the pack,
+  plain RGBA8/RGB8 on the GPU everywhere). So `vram_texture_compression/for_mobile=false` changes nothing (with S3TC
+  shown or hidden the numbers are the same to the MB), and turning it on would change nothing either. Compressing the
+  big atlases (ETC2/ASTC for phones beside S3TC for desktops) would cut their GPU memory 4 to 8 times, but costs about
+  5 MB of pack an atlas at 2048 for the two formats (the pack also sits in the page's memory), and blocky compression
+  is a look change; Basis Universal (one file, transcoded at load) cannot be checked here (no ETC2/ASTC on this
+  machine). Not done.
+- **The Atlantis canyon atlas was 4096 a side** (`process/size_limit=0`): 85 MB on the GPU with mipmaps, and loading it
+  took Godot's heap up 128 MB for a moment (the WebP decoded, then its mipmaps), which is what grew the WASM heap to
+  248 MB before the warm-up began (a heap never gives memory back).
+- The other big pictures: the liner's bow and stern, the pirate ship, the boat (2048 with mipmaps, 21 MB each), the
+  panel and the submarine (2048 lossless without mipmaps, 16 MB each), 17 creature paints at 512 x 640 (whales, sharks,
+  rays: 1.7 MB each), 110 at 256 x 320. The warm-up adds about 150 MB of WebGL (paints +98, meshes +46, the motion
+  labels among them) and 27 MB of heap: every kind's model and paint is kept once shown (so nothing loads in play).
+- 9 canvas item buffers of 2 MB each (Godot's `rendering/gl_compatibility/item_buffer_size`, 16,384 by default).
+
+### What changed
+
+- The Atlantis canyon atlas imported at 2048 (as the liner's bow already was). Everywhere. **Looks:** the Atlantis
+  stonework a little softer close up.
+- **Phones load the set pieces' atlases at 1024**: `tools/phone_textures.gd` writes 1024 copies of the liner's bow and
+  stern, the pirate ship and the Atlantis canyon into `textures/phone/` (lossy, mipmaps, as their full ones), and
+  `Tier.texture(path)` hands a phone those instead (`Wreck`, `PirateWreck`, `Ruins`). Desktops unchanged. Run the tool
+  again after rebuilding any of those atlases. **Looks, on phones only:** the liner, the pirate ship and Atlantis
+  softer close up (a quarter of the desktop's texels; at the phone's half-size picture it shows within a few metres).
+- `rendering/gl_compatibility/item_buffer_size` 4096: 13 buffers of 0.5 MB in place of 9 of 2 MB (Godot adds buffers
+  as a frame needs them). No look change.
+
+| iPhone path (one run each) | live a8f72f7 | after |
+| --- | --- | --- |
+| WASM heap | 248 MB | 220 MB |
+| WebGL, peak | 426 MB | 287 MB (textures 205, buffers 81) |
+| page held at one moment (WASM + WebGL + JS) | 740 to 794 MB | 575 to 637 (the JS share swings 85 to 147 with garbage, much of it the probe's own) |
+| desktop Chrome, same path: renderer / GPU process | 700 / 1,142 MB | 647 / 1,031 MB |
+| ready (s from opening, local server) | 66.1 | 70.0 (the desktop path: 66.4 and 64.3; within run-to-run spread) |
+| pack | 50.95 MB | 51.23 MB |
+
+Desktop browsers (no phone tier): WASM 248 -> 220, WebGL 447 -> 372. Cold native tour after (ANGLE, 390x844, Godot's
+shader cache moved aside, `-- --dive --tour`): PASSED, ready at 65.2 s, worst frame in play 35 ms, one over 33 ms.
+
+### Left (each a choice for the user)
+
+| what | saves on a phone | costs |
+| --- | --- | --- |
+| free each kind's model and paint after the warm-up (programs stay compiled) and load it again when an animal of that kind wakes nearby | up to about 150 MB of WebGL and 27 MB of heap | loading in play (the user's rule: none after the start); a paint and mesh upload is a few ms on a desktop, unknown on a phone |
+| the 17 big creature paints (whales, sharks, rays) at 256 x 320 on phones | about 22 MB | those animals softer on phones |
+| the boat's atlas at 1024 on phones (it comes in the boat's model, so a phone copy needs the model's material swapped) | 16 MB | the title boat softer |
+| the submarine's atlas at 1024 on phones | 12 MB | a GameCommon component's loader would need the phone tier (drift from GameCommon) |
+| VRAM-compressed big atlases (S3TC + ETC2) | about 100 MB of WebGL on an iPhone | about 5 MB of pack each, blocky compression |
+
+Not known: whether the iPhone now stays under its limit (not tried on one); what the shader programs cost there (on
+the desktop the GPU process grows about 400 MB more than the page's own WebGL during the warm-up, most of it the ~300
+compiled programs; WebKit on Metal is a different compiler); the compiled WASM's size in Safari.

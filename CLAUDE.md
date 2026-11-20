@@ -453,6 +453,13 @@ choices below are Claude's.
   distances (`LodField.PHONE_*`), water rings (`Sea.PHONE_RING_CELL`), breaker spray, the panel's MSAA, and the panel
   and sonar drawn every other frame. tools/PERF.md lists the numbers. Not verified on a phone. Also:
   `scripts/still_batch.gd` merges a model's still parts into one mesh a material (the shrimp boats, 45 draws to 16).
+  Memory (2026-11-20, after the user's iPhone tab was killed on the loading screen; Claude's picks): a phone loads the
+  liner's, pirate ship's and Atlantis' atlases at 1024 (`Tier.texture`, copies in `textures/phone/` written by
+  `tools/phone_textures.gd`: run it after rebuilding those atlases); the Atlantis atlas is 2048 everywhere (was 4096:
+  85 MB of GPU and a 128 MB spike of heap); canvas item buffers 4096. The page held about 790 MB on the iPhone path,
+  now about 600 (budget ~600). Measure with `tools/mem_load.js`; tools/PERF.md, "Memory on phones", has the numbers,
+  why VRAM compression was not the cause (no picture here is VRAM-compressed) and the choices left for the user.
+  Never give a picture over 2048 a side to the web build.
 - The web pack leaves out the figures not in the game (tools/web_excludes.sh; 76 MB -> 38 MB); take a figure out of
   that list when the game uses it, and run `tests/web_deps.gd` after changing the list.
 - **The sky** (2026-11-18, the user: "Whys the sky just gray"): it was one flat background colour, greyed further by

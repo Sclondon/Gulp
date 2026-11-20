@@ -3,7 +3,8 @@
 // counts them as the page creates them), and the renderer's and GPU process's private memory.
 //   node tools/serve_web.js <export folder> 8741
 //   PHONE=1 node tools/mem_load.js http://127.0.0.1:8741/index.html <profile folder> <out.txt> [after ready s] [timeout s]
-// PHONE=1 hides S3TC/BPTC/RGTC from the page as iOS WebKit has none (so Godot takes an iPhone's path).
+// PHONE=1 says it is an iPhone (its user agent: the game's phone tier) and hides S3TC/BPTC/RGTC from the
+// page as iOS WebKit has none (so Godot takes an iPhone's path).
 // The window is shown (a minimized or hidden window runs one frame a second or none).
 // Each line: s since opened, MEM wasm/peak, gl (tex+buf+rb)/peak, tex, buf, rb in MB; PROC renderer+gpu MB.
 const { chromium } = require('C:/Projects/scareathon/trailer/node_modules/playwright-core');
@@ -18,6 +19,8 @@ const MB = (b) => (b / 1048576).toFixed(1);
     executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
     headless: false,
     viewport: { width: Number(process.env.W || 390), height: Number(process.env.H || 844) },
+    // (an iPhone's Chrome says so, which turns on the game's phone tier: scripts/tier.gd)
+    ...(phone ? { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/131.0.6778.73 Mobile/15E148 Safari/604.1', hasTouch: true } : {}),
     args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--mute-audio', '--enable-precise-memory-info',
       ...(process.env.EXTRA ? process.env.EXTRA.split(' ') : [])],
   });
