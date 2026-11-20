@@ -23,6 +23,7 @@ import figed  # noqa: E402
 import figed_fit  # noqa: E402
 
 SIZE = 1024
+BIND = 0.013                                          # width of a bound edge, metres
 ARM = ("lowerarm", "hand", "thumb", "index", "middle", "ring", "pinky")
 LEG = ("pelvis", "thigh", "calf", "foot", "ball", "spine_01")
 
@@ -56,7 +57,9 @@ def rules(fig, P, H, skin_px=None):
     # armholes cut in beside the pecs)
     depth = np.where(y < yn, 0.2, 0.11)
     neck = (x / 0.082) ** 2 + ((z - (zn + 0.03)) / depth) ** 2 - 1
-    hole = ((np.abs(x) - (sx + 0.045)) / 0.118) ** 2 + ((z - (zs - 0.01)) / 0.21) ** 2 - 1
+    hole = ((np.abs(x) - (sx + 0.045)) / 0.095) ** 2 + ((z - (zs - 0.01)) / 0.175) ** 2 - 1
+    nip = figed_fit.mark_vertices(base)["nipple_l"]       # the armhole must clear the nipple (the user: "It needs to
+    print("vest: armhole rule at the nipple %.2f (covered when well over 0)" % hole[nip])   # cover up his nips")
     torso = (arm < 0.3) & (up < 0.75) & (head < 0.3) & (z > waist - 0.1) & (_w(base, ("thigh", "calf")) < 0.3)
     f = np.minimum(np.minimum(neck, hole) * 0.05, np.minimum(z - (waist - 0.06), zn + 0.06 - z))
     out["tank"] = (f, torso, np.full(len(P), 0.004), (0.88, 0.86, 0.80))
@@ -191,6 +194,8 @@ def paint(fig, outfit, name, R, P, path, skin_path=None):
     tex = np.zeros((SIZE, SIZE, 3))
     tex[:] = img[known].mean(axis=0)
     across = np.zeros((SIZE, SIZE))                      # each texel's place across the body, for ribbing
+    upward = np.zeros((SIZE, SIZE))
+    edge = np.full((SIZE, SIZE), 1.0)                    # each texel's distance in from the garment's edge (about m)
     uvs = np.array(base.uvs)
     for group, vi, ti in base.faces:
         if group != "body" or min(ti) < 0 or not all(may[v] for v in vi) or max(f[v] for v in vi) <= -0.03:
@@ -218,6 +223,8 @@ def paint(fig, outfit, name, R, P, path, skin_path=None):
             iy = np.clip(((bz1 - pos[:, 2]) / (bz1 - bz0) * (img.shape[0] - 1)).astype(int), 0, img.shape[0] - 1)
             tex[gy[ins].astype(int), gx[ins].astype(int)] = img[iy, ix]
             across[gy[ins].astype(int), gx[ins].astype(int)] = pos[:, 0]
+            upward[gy[ins].astype(int), gx[ins].astype(int)] = pos[:, 2]
+            edge[gy[ins].astype(int), gx[ins].astype(int)] = np.stack([b0[ins], b1[ins], b2[ins]], axis=1).dot(f[tri])
     if outfit[name].get("paint") == "shade" and skin_path:
         # Thin tight cloth: its light and shade is the BODY's under it (the user: "the texture needs to frame his
         # pecs"). The skin picture's own painted shading, blurred so hair and marks do not show, lightens and
@@ -238,6 +245,15 @@ def paint(fig, outfit, name, R, P, path, skin_path=None):
         rib = 1.0 - 0.045 * (np.sin(across * 2 * np.pi / 0.006) > 0.3)
         base_col = np.array(outfit[name].get("colour", [0.90, 0.88, 0.82]))
         tex = np.clip(base_col * (form * rib)[:, :, None], 0, 1)
+        # a bound edge round the neck, the armholes and the hem ("have border stitching"): a plain band without
+        # ribs, a seam where it meets the cloth, and a row of stitches along it
+        band = edge < BIND
+        tex[band] = np.clip(base_col * 0.97 * form[band][:, None], 0, 1)
+        seam = np.abs(edge - BIND) < 0.0012
+        tex[seam] = tex[seam] * 0.72
+        dash = np.sin((across + upward) * 2 * np.pi / 0.007) > -0.2
+        stitch = (np.abs(edge - BIND * 0.55) < 0.0009) & dash
+        tex[stitch] = tex[stitch] * 0.62
     im = bpy.data.images.new(name, SIZE, SIZE, alpha=False)
     rgba = np.ones((SIZE, SIZE, 4), dtype=np.float32)
     rgba[:, :, :3] = tex

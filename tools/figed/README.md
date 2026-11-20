@@ -737,3 +737,8 @@ cuffs and braces hanging at the hips: `tools/art_src/concept_brother_bible_outfi
   BODY's own painted shading under it (the skin picture's brightness, blurred 4 px over blurred 45 px, so hair and
   marks do not show), with fine ribs every 6 mm across. So the shadow under and between the pecs is exactly where
   his are. First try was clipped to pure white; the range is held to 0.7..1.06 now.
+- The user: "It needs to cover up his nips, have border stitching". Armholes narrower (radii 0.095 x 0.175; the
+  build prints the armhole rule's value at the nipple: 0.78, well clear). A bound edge is painted wherever the
+  cloth is within `BIND` (13 mm) of the garment's edge (the rule f, interpolated per texel, is the distance in): a
+  plain band without ribs, a dark seam where it meets the cloth, and a row of stitches at mid-band. It shows at
+  the neck and armholes; the hem is under the trousers' waistband.
