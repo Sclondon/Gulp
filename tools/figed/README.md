@@ -524,3 +524,25 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   `eye-epicanthus-out` -0.7 (which sign is the fold was a guess: check close up), `mouth-upperlip-volume` 0.9,
   `mouth-lowerlip-volume` -0.2 -> 0.9, `mouth-scale-depth` -0.4 -> 0.6 (positive rounds the lips forward in
   profile; negative was the flat mouth).
+
+## Paint (2026-11-20, first try)
+
+The user: "We should also start figuring out his texturing", then, of three ways offered (project the bible and touch
+up; a ready-made skin tinted; hand painting): "do the texture projection as a first try".
+
+- `paint_project.py <spec> <sheet> <out.png> [shots.png]`: for every texel of the head's skin (MakeHuman's own UV
+  layout: no new unwrap), the point of the posed, squared model it belongs to is looked up in each view of the head
+  sheet (placed as `head_overlay.py` places them) and the views are mixed by how squarely each sees that skin
+  (facing cubed), only where the drawing has figure (its cut-out); texels no view sees and everything below the
+  neck get the sheet's median skin colour. The cut-off ears are painted where they stand. Output
+  `figures/brother_skin.png` (2048); `shots.png` draws the painted model flat lit from the five angles.
+- First result: recognisably him (brows, eye bags, nose, smile, cheek shading land on the right forms). Wrong, in
+  order of how much they show: the eyeballs are a separate mesh and are blank white; the drawing's dark OUTLINE is
+  projected as lines (over the crown, round the neck's edge, where a view's silhouette falls on skin another view
+  also sees); the ears are doubled (the sheet's ear is not where the model's is in every view, so ear paint lands
+  on the head beside the ear); the mouth line is doubled where front and three-quarter views disagree; no occlusion
+  test (the nose's far side takes cheek paint); the drawing's light and shade is still in the paint (to be taken
+  out so the game's light is not doubled); the sheet is only 1024 px wide, so the paint is soft.
+- Next, in order: erode each view's cut-out a few pixels (kills the outline lines); weight views more sharply and
+  drop a view's vote where its colour disagrees with the better-facing view (kills doubles); paint the eyes;
+  a depth test per view; then de-light.
