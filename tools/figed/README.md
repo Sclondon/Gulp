@@ -778,3 +778,12 @@ cuffs and braces hanging at the hips: `tools/art_src/concept_brother_bible_outfi
   colour and keeps its light and dark (a dull tan, 0.60 0.51 0.38; a brighter 0.66 0.54 0.36 read as mustard),
   `"weave"` adds a sacking crosshatch every 5 mm (it shows moire in small renders). The cuff's lower edge is
   14.5 cm above the ankle joint (was 7.5), so they end at mid-calf.
+- The user, with a second picture of him in the outfit (`tools/art_src/concept_brother_bible_outfit2.png`: looking
+  up, a loose cream vest, dull olive-tan trousers rolled at the calf, braces hanging): "sthe straps still a little
+  too thick, pants too bright, and his nips and mulsces show too much on the tank texture, it should just sublty
+  frame his pecs then the rest be a lttle more loose like so". Straps and armhole band about 3 cm (neck half-width
+  0.097, armhole 0.111; nipple rule 0.47); a narrow strap has two stitch rows of its own, not the edge rows.
+  Trousers tint 0.47 0.44 0.35. The shirt's shade is now broad and soft (skin brightness blurred 14 px over
+  60 px, range 0.8..1.04, power 0.9) and fades to none from 5 cm under the nipples down, so no nipples or stomach
+  muscles show; it stands 19 mm off the body over the belly, 4 mm at the waist, and lies on the shoulders (19 mm
+  everywhere made the straps float). A thin red sliver shows at the corner of his right strap: not yet found.

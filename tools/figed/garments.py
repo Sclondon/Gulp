@@ -64,8 +64,8 @@ def rules(fig, P, H, skin_px=None):
     line = np.where(y < yn, zs + 0.012, zs + 0.045)      # the neckline height: front, back (5 cm lower showed half the chest)
     # ("and not quite so square": the corners rounded 3.5 cm and the line dipping 1 cm in the middle)
     # (then: "now its not square enough": corners 1.5 cm, the dip 3 mm)
-    line = line - 0.003 * np.clip(1 - (x / 0.09) ** 2, 0, 1)
-    ia, ib, rc = 0.09 - np.abs(x), z - line, 0.015      # how far inside the opening, from its side and its bottom
+    line = line - 0.003 * np.clip(1 - (x / 0.097) ** 2, 0, 1)
+    ia, ib, rc = 0.097 - np.abs(x), z - line, 0.015      # how far inside the opening, from its side and its bottom
     corner = np.sqrt(np.maximum(rc - ia, 0) ** 2 + np.maximum(rc - ib, 0) ** 2) - rc
     neck = np.where((ia < rc) & (ib < rc), corner, -np.minimum(ia, ib)) / 0.05     # > 0 outside the opening
     # how far each point is from the armhole's edge, along the line from the armhole's middle (metres): the band
@@ -73,14 +73,16 @@ def rules(fig, P, H, skin_px=None):
     # round the arm whole")
     hx, hz = np.abs(x) - (sx + 0.05), z - (zs - 0.01)
     rho = np.sqrt(hx ** 2 + hz ** 2)
-    INFO["hole_d"] = rho * (1 - 1 / np.sqrt(np.maximum((hx / 0.104) ** 2 + (hz / 0.175) ** 2, 1e-9)))
-    INFO["band_wide"] = float((sx + 0.05 - 0.104) - 0.09)        # the strap's width at the shoulder
-    hole = ((np.abs(x) - (sx + 0.05)) / 0.104) ** 2 + ((z - (zs - 0.01)) / 0.175) ** 2 - 1
+    INFO["hole_d"] = rho * (1 - 1 / np.sqrt(np.maximum((hx / 0.111) ** 2 + (hz / 0.175) ** 2, 1e-9)))
+    INFO["band_wide"] = float((sx + 0.05 - 0.111) - 0.097)        # the strap's width at the shoulder
+    hole = ((np.abs(x) - (sx + 0.05)) / 0.111) ** 2 + ((z - (zs - 0.01)) / 0.175) ** 2 - 1
+    INFO["pec_z"] = float(z[figed_fit.mark_vertices(base)["nipple_l"]])
     nip = figed_fit.mark_vertices(base)["nipple_l"]       # the armhole must clear the nipple (the user: "It needs to
     print("vest: armhole rule at the nipple %.2f (covered when well over 0)" % hole[nip])   # cover up his nips")
     torso = (arm < 0.3) & (up < 0.75) & (head < 0.3) & (z > waist - 0.1) & (_w(base, ("thigh", "calf")) < 0.3)
     f = np.minimum(np.minimum(neck, hole) * 0.05, np.minimum(z - (waist - 0.06), zn + 0.06 - z))
-    loose = 0.004 + 0.007 * np.clip((z - (waist + 0.01)) / 0.06, 0, 1)   # loose on the chest, tucked flat at the waist
+    loose = 0.004 + 0.015 * np.clip((z - (waist + 0.01)) / 0.07, 0, 1)   # (hangs loose: the user's second outfit picture)
+    loose = loose - 0.013 * np.clip((z - (zs - 0.09)) / 0.07, 0, 1)      # ... but the straps lie on the shoulders   # loose on the chest, tucked flat at the waist
     out["tank"] = (f, torso, loose, (0.88, 0.86, 0.80))                 # (11 mm all the way down came through the waistband)
     if skin_px is not None:                              # the drawers: where the skin picture is painted as cloth
         cloth = skin_px & lower
@@ -363,7 +365,11 @@ def paint(fig, outfit, name, R, P, path, skin_path=None):
                 a = (c[:, 2 * r:] - c[:, :-2 * r]) / (2.0 * r)
             return a
 
-        form = np.clip(blur(lum, 4) / np.maximum(blur(lum, 45), 1e-3), 0.7, 1.06) ** 0.9
+        # (the user: "his nips and mulsces show too much ... it should just sublty frame his pecs then the rest be a
+        # lttle more loose": a broad soft shade only, strongest under the chest and fading out below it)
+        form = np.clip(blur(lum, 14) / np.maximum(blur(lum, 60), 1e-3), 0.8, 1.04) ** 0.9
+        below = np.clip((INFO.get("pec_z", 0.0) - 0.05 - upward) / 0.06, 0, 1)
+        form = form * (1 - below) + below
         rib = 1.0 - 0.045 * (np.sin(across * 2 * np.pi / 0.006) > 0.3)
         base_col = np.array(outfit[name].get("colour", [0.90, 0.88, 0.82]))
         tex = np.clip(base_col * (form * rib)[:, :, None], 0, 1)
@@ -381,7 +387,8 @@ def paint(fig, outfit, name, R, P, path, skin_path=None):
         tex[inner] = tex[inner] * 0.62                     # a row of stitches along the band's inner edge
         tex[seam] = tex[seam] * 0.72
         dash = np.sin((across + upward) * 2 * np.pi / 0.007) > -0.2
-        stitch = (np.abs(edge - BIND * 0.55) < 0.0009) & dash
+        stitch = (np.abs(edge - BIND * 0.55) < 0.0009) & dash & ~strap   # (a narrow strap has its own two rows)
+        stitch |= (np.abs(hole_d - 0.006) < 0.0009) & dash
         tex[stitch] = tex[stitch] * 0.62
     im = bpy.data.images.new(name, SIZE, SIZE, alpha=False)
     rgba = np.ones((SIZE, SIZE, 4), dtype=np.float32)
