@@ -209,10 +209,10 @@ def moustache_uv(mesh):
     bm.free()
 
 
-def make(fig, wear, stem):
+def make(fig, wear, stem, posed=True, arm=None):
     base = fig.base
     P, H, T = fig.to_blender()
-    Pp = figed_fit.pose_points(fig, P, H, figed_fit.full_pose(fig.pose, base.bones, H, T), T)[0]
+    Pp = figed_fit.pose_points(fig, P, H, figed_fit.full_pose(fig.pose, base.bones, H, T), T)[0] if posed else P
     R, L = rules(fig, P, H)
     G.SMOOTH.update(hair=2, moustache=1)
     skin = Pp[G._w(base, ("head",)) > 0.5]
@@ -231,6 +231,10 @@ def make(fig, wear, stem):
             moustache_uv(mesh)
         obj = bpy.data.objects.new(name, mesh)
         bpy.context.scene.collection.objects.link(obj)
+        obj.vertex_groups.new(name="head").add(list(range(len(mesh.vertices))), 1.0, "REPLACE")
+        if arm is not None:                               # on the skeleton (an export): it rides the head
+            obj.parent = arm
+            obj.modifiers.new("rig", "ARMATURE").object = arm
         mesh.materials.append(G.plain_material(name, HAIR[1] if name == "hair" else TACHE[1]))
         objs[name] = obj
         print("%-10s %5d triangles" % (name, sum(len(p.vertices) - 2 for p in mesh.polygons)))

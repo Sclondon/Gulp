@@ -832,16 +832,20 @@ if __name__ == "__main__":
     with open(outfit_path) as fh:
         outfit = json.load(fh)
     stem = os.path.splitext(spec_path)[0]
+    # --glb <file>: the dressed figure at rest ON ITS SKELETON for the game (every piece weighted to the bones), in
+    # place of the pictures
+    glb = argv[argv.index("--glb") + 1] if "--glb" in argv else None
+    posed = glb is None
     fb.reset()
-    objs, _arm = fb.build(fig, rig=False, posed=True)
+    objs, _arm = fb.build(fig, rig=not posed, posed=posed)
     objs["body"].data.materials.append(material("skin", stem + "_skin.png"))
     if "eyes" in objs and os.path.exists(stem + "_eyes.png"):
         objs["eyes"].data.materials.append(material("eyes", stem + "_eyes.png"))
-    parts, R, P = make(fig, wear, posed=True, skin_path=stem + "_skin.png")
-    extras(fig, wear, outfit, P, INFO["Pp"], INFO["H"])
+    parts, R, P = make(fig, wear, posed=posed, arm=_arm, skin_path=stem + "_skin.png")
+    extras(fig, wear, outfit, P, INFO["Pp"], INFO["H"], _arm)
     if "--hair" in argv:                                  # his hair and moustache too (hair.py); under a cap, only
         import hair as hair_mod                           # the moustache until the hair is cut to sit under it
-        hair_mod.make(fig, ["moustache"] if "cap" in wear else ["hair", "moustache"], stem)
+        hair_mod.make(fig, ["moustache"] if ("cap" in wear or "helmet" in wear) else ["hair", "moustache"], stem, posed, _arm)
     # THE BODY UNDER THE CLOTHES IS NOT DRAWN (it came through the smoothed overalls at the thighs): faces of the
     # body whose points are all well inside a worn garment are taken out. The body's points are matched to the
     # figure's by place.
@@ -875,10 +879,15 @@ if __name__ == "__main__":
             done[name] = "%s_%s%s.png" % (stem, outfit.get("prefix", ""), name)
             paint(fig, outfit, name, R, P, done[name], stem + "_skin.png")
         obj.data.materials.append(material(name, done[name]))
+    if glb:
+        bpy.ops.export_scene.gltf(filepath=os.path.abspath(glb), export_format="GLB", export_yup=True,
+                                  export_animations=False, export_skins=True)
+        tris = sum(len(pl.vertices) - 2 for o in bpy.data.objects if o.type == "MESH" for pl in o.data.polygons)
+        print("exported", glb, "triangles", tris)
     boxes = fb.view_boxes(fig)
     cam = fb._camera()
     strips = []
-    for view in ("front", "quarter", "side", "back"):
+    for view in (() if glb else ("front", "quarter", "side", "back")):
         centre, direction, seen, aspect = boxes[view][:4]
         w = int(900 * aspect) // 2 * 2
         s = fb._scene((w, 900))
@@ -892,5 +901,6 @@ if __name__ == "__main__":
         bpy.ops.render.render(write_still=True)
         shot = bpy.data.images.load(s.render.filepath)
         strips.append(np.array(shot.pixels[:]).reshape(900, w, 4))
-    fb.save_pixels(np.concatenate(strips, axis=1), os.path.abspath(out))
-    print("shots", out)
+    if strips:
+        fb.save_pixels(np.concatenate(strips, axis=1), os.path.abspath(out))
+        print("shots", out)

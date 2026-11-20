@@ -893,3 +893,21 @@ close on the trunk the same day (suit 2 cm -> 0.8, overalls 3 -> 1.2, jumper 1.3
 thinner), and a fault fixed in the overalls' taut front: it took every point in front of the spine as front skin,
 hauled points between the legs 20 cm forward and stood the bib 7 cm off his belly; it now moves only shallow
 hollows (under 5 cm, by at most 2.5).
+
+## The helmet, the dressed figure on its skeleton, the first pose test (2026-11-20)
+
+- `helmet.py`: the diver's helmet from the diving sheet's two helmet drawings: a turned shape whose outline is the
+  smaller of the front view's half-width and the side view's reach to the back at each height, windows as short
+  drums capped with their drawn faces, painted from the two views (about 760 triangles). `--wear ...,helmet` stands
+  it on the corselet's neck ring; it rides the chest (spine_03), not the head. `figures/helmet_diving.png/.blend`.
+- `garments.py ... --glb <file>`: the dressed figure AT REST ON ITS SKELETON (body, every garment, boots, hard parts,
+  hair with `--hair`), the body under the clothes left out, in place of the pictures. First export: the oilskin
+  outfit, 11 meshes, 34,001 triangles (the body alone is most of it: a low model is owed), 53 bones.
+- `tests/figed_pose_view.gd -- --glb=<file> --out=<sheet.png>` bends that export in Godot into test poses (rest,
+  stride, crouch and reach, arms out) from four sides: body, clothes, boots and hair all follow the bones. These are
+  hand-set poses to test the skinning, NOT animations.
+- Animation itself is not started: where the clips come from is the user's call (the skeleton is Unreal's mannequin
+  layout, not the shared boy's). Asked 2026-11-20.
+- Hair the same day: the mop thicker (THICK 4.8 cm) and darker, the outline cut curlier, the moustache thicker. The
+  hair's under-layer shade (vertex colour) is not carried by the glTF export yet (Blender warns the colour is unused
+  by the material).
