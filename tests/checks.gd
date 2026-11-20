@@ -147,6 +147,8 @@ func _waves() -> void:
 	player.global_position = Vector3(open.x, Sea.SURFACE - 1.5, open.y)
 	player.pitch = 0.9
 	player.yaw = 0.0
+	# (a full burst: a high leap needs it since 2026-11-20, and the checks before may have spent it)
+	player.stamina = 1.0
 	player.boost_held = true
 	var out := false
 	var top := -INF
