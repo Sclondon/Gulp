@@ -244,3 +244,24 @@ The user: "lets do around focusing on his pecs, shoulders and hands, he should h
   as well as the skin, so the pelvis stood forward of the feet and the legs slanted. It is out (0); `belly` 0.25 and
   `bulge` 3.5 stay. **Targets named `*-trans-*` move joints: they change how a figure stands, not only its shape.**
   Check the stance from the side after using one.
+
+## The head (2026-11-19, first round on the new head art)
+
+The user: "Alright lets start working on the head. I made some custom updates to the head art, this is the new
+biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with hair, front) and
+`concept_brother_bible_head_bare.png` (shaved, five views; 1024 px wide as it arrived). They replace
+`concept_brother_bible_face.jpg` and the head rows of `_bible_bare.jpg` for his head (kept, retired).
+
+- All 43 face sliders from the first head pass (set by eye, many at extremes: `nose_size` 1.4, `nose_tip_width`
+  1.6, `brow_forward` -1) were reset, and `brother_head.fit.json` now fits the outline to the shaved sheet's front,
+  profile and back.
+- **A head view's size is pinned by the chin** (`"chin"`: the row of the chin's bottom; the model's is the point
+  the `chin-height` target moves most). With the size left to a `zoom` slider, the fit enlarged the model and
+  compared only its top part: a high score on a head too narrow and long. `zoom` is now 0.96 to 1.04.
+- **The face's fullness is held by eye** (`head-fat` 0.8, `cheek_fullness` 0.8, `head-round` 0.5, `cheekbones`
+  -0.3; none moves in the fit): left free, the fit reached the same outline with a thin, hollow-cheeked face and a
+  wide jaw. An outline cannot tell a full face from a bony one.
+- After: front 0.97, profile 0.97, back 0.94; width to height 0.78 against the sheet's 0.80.
+- Not done: the nose (long and thin with a hooked tip, where the sheet's is a broad round bulb), the eyes (the
+  sheet's are small and downturned with bags), the mouth (wider, a fuller smile), bigger ears, brows. Features the
+  outline cannot see are next, one at a time.

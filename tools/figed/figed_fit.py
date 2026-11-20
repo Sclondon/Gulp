@@ -296,13 +296,14 @@ class View:
         # a close-up of the head: the picture's row to compare down to ("cut", in box_width pixels, e.g. just
         # under the chin); its size against the model is not known, so it is a slider too ("zoom")
         self.cut = None
+        self.chin_row = int(round(spec["chin"] * k)) - box[1] if "chin" in spec else None
         if "cut" in spec:
             self.cut = int(round(spec["cut"] * k)) - box[1]
             self.mask = self.mask.copy()
             self.mask[self.cut:] = False
             self.k0 = (self.cut - self.top) / float(spec.get("span", 0.27))
 
-    def draw_head(self, pts, dx=0.0, dy=0.0, zoom=1.0):
+    def draw_head(self, pts, dx=0.0, dy=0.0, zoom=1.0, chin_z=None):
         if self.look == "front":
             u = pts[:, 0]
         elif self.look == "back":
@@ -314,6 +315,10 @@ class View:
         v = pts[:, 2]
         crown = v.max()
         k = self.k0 * zoom
+        if self.chin_row is not None and chin_z is not None:
+            # the head's size is pinned: crown to the bottom of the chin, as drawn ("chin": its row). Left free, the
+            # fit enlarged the model and compared only its top part: a high score on a head too narrow and long.
+            k = (self.chin_row - self.top) / (crown - chin_z) * zoom
         keep = v > crown - (self.cut - self.top + 12) / k
         u, v = u[keep], v[keep]
         skull = v > crown - 0.06
@@ -442,6 +447,8 @@ class Job:
         self.mark_idx = mark_vertices(self.base)
         self.where = {}                               # view name -> {mark: xyz} as last drawn
         self.hand_samplers = {}
+        idx, d = self.base.target("chin-height-incr")     # the bottom of the chin: where that target moves most
+        self.chin_idx = int(idx[np.argmax(np.linalg.norm(d, axis=1) - 100 * np.abs(self.base.verts[idx, 0]))])
         self.armless = None                           # a sampler of the body without its arms, when a view asks
 
     def marks_3d(self, P, posed):
@@ -500,7 +507,7 @@ class Job:
                 out.append(v.draw_hand(hp, frame, self.spec["shift"].get(n, 0.0), self.spec["zoom"].get(n, 1.0)))
             elif v.cut is not None:
                 out.append(v.draw_head(head_pts, self.spec["shift"].get(n, 0.0), self.spec["drop"].get(n, 0.0),
-                                       self.spec["zoom"].get(n, 1.0)))
+                                       self.spec["zoom"].get(n, 1.0), P[self.chin_idx][2]))
             else:
                 body = bare if v.spec.get("armless") else own.get(n, pts)
                 out.append(v.draw(body, height, self.spec["shift"].get(n, 0.0), self.spec["zoom"].get(n, 1.0)))
