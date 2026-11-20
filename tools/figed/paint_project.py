@@ -24,6 +24,7 @@ import figed_fit  # noqa: E402
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 SIZE = 2048
+PULL = 10.0                                                   # body views: pixels a sample may be pulled in from outside
 SIDE_FROM, SIDE_TO = 0.12, 0.6                                # how squarely skin must face a view: none .. full paint
 base = figed.Base()
 fig = figed.Figure(base, figed.load_spec(argv[0]))
@@ -77,8 +78,9 @@ for v in sheet["views"]:
     box = [int(round(c * k)) for c in v["box"]]
     mask = figed_fit.shrink(figed_fit.cut_out(art, box, 0.07), 4)     # in from the drawn outline: no dark lines
     px = (v["chin"] - v["crown"]) * k / high                 # sheet pixels a metre
-    if "nose" in v:
-        anchor, at = nose, (v["nose"][0] * k, v["nose"][1] * k)
+    if "nose" in v:                                          # across by the nose, up and down by the crown: reshaping
+        anchor = np.array([nose[0], nose[1], crown[2]])      # the nose must not slide the whole paint up or down
+        at = (v["nose"][0] * k, v["crown"] * k)
     else:
         anchor, at = crown, (v["centre"] * k, v["crown"] * k)
     # each row's figure: where it starts and ends, so skin just outside a view's outline (the side of the head, seen
@@ -100,6 +102,7 @@ print("skin colour", skin.round(3), "views", len(views))
 
 # --body <fit job>: the body below the chin from the job's "front" and "back" views of the body sheet, the model
 # standing as the job stands it (the fit's own mapping from model to drawing: View.project)
+ORDER = {"front": 0, "back": 1, "armless_side": 2}
 body_views = []
 if "--body" in argv:
     with open(argv[argv.index("--body") + 1]) as f:
@@ -115,7 +118,7 @@ if "--body" in argv:
         Nb = -Nb
     chin_b = Pb[figed_fit.mark_vertices(base)["chin"]][2]
     for v in J.views:
-        if v.spec["name"] not in ("front", "back"):
+        if v.spec["name"] not in ORDER:
             continue
         pic = figed_fit.load_image(v.spec["picture"])[:, :, :3]
         kb = pic.shape[1] / float(v.spec.get("box_width", pic.shape[1]))
@@ -126,12 +129,16 @@ if "--body" in argv:
             n = int((bx[3] - bx[1]) // want)
         origin = (bx[0] // n, bx[1] // n)
         m = figed_fit.shrink(v.mask, 2)
-        softb = feather(m, 4)
+        softb = m
         rows = m.any(axis=1)
         lo = np.where(rows, m.argmax(axis=1), 0)
         hi = np.where(rows, m.shape[1] - 1 - m[:, ::-1].argmax(axis=1), -1)
         body_views.append((v, pic, n, origin, softb, lo, hi))
+    body_views.sort(key=lambda b: ORDER[b[0].spec["name"]])
     print("body views", [b[0].spec["name"] for b in body_views])
+    arm_bones = [i for i, b in enumerate(base.bones) if b.split("_")[0] in (
+        "upperarm", "lowerarm", "hand", "thumb", "index", "middle", "ring", "pinky")]
+    armw = base.weights[:, arm_bones].sum(axis=1)
 texb = np.zeros((SIZE, SIZE, 3))
 wb = np.zeros((SIZE, SIZE))
 
@@ -170,15 +177,23 @@ for group, vi, ti in base.faces:
             posb = w3.dot(Pb[tri])
             nb = w3.dot(Nb[tri])
             nb /= np.maximum(np.linalg.norm(nb, axis=1, keepdims=True), 1e-9)
-            g = np.clip((np.abs(nb[:, 1]) - SIDE_FROM) / (SIDE_TO - SIDE_FROM), 0, 1)
-            g = g * g * (3 - 2 * g)                           # as for the head: fading to skin tone side on
+            t = np.clip((0.3 - nb[:, 1]) / 0.6, 0, 1)
+            fr = t * t * (3 - 2 * t)                          # front and back meet each other round the side
             below = np.clip((chin_b + 0.03 - posb[:, 2]) / 0.05, 0, 1)
-            for (v, pic, n, origin, rows, lo, hi), share in zip(body_views, (g * (nb[:, 1] < 0), g * (nb[:, 1] > 0))):
+            # skin that faces sideways on the trunk, neck and legs: the ARMLESS sheet's side view (the main sheet's
+            # has the arm hanging over the flank). Arms keep front and back only.
+            sw = np.zeros(len(fr))
+            if len(body_views) > 2 and armw[tri].mean() < 0.5:
+                q = np.clip((np.abs(nb[:, 0]) - 0.45) / 0.4, 0, 1)
+                sw = q * q * (3 - 2 * q)
+            for (v, pic, n, origin, rows, lo, hi), share in zip(body_views, (fr * (1 - sw), (1 - fr) * (1 - sw), sw)):
                 px_, py_ = v.project(posb.T)
                 iy0, ix0 = np.round(py_).astype(int), np.round(px_).astype(int)
                 iy = np.clip(iy0, 0, rows.shape[0] - 1)
-                ix = np.clip(ix0, 0, rows.shape[1] - 1)
-                on = rows[iy, ix] * ((iy0 == iy) & (ix0 == ix))
+                has = hi[iy] >= lo[iy]
+                ix = np.clip(ix0, lo[iy], np.maximum(hi[iy], lo[iy]))     # pulled in to the figure on its row ...
+                pulled = np.abs(ix - ix0)
+                on = has * (iy0 == iy) * np.clip(1.5 - pulled / PULL, 0, 1)   # ... a little way only (no long streaks)
                 fx = np.clip((ix + origin[0]) * n + n // 2, 0, pic.shape[1] - 1)
                 fy = np.clip((iy + origin[1]) * n + n // 2, 0, pic.shape[0] - 1)
                 wgt = share * on * below

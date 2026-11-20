@@ -473,7 +473,8 @@
   "eye-height1": -0.4,
   "eye-height2": -0.7,
   "eye-height3": -1,
-  "eye-eyefold-angle-up": -0.8
+  "eye-eyefold-angle-up": -0.8,
+  "eye_height": 1.8
  },
  "tilt": {
   "head_side": -1

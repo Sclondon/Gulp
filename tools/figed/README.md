@@ -584,3 +584,20 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
   plain skin tone; eyeballs blank; the drawings' light is still in the paint; a pale patch behind each ear.
 - The ear's skirt is now a cone to one point inside the head (the user: "the back of his ears have some strange
   geomtery": the straight skirt showed as a hollow tube).
+- Fifth projection. The user (blue marks on the painted model: the eye openings above the painted eyes, the nose's
+  base above the painted nostrils; and a side view): "the eyes and nose are misalinged you can see from the
+  projection they arent shaped quite right, and theres sa seam in the texture down his side"; then "I guess you
+  can try filling in with a side propction as well but it needs to blend well".
+  - **The paint is a measure of the model**: where a painted feature and the model's feature disagree, the model is
+    off. But only if the paint hangs from something that does not move: the head's views are now placed across by
+    the nose and UP AND DOWN BY THE CROWN (crown and chin both on the sheet's), not by the nose tip, which every nose
+    edit moved. With that, the nose sits on its paint as it was (the nose changes tried were undone) and the eye
+    openings were about a centimetre low: `eye_height` 1.8.
+    A mistake on the way, not to repeat: the anchor and the eye slider were changed in one step, and the two errors
+    added up (eyes far below the paint). One change, one look.
+  - The body's side: skin that faces sideways on the trunk, neck and legs is painted from the ARMLESS sheet's side
+    view (`armless_side` of the body job; the main sheet's side view has the arm over the flank), blended into
+    front and back by the skin's facing; arms keep front and back only, each pulled in at most `PULL` (10) pixels
+    from outside its outline. No band of plain skin and no long streaks down the side.
+  - Left: a smudge on the outer upper arm (front and back disagree there), eyeballs blank, the pale patch behind
+    each ear, dark lines under the jaw from the sheet's outline, the drawings' light still in the paint.
