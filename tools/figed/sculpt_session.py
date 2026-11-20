@@ -91,7 +91,7 @@ elif argv[:1] == ["make"]:                             # headless: -- make <spec
                 e.rotation_euler = (math.radians(90), 0, math.radians(-90))
                 e.location = (0.0, nose[1] + (nx - W / 2) * s_, nose[2] + (ny - Hpx / 2) * s_)
             e.use_empty_image_alpha = True
-            e.color[3] = 0.45
+            e.color[3] = 0.22
             e.empty_image_depth = "FRONT"
             e.show_empty_image_perspective = False
             e.show_empty_image_only_axis_aligned = True
