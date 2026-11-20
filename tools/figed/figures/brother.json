@@ -488,7 +488,8 @@
   "scale": 1.18,
   "back": 3,
   "down": -0.3,
-  "out": -0.4,
-  "settle": 30
+  "out": -0.3,
+  "reach": 5,
+  "reach_front": 3.5
  }
 }

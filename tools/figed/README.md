@@ -389,3 +389,11 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   polygons are large, six rings reach the crown, and thirty smoothing passes collapsed the skull to a cone).
   Left: faint stretch lines in the skin just in front of the ear, and from the front his ears stand out less than
   the sheet's.
+- The user, of the first `ears` version: "You're moving too much of vertexes around the ear its deformed" (creases
+  at the temple and under the ear). Moving the flap with NO skin at all was tried and is worse: the ear's bowl is
+  part of it only loosely, so the ear tears and a stretched plate is left where it stood. The creases came from
+  how slid skin was set back on the skull (onto the tangent plane of the nearest POINT: facets on this coarse
+  mesh). Now it is set onto the nearest point of the head's own TRIANGLES (mathutils BVHTree; the ear's faces left
+  out and its footprint capped), so the skin round the ear keeps the skull's shape exactly and only its points'
+  spacing changes. `reach` 5 behind, `reach_front` 3.5 (0 = the ear alone). `EAR_FROM` 0: the whole of what
+  `ear-wing` moves is the ear; at 0.10 the bowl was left behind.

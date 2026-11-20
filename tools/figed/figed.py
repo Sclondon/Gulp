@@ -75,6 +75,7 @@ WHAT = {"length": (0, 1, 0), "width": (1, 0, 0), "depth": (0, 0, 1), "girth": (1
 # "flesh_*" scales only the bone's own skin: the joints that hang off it stay where they are (wider hips without
 # moving the legs apart).
 FLESH = {"flesh_width": (1, 0, 0), "flesh_depth": (0, 0, 1), "flesh": (1, 0, 1)}
+EAR_FROM = 0.0                                      # share of the ear-wing target's most that counts as ear
 
 MACRO_DEFAULT = {"gender": 1.0, "age": 0.5, "muscle": 0.5, "weight": 0.5, "height": 0.5, "proportions": 0.5,
                  "race": {"caucasian": 1.0}}
@@ -318,7 +319,7 @@ class Figure:
                 for way in ("incr", "decr"):
                     idx, d = b.target(side + "-ear-wing-" + way)
                     size[idx] = np.maximum(size[idx], np.linalg.norm(d, axis=1))
-                ear = np.nonzero(size > 0)[0]
+                ear = np.nonzero(size > size.max() * EAR_FROM)[0]     # the flap, not the skin it grows from
                 inside = set(ear.tolist())
                 root = np.array([i for i in ear if any(int(n) not in inside for n in near.get(int(i), ()))])
                 b._ears[side] = (ear, root)
@@ -355,25 +356,38 @@ class Figure:
             c = P0[root].mean(axis=0)
             skin = np.setdiff1d(body[np.linalg.norm(P0[body] - c, axis=1) < 0.12], ear)   # the head's side, no ear
 
-            def onto(q):                                  # points set back onto the head's surface as it was
-                near = skin[np.argmin(((q[:, None, :] - P0[skin][None, :, :]) ** 2).sum(axis=2), axis=1)]
-                return q - n0[near] * ((q - P0[near]) * n0[near]).sum(axis=1, keepdims=True)
+            # the head's surface as it was, without the ear and with the ear's footprint capped: what slid skin and
+            # the ear's join are set back onto, exactly (the nearest point of its triangles, not of its points)
+            from mathutils.bvhtree import BVHTree
+            in_ear = np.zeros(len(P0), dtype=bool)
+            in_ear[ear] = True
+            is_root = np.zeros(len(P0), dtype=bool)
+            is_root[root] = True
+            keep = in_ear[self.base._tris].sum(axis=1) == 0
+            near_c = np.linalg.norm(P0[self.base._tris[:, 0]] - c, axis=1) < 0.14
+            verts = [tuple(v) for v in P0] + [tuple(c)]
+            polys = [tuple(int(i) for i in t) for t in self.base._tris[keep & near_c]]
+            for t in self.base._tris[in_ear[self.base._tris].any(axis=1)]:      # the cap over the footprint
+                rim = [int(i) for i in t if is_root[i] or not in_ear[i]]
+                if len(rim) >= 2:
+                    polys.append((rim[0], rim[1], len(P0)))
+            tree = BVHTree.FromPolygons(verts, polys)
+
+            def onto(q):
+                return np.array([tuple(tree.find_nearest(tuple(x))[0]) for x in q])
 
             dist = np.sqrt(((P0[skin][:, None, :] - P0[root][None, :, :]) ** 2).sum(axis=2)).min(axis=1)
             away = P0[skin] - c
             ahead = (away * slide).sum(axis=1) / np.maximum(np.linalg.norm(away, axis=1) * np.linalg.norm(slide), 1e-9)
-            reach = (e.get("reach_front", 2.0) + (e.get("reach", 5.0) - e.get("reach_front", 2.0)) * (ahead + 1) / 2) * 0.01
-            t = np.clip(dist / reach, 0, 1)
-            f = 1 - t * t * (3 - 2 * t)
-            P[skin] = onto(P0[skin] + slide * f[:, None])
+            if e.get("reach", 0.0) > 0:                    # optional: skin sliding with the ear (0 = the ear alone)
+                reach = (e.get("reach_front", 0.0) + (e["reach"] - e.get("reach_front", 0.0)) * (ahead + 1) / 2) * 0.01
+                t = np.clip(dist / np.maximum(reach, 1e-6), 0, 1)
+                f = 1 - t * t * (3 - 2 * t)
+                P[skin] = onto(P0[skin] + slide * f[:, None])
             where = onto(P0[root] + slide)                 # the join carried to its new place on the skull
             carry = (where - P0[root]).mean(axis=0)
             mid = P0[ear].mean(axis=0)
             P[ear] = mid + (P0[ear] - mid) * e.get("scale", 1.0) + carry + np.array([shift[0], 0.0, 0.0])
-            grow = (P0[root] - mid) * (e.get("scale", 1.0) - 1.0)
-            ring = np.sqrt(((P0[skin][:, None, :] - P0[root][None, :, :]) ** 2).sum(axis=2))
-            nearest = ring.argmin(axis=1)                  # the skin by the join opens out as the ear grows
-            P[skin] += grow[nearest] * np.clip(1 - ring.min(axis=1) / 0.012, 0, 1)[:, None]
         return P
 
     def _jawline(self, P):
