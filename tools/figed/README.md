@@ -314,3 +314,10 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
 - Nose round one (by eye): `nose_size` 1.0, `nose_tip_up` 0.5, `nose_tip_width` 1.2, `nose_base_width` 1.0,
   `nostril_width` 0.9, `nose-greek` 0, `nose-curve-convex` -0.2. Widths past about 1.2 with `nose_flare` tear the
   nostril rims (a snout). Still smaller and more upturned than the sheet's large, low-hanging ball of a nose.
+- `head_overlay.py` + `figures/brother_head.sheet.json` (the user: "line up the center of the noses, then overlay
+  them and show me"): for each of the sheet's five views the model's head is scaled to the drawing's crown-to-chin
+  height, moved so the nose tips coincide, and drawn half see-through over the art; rows: art, overlay, model alone.
+  First use showed what outlines and scores had hidden: with the noses together the model's crown stands far above
+  the sheet's. His nose tip is about three quarters of the way down his head (the sheet's: 57%), and the lower face
+  is short, since the chin sliders went back to 0. The up-and-down layout of the face (brow, eyes, nose, mouth,
+  chin) is the next thing to set, by marks.
