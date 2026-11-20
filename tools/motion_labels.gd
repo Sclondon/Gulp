@@ -2,9 +2,10 @@ extends SceneTree
 ## Writes what each point of a creature's baked models is into those models, for its motion family
 ## (scripts/motion.gd, GameCommon `godot/motion-families`). Headless is fine:
 ##
-##   godot --headless --path . --audio-driver Dummy -s res://tools/motion_labels.gd -- [--components=sardine,...]
+##   godot --headless --path . --audio-driver Dummy -s res://tools/motion_labels.gd -- [--components=<folder>,...]
 ##
-## For every component with a motion spec (`baked/<shader>_motion.gd`) it makes the component as the
+## For every component one of whose shaders has a motion spec (`baked/<shader>_motion.gd` beside that
+## shader, which may be another component's) it makes the component as the
 ## bake did (each baked variant, its far model too), finds which baked mesh surfaces wear that shader,
 ## asks the spec's `label()` about each vertex (its position, normal, UV, UV2 and colour at rest, and
 ## the material's settings) and stores the answer: CUSTOM0.z the part, CUSTOM0.w weight 1, CUSTOM1
@@ -30,19 +31,20 @@ func _run() -> void:
 		var dir := "res://creatures/%s/baked" % folder
 		if not DirAccess.dir_exists_absolute(dir):
 			continue
-		var has_spec := false
-		for file in DirAccess.get_files_at(dir):
-			if file.ends_with("_motion.gd"):
-				has_spec = true
-		if not has_spec:
-			continue
 		for file in DirAccess.get_files_at(dir):
 			file = file.trim_suffix(".remap")
 			if not file.ends_with("look.res"):
 				continue
 			var script_name := folder if file == "look.res" else file.trim_suffix("_look.res")
 			var script_path := "res://creatures/%s/%s.gd" % [folder, script_name]
-			if ResourceLoader.exists(script_path):
+			# (only where one of its shaders has a spec: a shader may be another folder's, as the
+			# leviathan and the sea serpent wear the sea monster's)
+			var info: Dictionary = (load(dir.path_join(file)) as Resource).get_meta(&"look", {})
+			var any := false
+			for own: String in info.get("shaders", {}):
+				if Motion.spec_of(own) != null:
+					any = true
+			if any and ResourceLoader.exists(script_path):
 				await _label_component(script_path, dir.path_join(file))
 	quit()
 

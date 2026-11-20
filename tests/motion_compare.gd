@@ -3,7 +3,7 @@ extends SceneTree
 ## (scripts/motion.gd), frame by frame. A window (headless draws nothing):
 ##
 ##   godot --path . --audio-driver Dummy --resolution 640x360 -s res://tests/motion_compare.gd -- \
-##     --out=<folder> [--kinds=sardine,orca,...] [--sway=1] [--paint] [--set=walk:1,claws:0.5]
+##     --out=<folder> [--kinds=sardine,orca,res://creatures/anemone/anemone.gd?kind=1,...] [--sway=1] [--paint] [--set=walk:1,claws:0.5]
 ##
 ## For each kind: 8 frames through one beat (phase 0, 1/8, ...), then the mouth open (gape 1), then
 ## turning (curl 0.6) and arched (arch 0.5), each from above and from the side (orthographic, the nose
@@ -80,7 +80,15 @@ func _run() -> void:
 
 
 func _make(kind: String, family: bool) -> Node3D:
-	var look := Species.make(kind, false)
+	# (a kind of Species, or a component's script with settings: res://creatures/anemone/anemone.gd?kind=1)
+	var look: Node3D
+	if kind.begins_with("res://"):
+		look = (load(kind.get_slice("?", 0)) as GDScript).new()
+		if kind.contains("?"):
+			for pair in kind.get_slice("?", 1).split("&"):
+				look.set(pair.get_slice("=", 0), str_to_var(pair.get_slice("=", 1)))
+	else:
+		look = Species.make(kind, false)
 	if look == null:
 		return null
 	if &"game" in look:
@@ -237,5 +245,5 @@ func _compare(kind: String) -> void:
 			sheet.blit_rect(tile, Rect2i(Vector2i.ZERO, TILE), Vector2i(f * TILE.x, 14 + view * TILE.y))
 	own.queue_free()
 	fam.queue_free()
-	sheet.save_png(_out.path_join(kind + ".png"))
+	sheet.save_png(_out.path_join(kind.get_file().replace("?", "_").replace("=", "").replace("&", "_") + ".png"))
 	print("MOTION %s mean %.3f worst %.3f (%s)" % [kind, total / float(n), worst, worst_at])
