@@ -8,14 +8,14 @@ extends SceneTree
 
 const SHADER := preload("res://shaders/ink/hair_ink.gdshader")
 const LOOKS := {
-	"hair": {"albedo": Color(0.3, 0.155, 0.08), "ink": Color(0.085, 0.04, 0.025), "pale": Color(0.62, 0.36, 0.2),
+	"hair": {"albedo": Color(0.215, 0.115, 0.062), "ink": Color(0.085, 0.04, 0.025), "pale": Color(0.62, 0.36, 0.2),
 			"lighten": 0.12, "soft": 1.0, "metres": 1.0, "root_ink": 0.0, "gap_ink": 0.12, "lit_lines": 0.0,
 			"shadow_lines": 0.0, "locks": 0.0, "curl": 0.8, "curl_size": 0.036, "curl_gaps": 0.45, "curl_rim": 0.9,
-			"curl_edge": 0.16, "flicks": Color(0.85, 0.45, 0.2), "flick_gain": 0.2, "flick_gloss": 10.0,
+			"curl_edge": 0.3, "flicks": Color(0.85, 0.45, 0.2), "flick_gain": 0.2, "flick_gloss": 10.0,
 			"print_grain": 0.0, "wrap": 1.0, "flatness": 1.0, "shadow_fill": 0.85, "layer_shade": 1.0},
 	"moustache": {"albedo": Color(0.55, 0.25, 0.1), "ink": Color(0.25, 0.09, 0.04), "pale": Color(0.8, 0.5, 0.25),
 			"lighten": 0.1, "soft": 1.0, "metres": 1.0, "root_ink": 0.0, "gap_ink": 0.1, "strand_gap": 0.0016,
-			"lit_lines": 0.35, "shadow_lines": 0.5, "tip_ragged": 0.15, "side_ragged": 0.1, "ragged_width": 0.003,
+			"lit_lines": 0.35, "shadow_lines": 0.5, "tip_ragged": 0.1, "side_ragged": 0.05, "ragged_width": 0.003,
 			"flick_gain": 0.1, "print_grain": 0.0, "wrap": 0.5, "flatness": 0.8, "shadow_fill": 0.5,
 			"under_shade": 0.6},
 }

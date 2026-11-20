@@ -36,7 +36,7 @@ SIZE = 1024
 LINE_A = [0, 35, 55, 72, 95, 125, 180]
 LINE_S = [0.60, 0.56, 0.30, 0.0, 0.0, 0.0, 0.0]            # share of eye-to-crown
 LINE_M = [0.0, 0.0, 0.0, -0.035, -0.015, -0.075, -0.085]   # plus metres
-THICK = (0.012, 0.036)                                     # the mop's thickness at the hairline, and further in
+THICK = (0.014, 0.048)                                     # the mop's thickness at the hairline, and further in
 FRINGE = 0.03                                              # how far in from its edge the shader may cut the mop
 SAG_A = [0, 50, 80, 120, 180]                              # degrees round from the front -> how far the mop's edge
 SAG_M = [0.06, 0.042, 0.026, 0.014, 0.02]                 # hangs down over the hairline there (metres)
@@ -107,10 +107,10 @@ def rules(fig, P, H):
     t = np.clip(np.abs(x) / xe, 0, 1)
     top = L["nose_base"] - 0.002
     top = top - (top - (zc + 0.006)) * t ** 2.2
-    bot = L["lip_top"] - 0.006
+    bot = L["lip_top"] - 0.009
     bot = bot + ((zc - 0.009) - bot) * t ** 1.5
     fm = np.minimum(np.minimum(top - z, z - bot), (xe - np.abs(x)) * 0.5)
-    out["moustache"] = (fm, (headw > 0.5) & (y < eye[1] + 0.03), 0.004 + 0.008 * np.clip(fm / 0.006, 0, 1))
+    out["moustache"] = (fm, (headw > 0.5) & (y < eye[1] + 0.03), 0.006 + 0.011 * np.clip(fm / 0.006, 0, 1))
     INFO.update(top=top, bot=bot, yc=yc)
     return out, L
 
