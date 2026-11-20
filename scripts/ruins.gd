@@ -267,14 +267,14 @@ func _paints() -> void:
 	var shader: Shader = load(SHADER)
 	_stone = ShaderMaterial.new()
 	_stone.shader = shader
-	_stone.set_shader_parameter(&"atlas", load(ATLAS))
+	_stone.set_shader_parameter(&"atlas", load(Tier.texture(ATLAS)))
 	_statue = ShaderMaterial.new()
 	_statue.shader = shader
 	_statue.set_shader_parameter(&"atlas", load(STATUE_ATLAS))
 	_statue.set_shader_parameter(&"grain", 0.05)
 	_glowing = ShaderMaterial.new()
 	_glowing.shader = shader
-	_glowing.set_shader_parameter(&"atlas", load(ATLAS))
+	_glowing.set_shader_parameter(&"atlas", load(Tier.texture(ATLAS)))
 	_glowing.set_shader_parameter(&"grain", 0.0)
 	_glowing.set_shader_parameter(&"glow", glow)
 

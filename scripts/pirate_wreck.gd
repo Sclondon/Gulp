@@ -58,7 +58,7 @@ func _ready() -> void:
 	add_child(model)
 	_paint = ShaderMaterial.new()
 	_paint.shader = SHADER
-	_paint.set_shader_parameter(&"atlas", load(ATLAS))
+	_paint.set_shader_parameter(&"atlas", load(Tier.texture(ATLAS)))
 	_paint.set_shader_parameter(&"tint", tint)
 	_gold = _paint.duplicate()
 	_gold.set_shader_parameter(&"glow", 1.0)

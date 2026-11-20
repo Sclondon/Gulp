@@ -64,7 +64,7 @@ func _ready() -> void:
 	for drawn: MeshInstance3D in made.find_children("*", "MeshInstance3D", true, false):
 		var paint := ShaderMaterial.new()
 		paint.shader = SHADER
-		paint.set_shader_parameter(&"atlas", load(ATLAS.get(String(drawn.name), ATLAS.WreckBow)))
+		paint.set_shader_parameter(&"atlas", load(Tier.texture(ATLAS.get(String(drawn.name), ATLAS.WreckBow))))
 		paint.set_shader_parameter(&"tint", tint)
 		drawn.material_override = paint
 		drawn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

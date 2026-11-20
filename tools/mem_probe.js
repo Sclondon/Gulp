@@ -62,7 +62,7 @@
     const old = tex.__b[slot] || 0;
     tex.__b[slot] = bytes;
     m.tex += bytes - old;
-    tex.__label = label;
+    if (label !== undefined) tex.__label = label;
     total();
   };
   const wrap = (name, fn) => { const o = G[name]; if (o) G[name] = function (...a) { return fn.call(this, o, a); }; };
@@ -99,7 +99,7 @@
       const [target, level, ifmt, w, h, , fmt, type] = a;
       const bytes = w * h * bpp(ifmt, fmt, type);
       m.formats[ifmt] = (m.formats[ifmt] || 0) + bytes;
-      setTex(bound.get(key(target)), target + ':' + level, bytes, `${w}x${h} ${ifmt.toString(16)}`);
+      setTex(bound.get(key(target)), target + ':' + level, bytes, level === 0 ? `${w}x${h} ${ifmt.toString(16)}` : undefined);
     }
     return o.apply(this, a);
   });
@@ -116,6 +116,9 @@
     return o.apply(this, a);
   });
   const bufBound = new Map();
+  const liveBuf = new Set();
+  m.topBuf = (n = 25) => { const by = {}; for (const b of liveBuf) { const k = Math.round((b.__b || 0) / 1024) + 'KB ' + b.__t; by[k] = (by[k] || 0) + 1; }
+    return Object.entries(by).map(([k, c]) => [parseInt(k) * c, k + ' x' + c]).sort((x, y) => y[0] - x[0]).slice(0, n).map(([t, k]) => (t / 1024).toFixed(1) + 'MB ' + k); };
   wrap('bindBuffer', function (o, a) { bufBound.set(a[0], a[1]); return o.apply(this, a); });
   wrap('bindBufferBase', function (o, a) { bufBound.set(a[0], a[2]); return o.apply(this, a); });
   wrap('bindBufferRange', function (o, a) { bufBound.set(a[0], a[2]); return o.apply(this, a); });
@@ -123,12 +126,13 @@
   wrap('bufferData', function (o, a) {
     const b = bufBound.get(a[0]);
     const size = typeof a[1] === 'number' ? a[1] : (a[1] ? (a.length >= 5 && a[4] ? a[4] * (a[1].BYTES_PER_ELEMENT || 1) : a[1].byteLength) : 0);
-    if (b) { m.buf += size - (b.__b || 0); b.__b = size; total(); }
+    if (b) { m.buf += size - (b.__b || 0); b.__b = size; b.__t = a[0].toString(16); liveBuf.add(b); total(); }
     return o.apply(this, a);
   });
   wrap('deleteBuffer', function (o, a) {
     const b = a[0];
     if (b && b.__b) { m.buf -= b.__b; b.__b = 0; total(); }
+    liveBuf.delete(b);
     m.bufCount--;
     return o.apply(this, a);
   });

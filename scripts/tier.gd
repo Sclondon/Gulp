@@ -16,6 +16,17 @@ static func phone() -> bool:
 	return _phone == 1
 
 
+## The picture to load for `path`: on a phone its smaller copy in textures/phone/ when there is one
+## (the set pieces' big atlases, written by tools/phone_textures.gd), else `path` itself. A phone's
+## browser tab is killed when the page holds too much memory (tools/PERF.md, "Memory on phones").
+static func texture(path: String) -> String:
+	if phone():
+		var small := "res://textures/phone/" + path.get_file()
+		if ResourceLoader.exists(small):
+			return small
+	return path
+
+
 static func _detect() -> bool:
 	var args := OS.get_cmdline_user_args()
 	if args.has("--phone"):

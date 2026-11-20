@@ -72,6 +72,7 @@ const MB = (b) => (b / 1048576).toFixed(1);
     if (tick === 12) lines.push(`${now()} TOP ${(await page.evaluate(() => window.__mem.top(30)).catch(() => [])).join(' | ')}`);
     if (ready && (Date.now() - ready) / 1000 > Number(afterS)) {
       lines.push(`${now()} TOP ${(await page.evaluate(() => window.__mem.top(40)).catch(() => [])).join(' | ')}`);
+      lines.push(`${now()} BUFFERS ${(await page.evaluate(() => window.__mem.topBuf(30)).catch(() => [])).join(' | ')}`);
       lines.push(`${now()} FORMATS ${Object.entries(m.formats).map(([k, v]) => `${isNaN(k) ? k : Number(k).toString(16)}:${MB(v)}`).join(' ')}`);
       lines.push(`${now()} END ready at ${((ready - t0) / 1000).toFixed(1)} s; peaks: wasm ${MB(m.wasmPeak)} gl ${MB(m.glPeak)} (tex ${MB(m.texPeak)} buf ${MB(m.bufPeak)}) renderer ${MB(peak.renderer)} gpu ${MB(peak['gpu-process'])}`);
       break;

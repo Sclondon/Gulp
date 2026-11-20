@@ -37,6 +37,7 @@ pointing/emulate_touch_from_mouse=true
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 limits/opengl/max_lights_per_object=12
+gl_compatibility/item_buffer_size=4096
 
 [shader_globals]
 
