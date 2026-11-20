@@ -698,3 +698,6 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
   packed unless it is packed again; the saved file had the untouched projection. Recovered from the still-open
   window through the Blender MCP (`image.save(filepath=...)`). `session_keys.py` now packs dirty `figed_` images
   in a `save_pre` handler, so Ctrl+S keeps paint (added to the live window too; not yet checked in a fresh one).
+- The user saved again in the same window: the saved file's skin now equals the live window's exactly (the
+  `save_pre` pack works: Ctrl+S keeps paint). 15,627 more texels painted and 158 points nudged (up to 2.5 mm);
+  the hand layer was made again from this save against the same starting projection, and the sculpt added.
