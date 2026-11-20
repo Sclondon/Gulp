@@ -278,3 +278,13 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   - The `jaw` point (where `chin-bones` peaks) is mid-jaw, not the corner under the ear: fine in the front view,
     wrong in profile, so the profile has only the chin mark. The user offered to outline the jaw on the sheet
     ("Do you need me to outline the jaw?"); the jaw fit waits for that.
+- Jaw round, done by eye to the user's drawing (`tools/art_src/user_brother_jaw_lines.png`: red = where the jaw's
+  edge is on the sheet and should be on the model, dark green = where the model's was; and
+  `user_brother_upper_lip.png`): "I think you might be reading hte shadow as teh jaw? His jaw bone is sitting crazy
+  low in the model ... another issue is he has way too much upper lip- so his ears and stuff dont like up either".
+  The chin's bottom was right; the jaw's CORNERS hung low and wide with a flat underside. Now `head-fat` 0.8 -> 0.3,
+  `double_chin` 0, `chin-triangle` 0.5, `jaw_drop` -0.8, `jaw_width` -0.3, so the lower face is a U rising to the
+  ears; and the upper lip is shorter (`mouth-trans-up` 0.6, `nose-trans-up` 0.2, `nose_length` 0.1, `chin_height`
+  0.6). `mouth-trans-up` is strong: 1.5 put the mouth under the nose. All of these are held out of the head fit.
+  Still softer and lower at the corner under the ear than the red line: the sliders do not reach a clear jaw corner
+  on a neck this thick; a candidate for the small-corrections stage.
