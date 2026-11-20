@@ -151,6 +151,18 @@ The user: "lets do around focusing on his pecs, shoulders and hands, he should h
   - The upper arm seen from the side is hidden inside the body's outline, so its depth is measured instead: the
     bible's is about 10% of his height front to back at the biceps (both side views), the model's was 8.6%;
     `upperarm.depth` 1.25 makes it about 10.7% (a little over, as the user asked for more).
-- Still not right: the arms are thick but tube-like (no biceps or triceps bulge, no forearm swell by the elbow as the
+- Round seven, the user: "Bis calves looks a tad small, and can we make them a bit more angular / toned (not skinnier
+  though)? His feet also need work, his heel looks dropped a liitle and his toes look scrunched".
+  - Calves by eye, held out of the fit (it would pull them back to the outline): `lowerleg-muscle` 1.1,
+    `lowerleg-fat` 0.4, `calf.girth` up 6%.
+  - **`foot.length` is not to be used**: the foot bone runs down and forward from the ankle, so scaling along it
+    (the fit had it at 0.8) dropped the heel and squashed the toes. The foot's length is MakeHuman's
+    `foot-scale-depth`, the toes' is `toes.length` (new bone set, the `ball` bones). Set by measurement, since the
+    outline fit pushed them the wrong way: the bible's foot is about 16.5% of his height heel to toe (side view); the
+    model's was 18.8% at rest with short toes, and is about 16.7% with `toes.length` 1.3 and `foot-scale-depth` -0.5
+    (longer toes on a shorter foot). Foot sliders do not move in the body job.
+  Outline after: front 0.92, side 0.90, back 0.92.
+- Still not right: the toes are thin beside the bible's broad ones and the feet point straight ahead (the bible's
+  turn out; `feet_out` is only a pose); the arms are thick but tube-like (no biceps or triceps bulge, no forearm swell by the elbow as the
   bible paints them); the back is smooth (no shoulder blades, spine furrow or lats as the bible paints them), the pecs
   are boxy with a hard lower edge, the shoulder cap peaks lower than drawn, the thumb's tip is pointed.

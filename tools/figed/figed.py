@@ -66,6 +66,7 @@ BONE_SETS = {
     "fingers": ["%s_0%d_%s" % (f, i, s) for f in ("index", "middle", "ring", "pinky") for i in (1, 2, 3)
                 for s in "lr"],
     "thumb": ["thumb_0%d_%s" % (i, s) for i in (1, 2, 3) for s in "lr"],
+    "toes": ["ball_l", "ball_r"],
     "pelvis": ["pelvis"], "spine_01": ["spine_01"], "spine_02": ["spine_02"], "spine_03": ["spine_03"],
     "torso": ["pelvis", "spine_01", "spine_02", "spine_03"], "chest_bone": ["spine_03"],
     "neck": ["neck_01"], "head": ["head"],

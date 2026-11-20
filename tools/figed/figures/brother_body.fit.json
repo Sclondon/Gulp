@@ -514,11 +514,6 @@
     1.8,
     0.1
    ],
-   "calf.girth": [
-    0.8,
-    1.8,
-    0.1
-   ],
    "upperarm.girth": [
     0.8,
     1.9,
@@ -559,30 +554,10 @@
     1.6,
     0.08
    ],
-   "calf.width": [
-    0.8,
-    1.8,
-    0.08
-   ],
-   "calf.depth": [
-    0.8,
-    1.8,
-    0.08
-   ],
    "pelvis.depth": [
     0.8,
     1.5,
     0.08
-   ],
-   "foot.width": [
-    0.8,
-    1.8,
-    0.1
-   ],
-   "foot.length": [
-    0.8,
-    1.5,
-    0.1
    ],
    "pelvis.flesh_width": [
     0.9,
@@ -721,11 +696,6 @@
     2,
     0.5
    ],
-   "calf": [
-    -1,
-    2,
-    0.5
-   ],
    "knee": [
     -1,
     2,
@@ -771,11 +741,6 @@
     1.5,
     0.5
    ],
-   "lowerleg-muscle": [
-    -1,
-    1.5,
-    0.5
-   ],
    "lowerarm-muscle": [
     -1,
     1.5,
@@ -811,19 +776,9 @@
     1.5,
     0.5
    ],
-   "lowerleg-fat": [
-    -1,
-    2,
-    0.5
-   ],
    "pelvis-tone": [
     -1.5,
     1.5,
-    0.5
-   ],
-   "foot-scale-horiz": [
-    -1,
-    2.5,
     0.5
    ],
    "hip-waist-up": [
@@ -899,5 +854,6 @@
  "marks_weight": 150,
  "set_by_eye": "Not moved by this job: macro muscle, pecs and shoulder_muscle (an outline cannot see them; set by eye against the bible, round four), and the hand shape sliders (brother_hands.fit.json sets them; only hand.size moves here, by the wrist and fingertip marks).",
  "regions_about": "Regions (round five): the two arms from shoulder to wrist in the front and back views, and the front of the chest in the side view (the pecs' profile).",
- "head_place": "Round six: the shaved sheet side view lines up by the FEET and scores its legs as well as its head and neck, so where the head sits over the body is compared (lined up by the head, a head carried too far forward could not be seen). head-trans-forward and neck-trans-forward move."
+ "head_place": "Round six: the shaved sheet side view lines up by the FEET and scores its legs as well as its head and neck, so where the head sits over the body is compared (lined up by the head, a head carried too far forward could not be seen). head-trans-forward and neck-trans-forward move.",
+ "calves_feet": "Round seven: the calves are set by eye (the user asked for them a tad bigger and more toned than the fit gave), so calf sliders do not move here. foot.length is gone: it scaled along a bone that runs down and forward from the ankle, which dropped the heel and scrunched the toes; the foot is sized by MakeHuman foot targets and toes.length instead."
 }
