@@ -27,9 +27,8 @@ body = base.indices("body")
 head = body[base.weights[body, base.bones.index("head")] > 0.6]
 chin = P[figed_fit.mark_vertices(base)["chin"]]
 head = head[P[head][:, 2] > chin[2]]
-idx, disp = base.target("l-ear-trans-up")
-size = np.linalg.norm(disp, axis=1)
-ear = P[idx[size > size.max() * 0.9]]
+idx, root = fig._ear_masks()["l"]                       # the ear itself, not the skin round it
+ear = P[idx]
 crown = P[head][:, 2].max()
 back, front = P[head][:, 1].max(), P[head][:, 1].min()
 lv = lambda z: (crown - z) / (crown - chin[2])

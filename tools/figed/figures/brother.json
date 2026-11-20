@@ -398,10 +398,6 @@
   "chin_forward": 0.4,
   "chin_height": -0.2,
   "double_chin": 0.4,
-  "ear-trans-forward": -1,
-  "ear-trans-up": -0.1,
-  "ear_out": -0.4,
-  "ear_size": 0.8,
   "eye_bags": 0.7,
   "eye_outer_corner_up": -0.6,
   "eye_size": -0.2,
@@ -487,5 +483,12 @@
   "head_front": 0.9808333333333333,
   "head_side": 0.995,
   "side": 0.9958333333333332
+ },
+ "ears": {
+  "scale": 1.18,
+  "back": 3,
+  "down": -0.3,
+  "out": -0.4,
+  "settle": 30
  }
 }

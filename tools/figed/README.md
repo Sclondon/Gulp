@@ -376,3 +376,16 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   ear is only part of the way back (0.27 to 0.52 from the back of the head to the nose tip; the sheet's 0.18 to
   0.37). **Keep `ear-trans-forward` within about -1 to 1.** Moving the ear the rest of the way needs a correction
   that moves the ear alone, not this slider.
+- **`ears`, the third small correction** (`Figure._move_ears`). The user: "No yea dont drag the skin, just cut out
+  the ear and resize and move it without changing the rest of the face". `"ears": {"scale", "back", "down", "out"
+  (cm), "reach" 5, "reach_front" 2}`: the ear (the points MakeHuman's `ear-wing` target swings: the flap alone) is
+  scaled about its middle and moved as one rigid piece, carried to the skull's surface at its new place; the skin
+  round it slides with it and every slid point is set back ONTO THE HEAD'S SURFACE AS IT WAS, fading out 5 cm
+  behind the ear and 2 cm in front, so the skull and face keep their shape. All ear sliders are back at 0 for him.
+  The brother's: scale 1.18, back 3.0, down -0.3, out -0.4 (ear 0.19 to 0.42 from the back of the head to the nose
+  tip; the sheet's 0.18 to 0.37).
+  Two tries that failed first, not to repeat: the `ear-scale` target as the mask (it takes a plate of skull, the
+  same ridge as the slider), and letting the skin "settle" by smoothing six rings round the ear (the scalp's
+  polygons are large, six rings reach the crown, and thirty smoothing passes collapsed the skull to a cone).
+  Left: faint stretch lines in the skin just in front of the ear, and from the front his ears stand out less than
+  the sheet's.

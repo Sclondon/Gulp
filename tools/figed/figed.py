@@ -289,6 +289,92 @@ class Figure:
         # side; "depth": cm the skin just under the line is pressed in; "lip": cm the skin just over it is raised;
         # "width": how far under the line the cut reaches, same shares}
         self.jawline = dict(spec.get("jawline", {}))
+        # a small correction: the ears alone, cut out, resized and moved, the skull and face untouched.
+        # {"scale": factor, "back": cm, "down": cm, "out": cm}
+        self.ears = dict(spec.get("ears", {}))
+
+    def _adjacent(self):
+        b = self.base
+        if not hasattr(b, "_near"):                      # which points share an edge, once
+            near = {}
+            for _group, vi, _ti in b.faces:
+                for i in range(len(vi)):
+                    x, y = vi[i], vi[(i + 1) % len(vi)]
+                    near.setdefault(x, set()).add(y)
+                    near.setdefault(y, set()).add(x)
+            b._near = {k: np.array(sorted(v)) for k, v in near.items()}
+        return b._near
+
+    def _ear_masks(self):
+        """The ear each side: (its points, the ones where it joins the head). The ear is what MakeHuman's "ear-wing"
+        target swings out from the head: the flap itself and nothing of the skull (its scale and trans targets take
+        a plate of skull along, which ploughs a ridge when moved far)."""
+        b = self.base
+        if not hasattr(b, "_ears"):
+            near = self._adjacent()
+            b._ears = {}
+            for side in "lr":
+                size = np.zeros(len(b.verts))
+                for way in ("incr", "decr"):
+                    idx, d = b.target(side + "-ear-wing-" + way)
+                    size[idx] = np.maximum(size[idx], np.linalg.norm(d, axis=1))
+                ear = np.nonzero(size > 0)[0]
+                inside = set(ear.tolist())
+                root = np.array([i for i in ear if any(int(n) not in inside for n in near.get(int(i), ()))])
+                b._ears[side] = (ear, root)
+        return b._ears
+
+    def _normals(self, P):
+        b = self.base
+        if not hasattr(b, "_tris"):
+            tris = []
+            for group, vi, _ti in b.faces:
+                if group == "body":
+                    for k in range(1, len(vi) - 1):
+                        tris.append((vi[0], vi[k], vi[k + 1]))
+            b._tris = np.array(tris)
+        t = b._tris
+        n = np.zeros_like(P)
+        face = np.cross(P[t[:, 1]] - P[t[:, 0]], P[t[:, 2]] - P[t[:, 0]])
+        for k in range(3):
+            np.add.at(n, t[:, k], face)
+        return n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
+
+    def _move_ears(self, P0):
+        """The ears cut out, resized and moved as rigid pieces. The skin round each slides with it ALONG the head's
+        surface as it was (every moved point is set back onto that surface), fading out a few centimetres away,
+        sooner in front of the ear than behind: the skull and face keep their shape."""
+        P = P0.copy()
+        e = self.ears
+        n0 = self._normals(P0)
+        body = self.base.indices("body")
+        for side, (ear, root) in self._ear_masks().items():
+            out = 1.0 if side == "l" else -1.0
+            shift = np.array([out * e.get("out", 0.0), e.get("back", 0.0), -e.get("down", 0.0)]) * 0.01
+            slide = np.array([0.0, shift[1], shift[2]])
+            c = P0[root].mean(axis=0)
+            skin = np.setdiff1d(body[np.linalg.norm(P0[body] - c, axis=1) < 0.12], ear)   # the head's side, no ear
+
+            def onto(q):                                  # points set back onto the head's surface as it was
+                near = skin[np.argmin(((q[:, None, :] - P0[skin][None, :, :]) ** 2).sum(axis=2), axis=1)]
+                return q - n0[near] * ((q - P0[near]) * n0[near]).sum(axis=1, keepdims=True)
+
+            dist = np.sqrt(((P0[skin][:, None, :] - P0[root][None, :, :]) ** 2).sum(axis=2)).min(axis=1)
+            away = P0[skin] - c
+            ahead = (away * slide).sum(axis=1) / np.maximum(np.linalg.norm(away, axis=1) * np.linalg.norm(slide), 1e-9)
+            reach = (e.get("reach_front", 2.0) + (e.get("reach", 5.0) - e.get("reach_front", 2.0)) * (ahead + 1) / 2) * 0.01
+            t = np.clip(dist / reach, 0, 1)
+            f = 1 - t * t * (3 - 2 * t)
+            P[skin] = onto(P0[skin] + slide * f[:, None])
+            where = onto(P0[root] + slide)                 # the join carried to its new place on the skull
+            carry = (where - P0[root]).mean(axis=0)
+            mid = P0[ear].mean(axis=0)
+            P[ear] = mid + (P0[ear] - mid) * e.get("scale", 1.0) + carry + np.array([shift[0], 0.0, 0.0])
+            grow = (P0[root] - mid) * (e.get("scale", 1.0) - 1.0)
+            ring = np.sqrt(((P0[skin][:, None, :] - P0[root][None, :, :]) ** 2).sum(axis=2))
+            nearest = ring.argmin(axis=1)                  # the skin by the join opens out as the ear grows
+            P[skin] += grow[nearest] * np.clip(1 - ring.min(axis=1) / 0.012, 0, 1)[:, None]
+        return P
 
     def _jawline(self, P):
         b = self.base
@@ -503,6 +589,8 @@ class Figure:
             {b: turn(v)[0] for b, v in self.tails.items()}
         if self.jawline:
             P = self._jawline(P)
+        if self.ears:
+            P = self._move_ears(P)
         tuck = self.posture.get("pelvis_tuck", 0.0)
         if tuck:
             turns = {"pelvis": (-tuck, 0, 0), "spine_01": (tuck, 0, 0), "thigh_l": (tuck, 0, 0), "thigh_r": (tuck, 0, 0)}
