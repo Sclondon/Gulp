@@ -660,3 +660,12 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
     than more arithmetic.
 - The user, of the crown push: "no its worse, just undo that". `pushes` removed from the brother (the code stays,
   unused). His skull is as it was before that round; the skull's shape is left for the user's hand.
+- Fourth sculpt (in `work/brother_paint8.blend`, bible on): 4,490 more points; `brother.sculpt.json` is 5,073
+  points. The user: "his mouth needs to be a little wider and I messed up his eyer brows", then "no I meant I messed
+  up his eye lids not his eyebrows". `sculpt_restore.py -- <before.sculpt.json> <now.sculpt.json>` puts ONE AREA
+  of a sculpt back to what an earlier file had, fading at the area's edge (the area = where MakeHuman's own targets
+  for that part move the skin; it is written for the eyelids, the list of targets at its top is the thing to
+  change). 1,124 eyelid points put back. `mouth-scale-horiz` 1.5 -> 2.1. Paint re-projected.
+  Not certain: an earlier run of the same script on the EYEBROW area was stopped by the user as it started; the
+  mouth value shows part of that command had run, so the last session's brow strokes may have been put back too.
+  The window's skin is kept as `work/brother_paint8_user_skin.png`.
