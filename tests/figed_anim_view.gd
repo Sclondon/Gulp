@@ -59,6 +59,7 @@ func _run() -> void:
 		quit(1)
 		return
 	root.add_child(model)
+	preload("res://tests/figed_hair_looks.gd").wear(model)   # the hair pieces wear the hair shader
 	_skel = _first(model, "Skeleton3D")
 	var from: AnimationPlayer = _first(source, "AnimationPlayer")
 	var player := AnimationPlayer.new()

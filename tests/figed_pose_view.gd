@@ -6,7 +6,6 @@ extends SceneTree
 ##       --glb=<file.glb> --out=<sheet.png>
 ## Bones are turned about model axes from rest (x: his left, y: up, z: toward the camera in the front view).
 
-const HAIR := preload("res://shaders/ink/hair_ink.gdshader")
 const POSES := {
 	"rest": [],
 	"stride": [["thigh_l", Vector3.RIGHT, -32], ["calf_l", Vector3.RIGHT, 28], ["thigh_r", Vector3.RIGHT, 24],
@@ -72,20 +71,7 @@ func _run() -> void:
 	for m in meshes:
 		for s in m.mesh.get_surface_count():
 			tris += m.mesh.surface_get_array_index_len(s) / 3
-		var key := String(m.name).to_lower()
-		if key.begins_with("hair") or key.begins_with("moustache"):
-			var mat := ShaderMaterial.new()
-			mat.shader = HAIR
-			var dark := key.begins_with("hair")
-			mat.set_shader_parameter("albedo", Color(0.215, 0.115, 0.062) if dark else Color(0.55, 0.25, 0.1))
-			mat.set_shader_parameter("ink", Color(0.085, 0.04, 0.025) if dark else Color(0.25, 0.09, 0.04))
-			var look := {"soft": 1.0, "metres": 1.0, "root_ink": 0.0, "lit_lines": 0.0, "shadow_lines": 0.0, "wrap": 1.0,
-					"flatness": 1.0, "shadow_fill": 0.85, "lighten": 0.12, "print_grain": 0.0, "gap_ink": 0.1,
-					"curl": 0.8 if dark else 0.0, "curl_size": 0.036, "curl_gaps": 0.45, "curl_rim": 0.9 if dark else 0.0,
-					"curl_edge": 0.3 if dark else 0.0, "layer_shade": 1.0 if dark else 0.0}
-			for k in look:
-				mat.set_shader_parameter(k, look[k])
-			m.material_override = mat
+	preload("res://tests/figed_hair_looks.gd").wear(model)   # the hair pieces wear the hair shader (the one table)
 	print("figure: ", meshes.size(), " meshes, ", tris, " triangles, ", _skel.get_bone_count(), " bones")
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR

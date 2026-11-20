@@ -849,7 +849,7 @@ def low(budget, body, tree, fig, wire=False):
         if o.type == "MESH" and key(o) in ("teeth", "tongue"):
             bpy.data.objects.remove(o, do_unlink=True)
     # (hair and moustache are the hair tool's: left as they come and counted apart from the budget)
-    hairy = [o for o in bpy.data.objects if o.type == "MESH" and key(o).split("_")[0] in ("hair", "moustache")]
+    hairy = [o for o in bpy.data.objects if o.type == "MESH" and key(o).split("_")[0] in ("hair", "moustache", "stubble")]
     meshes = [o for o in bpy.data.objects if o.type == "MESH" and o not in hairy]
     before = sum(_tris(o) for o in meshes)
     fixed = sum(_tris(o) for o in meshes if key(o) in LOW_AS_IS)
@@ -911,7 +911,8 @@ if __name__ == "__main__":
     extras(fig, wear, outfit, P, INFO["Pp"], INFO["H"], _arm)
     if "--hair" in argv:                                  # his hair and moustache too (hair.py); under a cap, only
         import hair as hair_mod                           # the moustache until the hair is cut to sit under it
-        hair_mod.make(fig, ["moustache"] if ("cap" in wear or "helmet" in wear) else ["hair", "moustache"], stem, posed, _arm)
+        hair_mod.make(fig, ["moustache", "stubble"] if ("cap" in wear or "helmet" in wear) else ["hair", "moustache", "stubble"],
+                      stem, posed, _arm)
     # THE BODY UNDER THE CLOTHES IS NOT DRAWN (it came through the smoothed overalls at the thighs): faces of the
     # body whose points are all well inside a worn garment are taken out. The body's points are matched to the
     # figure's by place.
