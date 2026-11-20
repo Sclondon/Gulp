@@ -705,3 +705,28 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
   246,000 more texels painted (the legs and feet cleaned); the hand layer is now 28% of the picture. No new sculpt.
   **The user's verdict on the bare figure: pretty good.** Next asked for: clothes. Not started; the drawers are
   still paint on the skin. Still owed on the head: ears welded, the squint, de-lighting, hair.
+
+## Clothes (2026-11-20, first pass)
+
+The user: "lets do the shorts and this outfit" (a front view of him in a cream vest and olive trousers with rolled
+cuffs and braces hanging at the hips: `tools/art_src/concept_brother_bible_outfit.png`, 345 px wide as it arrived).
+
+- `garments.py -- <spec> <outfit.json> <out.png> --wear tank,trousers | drawers`: a garment is the body's own faces
+  where a rule f(point) > 0, CUT EXACTLY along f = 0 (every edge crossing it is split at the crossing with
+  `bmesh.utils.edge_split`, the faces cut along the line with `connect_verts`, so hems and necklines are clean
+  curves, not face edges), pushed out along the normals (vest 6 mm, drawers 4 mm, trousers 11 mm growing to 23 mm
+  below the knee). Rules (`rules()`) are written from the joints in the rest pose, so they follow the sliders:
+  trousers from 2.5 cm under the navel to 7.5 cm over the ankle, with `cuffs` and `waistband` as further bands
+  over them; the vest with a scoop neck (deeper in front) and armholes as ellipses; the drawers wherever the skin
+  picture is painted as pale cloth. Garments keep the body's UVs and weights (bone groups are set; the cut
+  interpolates them) and carry a `posed` attribute so pictures can show them in the comparison pose.
+- Paint: vest and trousers get pictures of their own (`figures/brother_tank.png`, `_trousers.png`, 1024), the
+  drawing's cloth carried over BOX TO BOX from the front view (`figures/brother_outfit.json`: each garment's box
+  and whether its cloth is pale or dark; other pixels in the box take the nearest cloth colour). The back takes
+  the front's colours seen through: no back view exists. The drawers use the skin picture, where they were
+  already painted.
+- First result: reads as the drawing from the front (vest with neckline and armholes, baggy trousers, rolled cuffs,
+  waistband). Known: the braces are only PAINT on the trousers (and so appear on the back too; their hanging loops
+  are not modelled); the vest's back neckline and the trousers' back are guesses; cloth edges have no thickness;
+  the body is whole under the clothes (may poke through in strong poses: hide covered skin when worn); the skin
+  under the drawers is still painted as drawers; not wired into `-- build` (export) yet.
