@@ -169,6 +169,19 @@ def mark_vertices(base):
 pose_points = figed.pose_points
 
 
+def square_head(P, base):
+    """The turn (and the point it is about) that sets a posed head square to the views: its eye line level and
+    straight across, so "front" is full face and "side" is turned exactly 90 degrees. A pose set by hand leaves the
+    head a degree or so off."""
+    L = P[base.indices("helper-l-eye")].mean(axis=0)
+    R = P[base.indices("helper-r-eye")].mean(axis=0)
+    d = L - R
+    yaw = np.degrees(np.arctan2(d[1], d[0]))
+    roll = np.degrees(np.arctan2(d[2], np.hypot(d[0], d[1])))
+    turn = about(np.array([0, 1.0, 0]), roll).dot(about(np.array([0, 0, 1.0]), -yaw))
+    return turn, (L + R) / 2
+
+
 def hand_frame(joints, side="l"):
     """A hand's own directions from its joints: (wrist, across towards the thumb side, along the fingers, out of
     the back of the hand). `joints` has bone heads by name and tips as "tail:<bone>"."""
@@ -450,7 +463,7 @@ class Job:
         self.views = [View(v) for v in job["views"]]
         start = job.get("start")
         self.spec = figed.load_spec(path_of(start)) if start and os.path.exists(path_of(start)) else {}
-        for k in ("macro", "targets", "bones", "pose", "shift", "zoom", "drop"):
+        for k in ("macro", "targets", "bones", "pose", "shift", "zoom", "drop", "tilt"):
             self.spec.setdefault(k, {})
         self.params = []                              # (section, name, lo, hi, step)
         for section, table in job["move"].items():
@@ -502,6 +515,12 @@ class Job:
                 own[n] = self.sampler.points(Pv)
                 self.where[n] = self.marks_3d(Pv, posed_v)
         head_pts = self.head_sampler.points(P) if any(v.cut is not None for v in self.views) else None
+        chin_at = P[self.chin_idx]
+        if head_pts is not None:                          # the head set square, then tipped as each view asks
+            turn, pivot = square_head(P, self.base)
+            head_pts = (head_pts - pivot).dot(turn.T) + pivot
+            chin_at = turn.dot(chin_at - pivot) + pivot
+            self.head_square = (turn, pivot)
         bare = None
         if any(v.spec.get("armless") for v in self.views):
             if self.armless is None:
@@ -521,8 +540,17 @@ class Job:
                 hp, frame = hands[v.spec.get("hand", "l")]
                 out.append(v.draw_hand(hp, frame, self.spec["shift"].get(n, 0.0), self.spec["zoom"].get(n, 1.0)))
             elif v.cut is not None:
-                out.append(v.draw_head(head_pts, self.spec["shift"].get(n, 0.0), self.spec["drop"].get(n, 0.0),
-                                       self.spec["zoom"].get(n, 1.0), P[self.chin_idx][2]))
+                hp, cz = head_pts, chin_at[2]
+                tip = self.spec["tilt"].get(n, 0.0)            # a nod, degrees: a drawn head is seldom dead level
+                if tip:
+                    nod = about(np.array([1.0, 0, 0]), tip)
+                    hp = (head_pts - pivot).dot(nod.T) + pivot
+                    cz = (nod.dot(chin_at - pivot) + pivot)[2]
+                out.append(v.draw_head(hp, self.spec["shift"].get(n, 0.0), self.spec["drop"].get(n, 0.0),
+                                       self.spec["zoom"].get(n, 1.0), cz))
+                if n in self.where:                           # the marks turn with the head
+                    self.where[n] = {m: (nod.dot(turn.dot(p - pivot)) if tip else turn.dot(p - pivot)) + pivot
+                                     for m, p in self.where[n].items()}
             else:
                 body = bare if v.spec.get("armless") else own.get(n, pts)
                 out.append(v.draw(body, height, self.spec["shift"].get(n, 0.0), self.spec["zoom"].get(n, 1.0)))

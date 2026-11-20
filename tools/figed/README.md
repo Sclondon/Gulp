@@ -352,3 +352,21 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   bulge down". `chin_forward` 0.6, `chin-prognathism` 0.3, `chin_height` -0.2; `nose_tip_up` -0.1 and
   `nose-base-up` -0.5 (the base hangs lower under a level tip). `nose_tip_up` -0.5 was tried first and hooked the
   nose into a beak that dropped its tip to 0.65: small steps on that one. Nose tip 0.62 now.
+- The exact profile. The user: "You didnt do the full turnaround" (a profile-only crop had been sent: head pictures
+  are always all five views), then "you need to line up that side profile sillouette like, exactly, the face is
+  important, and also the ear is clearly too small and high and forward", and "be sure hes turned 90 degrees to the
+  right".
+  - **`square_head`** (`figed_fit.py`): before a head view is drawn (fit and `head_overlay.py`) the posed head is
+    turned so its eye line is level and straight across; the hand-set pose left it 0.3 degrees turned and 1.4
+    tipped. A head view may also carry a nod, the `tilt` slider (the sheet's profile: -1 degree;
+    `head_overlay.py --tilt -1`).
+  - `figures/brother_profile.fit.json`: the profile view with its face edge weighted six times (a region) and only
+    profile-shaping sliders moving (forehead, brow, nose, lips, chin, neck front, head depth); the front view rides
+    along at 0.3. Profile overlap 0.98: the face edge is on the sheet's to about a pixel of this 1024-pixel sheet.
+  - `ear_levels.py` prints the ear's top and bottom between crown and chin and its edges between the back of the
+    head and the nose tip. The sheet's ear sits far back (0.18 to 0.37 of the way from the back of the head to the
+    nose tip, 0.41 to 0.69 down); the model's was at 0.32 to 0.54. Now `ear-trans-forward` -3.0, `ear-trans-up`
+    -0.1, `ear_size` 0.8, `ear_out` -0.4. The points this measures take in skin round the ear, so read its numbers
+    as about a third larger than the ear looks. `ear-trans-forward` this strong sweeps the ear's shape back a
+    little: a candidate for a small correction.
+  - `brother_head.fit.json` no longer moves any face, ear or neck slider.

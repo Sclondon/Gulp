@@ -34,6 +34,10 @@ fig = figed.Figure(base, spec)
 P, H, T = fig.to_blender()
 if posed and fig.pose:
     P, _ = figed.pose_points(fig, P, H, figed_fit.full_pose(fig.pose, base.bones, H, T), T)
+turn, pivot = figed_fit.square_head(P, base)            # the head set square: full face, and exactly side on
+if "--tilt" in argv:                                    # and nodded as the profile fit found the drawing to be
+    turn = figed_fit.about(np.array([1.0, 0, 0]), float(argv[argv.index("--tilt") + 1])).dot(turn)
+P = (P - pivot).dot(turn.T) + pivot
 body = base.indices("body")
 head = body[base.weights[body, base.bones.index("head")] > 0.6]
 mid = head[np.abs(P[head][:, 0] - np.median(P[head][:, 0])) < 0.012]
@@ -43,6 +47,10 @@ chin = P[figed_fit.mark_vertices(base)["chin"]]
 
 fb.reset()
 objs, _arm = fb.build(fig, rig=False, posed=posed)
+from mathutils import Matrix  # noqa: E402
+M = Matrix.Translation(pivot) @ Matrix(turn.tolist()).to_4x4() @ Matrix.Translation(-pivot)
+for o in objs.values():
+    o.matrix_world = M
 fb.paint_plain(objs)
 boxes = fb.view_boxes(fig)
 cam = fb._camera()
