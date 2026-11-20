@@ -839,3 +839,24 @@ outfit picture (under the cap only the moustache, until the hair is cut to sit u
 - The same day the bib overalls were reshaped (`_taut`: cloth hung straight between the body's high spots, column by
   column; a higher bib with sides curving up from the ribs; its top edge close on the chest; straps lying on what he
   wears). Still owed there: pocket, clips, buckles, boots with soles, the jumper's cables and cuffs, the flat cap.
+
+## Boots from a turnaround sheet (2026-11-20)
+
+The user: "His boots look terrible- generate turnaround concept art for them and make them Properly textured and
+modeled, and do the same for the diving outfit and fishing outfit"; "We should also start on the diving suit as thats
+the most important mechanically". Three sheets were made in the Gemini conversation that holds his look
+(/app/a896ddb450545c99): `tools/art_src/concept_brother_boots_turn.jpg` (rubber sea boots and leather work boots,
+five angles each), `concept_brother_fishing_turn.jpg` (the oilskin outfit front, three-quarter, side, back: the straps
+cross behind; he wears a dark cap in it), `concept_brother_diving_turn.jpg` (canvas dress, corselet, crossed straps with
+chest and back weights, belt, knife, lead boots, the helmet apart: Claude's pick of which suit, the classic one).
+- `boots.py` (its docstring is the method): the boot's SHAPE is read off the sheet (side view: reach forward and back
+  at each height and the underside's line; front view: width; sole view: the foot's outline), built as stacked rings,
+  and its PICTURE is the sheet's views side by side, each face painted from the view it faces. About 650 triangles a
+  boot. `figures/boots_<kind>.png` and `.blend` (editable) are written by
+  `blender -b --factory-startup --python tools/figed/boots.py -- <spec> rubber|leather <out.png> --blend <file>`.
+- `garments.py` puts them on him for any outfit wearing `boots` (the outfit file's `"boots": {"kind": ...}`), scaled only
+  as his foot needs, foot part on the foot bone, shaft on the calf; the old hull feet and cut shaft are gone, the
+  feet inside are not drawn. The overalls' legs blouse out over the boot tops.
+- Lesson: a ring's width must not be multiplied by the sine of its angle as well as by its outline (a pointed toe).
+- Rough: the top of the toe takes the side view's colours (no view looks down on it); the drawing's own light is in
+  the paint; pull tabs are plain little boxes; the trouser hems flare where they should gather.

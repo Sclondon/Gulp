@@ -149,6 +149,7 @@ def rules(fig, P, H, skin_px=None):
     wears = (arm < 0.3) & (up < 0.4) & (head < 0.3)
     puff = 0.03 + 0.012 * np.clip((knee + 0.1 - z) / 0.25, 0, 1)    # (and smoothed: overalls do not show the body)
     puff = puff * (0.45 + 0.55 * np.clip((rim - z) / 0.09, 0, 1))     # the top edge lies close on the chest
+    puff = puff + 0.035 * np.clip(1 - (z - leg_end) / 0.10, 0, 1) ** 2   # the legs blouse out over the boot tops
     out["bib"] = (np.minimum(rim - z, z - leg_end), wears, puff, (0.80, 0.58, 0.12))
     # stiff cloth hangs straight from the chest over the belly to the thighs: it does not follow him in
     zc = H["thigh_l"][2] - 0.10
@@ -160,7 +161,7 @@ def rules(fig, P, H, skin_px=None):
     out["bib_straps"] = (np.minimum(0.016 - np.abs(np.abs(x) - 0.088), z - (bib_top - 0.1)),
                          (arm < 0.3) & (up < 0.75) & (head < 0.3), under * np.ones(len(P)), (0.10, 0.10, 0.11))
     shaft = _w(base, ("calf", "foot", "ball")) > 0.5
-    out["boots"] = (np.minimum(H["foot_l"][2] + 0.27 - z, z - (H["foot_l"][2] - 0.02)), shaft,
+    out["boots"] = (np.minimum(H["foot_l"][2] + 0.27 - z, z - (H["foot_l"][2] - 0.3)), shaft,
                     np.full(len(P), 0.012), (0.09, 0.09, 0.10))
     crown = float(z[head > 0.8].max())
     INFO["cap_line"] = crown - 0.1
@@ -329,16 +330,15 @@ def extras(fig, wear, outfit, P, Pp, H, arm=None):
     cap's peak. Each rides one bone."""
     base = fig.base
     made = []
-    if "boots" in wear:
-        low = (_w(base, ("calf", "foot", "ball")) > 0.5) & (P[:, 2] < H["foot_l"][2] + 0.03)
-        for side in ("l", "r"):
-            sel = low & (P[:, 0] * H["foot_" + side][0] > 0)
-            Q = P[sel].copy()
-            mid = Q[:, :2].mean(axis=0)
-            away = Q[:, :2] - mid
-            Q[:, :2] += away / np.maximum(np.linalg.norm(away, axis=1, keepdims=True), 1e-6) * 0.017
-            Q[:, 2] = np.maximum(Q[:, 2], Q[:, 2].min() + 0.004)
-            made.append(("boot_foot_" + side, "foot_" + side, _rigid(P[sel], Pp[sel])(Q), outfit["boots"]["colour"]))
+    if "boots" in wear:                                   # modelled and painted from their turnaround sheet (boots.py)
+        import boots as boots_mod
+        kind = outfit["boots"].get("kind", "rubber")
+        tex = os.path.join(os.path.dirname(os.path.abspath(__file__)), "figures", "boots_%s.png" % kind)
+        boot_objs = boots_mod.make_pair(fig, P, Pp, H, kind, tex, lambda names: _w(base, names))
+        if arm is not None:
+            for o in boot_objs:
+                o.parent = arm
+                o.modifiers.new("rig", "ARMATURE").object = arm
     if "cap" in wear:
         hd = _w(base, ("head",)) > 0.8
         line = INFO["cap_line"]
@@ -387,6 +387,8 @@ def make(fig, wear, posed=True, arm=None, skin_path=None):
         for piece in ([name] if name != "trousers" else ["trousers", "cuffs", "waistband"]):
             if piece not in R:
                 print("no such garment here:", piece)
+                continue
+            if piece == "boots":                          # (boots are models of their own: extras())
                 continue
             f, may, off, col = R[piece]
             mv = PUSH.get(piece, 0.0)
@@ -650,6 +652,8 @@ if __name__ == "__main__":
         if piece in R and name != "drawers":
             f_, may_, _o, _c = R[piece]
             covered |= may_ & (f_ > 0.015)
+    if "boots" in wear:                                   # the feet and shins inside the boots
+        covered |= R["boots"][1] & (R["boots"][0] > 0.015)
     body = objs["body"].data
     under = [covered[tree.find(v.co)[1]] for v in body.vertices]
     bmb = bmesh.new()
