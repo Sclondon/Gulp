@@ -487,11 +487,11 @@
  "ears": {
   "cut": true,
   "scale": 1.18,
-  "back": 0.5,
+  "back": 1,
   "down": 0.4,
-  "out": -0.4,
+  "out": -0.65,
   "tilt": 8,
-  "flare": 8
+  "flare": 7
  },
  "jaw_corner": {
   "lift": 2.9,

@@ -474,3 +474,6 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   clear jaw edge rising to the ear that sliders and the earlier lift did not.
   **Method that worked: mark the same landmark on drawing and model, draw both on the overlay, move one onto the
   other.** Use it for other landmarks (ear, eye corners, mouth corners, nose wings).
+- The user: "the ears are actually a little too far forward" and "theres a gap at their seam with the head, the are
+  floating". `ears.back` 0.5 -> 1.0; `ears.out` -0.4 -> -0.65 and `flare` 8 -> 7 (the cut edge sunk further under
+  the skin). At `out` -1.0 the ears were half buried. Check the seam in the back view after any ear change.
