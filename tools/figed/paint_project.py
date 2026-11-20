@@ -333,6 +333,16 @@ under = under * shown + skin * (1 - shown)
 out = np.where(wsum[:, :, None] > 1e-6, tex / np.maximum(wsum, 1e-6)[:, :, None], skin) * seen + under * (1 - seen)
 out[~cover] = skin
 out[:8, :8] = skin                                            # a corner of plain skin: the head under a cut-off ear
+# THE HAND LAYER: paint the user did by hand in a paint window (<name>_skin_hand.png beside the skin: their picture,
+# its alpha where it differed from the projection they painted on). Laid back over every new projection, so
+# projecting again does not lose it.
+hand_path = os.path.abspath(argv[2])[:-4] + "_hand.png"
+if os.path.exists(hand_path) and "--no-hand" not in argv:
+    him = bpy.data.images.load(hand_path)
+    hand = np.array(him.pixels[:]).reshape(him.size[1], him.size[0], 4)
+    if hand.shape[:2] == out.shape[:2]:
+        out = out * (1 - hand[:, :, 3:4]) + hand[:, :, :3] * hand[:, :, 3:4]
+        print("hand paint laid over the projection:", int((hand[:, :, 3] > 0.5).sum()), "texels")
 img = bpy.data.images.new("skin", SIZE, SIZE, alpha=False)
 rgba = np.ones((SIZE, SIZE, 4), dtype=np.float32)
 rgba[:, :, :3] = out                                          # row 0 is v = 0: Blender's own order

@@ -687,3 +687,14 @@ up; a ready-made skin tinted; hand painting): "do the texture projection as a fi
 - Head still owed: the ears welded to the head (pieces pushed in, with a cone behind); the sheet's smiling squint
   (the lids are the generic open eye); the drawing's light taken out of the paint; the hair, moustache and stubble;
   the paint is soft because the shaved sheet is 1024 px wide.
+- **Hand paint is kept as a layer** (the user: "i cleaned up his torso paint"). `figures/brother_skin_hand.png`:
+  the user's painted skin, its alpha where it differs from the projection it was painted on
+  (`hand_layer.py -- <painted.png> <projection it was painted on.png> <out_hand.png>`); `paint_project.py` lays it
+  back over every new projection (`--no-hand` leaves it off). First layer: 24% of the picture, the torso, arms,
+  drawers and feet cleaned of smears and leftover ink. A LATER hand session must be differenced against the skin
+  that window started from (which already has the first layer in it) and its result laid over the old layer, not
+  put in its place: not built yet.
+  **A trap hit: Ctrl+S did not save the paint.** A painted image that is packed in the .blend stays as it was
+  packed unless it is packed again; the saved file had the untouched projection. Recovered from the still-open
+  window through the Blender MCP (`image.save(filepath=...)`). `session_keys.py` now packs dirty `figed_` images
+  in a `save_pre` handler, so Ctrl+S keeps paint (added to the live window too; not yet checked in a fresh one).

@@ -73,6 +73,17 @@ class FIGED_OT_mode(bpy.types.Operator):
         return {"FINISHED"}
 
 
+def figed_keep_paint(*_args):
+    """Ctrl+S keeps the PAINT too: a painted image packed in the file is not written again by a save unless it is
+    packed again (the user's first torso clean-up was in the window but not in the saved file)."""
+    for im in bpy.data.images:
+        if im.name.startswith("figed_") and im.is_dirty:
+            im.pack()
+
+
+bpy.app.handlers.save_pre[:] = [h for h in bpy.app.handlers.save_pre if getattr(h, "__name__", "") != "figed_keep_paint"]
+bpy.app.handlers.save_pre.append(figed_keep_paint)
+
 for cls in (FIGED_OT_texture, FIGED_OT_mode, FIGED_OT_bible):
     try:
         bpy.utils.register_class(cls)
