@@ -498,3 +498,13 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   that reports and quits. Reference pictures: the shaved sheet as two image empties (`bible_front`,
   `bible_profile`) placed by the nose and sized by crown-to-chin, shown only in straight-on orthographic views, put
   into the user's live window through the Blender MCP (worth moving into `sculpt_session.py make`).
+- Second sculpt session (`work/brother_sculpt5.blend`, with the reference pictures): 297 more points, read with
+  `--add` onto the first: `figures/brother.sculpt.json` is now 924 points. The user, with lines on a screenshot of
+  the profile with the bible over it: "his ear is too far forward and needs to be angled backwards a bit":
+  `ears.back` 1.0 -> 3.0, `ears.tilt` 8 -> 16; in the profile overlay the ear now lies over the sheet's.
+  What the session taught (all hit by the user): the user has NO NUMPAD (the session turns on Blender's numpad
+  emulation; views are top-row `1` and `Ctrl+3`); before emulation was on, top-row `Ctrl+3` in Sculpt Mode added a
+  MULTIRES modifier at level 3 and the body stopped drawing (only eyes and teeth showed) until it was removed;
+  reference pictures at 45% hid the model, 22% is right; a plain middle-drag tilts the view and the pictures (shown
+  only straight on) vanish: say so up front; open windows on the main monitor (`--window-geometry`), the user's
+  words: "stop using monitor 3".
