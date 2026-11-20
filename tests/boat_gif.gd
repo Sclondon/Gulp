@@ -90,7 +90,15 @@ func _drive(t: float, pad: Node) -> void:
 			stick = Vector2(0.4, 0.0) if t < 1.5 else Vector2.ZERO
 			if t > 1.8 and not _dropped:
 				_dropped = true
-				pad.emit_signal(&"dive_pressed")
+				# (a finger on the dive switch, as a phone's would land)
+				var at: Vector2 = root.get_final_transform() * (pad.call(&"dive_home") as Vector2)
+				for down in [true, false]:
+					var touch := InputEventScreenTouch.new()
+					touch.index = 3
+					touch.position = at
+					touch.pressed = down
+					Input.parse_input_event(touch)
+				print("BOAT GIF tapped the dive switch at %s" % at)
 	pad.set(&"stick", stick)
 	pad.set(&"boost", boost)
 	pad.set(&"throttle", lever)
