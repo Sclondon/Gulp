@@ -36,6 +36,11 @@ else:
         for b in arm.pose.bones:
             b.rotation_mode = "QUATERNION"
         bpy.ops.object.mode_set(mode="POSE")
+        if argv[:1] == ["pose"]:                      # -- pose <saved.json>: start from a pose read earlier
+            with open(argv[1]) as f:
+                for name, v in json.load(f).items():
+                    if name in arm.pose.bones:
+                        arm.pose.bones[name].rotation_quaternion = v["quat"]
         for area in bpy.context.screen.areas:
             if area.type == "VIEW_3D":
                 area.spaces[0].shading.type = "SOLID"

@@ -664,11 +664,6 @@
     1.6,
     0.06
    ],
-   "hand.size": [
-    0.8,
-    1.7,
-    0.1
-   ],
    "neck.girth": [
     0.8,
     2.2,
@@ -1044,5 +1039,6 @@
  "arms_straight": "Round nine: pose arms_straight 1 (not moved) lays the forearm in line with the upper arm for every view; the common elbows slider is out. Without it the rest pose bent elbow foreshortened the forearm in the front view and the fit made the forearms half as long again.",
  "armpits": "Round ten: regions over the gap between each arm and the side of the trunk (armpit to waist), front and back, weight 4: with the arms out, the arm hid the side of the rib cage and the fit let it flare.",
  "armless_about": "Round eleven (the user's armless sheet and arms sheet): the trunk and legs are fitted to the armless sheet, the model drawn armless too. Arms are compared only in the front and back views of the main body sheet (weight 0.6); its side view, where the arm hangs, is kept for its marks only (outline_weight 0). The comparison pose is the one the user set by hand in Blender (the spec's pose: a turn per bone); no pose sliders move.",
- "armless_cut": 0.45
+ "armless_cut": 0.45,
+ "hands_held": "Round twelve: no hand slider moves in any automatic fit (hand.size included). The hand outline fit drove the thumb, spread and wrist to their limits twice; the hand is set by hand."
 }

@@ -217,6 +217,14 @@ The user: "lets do around focusing on his pecs, shoulders and hands, he should h
     user's call (asked 2026-11-19).
   After: armless front 0.93, side 0.90, back 0.93; main sheet front 0.93, back 0.93; marks within 0.3 to 2.2% (the
   elbows worst). Arms hung straight: upper arm 17.3% of his height, forearm 16.2%, hand 10.1%, fingertips at 42%.
+- Round twelve, hands. The user (after round eleven: "Seems likes you're doing too much- we're kinda close", then
+  "Actually mych better"; then of the hand): "his hand is all messed up now ... the thumb is deformed, and the
+  fingers look a little too short, with too much space between them. The hand wrist forearm connection also looks
+  blated". Cause: the hand outline fit had run its sliders to their limits (`thumb.girth` 1.8, `finger_spread` 2,
+  `finger_length` -1.25, `hand.length` 0.7, `wrist` 1.19). **Hands are set by hand now and no hand slider moves in
+  any automatic fit**: `thumb.girth` 1.25, `thumb.length` 1, `fingers.girth` 1.25, `fingers.length` 1,
+  `hand.length` 0.95, `hand.width` 1.08, `hand.size` 1, `finger_spread` -0.5, `finger_thickness` 0.5, `wrist` 0.1
+  (hand 12.6% of his height). `brother_hands.fit.json` is kept for looking (`--look-only`), not for running.
 - The skeleton is MakeHuman's "game engine" rig: Unreal's mannequin layout and names, 53 bones, no twist or face
   bones. It is NOT the shared boy's skeleton (GameCommon's character controller): his clips need retargeting, or
   this body moving to his skeleton. Not decided; the user's call before a figure goes into a game.

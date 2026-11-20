@@ -6,12 +6,12 @@
   "calf.length": 0.825,
   "calf.width": 1.03,
   "clavicle.length": 1.1,
-  "fingers.girth": 1.28,
-  "fingers.length": 0.91,
+  "fingers.girth": 1.25,
+  "fingers.length": 1,
   "foot.width": 1.05,
-  "hand.length": 0.7,
-  "hand.size": 1.1625,
-  "hand.width": 0.88,
+  "hand.length": 0.95,
+  "hand.size": 1,
+  "hand.width": 1.08,
   "head.size": 1.0406,
   "lowerarm.girth": 1.2311,
   "lowerarm.length": 0.96,
@@ -38,8 +38,8 @@
   "thigh.girth": 1.0625,
   "thigh.length": 0.7875,
   "thigh.width": 1.0337,
-  "thumb.girth": 1.8,
-  "thumb.length": 0.82,
+  "thumb.girth": 1.25,
+  "thumb.length": 1,
   "toes.length": 1.3,
   "torso.depth": 1.09,
   "torso.width": 0.96,
@@ -128,7 +128,7 @@
     0.993805
    ]
   ],
-  "feet_out": 9.0,
+  "feet_out": 9,
   "foot_l": [
    [
     0.989092,
@@ -215,7 +215,7 @@
    ]
   ],
   "lean": 0,
-  "legs_apart": -4.0,
+  "legs_apart": -4,
   "lowerarm_l": [
    [
     0.911772,
@@ -318,8 +318,6 @@
     0.999605
    ]
   ],
-  "thumb_flat": -36,
-  "thumb_out": -20,
   "upperarm_l": [
    [
     0.970936,
@@ -365,7 +363,7 @@
   "armless_side": 14,
   "back": -7,
   "bare_back": -1.25,
-  "bare_front": 2.0,
+  "bare_front": 2,
   "bare_side": 9.75,
   "front": 6.375,
   "hand_back": -2,
@@ -406,9 +404,9 @@
   "eye_bags": 0.8,
   "eye_outer_corner_up": -0.9,
   "eye_size": 0.9,
-  "finger_length": -1.25,
-  "finger_spread": 2,
-  "finger_thickness": -1,
+  "finger_length": 0,
+  "finger_spread": -0.5,
+  "finger_thickness": 0.5,
   "foot-scale-depth": -0.5,
   "foot-scale-horiz": 0.4375,
   "forehead-trans-forward": -0.4,
@@ -468,7 +466,7 @@
   "upperarm-muscle": 0.2188,
   "waist": 0.25,
   "waist_to_hip": -0.125,
-  "wrist": 1.1875
+  "wrist": 0.1
  },
  "zoom": {
   "armless_back": 0.9679166666666666,
