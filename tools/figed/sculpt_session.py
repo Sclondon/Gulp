@@ -47,6 +47,12 @@ if argv[:1] == ["read"]:
                    "moves": [[round(float(x), 6) for x in d[i]] for i in moved]}, f)
     far = float(np.linalg.norm(d, axis=1).max()) if len(d) else 0.0
     print("sculpt: %d points moved, furthest %.1f mm" % (len(moved), 1000 * far))
+elif argv[:1] == ["read-paint"]:                       # -- read-paint <out.png>: the painted skin out of the file
+    img = bpy.data.images["figed_skin"]
+    img.filepath_raw = os.path.abspath(argv[1])
+    img.file_format = "PNG"
+    img.save()
+    print("paint saved", argv[1], tuple(img.size))
 elif argv[:1] == ["make"]:                             # headless: -- make <spec.json> <work.blend>
     import figed  # noqa: E402
     import figed_blender as fb  # noqa: E402
@@ -102,18 +108,60 @@ elif argv[:1] == ["make"]:                             # headless: -- make <spec
         o.select_set(False)
     body.select_set(True)
     bpy.context.view_layer.objects.active = body
-    bpy.ops.object.mode_set(mode="SCULPT")
-    bpy.context.scene.tool_settings.sculpt.use_symmetry_x = True
+    paint = argv[argv.index("--paint") + 1] if "--paint" in argv else None
+    if paint:                                          # a paint session: the skin picture on the body, kept IN the file
+        img = bpy.data.images.load(os.path.abspath(paint))
+        img.name = "figed_skin"
+        img.pack()
+        mat = bpy.data.materials.new("skin")
+        mat.use_nodes = True
+        node = mat.node_tree.nodes.new("ShaderNodeTexImage")
+        node.image = img
+        mat.node_tree.nodes.active = node
+        bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+        mat.node_tree.links.new(node.outputs["Color"], bsdf.inputs["Base Color"])
+        body.data.materials.append(mat)
+        for o in bpy.data.objects:
+            if o.type == "EMPTY":
+                o.hide_viewport = True                 # the reference pictures would tint what is being painted
+        bpy.ops.object.mode_set(mode="TEXTURE_PAINT")
+        ip = bpy.context.scene.tool_settings.image_paint
+        ip.mode = "IMAGE"
+        ip.canvas = img
+        ip.use_symmetry_x = False                      # he has a mole on one cheek
+    else:
+        bpy.ops.object.mode_set(mode="SCULPT")
+        bpy.context.scene.tool_settings.sculpt.use_symmetry_x = True
     bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(argv[2]))
     print("made", argv[2], "mode", bpy.context.mode)
 else:                                                  # in a window, on a file "make" wrote: set up Sculpt Mode
     body = next(o for o in bpy.data.objects if o.type == "MESH" and "figed_rest" in o.data.attributes)
+
+    painting = "figed_skin" in bpy.data.images
 
     def setup():
         for o in bpy.data.objects:
             o.select_set(False)
         body.select_set(True)
         bpy.context.view_layer.objects.active = body
+        if painting:
+            if bpy.context.mode != "PAINT_TEXTURE":
+                bpy.ops.object.mode_set(mode="TEXTURE_PAINT")
+            bpy.context.preferences.inputs.use_emulate_numpad = True
+            top = max(v.co.z for v in body.data.vertices)
+            for area in bpy.context.screen.areas:
+                if area.type == "VIEW_3D":
+                    region = next(r for r in area.regions if r.type == "WINDOW")
+                    sh = area.spaces[0].shading
+                    sh.type = "SOLID"
+                    sh.color_type = "TEXTURE"          # the paint itself, flat: no light of the viewport's on it
+                    sh.light = "FLAT"
+                    with bpy.context.temp_override(area=area, region=region):
+                        bpy.ops.view3d.view_axis(type="FRONT")
+                    area.spaces[0].region_3d.view_perspective = "ORTHO"
+                    area.spaces[0].region_3d.view_location = (0.0, -0.05, top - 0.13)
+                    area.spaces[0].region_3d.view_distance = 0.75
+            return None
         if bpy.context.mode != "SCULPT":
             bpy.ops.object.mode_set(mode="SCULPT")
         bpy.context.scene.tool_settings.sculpt.use_symmetry_x = True      # both sides of the face together
@@ -155,4 +203,5 @@ else:                                                  # in a window, on a file 
         return None
 
     bpy.app.timers.register(setup, first_interval=0.8)
-    bpy.app.timers.register(grab, first_interval=2.5)
+    if not painting:
+        bpy.app.timers.register(grab, first_interval=2.5)
