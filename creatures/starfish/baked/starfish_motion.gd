@@ -1,12 +1,12 @@
 extends RefCounted
-## The starfish's motion in the radial family (scripts/motion.gd; GameCommon `godot/motion-families`),
+## The starfish's motion in the jointed family (its bends; drawn one-sided as its own shader drew it) (scripts/motion.gd; GameCommon `godot/motion-families`),
 ## as starfish.gdshader moved it: each arm (its way out in the model's UV2.x) bent along itself in four
 ## arcs, its tip curling up and down, the arm lifting from near its root, and writhing side to side in
 ## two arcs; each arm a little after the one before; `curl_up` curls every arm up; the tube feet under
 ## the arms wave. The three kinds (common, sunflower, brittle) differ by their settings (arm_length, arms,
 ## lift_from, tip_wave, writhe), read from each material.
 
-const FAMILY := "radial"
+const FAMILY := "jointed"
 
 const ARM := 1
 const FEET := 2
