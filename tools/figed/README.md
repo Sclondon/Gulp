@@ -333,3 +333,12 @@ biblehead pic": `tools/art_src/concept_brother_bible_face2.png` (the face with h
   skull behind the ears; the bone control `head.depth` scales the whole head front to back cleanly. And
   `forehead-scale-vert` at -0.9 squared the top of the skull; -0.5 keeps it round. These are held out of the head fit.
   Left: the nose tip is still low (0.63 against 0.57), which is the nose's own shape, for its next round.
+- The user: "looks like his crown is still too tall, and his jaw needss to be just a hair wider". In the overlay the
+  crown's height over the sheet's is the NOSE TIP's level, not the skull: the heads are the same height and the
+  noses are put together, so a nose tip that sits low pushes the whole model up. The eyes were already at the
+  sheet's 0.45. So: a little more off the skull (`forehead-scale-vert` -0.7, `head_height` -0.1, with `head.size`
+  x1.064, `head.width` 0.94 and `head.depth` 0.77 keeping his head's height, width and depth as they were), and the
+  nose tip and mouth raised (`nose_length` -1, `nose-trans-up` 1, `mouth-trans-up` 0.75): nose tip 0.58 (sheet
+  0.57), mouth 0.73 (0.72). `jaw_width` 0.5 (0.25 for the user's hair wider, the rest making up for `head.width`).
+  The crown, jaw, eyes and mouth now sit on the sheet's in all five views. The nose is squeezed short by this: its
+  shape (a broad low ball on the sheet) is the next round.

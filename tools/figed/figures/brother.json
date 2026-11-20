@@ -10,7 +10,7 @@
   "foot.width": 1.05,
   "hand.length": 0.95,
   "hand.width": 1.08,
-  "head.size": 1.1291,
+  "head.size": 1.2014,
   "lowerarm.girth": 1.2311,
   "lowerarm.length": 0.96,
   "neck.depth": 0.8,
@@ -44,7 +44,8 @@
   "upperarm.girth": 0.85,
   "upperarm.length": 1.0625,
   "upperarm.width": 1.15,
-  "head.depth": 0.82
+  "head.depth": 0.77,
+  "head.width": 0.94
  },
  "drop": {
   "head_back": 1,
@@ -407,7 +408,7 @@
   "head-fat": 0,
   "head-oval": 0.3,
   "head-round": 0,
-  "head_height": 0.1,
+  "head_height": -0.1,
   "hip-scale-depth": -0.25,
   "hip-waist-up": 0.3125,
   "hips": 0.5,
@@ -424,7 +425,7 @@
   "mouth-scale-depth": -0.2,
   "mouth-scale-horiz": 0.7,
   "mouth-trans-forward": -0.1,
-  "mouth-trans-up": 0.6,
+  "mouth-trans-up": 0.75,
   "mouth-upperlip-volume": 0.2,
   "neck-scale-depth": -0.55,
   "neck-scale-horiz": -0.65,
@@ -436,10 +437,10 @@
   "nose-curve-convex": -0.2,
   "nose-greek": 0,
   "nose-trans-forward": 0.1,
-  "nose-trans-up": 0.2,
+  "nose-trans-up": 1,
   "nose_base_width": 1,
   "nose_hump": -0.025,
-  "nose_length": 0.1,
+  "nose_length": -1,
   "nose_mid_width": 0.5,
   "nose_out": 0.65,
   "nose_size": 1,
@@ -461,7 +462,8 @@
   "waist": 0.25,
   "waist_to_hip": -0.125,
   "wrist": 0.1,
-  "forehead-scale-vert": -0.5
+  "forehead-scale-vert": -0.7,
+  "jaw_width": 0.5
  },
  "zoom": {
   "armless_back": 0.9679166666666666,
