@@ -149,9 +149,10 @@ func _ready() -> void:
 			_touching = true
 		elif arg == "--title":
 			_titled = true
-		elif arg == "--dive":
+		elif arg == "--dive" or arg == "--helm":
+			# (--dive: start and drop in at once, skipping the boat; --helm: start, at the boat's helm)
 			_titled = true
-			_trick = "--dive"
+			_trick = arg
 		elif arg == "--calm":
 			calm = true
 		elif arg == "--over":
@@ -571,17 +572,8 @@ func _open_title() -> void:
 	title.eye_node = camera
 	_on_deck = true
 	_card.go.connect(func() -> void:
-		if _dive < 0.0 and _card.primed >= 1.0:
-			# (the fish is put in the water under the boat, wherever that has got to, and the boat
-			# heaves to there, its net out, for the rest of the game)
-			title.heave_to()
-			_start = Vector2(title.global_position.x, title.global_position.z)
-			restart()
-			pad.visible = false
-			_dive = 0.0
-			_dive_from = camera.global_transform
-			title.logo.visible = false
-			_card.visible = false)
+		if _dive < 0.0 and _card.primed >= 1.0 and not _at_helm:
+			_take_helm())
 	hud.visible = false
 	pad.visible = false
 	_dive = -1.0
@@ -664,6 +656,9 @@ func _warm_extras() -> Array:
 # A frame of the title: the eye astern of the boat, or on its way down through the surface to
 # the fish. The fish waits; the sea goes on only once the eye is on its way.
 func _title_step(delta: float) -> void:
+	if _at_helm:
+		_helm_step(delta)
+		return
 	if _dive < 0.0:
 		camera.global_transform = title.eye(size.y > size.x)
 		if warmer:
@@ -679,9 +674,12 @@ func _title_step(delta: float) -> void:
 			if _card.primed >= 1.0 and _clock > 4.2:
 				_loading.finish()
 				_loading = null
-		if _trick == "--dive" and _clock > 0.6 and _card.primed >= 1.0:
+		if (_trick == "--dive" or _trick == "--helm") and _clock > 0.6 and _card.primed >= 1.0:
+			var skip := _trick == "--dive"
 			_trick = ""
 			_card.go.emit()
+			if skip and _at_helm:
+				_drop_in()
 		return
 	_dive += delta / 1.8
 	life.step(delta)
@@ -697,6 +695,72 @@ func _title_step(delta: float) -> void:
 		hud.visible = true
 		pad.visible = true
 		pad.release()
+
+
+## At the helm of the boat (the user, 2026-11-20: "Drive the shrimp boat"; CLAUDE.md, "Decision:
+## driving the shrimp boat"): after the start button the player drives the boat with the panel (the
+## stick, the lever, the burst: Title.drive) under a chase camera (Title.chase), then throws the dive
+## switch (the panel's right knife switch, Enter, a pad's X) to drop the fish in where the boat is.
+## The fish waits under the boat; the sea's animals wait as on the title.
+var _at_helm := false
+var _helm_blend := 0.0
+var _dive_key_was := true
+
+
+func _take_helm() -> void:
+	_at_helm = true
+	title.take_helm()
+	_card.visible = false
+	hud.visible = false
+	pad.visible = true
+	pad.release()
+	pad.diving = true
+	if not pad.dive_pressed.is_connected(_drop_in):
+		pad.dive_pressed.connect(_drop_in)
+	_helm_blend = 0.0
+	# (the press that started it does not also drop the fish in)
+	_dive_key_was = true
+
+
+func _helm_step(delta: float) -> void:
+	# (the same controls as the fish's, read into the waiting fish's stick, lever and burst)
+	_steer()
+	title.drive(player.stick, player.throttle, player.boost_held, delta)
+	var at := title.global_position
+	player.global_position = Vector3(at.x, maxf(Sea.SURFACE - 7.0, Sea.ground(at.x, at.z) + 1.5), at.z)
+	var ahead := -title.global_basis.z
+	pad.speed = title.speed_share()
+	pad.stamina = title.burst_left
+	pad.depth = 0.0
+	pad.heading = atan2(ahead.x, -ahead.z)
+	var upright := size.y > size.x
+	# (from the title's view round to the chase over a second and a half)
+	_helm_blend = minf(_helm_blend + delta / 1.5, 1.0)
+	var chased := title.chase(delta, upright)
+	camera.global_transform = title.eye(upright).interpolate_with(chased, smoothstep(0.0, 1.0, _helm_blend)) if _helm_blend < 1.0 else chased
+	var dive_key := Input.is_physical_key_pressed(KEY_ENTER) or Input.is_joy_button_pressed(0, JOY_BUTTON_X)
+	if dive_key and not _dive_key_was and not _checking:
+		_drop_in()
+	_dive_key_was = dive_key
+
+
+## Drops the fish in under the boat, wherever it has been driven: the boat heaves to there, its net
+## out, for the rest of the game, and the eye goes down through the surface to the fish.
+func _drop_in() -> void:
+	if not _at_helm:
+		return
+	_at_helm = false
+	pad.diving = false
+	title.heave_to()
+	_start = Vector2(title.global_position.x, title.global_position.z)
+	# (the dive starts where the eye is now: restart puts the camera behind the fish)
+	var from := camera.global_transform
+	restart()
+	pad.visible = false
+	_dive = 0.0
+	_dive_from = from
+	if _card:
+		_card.visible = false
 
 
 ## The fish was swum into the boat's net: it is hauled up and sold, and the sale shows, then the

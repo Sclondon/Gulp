@@ -228,8 +228,9 @@ diver on a shrimping boat (look up reference pics). In the open back cabin of th
 franketstein computer hooked up to a helmet on the boys head- the controls for the pc are the controls for the game".
 `scripts/title.gd` (Title, and Title.Card for the name and the start button) stands a boat on the surface over the
 fish's start; the computer is the panel's own model on a bench; `tools/build_helmet.py` -> `models/brain_helmet.glb`
-(helmet, cable, bench). Main opens on it unless a test, bot or picture is driving (`--title` forces it), and on start
-sends the eye down through the surface to the fish. Tests skip it.
+(helmet, cable, bench). Main opens on it unless a test, bot or picture is driving (`--title` forces it); on start the
+player drives the boat ("Driving the shrimp boat" below), and the dive switch sends the eye down through the surface to
+the fish. Tests skip it (`--dive` starts and drops in at once).
 
 ## More animals (2026-11-18)
 
@@ -1222,6 +1223,49 @@ higher than the troughs beside it; the splash's drops fell on through the surfac
   usual setting (a leap needs only 11 degrees up and 0.75 of cruising pace, `Player.LEAP_PACE`), so a fish at the top
   pops in and out by accident; a leap could be made to need the burst, or a steeper angle. In the air the stick still
   only turns it (no flip of meaning). A big fish's (tuna's) take-off splash fills the picture for two or three frames.
+
+## Driving the shrimp boat (2026-11-20)
+
+The user: "we need to work on controlling the boat", and picked "Drive the shrimp boat". The design picks below are
+all Claude's (the user gave no more detail): change freely.
+
+- **Decision (Claude's pick): an arcade boat driven between the start button and the dive, under a chase camera.**
+  What: the start button now puts the player at the helm (`Main._take_helm`, `_helm_step`, `_drop_in`; `Title.take_helm`,
+  `drive`, `chase`); the panel drives it: the stick steers, the lever is the throttle (0 stops it; 6 m/s at the top), the
+  plunger a burst of +4 m/s for 2 s that fills again in 5 s; the right knife switch (`SwitchB`, until now spare) is the
+  dive, lit amber with a down arrow while at the helm (`TouchPad.diving`; Enter or a pad's X too), and drops the fish in
+  under the boat, which heaves to there with its net out for the rest of the game, as before. Handling (`Title.drive`):
+  a velocity kept along the keel, its sideways part damped hard (KEEL), way gathered and lost slowly (GATHER, COAST), a
+  turn rate that needs way on (a 12 m turning circle, a little at a standstill), heeling outward in a turn and lifting its
+  bow with speed (drawn only, on `boat`), carried a little down the faces of waves (WAVE_CARRY of g along the surface's
+  slope) and shoved by a rogue wave (`Sea.surge`). It keeps off the shallows (Bay's depth at its middle and 5 m ahead of its
+  bow: a push from SHOAL 4 m, all its way into them taken off by AGROUND 1.5 m), rocks (`Sea.clear_of_rocks` at the
+  waterline: the sea stacks) and the bay's edges, all as soft pushes, not walls. It floats as before (four probes of
+  `Sea.surface_height`: height from the middle, bow and stern, pitch from bow and stern, roll from the sides, eased), now
+  lifted quickly and settling slowly (a breaker's face passed up through the hull). The camera (`Title.chase`): behind
+  and above (17 m back, 6 up; 24 and 9.5 in an upright window, aimed short of the boat so it stands over the panel), its
+  height fixed over the sea's middle (no bob; it rises only over a rogue wave), level, swinging round after the heading
+  a little late (1.8/s) so turns are seen; it eases from the title's view to the chase over 1.5 s. The fish waits under
+  the boat (moved with it, not stepped) and the sea's animals wait as on the title. Why: the usual way arcade games
+  drive boats (a kinematic hull with keel drag and a turn rate, buoyancy only drawn from a few probes of the wave
+  height, no physics engine), cheap on a phone and needing nothing new to compile; a chase camera with a lagging
+  heading and an upright horizon as most driving games use (an upright camera is the usual default; a camera tied to the
+  hull's roll swings the horizon). Alternatives: RigidBody3D with per-probe buoyancy forces (Godot's forum
+  threads show it needs much damping and tuning, and is costlier); a camera on the boat (bobs and rolls).
+- Measured (`tests/boat_gif.gd`, 390x844): the camera's height did not change by a centimetre and its roll stayed 0
+  once the chase settled, over the swell and in the Steamer Lane surf; driven flat out at the Santa Cruz beach it stops
+  with 7 m under its middle and 1.8 m under its bow; it bumped off the sea stacks at (-74, -14) in open water. The smoke
+  test drives it too (`_boat` in tests/checks.gd).
+- Where it is dropped: `Main._start` becomes the boat's place, so `restart` puts the fish under the boat (7 m down, or
+  1.5 m over the floor), `Life.keep_home` brings the starting krill and anchovies there, and the depth limit is under the
+  surface wherever it is. Not done: the fishers' hooks and nets keep their distance only from `Sea.START`
+  (`Fishers.START`), so a fish dropped elsewhere may start beside a hook or a trawl; the hunters near any drop are made to
+  back off (`Life.make_way`) as at the start.
+- Not done or rough: the seagulls do not exist yet (asked for in the list above), so nothing follows the boat; the
+  sonar, the pause button and the depth dial do nothing at the helm; the dive's eye passes close by the hull on its way
+  down; a dive from the shop after a sale still starts where the boat lies (no driving between runs); the lever keeps
+  where the boat had it when the fish starts. Nobody has driven it by hand or on a phone; the numbers are tuned only
+  from GIFs.
 
 ## Pushed 2026-11-19 (night)
 Game build a8f72f7 (source 8856d6e), site PR #217 (cart ?v=a8f72f7): animals on baked textures and four shared motion

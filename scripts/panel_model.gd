@@ -77,6 +77,10 @@ var _needles: Array[Node3D] = []
 var _switch: Node3D
 var _switch_rest := Vector3.ZERO
 var _thrown := 0.0
+## The right knife switch: thrown at the helm to drop the fish in (the boat, Title.drive).
+var _dive_switch: Node3D
+var _dive_rest := Vector3.ZERO
+var _dive_thrown := 0.0
 var _lamp: ShaderMaterial
 var _glass: ShaderMaterial
 var _camera: Camera3D
@@ -169,6 +173,10 @@ func _init() -> void:
 		var marker := model.find_child(named) as Node3D
 		if marker:
 			_points[named] = marker.position
+	_dive_switch = model.find_child("SwitchB") as Node3D
+	if _dive_switch:
+		_dive_rest = _dive_switch.position
+		_points["SwitchB"] = _dive_rest
 	if _switch:
 		# (a marker's place in the box, not the handle's own origin's: the same, as built)
 		_points["SwitchA"] = _switch_rest
@@ -264,7 +272,7 @@ func point(named: String) -> Vector2:
 
 ## Where the sonar switch's handle (at rest) and its pilot lamp are in the switch box, for a model
 ## built before they were parts of their own (tools/build_panel.py's numbers, in Godot's axes).
-const SWITCH_POINTS := {"SwitchA": Vector3(-0.36, 0.72, 0.26), "SwitchPilot": Vector3(-0.36, 0.96, 0.1)}
+const SWITCH_POINTS := {"SwitchA": Vector3(-0.36, 0.72, 0.26), "SwitchB": Vector3(0.36, 0.72, 0.26), "SwitchPilot": Vector3(-0.36, 0.96, 0.1)}
 ## How far the sonar switch's handle slides down its slot, thrown (m).
 const SWITCH_THROW := 0.3
 
@@ -275,6 +283,13 @@ func show_sonar(thrown: float, delta: float) -> void:
 	_thrown = thrown if thrown > _thrown else lerpf(_thrown, thrown, 1.0 - exp(-10.0 * delta))
 	if _switch:
 		_switch.position = _switch_rest - Vector3(0.0, SWITCH_THROW * _thrown, 0.0)
+
+
+## The dive switch (the right one), at the helm: `thrown` 1 thrown (down its slot), 0 at rest.
+func show_dive(thrown: float, delta: float) -> void:
+	_dive_thrown = lerpf(_dive_thrown, thrown, 1.0 - exp(-14.0 * delta))
+	if _dive_switch:
+		_dive_switch.position = _dive_rest - Vector3(0.0, SWITCH_THROW * _dive_thrown, 0.0)
 
 
 ## How big things on a housing's face are on the screen: pixels to a metre of the model there.

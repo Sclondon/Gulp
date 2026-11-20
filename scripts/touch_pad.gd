@@ -24,8 +24,9 @@ extends Control
 ## - The switch box: two knife switches for special abilities. The left one is the SONAR (the user,
 ##   2026-11-20: "The sonar should be activated with one of the special ability buttons"): thrown,
 ##   it pings; its handle drops down its slot and creeps back up as it charges again, and its pilot
-##   lamp shows green when it is ready (E or a pad's Y does the same). The right one is still kept
-##   for an ability that does not exist yet.
+##   lamp shows green when it is ready (E or a pad's Y does the same). The right one is the DIVE while
+##   the boat is being driven (`diving`: lit amber, a down arrow over it; Enter or a pad's X does the
+##   same); in the sea it is still kept for an ability that does not exist yet.
 ## - The valve box: the pause button, and two vacuum tubes that burn brighter while it bursts.
 ##
 ## A touch on the sonar switch pings; a touch anywhere else in the lower left takes the helm; a
@@ -38,6 +39,8 @@ extends Control
 signal pause_pressed
 ## The sonar switch was thrown (Main pings if it has charged).
 signal sonar_pressed
+## At the helm of the boat, the right knife switch was thrown: drop the fish in (Main).
+signal dive_pressed
 
 const BRASS := Color(0.80, 0.62, 0.26)
 const BRASS_LIGHT := Color(1.0, 0.88, 0.55)
@@ -81,6 +84,10 @@ var landmarks: Array = []
 var alarm := 0.0
 ## The game is paused: a veil over the sea and an arrow to go on.
 var paused := false
+## At the helm of the boat (Title.drive): the right knife switch is the dive, lit amber with a down
+## arrow over it; thrown, it drops the fish in where the boat is.
+var diving := false
+var _dive_thrown := 0.0
 
 var model: PanelModel
 var sonar: Sonar
@@ -124,6 +131,8 @@ func _process(delta: float) -> void:
 		model.show_state(stick, boost and stamina > 0.0, throttle,
 				[speed + sin(Time.get_ticks_msec() * 0.03) * 0.004, depth, stamina, (level + clampf(progress, 0.0, 1.0)) / STAGES], delta)
 		model.show_sonar(1.0 - clampf(sonar_charge, 0.0, 1.0), delta)
+		model.show_dive(_dive_thrown, delta)
+		_dive_thrown = move_toward(_dive_thrown, 0.0, delta * 1.5)
 		queue_redraw()
 
 
@@ -159,6 +168,12 @@ func sonar_home() -> Vector2:
 	return model.point("SwitchA")
 
 
+## Where the dive switch is (the right knife switch: at the helm).
+func dive_home() -> Vector2:
+	_fit()
+	return model.point("SwitchB")
+
+
 ## Where the lever's handle is for a speed (0..1): a point along its slot.
 func lever_at(at_speed: float) -> Vector2:
 	_fit()
@@ -176,6 +191,10 @@ func _input(event: InputEvent) -> void:
 				pause_pressed.emit()
 				return
 			if touch.position.y < size.y * 0.4:
+				return
+			if diving and touch.position.distance_to(dive_home()) < 44.0 * unit():
+				_dive_thrown = 1.0
+				dive_pressed.emit()
 				return
 			if touch.position.distance_to(sonar_home()) < 40.0 * unit():
 				sonar_pressed.emit()
@@ -259,6 +278,21 @@ func _draw() -> void:
 		else:
 			draw_circle(pilot, wide, Color(0.55, 0.1, 0.05, 0.85))
 	sonar.visible = not paused
+	# At the helm, the dive switch: an amber lamp breathing round it and a down arrow over it.
+	if diving and not paused:
+		var at := dive_home()
+		var r := 30.0 * unit()
+		var breathe := 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.005)
+		draw_arc(at, r * (1.15 + 0.12 * breathe), 0.0, TAU, 40, Color(1.0, 0.7, 0.2, 0.35 + 0.45 * breathe), 4.0 * unit(), true)
+		# (the arrow on the switch's handle)
+		var wide := r * 0.62
+		var top := at + Vector2(0.0, -wide * 0.35)
+		var arrow := PackedVector2Array([top + Vector2(-wide * 0.35, -wide), top + Vector2(wide * 0.35, -wide), top + Vector2(wide * 0.35, 0.0), top + Vector2(wide, 0.0), top + Vector2(0.0, wide), top + Vector2(-wide, 0.0), top + Vector2(-wide * 0.35, 0.0)])
+		draw_colored_polygon(arrow, Color(0.1, 0.06, 0.02, 0.85))
+		var inner := PackedVector2Array()
+		for q in arrow:
+			inner.append(top + (q - top) * 0.72 + Vector2(0.0, -wide * 0.05))
+		draw_colored_polygon(inner, Color(1.0, 0.75, 0.25, 0.6 + 0.4 * breathe))
 	# The alarm lamp: lit red in flashes while a hunter is close.
 	if alarm > 0.02 and not paused and model.has("Alarm"):
 		var lamp := model.point("Alarm")

@@ -114,8 +114,42 @@ func _run() -> void:
 	await _fishing()
 	await _loop()
 	await _waves()
+	_boat()
 	print("GULP SMOKE PASSED" if _bad == 0 else "GULP SMOKE FAILED (%d)" % _bad)
 	get_tree().quit()
+
+
+## The boat at the helm (Title.drive; CLAUDE.md, "Decision: driving the shrimp boat"), stepped by hand at
+## 60 a second: it gathers way on the lever, turns to the side the stick is pushed, and driven flat out
+## at the Santa Cruz beach is pushed back off the shallows and never reaches the sand.
+func _boat() -> void:
+	var title: Title = main.title
+	var dt := 1.0 / 60.0
+	title.hove = false
+	title.take_helm()
+	title.place(Vector2(-40.0, -55.0), 0.0)
+	title.velocity = Vector3.ZERO
+	var from := title.global_position
+	for n in 600:
+		title.drive(Vector2.ZERO, 1.0, false, dt)
+	_check("the boat gathers way on the lever", title.velocity.length() > Title.TOP_SPEED * 0.85 and title.global_position.distance_to(from) > 30.0,
+			"%.1f m/s after 10 s, %.0f m" % [title.velocity.length(), title.global_position.distance_to(from)])
+	var turned := 0.0
+	for n in 300:
+		var before := title.global_rotation.y
+		title.drive(Vector2(1.0, 0.0), 1.0, false, dt)
+		turned += angle_difference(before, title.global_rotation.y)
+	_check("the stick to the right turns it to starboard", turned < -1.0, "%.2f rad in 5 s" % turned)
+	# (flat out at the beach to the north, the burst pressed again whenever it is full)
+	title.place(Vector2(-40.0, -70.0), 0.0)
+	var least := INF
+	for n in 2400:
+		title.drive(Vector2.ZERO, 1.0, title.burst_left > 0.0 and n % 600 < 200, dt)
+		var at := title.global_position
+		least = minf(least, Sea.SURFACE - Sea.ground(at.x, at.z))
+	_check("driven at the beach it stops off the shallows, never aground", least > 1.0 and least < Title.SHOAL,
+			"least depth under it %.1f m, now at %s" % [least, title.global_position])
+	title.heave_to()
 
 
 ## The water's surface (tools/WATER_FX.md, "Surf and rogue waves"): the open sea rides a gentle swell;

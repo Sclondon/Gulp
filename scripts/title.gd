@@ -92,6 +92,61 @@ var net: Node3D
 var _detail: Array[Node3D] = []
 var _foams: Array[CPUParticles3D] = []
 
+## At the helm (the user, 2026-11-20: "we need to work on controlling the boat", then "Drive the shrimp
+## boat"): after the start button and before the dive the player drives the boat with the panel (the
+## stick steers, the lever is the throttle, the plunger a short burst); Main calls `drive` each frame
+## and places its camera by `chase`. CLAUDE.md, "Decision: driving the shrimp boat" (the numbers are
+## Claude's picks). Set by `take_helm`, cleared by `heave_to`.
+var helm := false
+## Its way through the water (m/s, level), how fast it is turning (rad/s, + to port), and how much of
+## the burst is left (0..1).
+var velocity := Vector3.ZERO
+var burst_left := 1.0
+var _turn := 0.0
+var _bursting := false
+var _heel := 0.0
+var _chase_yaw := 0.0
+var _chase_at := Vector3.INF
+## Its speed at the lever's top (m/s), what the burst adds and for how long it lasts in one go (s) and
+## how long it takes to fill again (s); how quickly it gathers way and loses it (1/s); how quickly the
+## keel kills sideways drift (1/s).
+const TOP_SPEED := 6.0
+const BURST_SPEED := 4.0
+const BURST_LASTS := 2.0
+const BURST_FILL := 5.0
+const GATHER := 0.45
+const COAST := 0.3
+const BURST_GATHER := 1.3
+const KEEL := 2.2
+## Its turning circle at speed (m, a radius), the least it turns at a standstill (rad/s, steerage way),
+## and how quickly the rudder takes hold (1/s); how far it heels outward in a turn at most (rad), and
+## how much its bow lifts at full speed (rad).
+const TURN_RADIUS := 12.0
+const TURN_STILL := 0.12
+const TURN_EASE := 2.2
+const HEEL := 0.09
+const SQUAT := 0.03
+## The water it needs (m): from SHOAL deep it is pushed back towards deeper water, harder the shallower,
+## and any way it has into the shallows is taken off, all of it by AGROUND (a soft push, not a wall).
+## How much room it keeps from rocks (m) and the bay's edges (m), and how hard the push is (m/s^2).
+const SHOAL := 4.0
+const AGROUND := 1.5
+const ROCK_ROOM := 4.0
+const EDGE_ROOM := 8.0
+const PUSH_BACK := 7.0
+## How much a wave's slope carries it (a share of g): it runs down the face of the swell and the surf.
+const WAVE_CARRY := 0.22
+## The chase camera (behind and above, its height fixed over the sea's middle so it never bobs, the
+## horizon level, the way it looks lagging the boat's heading): how far back and up in a wide window and
+## in an upright one (m), how far ahead of the boat it looks (m: negative is short of it, so the boat
+## stands higher in the picture, over the panel), and how quickly it swings round after the boat (1/s)
+## and follows it (1/s).
+const CHASE_BACK := Vector2(17.0, 24.0)
+const CHASE_UP := Vector2(6.0, 9.5)
+const CHASE_AHEAD := Vector2(4.0, -3.0)
+const CHASE_SWING := 1.8
+const CHASE_FOLLOW := 5.0
+
 
 func _ready() -> void:
 	# (it starts where it was put, on the west of its circle, heading north)
@@ -217,12 +272,143 @@ func _ready() -> void:
 ## Stops it where it is, its net out: the game is under way. The name over it goes.
 func heave_to() -> void:
 	hove = true
+	helm = false
+	velocity = Vector3.ZERO
+	_turn = 0.0
+	_heel = 0.0
 	if logo:
 		logo.visible = false
 	for foam in _foams:
 		foam.emitting = false
 	if net:
 		net.visible = true
+
+
+## The player takes the helm: it stops steaming round its circle and goes as it is driven, under way at
+## its circling speed. The name over it goes.
+func take_helm() -> void:
+	helm = true
+	if logo:
+		logo.visible = false
+	velocity = -global_basis.z * SPEED
+	_chase_yaw = global_rotation.y
+	_chase_at = Vector3.INF
+
+
+## Puts it somewhere, heading somewhere (radians round from north, the sea's -Z, towards west): for tests.
+func place(at: Vector2, heading: float) -> void:
+	position = Vector3(at.x, Sea.SURFACE, at.y)
+	basis = Basis(Vector3.UP, heading)
+	velocity = -basis.z * velocity.length()
+	_chase_yaw = heading
+	_chase_at = Vector3.INF
+
+
+## Its speed through the water as a share of the most it goes, bursting (for the panel's speed dial).
+func speed_share() -> float:
+	return clampf(velocity.length() / (TOP_SPEED + BURST_SPEED), 0.0, 1.0)
+
+
+## One frame at the helm: `stick` (x right, -1..1) puts the rudder over, `throttle` (0..1) sets the way
+## it gathers to, `burst` held adds a short burst. An arcade boat, not a simulation (as most games
+## drive boats: a velocity kept along the keel, its sideways part damped hard, a turn rate that needs
+## way on, the hull's tilt only drawn): it gathers way and loses it slowly, turns in a circle, runs down
+## the faces of waves, and is pushed back from shallows, rocks and the bay's edges.
+func drive(stick: Vector2, throttle: float, burst: bool, delta: float) -> void:
+	if not helm or delta <= 0.0:
+		return
+	var ahead := -global_basis.z
+	ahead.y = 0.0
+	ahead = ahead.normalized()
+	# The burst: held, it lasts BURST_LASTS in one go; let go, it fills again.
+	_bursting = burst and burst_left > 0.0
+	if _bursting:
+		burst_left = maxf(burst_left - delta / BURST_LASTS, 0.0)
+	elif not burst:
+		burst_left = minf(burst_left + delta / BURST_FILL, 1.0)
+	# Way along the keel, gathered or lost towards what the lever asks; drift across it killed by the keel.
+	var along := velocity.dot(ahead)
+	var want := clampf(throttle, 0.0, 1.0) * TOP_SPEED + (BURST_SPEED if _bursting else 0.0)
+	var rate := BURST_GATHER if _bursting else (GATHER if want > along else COAST)
+	along = lerpf(along, want, 1.0 - exp(-rate * delta))
+	var across := (velocity - ahead * velocity.dot(ahead)) * exp(-KEEL * delta)
+	velocity = ahead * along + across
+	# The rudder: a turn rate that grows with the way on (a turning circle of TURN_RADIUS), a little at
+	# a standstill, eased in.
+	var want_turn := -clampf(stick.x, -1.0, 1.0) * maxf(absf(along) / TURN_RADIUS, TURN_STILL)
+	_turn = lerpf(_turn, want_turn, 1.0 - exp(-TURN_EASE * delta))
+	rotate_y(_turn * delta)
+	# (it heels outward in a turn, more the faster: drawn on the rocking boat)
+	_heel = clampf(-_turn * along * 0.06, -HEEL, HEEL)
+	# The water's slope carries it a little (down the face of the swell and the surf), and a rogue wave
+	# shoves it.
+	var at := global_position
+	var slope := Vector2(Sea.surface_height(at.x + 1.5, at.z) - Sea.surface_height(at.x - 1.5, at.z), Sea.surface_height(at.x, at.z + 1.5) - Sea.surface_height(at.x, at.z - 1.5)) / 3.0
+	velocity -= Vector3(slope.x, 0.0, slope.y) * 9.8 * WAVE_CARRY * delta
+	velocity += Sea.surge(Vector3(at.x, Sea.SURFACE - 0.5, at.z)) * delta
+	_keep_off(delta)
+	velocity.y = 0.0
+	position += velocity * delta
+	position.y = Sea.SURFACE
+
+
+# The soft push back from what it cannot go into: shallows (Bay's depth, at the hull's middle and at
+# its bow), rocks standing near the surface, the bay's edges.
+func _keep_off(delta: float) -> void:
+	var at := global_position
+	var ahead := -global_basis.z
+	var away := Vector3.ZERO
+	var most := 0.0
+	for probe: Vector3 in [at, at + ahead * 5.0]:
+		var deep := Sea.SURFACE - Sea.ground(probe.x, probe.z)
+		var shallow := clampf((SHOAL - deep) / (SHOAL - AGROUND), 0.0, 1.5)
+		if shallow <= 0.0:
+			continue
+		# (downhill: the way the floor falls)
+		var fall := Vector3(Sea.ground(probe.x - 1.0, probe.z) - Sea.ground(probe.x + 1.0, probe.z), 0.0, Sea.ground(probe.x, probe.z - 1.0) - Sea.ground(probe.x, probe.z + 1.0))
+		if fall.length() < 0.0001:
+			fall = (at - probe) if probe != at else -ahead
+		away += fall.normalized() * shallow
+		most = maxf(most, shallow)
+	var rock := Sea.clear_of_rocks(Vector3(at.x, Sea.SURFACE - 1.0, at.z), ROCK_ROOM)
+	var off := Vector3(rock.x - at.x, 0.0, rock.z - at.z)
+	if off.length() > 0.001:
+		var into := clampf(off.length() / 1.5, 0.0, 1.5)
+		away += off.normalized() * into
+		most = maxf(most, into)
+	var inside := Vector3(clampf(at.x, Sea.WEST + EDGE_ROOM, Sea.EAST - EDGE_ROOM) - at.x, 0.0, clampf(at.z, Sea.NORTH + EDGE_ROOM, Sea.SOUTH - EDGE_ROOM) - at.z)
+	if inside.length() > 0.001:
+		away += inside.normalized() * clampf(inside.length() / 3.0, 0.0, 1.5)
+		most = maxf(most, clampf(inside.length() / 3.0, 0.0, 1.5))
+	if most <= 0.0:
+		return
+	away = away.normalized()
+	# (the way it has towards what it must keep off is taken off, all of it by the hard edge; then it is
+	# pushed back out)
+	var toward := -velocity.dot(away)
+	if toward > 0.0:
+		velocity += away * toward * (1.0 - exp(-4.0 * most * delta))
+	velocity += away * PUSH_BACK * most * delta
+	if most > 1.0:
+		# (past the hard edge: never on the beach)
+		position += away * (most - 1.0) * 2.0 * delta
+
+
+## Where the camera stands at the helm (in the world): behind the boat and above it, at a fixed height
+## over the sea's middle (no bob with the swell; higher over a rogue wave), the horizon level, swinging
+## round after the boat's heading a little late so a turn is seen. `upright`: a narrow window.
+func chase(delta: float, upright: bool) -> Transform3D:
+	var k := 1 if upright else 0
+	var yaw := global_rotation.y
+	_chase_yaw = yaw if _chase_at == Vector3.INF else lerp_angle(_chase_yaw, yaw, 1.0 - exp(-CHASE_SWING * delta))
+	var flat := Vector3(global_position.x, Sea.SURFACE, global_position.z)
+	var back := Vector3(sin(_chase_yaw), 0.0, cos(_chase_yaw))
+	var want := flat + back * CHASE_BACK[k] + Vector3.UP * CHASE_UP[k]
+	# (over a rogue wave it rises, slowly: still never riding the swell)
+	want.y = maxf(want.y, Sea.surface_height(want.x, want.z) + CHASE_UP[k] * 0.5)
+	_chase_at = want if _chase_at == Vector3.INF else _chase_at.lerp(want, 1.0 - exp(-CHASE_FOLLOW * delta))
+	var look := flat - back * CHASE_AHEAD[k] + Vector3.UP * 1.5
+	return Transform3D(Basis.IDENTITY, _chase_at).looking_at(look, Vector3.UP)
 
 
 ## The middle of the net's hoop (in the world), where a fish swims in to be sold.
@@ -297,7 +483,13 @@ func _steam(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	_clock += delta
-	if not hove:
+	if helm:
+		# (its foam only while it makes way)
+		var making := velocity.length() > 0.8
+		for foam in _foams:
+			if foam.emitting != making:
+				foam.emitting = making
+	elif not hove:
 		_steam(delta)
 	elif eye_node:
 		# (hove-to, under way: the people and the computer only while they could be seen)
@@ -317,9 +509,14 @@ func _process(delta: float) -> void:
 	var starboard := Sea.surface_height(at.x + abeam.x * 1.6, at.z + abeam.z * 1.6)
 	var port := Sea.surface_height(at.x - abeam.x * 1.6, at.z - abeam.z * 1.6)
 	var ease := 1.0 - exp(-2.5 * delta)
-	boat.position.y = lerpf(boat.position.y, (middle + bow + stern) / 3.0 - at.y + sin(_clock * 0.7) * 0.03, ease)
-	boat.rotation.x = lerpf(boat.rotation.x, atan2(bow - stern, 6.0) + sin(_clock * 0.6 + 1.0) * 0.008, ease)
-	boat.rotation.z = lerpf(boat.rotation.z, atan2(starboard - port, 3.2) + sin(_clock * 0.8) * 0.015, ease)
+	var float_at := (middle + bow + stern) / 3.0 - at.y + sin(_clock * 0.7) * 0.03
+	# (lifted quickly by water rising under it, settling slowly: a breaker's face passed up through the
+	# hull at the slow rate)
+	boat.position.y = lerpf(boat.position.y, float_at, (1.0 - exp(-7.0 * delta)) if float_at > boat.position.y else ease)
+	# (at the helm: its bow lifts a little with speed, and it heels outward in a turn)
+	var squat := SQUAT * clampf(velocity.length() / TOP_SPEED, 0.0, 1.5) if helm else 0.0
+	boat.rotation.x = lerpf(boat.rotation.x, atan2(bow - stern, 6.0) + sin(_clock * 0.6 + 1.0) * 0.008 + squat, ease)
+	boat.rotation.z = lerpf(boat.rotation.z, atan2(starboard - port, 3.2) + sin(_clock * 0.8) * 0.015 + _heel, ease)
 	# The wheel goes with the captain's hands, the pump's crank with the diver's.
 	if _figures:
 		if _wheel and _captain:

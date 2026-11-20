@@ -11,6 +11,13 @@ Godot 4.7, GL Compatibility, phone first (upright or on its side), also playable
 
 ## Playing
 
+First you drive the shrimp boat. After the start button you are at its helm, seen from behind, and the same panel
+drives it: **the stick** steers (left and right), **the lever** is the throttle (at the bottom it stops), **the round
+button** a short burst of speed (two seconds, then it fills again). It cannot go into the shallows, onto rocks or out
+of the bay: it is pushed back. **The dive switch** (the right knife switch under the scope, lit amber with a down arrow;
+or Enter, a gamepad's X) drops the fish in where the boat is; the boat stays there with its net out, and from then on
+the panel steers the fish.
+
 - **The stick** (bottom left; or A/D and W/S, the arrow keys, a gamepad's left stick) turns the fish: left and right
   round, up and down for its nose. It always swims the way it points.
 - **The round button** (bottom right; or Space, Shift, a gamepad's A) is a burst of speed while held. The ring round
@@ -62,6 +69,11 @@ What a frame costs place by place (a window; `tests/perf.gd`, `tools/PERF.md`): 
 `PERF ROW` a place (frame, scripts, draws, triangles), the heaviest things in view and what each really draws;
 `--perf=title` the title and the start-up times; `--perf-shots=<folder>` saves a picture of each place.
 `godot --headless --path . --audio-driver Dummy -s res://tests/rocks_bench.gd` times `Sea.clear_of_rocks`.
+
+Driving the boat: `-- --helm` starts the game at the helm without the loading screen (`--dive` drops in at once, for
+tests). `godot --path . --audio-driver Dummy --fixed-fps 30 --resolution 390x844 -s res://tests/boat_gif.gd -- --helm
+--offline --move=turn|swell|surf|shore|drop --dir=<folder>` saves frames of a drive for a GIF and prints a `BOAT` line a
+frame (speed, depth under it, heel, pitch, the camera's height and roll).
 
 ## What is in it
 
